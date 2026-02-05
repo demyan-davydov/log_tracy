@@ -1,0 +1,88 @@
+<html window-resizable="true" window-width="1000" window-height="800">
+
+<head>
+    <title>DLT Explorer</title>
+    <style id="theme-style" src="theme-light.css" />
+    <style src="style.css" />
+    <style src="table.css" />
+    <script type="module" src="script.js" />
+</head>
+
+<body>
+    <header>
+        <div class="toolbar">
+            <button id="btn-open">Open File</button>
+            <button id="btn-fibex">Load FIBEX</button>
+            <input type="text" id="search-bar" placeholder="Search logs..." />
+            <button id="btn-theme">Toggle Theme</button>
+            <button id="btn-settings">Settings</button>
+        </div>
+        <div id="tabs-container">
+            <!-- Tabs will be dynamically added here -->
+            <div class="tab active">test.dlt</div>
+            <div class="tab">system.dlt</div>
+        </div>
+    </header>
+
+    <frameset cols="200px, *">
+        <section id="sidebar">
+            <header>Filters</header>
+            <div class="filter-group">
+                <label>ECU ID</label>
+                <input type="text" id="filter-ecu" placeholder="e.g. ECU1" />
+            </div>
+            <div class="filter-group">
+                <label>App ID</label>
+                <input type="text" id="filter-app" placeholder="e.g. APP1" />
+            </div>
+            <div class="filter-group">
+                <label>Context ID</label>
+                <input type="text" id="filter-ctx" placeholder="e.g. CTX1" />
+            </div>
+            <div class="filter-group">
+                <label>Payload Regex</label>
+                <input type="text" id="filter-payload" placeholder="e.g. error.*" />
+            </div>
+            <div class="filter-actions">
+                <button id="btn-clear-filters">Clear All</button>
+            </div>
+            <div id="filter-progress" style="display:none; margin-top:10px;">
+                <progress id="search-progress" value="0" max="100"></progress>
+                <span id="search-status">Searching...</span>
+            </div>
+        </section>
+
+        <frameset rows="*, 200px">
+            <div id="log-view">
+                <table id="log-table" fixed-layout="true" selectable="true">
+                    <thead>
+                        <tr>
+                            <th width="80px">Index</th>
+                            <th width="120px">Time</th>
+                            <th width="150px">Timestamp</th>
+                            <th width="60px">ECU</th>
+                            <th width="60px">AppID</th>
+                            <th width="60px">CtxID</th>
+                            <th width="60px">Len</th>
+                            <th width="60px">Type</th>
+                            <th width="60px">Level</th>
+                            <th width="*">Payload</th>
+                        </tr>
+                    </thead>
+                    <tbody id="log-list">
+                        <!-- Virtual list rows injected by Sciter -->
+                    </tbody>
+                </table>
+            </div>
+
+            <section id="details-panel">
+                <header>Details / Search Results</header>
+                <div class="content">
+                    Selected log details here...
+                </div>
+            </section>
+        </frameset>
+    </frameset>
+</body>
+
+</html>

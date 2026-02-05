@@ -1,0 +1,180 @@
+/* Basic Clean Style */
+
+html {
+    font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+    color: var(--text-main);
+    background: var(--bg-main);
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    flow: vertical;
+}
+
+header {
+    background: var(--bg-header);
+    border-bottom: 1px solid var(--border-color);
+    padding: 4px;
+}
+
+.toolbar {
+    flow: horizontal;
+    border-spacing: 4px;
+    margin-bottom: 4px;
+}
+
+#search-bar {
+    width: 1*;
+    /* Flex grow */
+}
+
+#tabs-container {
+    flow: horizontal;
+    margin-top: 4px;
+}
+
+.tab {
+    padding: 4px 12px;
+    background: var(--bg-tab-inactive);
+    border: 1px solid var(--border-color);
+    border-bottom: none;
+    border-radius: 4px 4px 0 0;
+    margin-right: 2px;
+    cursor: pointer;
+}
+
+.tab.active {
+    background: var(--bg-tab-active);
+    font-weight: bold;
+    position: relative;
+    bottom: -1px;
+    /* Overlap border */
+}
+
+frameset {
+    width: *;
+    height: *;
+}
+
+#sidebar {
+    background: var(--bg-sidebar);
+    border-right: 1px solid var(--border-color);
+    padding: 10px;
+    width: 250px;
+}
+
+#sidebar header {
+    background: transparent;
+    border-bottom: 2px solid var(--border-sidebar-header);
+    margin-bottom: 10px;
+    padding: 0 0 5px 0;
+    font-size: 1.1em;
+    color: var(--text-header-sidebar);
+    font-weight: 600;
+}
+
+.filter-group {
+    margin-bottom: 12px;
+}
+
+.filter-group label {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 0.9em;
+    color: var(--text-label);
+    font-weight: 500;
+}
+
+.filter-group input {
+    display: block;
+    width: *;
+    /* fill available width */
+    padding: 6px;
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    background: var(--bg-input);
+    color: var(--text-main);
+}
+
+.filter-group input:focus {
+    border-color: var(--border-focus);
+    outline: none;
+}
+
+.filter-actions {
+    margin-top: 20px;
+    text-align: right;
+}
+
+#btn-clear-filters {
+    padding: 6px 12px;
+    background: var(--btn-default-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--text-main);
+}
+
+#btn-clear-filters:hover {
+    background: var(--btn-default-hover);
+}
+
+
+
+#details-panel {
+    border-top: 1px solid var(--border-color);
+    background: var(--bg-details);
+}
+
+#details-panel header {
+    padding: 4px;
+    background: var(--bg-details-header);
+    font-weight: bold;
+    font-size: 0.9em;
+}
+
+/* Settings Dialog */
+main {
+    padding: 20px;
+    background: var(--bg-main);
+    color: var(--text-main);
+}
+
+.setting-group {
+    margin-bottom: 15px;
+}
+
+.setting-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+.setting-group select {
+    display: block;
+    width: 100%;
+    padding: 5px;
+}
+
+footer {
+    flow: horizontal;
+    background: var(--bg-header);
+    padding: 10px;
+    border-top: 1px solid var(--border-color);
+    horizontal-align: right;
+    border-spacing: 10px;
+}
+
+button.primary {
+    background: var(--btn-primary-bg);
+    color: var(--btn-primary-text);
+    border: 1px solid var(--btn-primary-border);
+}
+
+/* Native Menu */
+menu.window-menu {
+    behavior: window-menu;
+    display: none;
+    /* Safely hide from layout */
+}

@@ -1,0 +1,68 @@
+@const BG_MAIN: #1e1e1e;
+@const TEXT_MAIN: #d4d4d4;
+@const BG_HEADER: #2d2d2d;
+@const BORDER_COLOR: #3e3e42;
+@const BG_TAB_INACTIVE: #2d2d2d;
+@const BG_TAB_ACTIVE: #1e1e1e;
+@const BG_SIDEBAR: #252526;
+@const TEXT_HEADER_SIDEBAR: #aaa;
+@const BORDER_SIDEBAR_HEADER: #3e3e42;
+@const TEXT_LABEL: #ccc;
+@const BG_INPUT: #3c3c3c;
+@const BORDER_INPUT: #3e3e42;
+@const BORDER_FOCUS: #0078d7;
+@const BTN_DEFAULT_BG: #3c3c3c;
+@const BTN_DEFAULT_HOVER: #4c4c4c;
+@const BTN_PRIMARY_BG: #0078d7;
+@const BTN_PRIMARY_TEXT: white;
+@const BTN_PRIMARY_BORDER: #005a9e;
+@const BG_DETAILS: #252526;
+@const BG_DETAILS_HEADER: #2d2d2d;
+@const LOG_FATAL_BG: #5a0000;
+@const LOG_FATAL_TEXT: #ffd6d6;
+@const LOG_ERROR: #ff4d4d;
+@const LOG_WARN: #ffaa00;
+@const LOG_INFO: #60c060;
+@const LOG_DEBUG: #888;
+
+:root {
+    /* Main Layout */
+    --bg-main: @BG_MAIN;
+    --text-main: @TEXT_MAIN;
+    --bg-header: @BG_HEADER;
+    --border-color: @BORDER_COLOR;
+
+    /* Toolbar & Tabs */
+    --bg-tab-inactive: @BG_TAB_INACTIVE;
+    --bg-tab-active: @BG_TAB_ACTIVE;
+
+    /* Sidebar */
+    --bg-sidebar: @BG_SIDEBAR;
+    --text-header-sidebar: @TEXT_HEADER_SIDEBAR;
+    --border-sidebar-header: @BORDER_SIDEBAR_HEADER;
+    --text-label: @TEXT_LABEL;
+
+    /* Inputs */
+    --bg-input: @BG_INPUT;
+    --border-input: @BORDER_INPUT;
+    --border-focus: @BORDER_FOCUS;
+
+    /* Buttons */
+    --btn-default-bg: @BTN_DEFAULT_BG;
+    --btn-default-hover: @BTN_DEFAULT_HOVER;
+    --btn-primary-bg: @BTN_PRIMARY_BG;
+    --btn-primary-text: @BTN_PRIMARY_TEXT;
+    --btn-primary-border: @BTN_PRIMARY_BORDER;
+
+    /* Details Panel */
+    --bg-details: @BG_DETAILS;
+    --bg-details-header: @BG_DETAILS_HEADER;
+
+    /* Log Levels */
+    --log-fatal-bg: @LOG_FATAL_BG;
+    --log-fatal-text: @LOG_FATAL_TEXT;
+    --log-error: @LOG_ERROR;
+    --log-warn: @LOG_WARN;
+    --log-info: @LOG_INFO;
+    --log-debug: @LOG_DEBUG;
+}

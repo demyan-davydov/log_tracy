@@ -1,0 +1,54 @@
+<html window-width="400" window-height="300">
+
+<head>
+    <title>Settings</title>
+    <style id="theme-style" src="theme-light.css" />
+    <style src="style.css" />
+    <script type="module">
+        import { $ } from "@sciter";
+
+        document.on("ready", () => {
+            // Mock load settings
+            const settings = Window.this.parameters || { theme: "light" };
+
+            // Apply passed theme immediately
+            if (settings.theme === "dark") {
+                $("#theme-style").attributes["src"] = "theme-dark.css";
+                $("select#theme").value = "dark";
+            } else {
+                $("select#theme").value = "light";
+            }
+        });
+
+        $("#btn-save").on("click", () => {
+            const theme = $("select#theme").value;
+            // Return result to caller
+            Window.this.close({ theme: theme });
+        });
+
+        $("#btn-cancel").on("click", () => {
+            Window.this.close(null);
+        });
+    </script>
+</head>
+
+
+<body>
+    <header>Application Settings</header>
+    <main>
+        <div class="setting-group">
+            <label>Theme</label>
+            <select id="theme">
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+            </select>
+        </div>
+        <!-- Add more settings here -->
+    </main>
+    <footer>
+        <button id="btn-cancel">Cancel</button>
+        <button id="btn-save" class="primary">Save</button>
+    </footer>
+</body>
+
+</html>
