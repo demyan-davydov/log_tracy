@@ -10,6 +10,10 @@ dlt_explorer.a
 dlt_explorer.lib
 dlt_explorer
 dlt_explorer-test-*
+dub.selections.json
+libsciter.dylib
+sciter-sqlite.dylib
+sciter-webview.dylib
 *.exe
 *.pdb
 *.o

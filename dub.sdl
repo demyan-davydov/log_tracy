@@ -1,0 +1,7 @@
+name "dlt_explorer"
+description "DLT file viewer"
+authors "Demian Davidov"
+copyright "Copyright © 2026, Demian Davidov"
+license "proprietary"
+
+lflags "-framework" "Cocoa" "-L/usr/lib" platform="osx"
