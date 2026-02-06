@@ -14,11 +14,10 @@ import std.algorithm;
 import std.stdio;
 import std.json;
 import std.conv : to;
-import core.stdc.wchar_ : wcslen;
 
-import core.indexer;
-import core.search;
-import core.fibex;
+import dlt_core.indexer;
+import dlt_core.search;
+import dlt_core.fibex;
 
 class MainWindow : SciterWindow
 {

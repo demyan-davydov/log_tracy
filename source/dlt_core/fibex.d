@@ -1,4 +1,4 @@
-module core.fibex;
+module dlt_core.fibex;
 
 import std.file;
 import std.stdio;

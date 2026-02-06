@@ -1,6 +1,9 @@
-module core.search;
+module dlt_core.search;
 
-import core.indexer;
+import dlt_core.indexer;
+import dlt_core.dlt;
+import dlt_core.fibex;
+
 import std.algorithm;
 import std.array;
 import std.regex;
@@ -9,8 +12,6 @@ import core.thread;
 import core.atomic;
 import std.stdio;
 import std.json;
-import core.dlt;
-import core.fibex;
 
 /// Structure defining active filters
 struct FilterConfig

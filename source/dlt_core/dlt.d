@@ -1,4 +1,4 @@
-module core.dlt;
+module dlt_core.dlt;
 
 import std.bitmanip;
 

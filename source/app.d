@@ -1,6 +1,4 @@
 import std.stdio;
-import core.dlt;
-import core.indexer;
 import ui.my_main_window;
 import ui.main_window;
 import ui.settings;
