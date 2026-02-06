@@ -121,6 +121,28 @@ struct SciterValueConstView
         return sciterApi().ValueFloatData(raw, &result) == VALUE_RESULT.HV_OK;
     }
 
+    bool tryGet(out float result) const nothrow
+    {
+        double d;
+        if (sciterApi().ValueFloatData(raw, &d) == VALUE_RESULT.HV_OK)
+        {
+            result = cast(float) d;
+            return true;
+        }
+        return false;
+    }
+
+    bool tryGet(out bool result) const nothrow
+    {
+        int i;
+        if (sciterApi().ValueIntData(raw, &i) == VALUE_RESULT.HV_OK)
+        {
+            result = i != 0;
+            return true;
+        }
+        return false;
+    }
+
     bool tryGet(out const(wchar)[] result) const nothrow
     {
         const(wchar)* data;
@@ -332,7 +354,12 @@ struct SciterValueView
 {
     private SciterValueConstView _constView;
 
-    alias _constView this;
+    @property public SciterValueConstView constView() const nothrow pure @nogc
+    {
+        return _constView;
+    }
+
+    alias constView this;
 
     @property SCITER_VALUE* raw() nothrow @nogc
     {
@@ -556,12 +583,12 @@ struct SciterValue
 
     alias view this; // copy proprties and methods from 'view' property
 
-    @property private SciterValueView view() nothrow @nogc
+    @property public SciterValueView view() nothrow @nogc
     {
         return SciterValueView(_value); // use special (nothrow) constructor
     }
 
-    @property private SciterValueConstView view() const nothrow @nogc
+    @property public SciterValueConstView view() const nothrow @nogc
     {
         return SciterValueConstView(_value); // use special (nothrow) constructor
     }
@@ -916,12 +943,15 @@ unittest
         assert(v == v2);
     }
 
+    //
     // Test initialization and basic types
+    // 
+
     {
-        writeln("Test initialization and basic types");
+        writeln("Test int");
         scope (success)
         {
-            writeln("Test initialization and basic types finished");
+            writeln("Test int finished");
         }
 
         SciterValue v = SciterValue(42);
@@ -929,6 +959,7 @@ unittest
         int i;
         assert(v.tryGet(i));
         assert(i == 42);
+        assert(v.to!int() == 42);
     }
 
     {
@@ -940,8 +971,10 @@ unittest
 
         SciterValue v = SciterValue(true);
         assert(v.isBool());
-        // Note: tryGet for bool is not explicitly implemented, but it uses ValueIntDataSet
-        // We'll check via isBool
+        bool b;
+        assert(v.tryGet(b));
+        assert(b == true);
+        assert(v.to!bool() == true);
     }
 
     {
@@ -951,11 +984,17 @@ unittest
             writeln("Test float finished");
         }
 
-        SciterValue v = SciterValue(3.14);
+        SciterValue v = SciterValue(3.14f);
         assert(v.isFloat());
+        float f;
+        assert(v.tryGet(f));
+        assert(f > 3.13 && f < 3.15);
+        assert(v.to!float() > 3.13 && v.to!float() < 3.15);
+
         double d;
         assert(v.tryGet(d));
         assert(d > 3.13 && d < 3.15);
+        assert(v.to!double() > 3.13 && v.to!double() < 3.15);
     }
 
     // Test strings
@@ -970,10 +1009,13 @@ unittest
         assert(v.isString());
         const(wchar)[] s;
         assert(v.tryGet(s));
-        // Simple comparison of slices
-        import std.conv : to;
+        assert(s == "Hello Sciter"w);
+        assert(v.to!(const(wchar)[])() == "Hello Sciter"w);
 
-        assert(to!string(s) == "Hello Sciter");
+        // Simple comparison of slices
+        //import std.conv : to;
+
+        //assert(to!string(s) == "Hello Sciter");
     }
 
     // Test binary data
@@ -990,6 +1032,7 @@ unittest
         const(ubyte)[] outData;
         assert(v.tryGet(outData));
         assert(outData == data);
+        assert(v.to!(const(ubyte)[])() == data);
     }
 
     // Test null/nothing

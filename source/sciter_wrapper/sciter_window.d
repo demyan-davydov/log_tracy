@@ -9,14 +9,16 @@ import sciter.types;
 import sciter.behavior;
 import sciter.def;
 import std.stdio : writeln;
-import std.utf : toUTF16z;
 import std.string : toStringz;
+import std.utf : toUTF16z, toUTFz;
+
+//import std.string : toStringz;
 
 // Helper for toUTF8z-like behavior if missing from std.utf (Sciter sometimes expects UTF8 as well)
-private immutable(char)* toUTF8z(string s)
+/*private immutable(char)* toUTF8z(string s)
 {
     return toStringz(s);
-}
+}*/
 
 class SciterWindow : SciterEventHandler
 {
@@ -113,16 +115,16 @@ class SciterWindow : SciterEventHandler
     final SciterValue callScript(T...)(const(char)[] name, T args)
     {
         SciterValue resValue;
-        const(char)[] nameZ = name.toUTF8z();
+        auto nameZ = toStringz(name);
 
         static if (args.length == 0)
         {
-            _api.SciterCall(_hwnd, nameZ.ptr, 0, null, &resValue.raw);
+            _api.SciterCall(_hwnd, nameZ, 0, null, resValue.raw);
         }
         else
         {
             SciterValue argsValue = SciterValue.makeArray!(args.length)();
-            _api.SciterCall(_hwnd, nameZ.ptr, 0, argsValue.raw, &resValue.raw);
+            _api.SciterCall(_hwnd, nameZ, 0, argsValue.raw, resValue.raw);
         }
 
         return resValue;
