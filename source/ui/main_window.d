@@ -2,7 +2,7 @@ module ui.main_window;
 
 import sciter_wrapper.sciter_window;
 import sciter_wrapper.sciter_value;
-import ui.settings;
+import ui.app_settings;
 
 import sciter.types;
 import sciter.behavior;
@@ -27,8 +27,9 @@ class MainWindow : SciterWindow
     private FilterConfig _currentConfig;
     private AppSettings _settings;
 
-    this(in AppSettings settings)
+    this(AppSettings settings)
     {
+        _settings = settings;
         import sciter.def;
 
         enum uint creationFlags =
@@ -88,6 +89,7 @@ class MainWindow : SciterWindow
 
         if (method == "getSettings")
         {
+            /*
             // Serialize settings to JSON string
             JSONValue j = ["gui": "dlt-explorer"];
             j.object = null;
@@ -109,13 +111,12 @@ class MainWindow : SciterWindow
 
             j.object["activeFile"] = JSONValue(_settings.activeFile);
             j.object["theme"] = JSONValue(_settings.theme);
+            */
+            auto jsonSettings = toJSON(_settings);
 
-            import std.utf : toUTF16;
-
-            wstring ws = toUTF16(j.toString());
+            wstring ws = jsonSettings.toString().toUTF16();
             resultView = ws;
 
-            //sciterApi().ValueStringDataSet(&params.result, ws.ptr, cast(uint) ws.length, 0);
             return true;
         }
         // ... (rest) ...
@@ -214,31 +215,6 @@ class MainWindow : SciterWindow
 
     private void onFileSelected(string path)
     {
-        // Save state of PREVIOUS file before switching
-        if (_settings.activeFile.length > 0 && _settings.activeFile != path)
-        {
-            // We need to ask JS for scroll position. 
-            // IMPORTANT: This only works if the UI hasn't cleared the list yet.
-            // If onFileSelected is a result of user action, the UI is still showing old list.
-
-            auto scrollPosTest = callScript("getScrollPosition");
-            int scrollPosInt;
-            if (scrollPosTest.tryGet(scrollPosInt))
-            {
-                writeln("Scroll position: ", scrollPosInt);
-            }
-
-            auto scrollPos = callScript("getScrollPosition").to!int();
-            foreach (ref f; _settings.files)
-            {
-                if (f.path == _settings.activeFile)
-                {
-                    f.scrollPosition = scrollPos;
-                    break;
-                }
-            }
-        }
-
         writeln("Opening file: ", path);
         try
         {
@@ -248,17 +224,6 @@ class MainWindow : SciterWindow
             _searchEngine._fibex = this._fibexParser;
             writeln("Indexed messages: ", _currentIndexer.totalMessages);
 
-            // Add to open files settings if not present
-            bool found = false;
-            foreach (f; _settings.files)
-                if (f.path == path)
-                    found = true;
-            if (!found)
-            {
-                _settings.files ~= FileState(path, 0);
-            }
-
-            _settings.activeFile = path;
             saveSettings();
         }
         catch (Exception e)
@@ -320,64 +285,62 @@ class MainWindow : SciterWindow
         return path;
     }
 
-    void saveSettings()
+    AppSettings fetchSettingsFromUi() const
     {
-        writeln("Saving settings...");
-
-        writeln("Calling getAppState in JavaScript...");
+        AppSettings settings = _settings;
 
         const auto json = callScript("getAppState").to!(const(wchar)[])().toUTF8();
 
-        try
+        auto j = parseJSON(json);
+        if ("windowRect" in j)
         {
-            writeln("getAppState returned: ", json);
-            auto j = parseJSON(json);
-            if ("windowRect" in j)
-            {
-                auto r = j["windowRect"];
-                _settings.windowRect.left = r["left"].integer.to!int;
-                _settings.windowRect.top = r["top"].integer.to!int;
-                _settings.windowRect.width = r["width"].integer.to!int;
-                _settings.windowRect.height = r["height"].integer.to!int;
-                writeln("Window rect updated: ", _settings.windowRect);
-            }
+            auto r = j["windowRect"];
+            settings.windowRect.left = r["left"].integer.to!int;
+            settings.windowRect.top = r["top"].integer.to!int;
+            settings.windowRect.width = r["width"].integer.to!int;
+            settings.windowRect.height = r["height"].integer.to!int;
+        }
 
-            // Get active file scroll pos
-            int scroll = 0;
-            if ("scrollPosition" in j)
-            {
-                scroll = j["scrollPosition"].integer.to!int;
-                writeln("Scroll position: ", scroll);
-            }
+        // Get active file scroll pos
+        int scroll = 0;
+        if ("scrollPosition" in j)
+        {
+            scroll = j["scrollPosition"].integer.to!int;
+        }
 
-            // Update scroll for active file
-            if (_settings.activeFile.length > 0)
+        // Update scroll for active file
+        if (settings.activeFile.length > 0)
+        {
+            foreach (ref f; settings.files)
             {
-                writeln("Active file: ", _settings.activeFile);
-                foreach (ref f; _settings.files)
+                if (f.path == settings.activeFile)
                 {
-                    if (f.path == _settings.activeFile)
-                    {
-                        f.scrollPosition = scroll;
-                        writeln("Updated scroll for ", f.path);
-                        break;
-                    }
+                    f.scrollPosition = scroll;
+                    break;
                 }
             }
-            else
-            {
-                writeln("No active file set");
-            }
+        }
+        else
+        {
+            writeln("No active file set");
+        }
 
-            // if we wanted to trust JS for activeFile:
-            // if ("activeFile" in j) _settings.activeFile = j["activeFile"].str;
+        // if we wanted to trust JS for activeFile:
+        // if ("activeFile" in j) _settings.activeFile = j["activeFile"].str;
+
+        return settings;
+    }
+
+    void saveSettings() const
+    {
+        try
+        {
+            auto settings = fetchSettingsFromUi();
+            ui.app_settings.saveSettings(settings);
         }
         catch (Exception e)
         {
-            writeln("Failed to call getAppState in JS: ", e.msg);
+            writeln("Failed to call getSettings() ", e.msg);
         }
-
-        // Save to file
-        writeln("Settings saved successfully");
     }
 }

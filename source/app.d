@@ -1,7 +1,8 @@
 import std.stdio;
-import ui.my_main_window;
+
+//import ui.my_main_window;
 import ui.main_window;
-import ui.settings;
+import ui.app_settings;
 
 import sciter.def;
 
@@ -69,7 +70,7 @@ int main()
 
 		try
 		{
-			auto settings = AppSettings.load();
+			auto settings = loadSettings();
 			auto win = new MainWindow(settings);
 
 			// Load the main HTML resource
@@ -111,13 +112,14 @@ int main()
 	return result;
 }
 
+/*
 void prev_main()
 {
 	writeln("DLT Explorer starting...");
 
 	try
 	{
-		auto settings = AppSettings.load();
+		auto settings = loadSettings();
 		auto win = new MyMainWindow(settings);
 
 		// Load the main HTML resource
@@ -149,3 +151,4 @@ void prev_main()
 		writeln("Error: ", e.msg);
 	}
 }
+*/

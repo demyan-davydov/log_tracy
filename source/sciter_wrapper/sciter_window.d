@@ -112,19 +112,19 @@ class SciterWindow : SciterEventHandler
         // _api.SciterRun(_hwnd); // Missing in SciterAPI_T
     }
 
-    final SciterValue callScript(T...)(const(char)[] name, T args)
+    final SciterValue callScript(T...)(const(char)[] name, T args) const
     {
         SciterValue resValue;
         auto nameZ = toStringz(name);
 
         static if (args.length == 0)
         {
-            _api.SciterCall(_hwnd, nameZ, 0, null, resValue.raw);
+            _api.SciterCall(cast(void*) _hwnd, nameZ, 0, null, resValue.raw);
         }
         else
         {
             SciterValue argsValue = SciterValue.makeArray!(args.length)();
-            _api.SciterCall(_hwnd, nameZ, 0, argsValue.raw, resValue.raw);
+            _api.SciterCall(cast(void*) _hwnd, nameZ, 0, argsValue.raw, resValue.raw);
         }
 
         return resValue;
