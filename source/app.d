@@ -73,6 +73,11 @@ int main()
 			auto settings = loadSettings();
 			auto win = new MainWindow(settings);
 
+			scope (exit)
+			{
+				win.saveSettings();
+			}
+
 			// Load the main HTML resource
 			// In a real build, we would use "this://app/main.htm" and handle SC_LOAD_DATA to serve from import("main.htm")
 			// For now, load from filesystem absolute path or relative?
