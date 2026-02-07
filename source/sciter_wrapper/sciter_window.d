@@ -64,12 +64,17 @@ class SciterWindow : SciterEventHandler
         _api.SciterLoadFile(_hwnd, path.toUTF16z());
     }
 
-    private void exec(uint cmd, uint param1, uint param2)
+    private void exec(uint cmd, UINT_PTR param1, UINT_PTR param2)
     {
         _api.SciterWindowExec(_hwnd, cmd, param1, param2);
     }
 
-    private void setState(uint param1, uint param2)
+    private void exec(uint cmd, UINT_PTR param1, UINT_PTR param2) const
+    {
+        _api.SciterWindowExec(cast(HWINDOW) _hwnd, cmd, param1, param2);
+    }
+
+    private void setState(UINT_PTR param1, UINT_PTR param2)
     {
         exec(cast(uint) SCITER_WINDOW_CMD.SCITER_WINDOW_SET_STATE, param1, param2);
     }
@@ -107,6 +112,32 @@ class SciterWindow : SciterEventHandler
         exec(SCITER_WINDOW_CMD.SCITER_WINDOW_ACTIVATE, bringToFront ? 1 : 0, 0);
     }
 
+    final RECT getPlacement() const
+    {
+        POINT pos;
+        SIZE size;
+        exec(cast(uint) SCITER_WINDOW_CMD.SCITER_WINDOW_GET_PLACEMENT, cast(UINT_PTR)&pos, cast(
+                UINT_PTR)&size);
+
+        RECT result;
+        result.left = pos.x;
+        result.top = pos.y;
+        result.right = pos.x + size.cx;
+        result.bottom = pos.y + size.cy;
+
+        writeln("getPlacement: ", result);
+
+        return result;
+    }
+
+    final void setPlacement(const RECT rect)
+    {
+        POINT pos = {x: rect.left, y: rect.top};
+        SIZE size = {cx: rect.right - rect.left, cy: rect.bottom - rect.top};
+        exec(cast(uint) SCITER_WINDOW_CMD.SCITER_WINDOW_SET_PLACEMENT, cast(UINT_PTR)&pos, cast(
+                UINT_PTR)&size);
+    }
+
     final void run()
     {
         // _api.SciterRun(_hwnd); // Missing in SciterAPI_T
@@ -119,12 +150,19 @@ class SciterWindow : SciterEventHandler
 
         static if (args.length == 0)
         {
-            _api.SciterCall(cast(void*) _hwnd, nameZ, 0, null, resValue.raw);
+            _api.SciterCall(cast(HWINDOW) _hwnd, nameZ, 0, null, resValue.raw);
         }
         else
         {
-            SciterValue argsValue = SciterValue.makeArray!(args.length)();
-            _api.SciterCall(cast(void*) _hwnd, nameZ, 0, argsValue.raw, resValue.raw);
+            SciterValue[args.length] argsValues;
+
+            foreach (i, arg; args)
+            {
+                argsValues[i] = arg;
+            }
+
+            _api.SciterCall(cast(HWINDOW) _hwnd, nameZ, argsValues.length, argsValues[0].raw, resValue
+                    .raw);
         }
 
         return resValue;

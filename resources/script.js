@@ -231,9 +231,12 @@ globalThis.getScrollPosition = function () {
 }
 
 globalThis.getAppState = function () {
+    console.log("getAppState called");
+
     const [left, top, width, height] = Window.this.box("xywh", "border", "screen");
     const list = $("#log-list");
     // const activeTab = $(".tab.active");
+
     return JSON.stringify({
         windowRect: { left, top, width, height },
         scrollPosition: list ? (list.state.scrollPos || 0) : 0
@@ -301,3 +304,4 @@ function reloadLogTable() {
         }
     }
 }
+

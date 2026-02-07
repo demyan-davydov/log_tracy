@@ -47,8 +47,26 @@ class MainWindow : SciterWindow
         _api.SciterSetOption(hwnd, 19 /*SCITER_EXTENDED_TOUCHPAD_SUPPORT*/ , 0);
     }
 
+    override bool handleEvent(HELEMENT he, INITIALIZATION_PARAMS* params)
+    {
+        if (params.cmd == INITIALIZATION_EVENTS.BEHAVIOR_DETACH)
+        {
+            writeln("BEHAVIOR_DETACH");
+            saveSettings();
+        }
+
+        return false;
+    }
+
     override bool handleEvent(HELEMENT he, BEHAVIOR_EVENT_PARAMS* params)
     {
+        /*if (params.cmd == BEHAVIOR_EVENTS.DOCUMENT_CLOSE)
+        {
+            writeln("DOCUMENT_CLOSE_REQUEST");
+            saveSettings();
+            return false; // Let it continue closing
+        }*/
+
         const(wchar)[] eventName = fromStringz(params.name);
 
         auto asString = () {
@@ -289,40 +307,55 @@ class MainWindow : SciterWindow
     {
         AppSettings settings = _settings;
 
-        const auto json = callScript("getAppState").to!(const(wchar)[])().toUTF8();
+        const auto appState = callScript("getAppState");
+        const auto json = appState.to!(const(wchar)[])().toUTF8();
+        writeln("Fetching settings from UI, json: ", json);
 
-        auto j = parseJSON(json);
-        if ("windowRect" in j)
+        try
         {
-            auto r = j["windowRect"];
-            settings.windowRect.left = r["left"].integer.to!int;
-            settings.windowRect.top = r["top"].integer.to!int;
-            settings.windowRect.width = r["width"].integer.to!int;
-            settings.windowRect.height = r["height"].integer.to!int;
-        }
+            auto j = parseJSON(json);
 
-        // Get active file scroll pos
-        int scroll = 0;
-        if ("scrollPosition" in j)
-        {
-            scroll = j["scrollPosition"].integer.to!int;
-        }
+            // window rect
+            /*{
+                const winRc = getPlacement();
+                settings.windowRect.left = winRc.left;
+                settings.windowRect.top = winRc.top;
+                settings.windowRect.width = winRc.right - winRc.left;
+                settings.windowRect.height = winRc.bottom - winRc.top;
+            }*/
 
-        // Update scroll for active file
-        if (settings.activeFile.length > 0)
-        {
-            foreach (ref f; settings.files)
+            if ("windowRect" in j)
             {
-                if (f.path == settings.activeFile)
+                auto r = j["windowRect"];
+                settings.windowRect.left = r["left"].integer.to!int;
+                settings.windowRect.top = r["top"].integer.to!int;
+                settings.windowRect.width = r["width"].integer.to!int;
+                settings.windowRect.height = r["height"].integer.to!int;
+            }
+
+            // Get active file scroll pos
+            int scroll = 0;
+            if ("scrollPosition" in j)
+            {
+                scroll = j["scrollPosition"].integer.to!int;
+            }
+
+            // Update scroll for active file
+            if (settings.activeFile.length > 0)
+            {
+                foreach (ref f; settings.files)
                 {
-                    f.scrollPosition = scroll;
-                    break;
+                    if (f.path == settings.activeFile)
+                    {
+                        f.scrollPosition = scroll;
+                        break;
+                    }
                 }
             }
         }
-        else
+        catch (Exception e)
         {
-            writeln("No active file set");
+            writeln("Error parsing UI settings: ", e.msg);
         }
 
         // if we wanted to trust JS for activeFile:

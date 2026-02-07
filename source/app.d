@@ -8,6 +8,7 @@ import sciter.def;
 
 import sciter_wrapper.sciter_api;
 import sciter_wrapper.sciter_application;
+import sciter_wrapper.sciter_debug_output;
 
 import std.file : getcwd, exists;
 import std.path : buildPath;
@@ -53,12 +54,16 @@ int uimain(std::function<int()> run) {
 
 int main()
 {
+	enableSciterDebugOutput();
+
 	writeln("DLT Explorer starting...");
 
-	sciterApplication().start();
+	int result = 0;
 
-	// setup window
+	try
 	{
+		sciterApplication().start();
+
 		sciterApi().SciterSetOption(null,
 			SCITER_RT_OPTIONS.SCITER_SET_SCRIPT_RUNTIME_FEATURES,
 			SCRIPT_RUNTIME_FEATURES.ALLOW_FILE_IO |
@@ -68,51 +73,45 @@ int main()
 				SCRIPT_RUNTIME_FEATURES.ALLOW_SYSINFO |
 				SCRIPT_RUNTIME_FEATURES.ALLOW_CMODULES);
 
-		try
+		auto settings = loadSettings();
+		auto win = new MainWindow(settings);
+
+		// Load the main HTML resource
+		// In a real build, we would use "this://app/main.htm" and handle SC_LOAD_DATA to serve from import("main.htm")
+		// For now, load from filesystem absolute path or relative?
+		// SciterLoadFile handles absolute paths well.
+
+		string projectRoot = getcwd();
+		// If projectRoot already ends with resources, don't add it again (though dub usually runs from root)
+		string resources = buildPath(projectRoot, "resources", "main.htm");
+		if (exists(resources))
 		{
-			auto settings = loadSettings();
-			auto win = new MainWindow(settings);
-
-			scope (exit)
-			{
-				win.saveSettings();
-			}
-
-			// Load the main HTML resource
-			// In a real build, we would use "this://app/main.htm" and handle SC_LOAD_DATA to serve from import("main.htm")
-			// For now, load from filesystem absolute path or relative?
-			// SciterLoadFile handles absolute paths well.
-
-			string projectRoot = getcwd();
-			// If projectRoot already ends with resources, don't add it again (though dub usually runs from root)
-			string resources = buildPath(projectRoot, "resources", "main.htm");
-			if (exists(resources))
-			{
-				win.loadFile(resources);
-			}
-			else
-			{
-				// Try without "resources" if dub is running from within resources/ for some reason
-				resources = buildPath(projectRoot, "main.htm");
-				win.loadFile(resources);
-			}
-
-			//win.run();
-
-			win.expand();
-
-			writeln("DLT Explorer exiting...");
-			//win.saveSettings();
+			win.loadFile(resources);
 		}
-		catch (Exception e)
+		else
 		{
-			writeln("Error: ", e.msg);
+			// Try without "resources" if dub is running from within resources/ for some reason
+			resources = buildPath(projectRoot, "main.htm");
+			win.loadFile(resources);
 		}
+
+		//win.run();
+
+		win.expand();
+
+		writeln("DLT Explorer exiting...");
+		//win.saveSettings();
+
+		result = sciterApplication().runEventLoop();
+
+		sciterApplication().shutdown();
+
+		return result;
 	}
-
-	const int result = sciterApplication().runEventLoop();
-
-	sciterApplication().shutdown();
+	catch (Exception e)
+	{
+		writeln("Error: ", e.msg);
+	}
 
 	return result;
 }
