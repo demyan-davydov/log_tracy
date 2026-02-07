@@ -10,6 +10,7 @@ dlt_explorer.a
 dlt_explorer.lib
 dlt_explorer
 dlt_explorer-test-*
+settings.json
 dub.selections.json
 libsciter.dylib
 sciter-sqlite.dylib
