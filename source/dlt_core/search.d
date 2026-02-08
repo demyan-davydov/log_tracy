@@ -29,7 +29,7 @@ struct LogItem
     ulong offset;
     ushort length;
     ulong timestamp;
-    uint ecu;
+    string ecu;
     string appId;
     string ctxId;
     LogLevel level;
@@ -225,7 +225,11 @@ class SearchEngine
         item.offset = msg.offset;
         item.length = msg.length;
         item.timestamp = msg.timestamp;
-        item.ecu = msg.ecuId;
+
+        // ECU ID is stored as uint (4 bytes) in indexer, convert to ubyte[4] and clean
+        ubyte[4] ecuBytes = (cast(ubyte*)&msg.ecuId)[0 .. 4];
+        item.ecu = cleanId(ecuBytes);
+
         item.level = LogLevel.Info;
         item.appId = "-";
         item.ctxId = "-";
@@ -258,9 +262,9 @@ class SearchEngine
                     item.type = cast(DltType)((extHdr.messageInfo & MessageInfo.TypeMask) >> 1);
 
                     // DLT IDs are 4 bytes, usually ASCII. 
-                    // Since they are now ubyte[4], no reversal happens during access.
-                    item.appId = cast(string) extHdr.applicationId.dup;
-                    item.ctxId = cast(string) extHdr.contextId.dup;
+                    // Use cleanId to strip null bytes and non-printable characters
+                    item.appId = cleanId(extHdr.applicationId);
+                    item.ctxId = cleanId(extHdr.contextId);
                 }
             }
             else
@@ -311,7 +315,7 @@ class SearchEngine
             "offset": JSONValue(item.offset),
             "length": JSONValue(item.length),
             "timestamp": JSONValue(item.timestamp),
-            "ecu": JSONValue(to!string(item.ecu)),
+            "ecu": JSONValue(item.ecu),
             "appId": JSONValue(item.appId),
             "ctxId": JSONValue(item.ctxId),
             "level": JSONValue(to!string(item.level)),
@@ -320,6 +324,23 @@ class SearchEngine
         ];
 
         return j.toString();
+    }
+
+    private string cleanId(const ubyte[4] id) const
+    {
+        import std.ascii : isPrintable;
+
+        string s;
+        foreach (b; id)
+        {
+            if (b == 0)
+                break; // Stop at null terminator
+            if (isPrintable(b))
+                s ~= cast(char) b;
+            else
+                s ~= '.'; // Replace non-printable with dot
+        }
+        return s.empty ? "-" : s;
     }
 
     private string decodePayload(const(ubyte)* stdHdrPtr, const(ubyte)[] payload)
@@ -552,7 +573,7 @@ class SearchEngine
                 "offset": JSONValue(item.offset),
                 "length": JSONValue(item.length),
                 "timestamp": JSONValue(item.timestamp),
-                "ecu": JSONValue(to!string(item.ecu)),
+                "ecu": JSONValue(item.ecu),
                 "appId": JSONValue(item.appId),
                 "ctxId": JSONValue(item.ctxId),
                 "level": JSONValue(to!string(item.level)),

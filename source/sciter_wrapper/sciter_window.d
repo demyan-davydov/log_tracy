@@ -64,14 +64,12 @@ class SciterWindow : SciterEventHandler
         _api.SciterLoadFile(_hwnd, path.toUTF16z());
     }
 
-    private void exec(uint cmd, UINT_PTR param1, UINT_PTR param2)
+    private INT_PTR exec(uint cmd, UINT_PTR param1, UINT_PTR param2) const
     {
-        _api.SciterWindowExec(_hwnd, cmd, param1, param2);
-    }
-
-    private void exec(uint cmd, UINT_PTR param1, UINT_PTR param2) const
-    {
-        _api.SciterWindowExec(cast(HWINDOW) _hwnd, cmd, param1, param2);
+        auto res = _api.SciterWindowExec(cast(HWINDOW) _hwnd, cmd, param1, param2);
+        if (res == 0 && cmd != SCITER_WINDOW_CMD.SCITER_WINDOW_SET_STATE)
+            writeln("SciterWindowExec failed for cmd ", cmd, " hwnd: ", _hwnd);
+        return res;
     }
 
     private void setState(UINT_PTR param1, UINT_PTR param2)
@@ -116,7 +114,7 @@ class SciterWindow : SciterEventHandler
     {
         POINT pos;
         SIZE size;
-        exec(cast(uint) SCITER_WINDOW_CMD.SCITER_WINDOW_GET_PLACEMENT, cast(UINT_PTR)&pos, cast(
+        auto res = exec(cast(uint) SCITER_WINDOW_CMD.SCITER_WINDOW_GET_PLACEMENT, cast(UINT_PTR)&pos, cast(
                 UINT_PTR)&size);
 
         RECT result;
@@ -124,6 +122,30 @@ class SciterWindow : SciterEventHandler
         result.top = pos.y;
         result.right = pos.x + size.cx;
         result.bottom = pos.y + size.cy;
+
+        if (result.right == 0 && result.bottom == 0)
+        {
+            // Fallback for Mac where SciterWindowExec might fail
+            SciterValue v;
+            // Window.this.box(..., ..., ..., true) returns physical pixels
+            wstring script = "return [Window.this.box('left','border','screen', true), Window.this.box('top','border','screen', true), Window.this.box('width','border','screen', true), Window.this.box('height','border','screen', true)]"w;
+            if (_api.SciterEval(cast(HWINDOW) _hwnd, script.ptr, cast(uint) script.length, v.raw))
+            {
+                auto array = AsArrayView(v);
+                if (array.length == 4)
+                {
+                    int x, y, w, h;
+                    if (array.at(0).tryGet(x) && array.at(1).tryGet(y) && array.at(2)
+                        .tryGet(w) && array.at(3).tryGet(h))
+                    {
+                        result.left = x;
+                        result.top = y;
+                        result.right = x + w;
+                        result.bottom = y + h;
+                    }
+                }
+            }
+        }
 
         writeln("getPlacement: ", result);
 

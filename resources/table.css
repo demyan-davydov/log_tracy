@@ -13,9 +13,7 @@
     border-collapse: collapse;
     background: var(--bg-main);
     color: var(--text-main);
-    user-select: text;
-    /*flow: table-fixed;*/
-    /* Important for scrollable tbody */
+    table-layout: fixed;
 }
 
 #log-list {
@@ -24,13 +22,86 @@
     width: *;
     height: *;
     display: block;
-    /* Ensure it behaves like a container */
+}
+
+#log-table thead tr {
+    user-select: none;
+    cursor: default;
+    font-family: 'Courier New', Courier, monospace;
+    background-color: bisque;
+}
+
+#log-table th {
+    user-select: none;
+    cursor: default;
+    padding: 2px 4px;
+    white-space: nowrap;
+    font-family: 'Courier New', Courier, monospace;
+    -overflow: hidden;
+    -text-overflow: ellipsis;
+    border-right: 1px solid var(--border-color);
+}
+
+#log-view tbody tr:nth-child(even) {
+    background-color: lightgoldenrodyellow;
+}
+
+#log-view tbody td:first-child {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 80%;
+    text-align: right;
+}
+
+#log-view tbody td:nth-child(2) {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 80%;
+    text-align: right;
+}
+
+#log-view tbody td:nth-child(3) {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 80%;
+    text-align: right;
+}
+
+#log-view tbody td:nth-child(4) {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 80%;
+    text-align: right;
+}
+
+#log-view tbody td:nth-child(5) {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 80%;
+    text-align: right;
+}
+
+#log-view tbody td:nth-child(6) {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 80%;
+    text-align: right;
+}
+
+#log-view tbody td:nth-child(7) {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 80%;
+    text-align: right;
+}
+
+#log-view tbody td:nth-child(8) {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 80%;
+    text-align: right;
 }
 
 #log-table td {
-    user-select: text;
+    -user-select: text;
     cursor: text;
     padding: 2px 4px;
+    -white-space: nowrap;
+    -overflow: hidden;
+    -text-overflow: ellipsis;
+    border-right: 1px solid var(--border-color);
 }
 
 /* Force Payload column to take remaining space */

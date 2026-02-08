@@ -86,7 +86,9 @@ class Indexer
             ushort length = bigEndianToNative(stdHdr.length);
 
             // Create Index Entry
-            _index ~= MsgInfo(msgOffset, length, currentTimestamp, 0); // TODO: Parse ECU ID
+            // ECU ID is char[4]. We cast it to uint for storage in MsgInfo.
+            uint ecuId = *cast(uint*) sh.ecuId.ptr;
+            _index ~= MsgInfo(msgOffset, length, currentTimestamp, ecuId);
 
             // Advance to next message (skip the rest of this known message)
             // Length in Standard Header is total index of the message EXCLUDING Storage Header?
