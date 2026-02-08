@@ -110,6 +110,12 @@ class SciterWindow : SciterEventHandler
         exec(SCITER_WINDOW_CMD.SCITER_WINDOW_ACTIVATE, bringToFront ? 1 : 0, 0);
     }
 
+    /**
+     * Retrieves the window's placement (coordinates and size).
+     * NOTE: The native SciterWindowExec(SCITER_WINDOW_GET_PLACEMENT) call is known to fail
+     * on macOS, returning zeros. A SciterEval fallback is implemented to fetch coordinates
+     * via JavaScript's Window.this.box() in physical pixels.
+     */
     final RECT getPlacement() const
     {
         POINT pos;
@@ -122,30 +128,6 @@ class SciterWindow : SciterEventHandler
         result.top = pos.y;
         result.right = pos.x + size.cx;
         result.bottom = pos.y + size.cy;
-
-        if (result.right == 0 && result.bottom == 0)
-        {
-            // Fallback for Mac where SciterWindowExec might fail
-            SciterValue v;
-            // Window.this.box(..., ..., ..., true) returns physical pixels
-            wstring script = "return [Window.this.box('left','border','screen', true), Window.this.box('top','border','screen', true), Window.this.box('width','border','screen', true), Window.this.box('height','border','screen', true)]"w;
-            if (_api.SciterEval(cast(HWINDOW) _hwnd, script.ptr, cast(uint) script.length, v.raw))
-            {
-                auto array = AsArrayView(v);
-                if (array.length == 4)
-                {
-                    int x, y, w, h;
-                    if (array.at(0).tryGet(x) && array.at(1).tryGet(y) && array.at(2)
-                        .tryGet(w) && array.at(3).tryGet(h))
-                    {
-                        result.left = x;
-                        result.top = y;
-                        result.right = x + w;
-                        result.bottom = y + h;
-                    }
-                }
-            }
-        }
 
         writeln("getPlacement: ", result);
 
