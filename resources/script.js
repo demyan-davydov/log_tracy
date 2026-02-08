@@ -10,9 +10,6 @@ document.on("ready", function () {
 let totalLogs = 0;
 
 function initVirtualList() {
-    const view = $("#log-view");
-    const table = $("#log-table");
-
     // Actions
     function openFileAction() {
         const fn = Window.this.selectFile({
@@ -144,7 +141,6 @@ function initVirtualList() {
 
     // Native Virtual List Setup
     const logList = $("#log-list");
-    const logView = $("#log-view"); // Keep for context if needed
 
     // Handle contentrequired event from Sciter's virtual-list behavior
     logList.on("contentrequired", function (evt) {
@@ -176,9 +172,9 @@ function initVirtualList() {
     });
 
     // Resize handler to update virtual list
-    logView.on("sizechange", () => {
+    /*logView.on("sizechange", () => {
         // Virtual list handles this automatically
-    });
+    });*/
 
     // Tab switching logic
     const tabs = $$(".tab");
@@ -260,17 +256,15 @@ function updateTableContent(logList, items, where) {
         </tr>
     );
 
-    const tbody = logList; // This is the element with behavior: virtual-list
-
     if (where === 0) { // Replace (jump)
-        tbody.content(rows);
+        logList.content(rows);
     } else if (where > 0) { // Append (down)
-        tbody.append(rows);
+        logList.append(rows);
     } else if (where < 0) { // Prepend (up)
-        tbody.prepend(rows);
+        logList.prepend(rows);
     } else {
         // Fallback for initial load if where is undefined/unexpected
-        tbody.content(rows);
+        logList.content(rows);
     }
 }
 
