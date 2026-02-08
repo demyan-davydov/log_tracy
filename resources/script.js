@@ -233,7 +233,7 @@ globalThis.getScrollPosition = function () {
 globalThis.getAppState = function () {
     console.log("getAppState called");
 
-    const [left, top, width, height] = Window.this.box("xywh", "border", "screen");
+    const [left, top, width, height] = Window.this.box("xywh", "border", "screen", true);
     const list = $("#log-list");
     // const activeTab = $(".tab.active");
 
