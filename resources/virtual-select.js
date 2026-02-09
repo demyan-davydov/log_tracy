@@ -260,9 +260,11 @@ export class VirtualSelect extends VirtualList {
     render(props) {
         if ((props?.items && (this.items !== props.items)) || !this.vlist) {
             this.items = props?.items || [];
-            this.post(() => {
-                this.vlist.navigate("start");
-            });
+            if (this.vlist) {
+                this.post(() => {
+                    this.vlist.navigate("start");
+                });
+            }
             return this.renderList([], props);
         }
 
