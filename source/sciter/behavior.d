@@ -539,7 +539,7 @@ align(8) struct BEHAVIOR_EVENT_PARAMS
     HELEMENT heTarget; // target element handler, in MENU_ITEM_CLICK this is owner element that caused this menu - e.g. context menu owner
     // In scripting this field named as Event.owner
     HELEMENT he; // source element e.g. in SELECTION_CHANGED it is new selected <option>, in MENU_ITEM_CLICK it is menu item (LI) element
-    UINT* reason; // CLICK_REASON or EDIT_CHANGED_REASON - UI action causing change.
+    UINT_PTR reason; // CLICK_REASON or EDIT_CHANGED_REASON - UI action causing change.
     // In case of custom event notifications this may be any
     // application specific value.
     SCITER_VALUE data; // auxiliary data accompanied with the event. E.g. FORM_SUBMIT event is using this field to pass collection of values.
