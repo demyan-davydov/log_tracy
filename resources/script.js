@@ -3,192 +3,23 @@ import { VirtualDltTBody } from "virtual-dlt-view.js";
 
 globalThis.VirtualDltTBody = VirtualDltTBody;
 
-//const ROW_HEIGHT = 20; // Exact pixel height of a row (must match CSS)
+let currentTheme = "light";
+let lastProgress = -1;
+let lastDocId = null;
 
 document.on("ready", function () {
-    console.log("Starting Virtual List...");
-    initVirtualList();
+    console.log("Starting DLT Explorer UI...");
+    initApp();
 });
 
-let totalLogs = 0;
+function initApp() {
+    restoreSettings();
+    setupEvents();
+    refreshTabs();
+    pollLoadingProgress();
+}
 
-function initVirtualList() {
-    // Actions
-    function openFileAction() {
-        const fn = Window.this.selectFile({
-            mode: "open",
-            filter: "DLT Files (*.dlt)|*.dlt|All Files (*.*)|*.*"
-        });
-        if (fn) {
-            console.log("File selected:", fn);
-            Window.this.xcall("openFile", fn);
-            reloadLogTable();
-        }
-    }
-
-    let currentTheme = "light";
-
-    function setTheme(theme) {
-        // Robust switching method: remove the old style element and create a new one.
-        const oldStyle = $("#theme-style");
-        if (oldStyle) oldStyle.remove();
-
-        const newStyle = document.createElement("style");
-        newStyle.id = "theme-style";
-        newStyle.setAttribute("src", theme === "dark" ? "theme-dark.css" : "theme-light.css");
-
-        // Insert before the main style to ensure proper variable definition before usage
-        // Note: In head, prepend works well if other styles follow.
-        document.head.prepend(newStyle);
-
-        currentTheme = theme;
-        console.log("Theme set to:", theme);
-
-        // Force update just in case
-        Window.this.update();
-    }
-
-    function openSettingsAction() {
-        // Open modal window
-        const result = Window.this.modal({
-            url: "settings.htm",
-            alignment: "center", // relative to parent
-            parameters: { theme: currentTheme } // pass current state
-        });
-
-        console.log("Settings Closed. Result:", JSON.stringify(result));
-
-        if (result && result.theme) {
-            setTheme(result.theme);
-        }
-    }
-
-    // Expose to global scope for Native Callbacks
-    globalThis.openFileAction = openFileAction;
-    globalThis.openSettingsAction = openSettingsAction;
-    globalThis.setTheme = setTheme;
-
-
-    // Global Key Handler
-    // Attach to the window's document object to catch bubbly events
-    document.on("keydown", function (evt) {
-        console.log(`Key Event: code=${evt.code}, meta=${evt.metaKey}, ctrl=${evt.ctrlKey}`);
-
-        // MacOS: metaKey (Command), Windows/Linux: ctrlKey
-        const modifier = evt.metaKey || evt.ctrlKey;
-
-        if (modifier && (evt.code === "KeyO" || evt.code === "KeyF")) {
-            console.log("Hotkey detected: Open File");
-            openFileAction();
-            return true; // Consume event
-        }
-    });
-
-    // Listen for file open
-    $("#btn-open").on("click", openFileAction);
-
-    // Toggle Theme
-    $("#btn-theme").on("click", () => {
-        const newTheme = currentTheme === "light" ? "dark" : "light";
-        setTheme(newTheme);
-    });
-
-    // Load FIBEX
-    $("#btn-fibex").on("click", () => {
-        const fn = Window.this.selectFile({
-            mode: "open",
-            filter: "XML Files (*.xml)|*.xml|All Files (*.*)|*.*"
-        });
-        if (fn) {
-            Window.this.xcall("loadFibex", fn);
-            reloadLogTable(); // Reload to refresh descriptions
-        }
-    });
-
-
-    // Settings Dialog
-    $("#btn-settings").on("click", openSettingsAction);
-
-    // Menu Item Listeners (delegated via document)
-    document.on("click", "#menu-open", openFileAction);
-    document.on("click", "#menu-settings", openSettingsAction);
-
-    // Unified Filter Logic
-    const inputs = ["#filter-ecu", "#filter-app", "#filter-ctx", "#filter-payload"];
-
-    function applyFilters() {
-        const config = {
-            ecuId: $("#filter-ecu").value,
-            appId: $("#filter-app").value,
-            ctxId: $("#filter-ctx").value,
-            payloadRegex: $("#filter-payload").value
-        };
-        console.log("Applying Filters:", JSON.stringify(config));
-        Window.this.xcall("applyFilter", JSON.stringify(config));
-        reloadLogTable();
-    }
-
-    // Attach listeners
-    for (const sel of inputs) {
-        const el = $(sel);
-        if (el) el.on("change", applyFilters); // Trigger on commit (enter or lost focus)
-    }
-
-    // Clear Filters
-    $("#btn-clear-filters").on("click", () => {
-        for (const sel of inputs) {
-            $(sel).value = "";
-        }
-        applyFilters();
-    });
-
-    // Native Virtual List Setup
-    const logList = $("#log-list");
-
-    /*
-    logList.on("contentrequired", function (evt) {
-        // evt.data contains: where (int), start (int), length (int)
-        const where = evt.data.where;
-        const start = evt.data.start || 0;
-        const length = evt.data.length || 0;
-
-        // console.log(`Virtual list requesting: where=${where}, start=${start}, length=${length}, totalLogs=${totalLogs}`);
-        // console.log(`Virtual list requesting: where=${where}, start=${start}, length=${length}, totalLogs=${totalLogs}`);
-
-        // Fetch data from backend
-        const jsonStr = Window.this.xcall("getLogItems", start, length);
-        let items = [];
-        try {
-            items = JSON.parse(jsonStr);
-        } catch (e) {
-            console.error("Error parsing log items:", e);
-        }
-
-        // Generate rows
-        updateTableContent(logList, items, where);
-
-        // Return morebefore/moreafter to tell virtual-list about total size
-        return {
-            morebefore: start,
-            moreafter: Math.max(0, totalLogs - start - items.length)
-        };
-    });
-    */
-
-
-    // Tab switching logic
-    const tabs = $$(".tab");
-    for (const tab of tabs) {
-        tab.on("click", () => {
-            console.log("Tab clicked:", tab.innerText);
-            tabs.forEach(t => t.classList.remove("active"));
-            tab.classList.add("active");
-            Window.this.xcall("onTabClicked", tab.innerText);
-        });
-    }
-    // ... (existing code) ...
-
-    // Restore Settings
+function restoreSettings() {
     try {
         const settingsStr = Window.this.xcall("getSettings");
         if (settingsStr) {
@@ -196,115 +27,197 @@ function initVirtualList() {
             if (settings.theme) {
                 setTheme(settings.theme);
             }
-
-            // If there is an active file, maybe we should restore its scroll?
-            // The table is empty at start, so we can't scroll yet.
-            // But we can store it to use later when content loads.
-            if (settings.activeFile && settings.files) {
-                const fileState = settings.files.find(f => f.path === settings.activeFile);
-                if (fileState && fileState.scrollPosition > 0) {
-                    // Store for later use in reloadLogTable or updateTableContent
-                    globalThis.initialScrollPos = fileState.scrollPosition;
-                }
-            }
         }
     } catch (e) {
-        console.error("Failed to load settings from D", e);
+        console.error("Failed to restore settings:", e);
     }
 }
 
-globalThis.getScrollPosition = function () {
-    const list = $("#log-list");
-    if (!list) return 0;
-    // Sciter virtual-list property 'firstVisibleItem' (check docs, might be scroll-pos)
-    // Actually, for behavior: virtual-list, 'firstIndex' or similar might differ.
-    // If not standard, we can return list.scroll-top / ROW_HEIGHT?
-    // Let's assume standard atomic scroll for now or use scroll state.
-    // scrollTop is pixel offset.
-    return list.state.scrollPos || 0;
-    // Note: state.scrollPos might be pixels. virtual-list handles items.
-    // If we simply store scrollTop, we can restore it.
+function setTheme(theme) {
+    const oldStyle = $("#theme-style");
+    if (oldStyle) oldStyle.remove();
+
+    const newStyle = document.createElement("style");
+    newStyle.id = "theme-style";
+    newStyle.setAttribute("src", theme === "dark" ? "theme-dark.css" : "theme-light.css");
+    document.head.prepend(newStyle);
+
+    currentTheme = theme;
+    console.log("Theme set to:", theme);
+    Window.this.update();
 }
 
-globalThis.getAppState = function () {
-    console.log("getAppState called");
+function openSettingsAction() {
+    const result = Window.this.modal({
+        url: "settings.htm",
+        alignment: "center",
+        parameters: { theme: currentTheme }
+    });
+    if (result && result.theme) {
+        setTheme(result.theme);
+    }
+}
 
-    const [left, top, width, height] = Window.this.box("xywh", "border", "screen", true);
-    const list = $("#log-list");
-    // const activeTab = $(".tab.active");
+function openFileAction() {
+    const fn = Window.this.selectFile({
+        mode: "open",
+        filter: "DLT Files (*.dlt)|*.dlt|All Files (*.*)|*.*"
+    });
+    if (fn) {
+        console.log("File selected:", fn);
+        Window.this.xcall("openFile", fn);
+    }
+}
 
-    return JSON.stringify({
-        windowRect: { left, top, width, height },
-        scrollPosition: list ? (list.state.scrollPos || 0) : 0
-        // activeFile: activeTab ? activeTab.innerText : "" 
+function setupEvents() {
+    document.on("click", "#btn-open, #btn-add-tab", (evt) => {
+        openFileAction();
+    });
+
+    document.on("click", "#btn-theme", () => {
+        setTheme(currentTheme === "light" ? "dark" : "light");
+    });
+
+    document.on("click", "#btn-settings", openSettingsAction);
+
+    document.on("click", "#btn-fibex", () => {
+        const fn = Window.this.selectFile({
+            mode: "open",
+            filter: "XML Files (*.xml)|*.xml|All Files (*.*)|*.*"
+        });
+        if (fn) {
+            Window.this.xcall("loadFibex", fn);
+            reloadLogTable();
+        }
+    });
+
+    document.on("click", "#btn-clear-filters", () => {
+        for (const sel of ["#filter-ecu", "#filter-app", "#filter-ctx", "#filter-payload"]) {
+            $(sel).value = "";
+        }
+        applyFilters();
+    });
+
+    document.on("change", ".filter-group input", applyFilters);
+
+    document.on("click", ".tab", function (evt, tab) {
+        const docId = tab.id;
+        if (evt.target.classList.contains("tab-close")) {
+            closeTab(docId);
+        } else {
+            console.log("Tab clicked:", docId);
+            switchTab(docId);
+        }
+    });
+
+    document.on("keydown", function (evt) {
+        const modifier = evt.metaKey || evt.ctrlKey;
+        if (modifier && (evt.code === "KeyO" || evt.code === "KeyF")) {
+            openFileAction();
+            return true;
+        }
     });
 }
 
-function updateTableContent(logList, items, where) {
-    const rows = items.map(item =>
-        <tr>
-            <td>{item.index}</td>
-            <td>{item.offset}</td>
-            <td>{item.timestamp}</td>
-            <td>{item.ecu}</td>
-            <td>{item.appId}</td>
-            <td>{item.ctxId}</td>
-            <td>{item.length}</td>
-            <td>{item.type}</td>
-            <td class={`level-${item.level.toLowerCase()}`}>{item.level}</td>
-            <td>{item.payload}</td>
-        </tr>
-    );
-
-    if (where === 0) { // Replace (jump)
-        logList.content(rows);
-    } else if (where > 0) { // Append (down)
-        logList.append(rows);
-    } else if (where < 0) { // Prepend (up)
-        logList.prepend(rows);
-    } else {
-        // Fallback for initial load if where is undefined/unexpected
-        logList.content(rows);
-    }
+function applyFilters() {
+    const config = {
+        ecuId: $("#filter-ecu").value,
+        appId: $("#filter-app").value,
+        ctxId: $("#filter-ctx").value,
+        payloadRegex: $("#filter-payload").value
+    };
+    Window.this.xcall("applyFilter", JSON.stringify(config));
+    reloadLogTable();
 }
 
-function reloadLogTable() {
-    const logList = $("#log-list");
+function refreshTabs() {
+    const info = Window.this.xcall("getWorkspaceInfo");
+    if (!info) return;
+    const docs = JSON.parse(info);
+    const container = $("#tabs-container");
 
-    if (logList) {
-        console.log("reloadLogTable");
-        // Это заставит компонент вызвать render(), который внутри себя 
-        // вызовет и totalItems(), и itemAt()
-        logList.componentUpdate();
+    const addBtn = $("#btn-add-tab");
+    container.content(addBtn);
+
+    for (const doc of docs) {
+        const tab = <div class={doc.active ? "tab active" : "tab"} id={doc.id}>
+            <span class="tab-name">{doc.name}</span>
+            <span class="tab-close">×</span>
+        </div>;
+        container.append(tab);
     }
-    console.log("VirtualDltTBody in globalThis:", !!globalThis.VirtualDltTBody);
-    return;
 
-    totalLogs = Window.this.xcall("getLogCount");
-    console.log("Total Logs:", totalLogs);
+    updateViewMode();
+}
 
-    if (logList) {
-        logList.clear();
-        logList.scrollTo(0, 0);
+function switchTab(docId) {
+    console.log("Requesting switch to doc:", docId);
+    Window.this.xcall("switchTab", docId);
+    refreshTabs();
+    reloadLogTable(true);
+}
 
-        if (totalLogs > 0) {
-            // Prime the list manually to kickstart the virtual behavior
-            const start = 0;
-            const length = 100; // Fetch enough to fill the view
-            const jsonStr = Window.this.xcall("getLogItems", start, length);
+function closeTab(docId) {
+    Window.this.xcall("closeTab", docId);
+    refreshTabs();
+}
 
-            let items = [];
-            try {
-                items = JSON.parse(jsonStr);
-            } catch (e) {
-                console.error("Error parsing items", e);
-            }
+function updateViewMode() {
+    const info = Window.this.xcall("getWorkspaceInfo");
+    if (!info) return;
+    const docs = JSON.parse(info);
+    const activeDoc = docs.find(d => d.active);
+    const currentDocId = activeDoc ? activeDoc.id : null;
 
-            updateTableContent(logList, items, 0);
+    const isReady = Window.this.xcall("isDocReady");
+    const progress = Window.this.xcall("getDocProgress");
+    const table = $("#log-table");
+    const loading = $("#loading-container");
 
-            // Should we force a scroll event?
-            // Usually setting content is enough if the scrollbar appears.
+    if (!isReady) {
+        table.style.display = "none";
+        loading.style.display = "flex";
+        $("#doc-load-progress").value = progress;
+        $("#doc-load-status").innerText = `Loading DLT file... ${progress}%`;
+    } else {
+        table.style.display = "block";
+        loading.style.display = "none";
+
+        if (currentDocId !== lastDocId || (lastProgress !== 100 && lastProgress !== -1)) {
+            console.log("View update: doc transition or ready state", currentDocId);
+            reloadLogTable(currentDocId !== lastDocId);
         }
     }
+    lastProgress = isReady ? 100 : progress;
+    lastDocId = currentDocId;
 }
 
+function pollLoadingProgress() {
+    setInterval(() => {
+        updateViewMode();
+    }, 500);
+}
+
+globalThis.onDocumentAdded = function (docId) {
+    console.log("Native: onDocumentAdded", docId);
+    refreshTabs();
+    reloadLogTable();
+};
+
+globalThis.reloadLogTable = function (forceReset = false) {
+    const logList = $("#log-list");
+    if (logList) {
+        console.log("Reloading log table", forceReset ? "(force reset)" : "");
+        if (forceReset) logList.scrollTo(0, 0);
+        logList.componentUpdate();
+    }
+};
+
+globalThis.getAppState = function () {
+    const [left, top, width, height] = Window.this.box("xywh", "border", "screen", true);
+    const list = $("#log-list");
+    return JSON.stringify({
+        windowRect: { left, top, width, height },
+        scrollPosition: list ? (list.state.scrollPos || 0) : 0
+    });
+}

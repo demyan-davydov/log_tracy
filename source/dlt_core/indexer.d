@@ -20,11 +20,14 @@ class Indexer
 {
     private MmFile _mmFile;
     private MsgInfo[] _index;
+    private ulong _processedSize;
+    private ulong _totalSize;
 
     this(string filePath)
     {
         // Map the file read-only, copy-on-write false (we only read)
         _mmFile = new MmFile(filePath, MmFile.Mode.read, 0, null);
+        _totalSize = _mmFile.length;
     }
 
     @property const(MsgInfo)[] index() const pure nothrow @nogc
@@ -96,7 +99,16 @@ class Indexer
             // It does NOT include Storage Header.
 
             offset += length;
+            _processedSize = offset;
         }
+        _processedSize = _totalSize;
+    }
+
+    int getProgress() const
+    {
+        if (_totalSize == 0)
+            return 100;
+        return cast(int)((_processedSize * 100) / _totalSize);
     }
 }
 

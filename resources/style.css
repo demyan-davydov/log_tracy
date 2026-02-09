@@ -29,9 +29,39 @@ header {
     /* Flex grow */
 }
 
+#main-content {
+    size: *;
+    position: relative;
+    overflow: hidden;
+}
+
 #tabs-container {
     flow: horizontal;
     margin-top: 4px;
+    white-space: nowrap;
+    overflow-x: auto;
+    width: *;
+}
+
+#loading-container {
+    size: *;
+    background: var(--bg-main);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}
+
+#doc-load-progress {
+    width: 300px;
+    height: 10px;
+}
+
+#doc-load-status {
+    margin-top: 10px;
+    font-size: 1.1em;
+    color: var(--text-main);
 }
 
 .tab {
@@ -42,6 +72,26 @@ header {
     border-radius: 4px 4px 0 0;
     margin-right: 2px;
     cursor: pointer;
+    flow: horizontal;
+    align-items: center;
+}
+
+.tab .tab-name {
+    margin-right: 8px;
+}
+
+.tab .tab-close {
+    width: 16px;
+    height: 16px;
+    text-align: center;
+    line-height: 16px;
+    border-radius: 8px;
+    color: #888;
+}
+
+.tab .tab-close:hover {
+    background: #ff4d4d;
+    color: white;
 }
 
 .tab.active {
@@ -49,7 +99,20 @@ header {
     font-weight: bold;
     position: relative;
     bottom: -1px;
-    /* Overlap border */
+}
+
+#btn-add-tab {
+    padding: 4px 10px;
+    background: var(--btn-default-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    margin-right: 8px;
+    cursor: pointer;
+}
+
+#log-table {
+    display: block;
+    size: *;
 }
 
 frameset {

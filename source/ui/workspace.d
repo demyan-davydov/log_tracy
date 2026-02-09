@@ -44,6 +44,11 @@ private class NullDocument : Document
     {
         return 100;
     }
+
+    bool ready() const
+    {
+        return true;
+    }
 }
 
 __gshared NullDocument k_nullDocument = new NullDocument();
@@ -229,6 +234,11 @@ unittest
         int progress() const
         {
             return 100;
+        }
+
+        bool ready() const
+        {
+            return true;
         }
     }
 

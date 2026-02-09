@@ -5,10 +5,12 @@ import sciter_wrapper.sciter_value;
 import ui.app_settings;
 import ui.workspace;
 import ui.dlt_document;
+import ui.document_id;
 
 import sciter.types;
 import sciter.behavior;
 
+import std.path : baseName;
 import std.utf : toUTF8, toUTF16;
 import std.string : fromStringz;
 import std.array : empty;
@@ -166,6 +168,7 @@ class MainWindow : SciterWindow
             if (method == "getLogCount")
             {
                 const int count = cast(int) _workspace.current.length;
+                writeln("getLogCount: ", count, " for doc: ", _workspace.currentId.toString());
                 resultView = count;
                 return true;
             }
@@ -173,6 +176,7 @@ class MainWindow : SciterWindow
             {
                 int index = getParamInt(0);
                 string s = _workspace.current.logItemAsJson(index);
+                // writeln("getLogItem: ", index, " for doc: ", _workspace.currentId.toString());
 
                 wstring ws = toUTF16(s);
                 resultView = ws;
@@ -182,7 +186,10 @@ class MainWindow : SciterWindow
             {
                 string path = getParamString(0);
                 if (!path.empty)
-                    onFileSelected(normalizePath(path));
+                {
+                    auto id = onFileSelected(normalizePath(path));
+                    resultView = id.toString().toUTF16();
+                }
                 return true;
             }
             if (method == "loadFibex")
@@ -206,12 +213,68 @@ class MainWindow : SciterWindow
                     onTabClicked(tabId);
                 return true;
             }
+            if (method == "getWorkspaceInfo")
+            {
+                JSONValue[] docs;
+                foreach (idx, item; _workspace.documents)
+                {
+                    JSONValue d = [
+                        "id": JSONValue(item.docId.toString()),
+                        "name": JSONValue(item.document.sourcePath.baseName),
+                        "path": JSONValue(item.document.sourcePath),
+                        "active": JSONValue(item.docId == _workspace.currentId)
+                    ];
+                    docs ~= d;
+                }
+                resultView = JSONValue(docs).toString().toUTF16();
+                return true;
+            }
+            if (method == "getDocProgress")
+            {
+                resultView = _workspace.current.progress();
+                return true;
+            }
+            if (method == "isDocReady")
+            {
+                resultView = _workspace.current.ready();
+                return true;
+            }
+            if (method == "switchTab")
+            {
+                string idStr = getParamString(0);
+                auto oldId = _workspace.currentId;
+                writeln("switchTab request: ", idStr, " (current: ", oldId.toString(), ")");
+                foreach (item; _workspace.documents)
+                {
+                    if (item.docId.toString() == idStr)
+                    {
+                        _workspace.setCurrent(item.docId);
+                        writeln("Workspace current changed to: ", item.docId.toString(), " (", item
+                                .document.sourcePath.baseName, ")");
+                        break;
+                    }
+                }
+                return true;
+            }
+            if (method == "closeTab")
+            {
+                string idStr = getParamString(0);
+                foreach (item; _workspace.documents)
+                {
+                    if (item.docId.toString() == idStr)
+                    {
+                        _workspace.removeDocument(item.docId);
+                        break;
+                    }
+                }
+                return true;
+            }
         }
 
         return false;
     }
 
-    private void onFileSelected(string path)
+    private DocumentId onFileSelected(string path)
     {
         writeln("Opening file: ", path);
         try
@@ -219,11 +282,13 @@ class MainWindow : SciterWindow
             auto newDoc = new DltDocument(path);
             auto docId = _workspace.addDocument(newDoc);
             _workspace.setCurrent(docId);
-            callScript("reloadLogTable");
+            callScript("onDocumentAdded", docId.toString());
+            return docId;
         }
         catch (Exception e)
         {
             writeln("Error opening file: ", e.msg);
+            return DocumentId.init;
         }
     }
 

@@ -19,21 +19,26 @@ final class DltDocument : Document
 
     this(string path)
     {
-        try
-        {
-            _sourcePath = path;
+        _sourcePath = path;
+        _currentIndexer = new Indexer(path);
 
-            _currentIndexer = new Indexer(path);
-            _currentIndexer.scan();
-            _searchEngine = new SearchEngine(_currentIndexer);
-            _searchEngine._fibex = this._fibexParser;
-            writeln("Indexed messages: ", _currentIndexer.totalMessages);
-        }
-        catch (Exception e)
-        {
-            writeln("Error indexing: ", e.msg);
-            throw e;
-        }
+        import std.parallelism : task;
+
+        auto t = task({
+            try
+            {
+                _currentIndexer.scan();
+                _searchEngine = new SearchEngine(_currentIndexer);
+                if (_fibexParser)
+                    _searchEngine._fibex = _fibexParser;
+                writeln("Indexed messages: ", _currentIndexer.totalMessages);
+            }
+            catch (Exception e)
+            {
+                writeln("Error indexing in thread: ", e.msg);
+            }
+        });
+        t.executeInNewThread();
     }
 
     override string sourcePath() const
@@ -71,16 +76,26 @@ final class DltDocument : Document
 
     override size_t length() const
     {
-        return _searchEngine.getLogCount();
+        return _searchEngine ? _searchEngine.getLogCount() : 0;
     }
 
     override LogItem logItem(size_t index)
     {
-        return _searchEngine.getLogItem(index);
+        return _searchEngine ? _searchEngine.getLogItem(index) : LogItem.init;
     }
 
     override int progress() const
     {
-        return _searchEngine.getProgress();
+        if (_searchEngine)
+            return 100;
+        int p = _currentIndexer ? _currentIndexer.getProgress() : 0;
+        if (p >= 100)
+            return 99; // Scan done, but SearchEngine initializing
+        return p;
+    }
+
+    override bool ready() const
+    {
+        return _searchEngine !is null;
     }
 }
