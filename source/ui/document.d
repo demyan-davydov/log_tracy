@@ -22,6 +22,7 @@ interface Document
     LogItem logItem(size_t index);
 
     int progress() const;
+
     bool ready() const;
 
     final string logItemAsJson(size_t index)

@@ -25,8 +25,8 @@ header {
 }
 
 #search-bar {
-    width: 1*;
-    /* Flex grow */
+    width: *;
+    /* Sciter flex unit */
 }
 
 #main-content {
@@ -40,7 +40,7 @@ header {
     margin-top: 4px;
     white-space: nowrap;
     overflow-x: auto;
-    width: *;
+    width: 100%;
 }
 
 #loading-container {
@@ -62,6 +62,27 @@ header {
     margin-top: 10px;
     font-size: 1.1em;
     color: var(--text-main);
+}
+
+#empty-placeholder {
+    size: *;
+    background: var(--bg-main);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+    color: #888;
+}
+
+#empty-placeholder .icon {
+    font-size: 64px;
+    margin-bottom: 20px;
+    opacity: 0.5;
+}
+
+#empty-placeholder .text {
+    font-size: 1.2em;
 }
 
 .tab {
@@ -112,7 +133,8 @@ header {
 
 #log-table {
     display: block;
-    size: *;
+    width: *;
+    height: *;
 }
 
 frameset {
@@ -225,7 +247,8 @@ footer {
     background: var(--bg-header);
     padding: 10px;
     border-top: 1px solid var(--border-color);
-    horizontal-align: right;
+    text-align: right;
+    /* Use standard text-align for horizontal-align */
     border-spacing: 10px;
 }
 

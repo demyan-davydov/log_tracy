@@ -101,7 +101,7 @@ function setupEvents() {
     document.on("change", ".filter-group input", applyFilters);
 
     document.on("click", ".tab", function (evt, tab) {
-        const docId = tab.id;
+        const docId = parseInt(tab.id);
         if (evt.target.classList.contains("tab-close")) {
             closeTab(docId);
         } else {
@@ -151,14 +151,16 @@ function refreshTabs() {
 }
 
 function switchTab(docId) {
-    console.log("Requesting switch to doc:", docId);
-    Window.this.xcall("switchTab", docId);
+    const id = parseInt(docId);
+    console.log("Requesting switch to doc (int):", id);
+    Window.this.xcall("switchTab", id);
     refreshTabs();
     reloadLogTable(true);
 }
 
 function closeTab(docId) {
-    Window.this.xcall("closeTab", docId);
+    const id = parseInt(docId);
+    Window.this.xcall("closeTab", id);
     refreshTabs();
 }
 
@@ -169,10 +171,23 @@ function updateViewMode() {
     const activeDoc = docs.find(d => d.active);
     const currentDocId = activeDoc ? activeDoc.id : null;
 
-    const isReady = Window.this.xcall("isDocReady");
-    const progress = Window.this.xcall("getDocProgress");
     const table = $("#log-table");
     const loading = $("#loading-container");
+    const empty = $("#empty-placeholder");
+
+    if (docs.length === 0) {
+        table.style.display = "none";
+        loading.style.display = "none";
+        empty.style.display = "flex";
+        lastDocId = null;
+        lastProgress = -1;
+        return;
+    }
+
+    empty.style.display = "none";
+
+    const isReady = Window.this.xcall("isDocReady");
+    const progress = Window.this.xcall("getDocProgress");
 
     if (!isReady) {
         table.style.display = "none";
@@ -199,7 +214,7 @@ function pollLoadingProgress() {
 }
 
 globalThis.onDocumentAdded = function (docId) {
-    console.log("Native: onDocumentAdded", docId);
+    console.log("Native: onDocumentAdded (int)", docId);
     refreshTabs();
     reloadLogTable();
 };

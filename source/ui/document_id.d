@@ -1,6 +1,6 @@
 module ui.document_id;
 
-private alias Id = size_t;
+private alias Id = uint;
 
 import std.conv : to;
 
@@ -32,11 +32,16 @@ struct DocumentId
     {
         return _id.to!string;
     }
+
+    Id toInt() const pure nothrow @nogc
+    {
+        return _id;
+    }
 }
 
 struct DocumentIdGenerator
 {
-    private size_t _nextId = 0;
+    private Id _nextId = 0;
 
     DocumentId popId() pure nothrow @nogc
     {

@@ -188,7 +188,7 @@ class MainWindow : SciterWindow
                 if (!path.empty)
                 {
                     auto id = onFileSelected(normalizePath(path));
-                    resultView = id.toString().toUTF16();
+                    resultView = id.toInt();
                 }
                 return true;
             }
@@ -219,7 +219,7 @@ class MainWindow : SciterWindow
                 foreach (idx, item; _workspace.documents)
                 {
                     JSONValue d = [
-                        "id": JSONValue(item.docId.toString()),
+                        "id": JSONValue(item.docId.toInt()),
                         "name": JSONValue(item.document.sourcePath.baseName),
                         "path": JSONValue(item.document.sourcePath),
                         "active": JSONValue(item.docId == _workspace.currentId)
@@ -241,16 +241,15 @@ class MainWindow : SciterWindow
             }
             if (method == "switchTab")
             {
-                string idStr = getParamString(0);
+                int id = getParamInt(0);
                 auto oldId = _workspace.currentId;
-                writeln("switchTab request: ", idStr, " (current: ", oldId.toString(), ")");
+                writeln("switchTab request: ", id, " (current: ", oldId.toInt(), ")");
                 foreach (item; _workspace.documents)
                 {
-                    if (item.docId.toString() == idStr)
+                    if (item.docId.toInt() == id)
                     {
                         _workspace.setCurrent(item.docId);
-                        writeln("Workspace current changed to: ", item.docId.toString(), " (", item
-                                .document.sourcePath.baseName, ")");
+                        writeln("Workspace current changed to: ", id, " (", item.document.sourcePath.baseName, ")");
                         break;
                     }
                 }
@@ -258,10 +257,10 @@ class MainWindow : SciterWindow
             }
             if (method == "closeTab")
             {
-                string idStr = getParamString(0);
+                int id = getParamInt(0);
                 foreach (item; _workspace.documents)
                 {
-                    if (item.docId.toString() == idStr)
+                    if (item.docId.toInt() == id)
                     {
                         _workspace.removeDocument(item.docId);
                         break;
@@ -282,7 +281,7 @@ class MainWindow : SciterWindow
             auto newDoc = new DltDocument(path);
             auto docId = _workspace.addDocument(newDoc);
             _workspace.setCurrent(docId);
-            callScript("onDocumentAdded", docId.toString());
+            callScript("onDocumentAdded", docId.toInt());
             return docId;
         }
         catch (Exception e)
