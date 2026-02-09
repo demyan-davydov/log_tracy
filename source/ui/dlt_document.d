@@ -36,6 +36,16 @@ final class DltDocument : Document
         }
     }
 
+    override string sourcePath() const
+    {
+        return _sourcePath;
+    }
+
+    override string fibexPath() const
+    {
+        return _fibexPath;
+    }
+
     override void openFibex(string path)
     {
         try

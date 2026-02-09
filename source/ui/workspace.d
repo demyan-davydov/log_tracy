@@ -12,6 +12,16 @@ import std.array : insertInPlace;
 
 private class NullDocument : Document
 {
+    string sourcePath() const
+    {
+        return "";
+    }
+
+    string fibexPath() const
+    {
+        return "";
+    }
+
     size_t length() const
     {
         return 0;
@@ -153,6 +163,25 @@ final class Workspace
     {
         return _documents;
     }
+
+    string displayName(DocumentId docId)
+    {
+        ptrdiff_t idx = findIndexById(docId);
+        if (idx != -1)
+        {
+            return _documents[idx].document.sourcePath;
+        }
+        return "";
+    }
+
+    string displayName(size_t idx)
+    {
+        if (idx < _documents.length)
+        {
+            return _documents[idx].document.sourcePath;
+        }
+        return "";
+    }
 }
 
 @("Workspace operations")
@@ -167,6 +196,16 @@ unittest
         this(string n)
         {
             name = n;
+        }
+
+        string sourcePath() const
+        {
+            return name;
+        }
+
+        string fibexPath() const
+        {
+            return "";
         }
 
         size_t length() const

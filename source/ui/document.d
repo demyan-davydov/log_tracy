@@ -9,6 +9,10 @@ import std.stdio;
 
 interface Document
 {
+    string sourcePath() const;
+
+    string fibexPath() const;
+
     size_t length() const;
 
     void openFibex(string path);
