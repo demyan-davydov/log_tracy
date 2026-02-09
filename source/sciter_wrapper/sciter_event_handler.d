@@ -176,10 +176,11 @@ class SciterEventHandler
     protected bool handleEvent(HELEMENT he, MOUSE_PARAMS* params)
     {
         // На Mac события часто приходят в фазе SINKING (0x80FE), поэтому маскируем cmd
-        if ((params.cmd & 0xFF) == MOUSE_EVENTS.MOUSE_DRAG_REQUEST)
+        // Commented out to allow HTML5 drag-and-drop for tabs
+        /*if ((params.cmd & 0xFF) == MOUSE_EVENTS.MOUSE_DRAG_REQUEST)
         {
             return true; // Предотвращаем запуск системного Drag-and-Drop цикла
-        }
+        }*/
         return false;
     }
 

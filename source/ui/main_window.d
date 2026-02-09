@@ -268,6 +268,22 @@ class MainWindow : SciterWindow
                 }
                 return true;
             }
+            if (method == "reorderTab")
+            {
+                int id = getParamInt(0);
+                int targetIndex = getParamInt(1);
+                writeln("reorderTab request: ", id, " to index ", targetIndex);
+                foreach (item; _workspace.documents)
+                {
+                    if (item.docId.toInt() == id)
+                    {
+                        _workspace.moveDocumentBefore(item.docId, targetIndex);
+                        writeln("Document reordered: ", id, " to index ", targetIndex);
+                        break;
+                    }
+                }
+                return true;
+            }
         }
 
         return false;

@@ -122,6 +122,14 @@ header {
     bottom: -1px;
 }
 
+.tab.dragging {
+    opacity: 0.4;
+}
+
+.tab.drag-over {
+    border-left: 3px solid var(--btn-primary-bg);
+}
+
 #btn-add-tab {
     padding: 4px 10px;
     background: var(--btn-default-bg);

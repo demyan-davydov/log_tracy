@@ -110,6 +110,74 @@ function setupEvents() {
         }
     });
 
+    // Mouse-based tab dragging (more reliable than HTML5 drag-and-drop in Sciter)
+    let draggedTab = null;
+    let dragStartX = 0;
+
+    document.on("mousedown", ".tab", function (evt, tab) {
+        // Ignore if clicking on close button
+        if (evt.target.classList.contains("tab-close")) return;
+
+        draggedTab = tab;
+        dragStartX = evt.clientX;
+        tab.classList.add("dragging");
+        console.log("Mouse drag started on tab:", tab.id);
+        return true; // Prevent default text selection
+    });
+
+    document.on("mousemove", function (evt) {
+        if (!draggedTab) return;
+
+        // Check if we've moved enough to consider it a drag
+        if (Math.abs(evt.clientX - dragStartX) < 5) return;
+
+        // Find which tab we're over
+        const tabs = $$(".tab");
+        for (const tab of tabs) {
+            if (tab === draggedTab) continue;
+
+            const rect = tab.getBoundingClientRect();
+            if (evt.clientX >= rect.left && evt.clientX <= rect.right) {
+                // Highlight the drop target
+                tab.classList.add("drag-over");
+            } else {
+                tab.classList.remove("drag-over");
+            }
+        }
+    });
+
+    document.on("mouseup", function (evt) {
+        if (!draggedTab) return;
+
+        console.log("Mouse drag ended");
+
+        // Find the drop target
+        const tabs = $$(".tab");
+        let dropTarget = null;
+        for (const tab of tabs) {
+            if (tab.classList.contains("drag-over")) {
+                dropTarget = tab;
+                break;
+            }
+        }
+
+        if (dropTarget && dropTarget !== draggedTab) {
+            const draggedId = parseInt(draggedTab.id);
+            const targetIndex = parseInt(dropTarget.getAttribute("data-index"));
+
+            console.log("Reordering tab", draggedId, "to index", targetIndex);
+            Window.this.xcall("reorderTab", draggedId, targetIndex);
+            refreshTabs();
+        }
+
+        // Clean up
+        draggedTab.classList.remove("dragging");
+        for (const tab of tabs) {
+            tab.classList.remove("drag-over");
+        }
+        draggedTab = null;
+    });
+
     document.on("keydown", function (evt) {
         const modifier = evt.metaKey || evt.ctrlKey;
         if (modifier && (evt.code === "KeyO" || evt.code === "KeyF")) {
@@ -139,8 +207,9 @@ function refreshTabs() {
     const addBtn = $("#btn-add-tab");
     container.content(addBtn);
 
-    for (const doc of docs) {
-        const tab = <div class={doc.active ? "tab active" : "tab"} id={doc.id}>
+    for (let i = 0; i < docs.length; i++) {
+        const doc = docs[i];
+        const tab = <div class={doc.active ? "tab active" : "tab"} id={doc.id} draggable="true" data-index={i}>
             <span class="tab-name">{doc.name}</span>
             <span class="tab-close">×</span>
         </div>;
