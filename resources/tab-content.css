@@ -1,0 +1,15 @@
+.tab-content {
+    display: block;
+    width: *;
+    height: *;
+}
+
+.loading-container {
+    size: *;
+    background: var(--bg-main);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}

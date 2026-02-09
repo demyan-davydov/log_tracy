@@ -43,16 +43,6 @@ header {
     width: 100%;
 }
 
-#loading-container {
-    size: *;
-    background: var(--bg-main);
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    padding: 20px;
-}
-
 #doc-load-progress {
     width: 300px;
     height: 10px;
@@ -137,12 +127,6 @@ header {
     border-radius: 4px;
     margin-right: 8px;
     cursor: pointer;
-}
-
-#log-table {
-    display: block;
-    width: *;
-    height: *;
 }
 
 frameset {

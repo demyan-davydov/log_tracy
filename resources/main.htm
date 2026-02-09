@@ -5,6 +5,7 @@
     <style id="theme-style" src="theme-light.css" />
     <style src="style.css" />
     <style src="table.css" />
+    <style src="tab-content.css" />
     <script type="module" src="script.js" />
     <script type="module" src="virtual-dlt-view.js" />
 </head>
@@ -58,27 +59,29 @@
                     <div class="icon">📁</div>
                     <div class="text">No documents open. Click + to open a DLT file.</div>
                 </div>
-                <div id="loading-container" style="display:none;">
-                    <progress id="doc-load-progress" value="0" max="100"></progress>
-                    <div id="doc-load-status">Loading DLT file...</div>
+                <div id="tab-content" class="tab-content">
+                    <div id="loading-container" class="loading-container" style="display:none;">
+                        <progress id="doc-load-progress" value="0" max="100"></progress>
+                        <div id="doc-load-status">Loading DLT file...</div>
+                    </div>
+                    <table class="log-table" fixed-layout="true" selectable="true">
+                        <thead>
+                            <tr>
+                                <th width="80px">Index</th>
+                                <th width="120px">Time</th>
+                                <th width="150px">Timestamp</th>
+                                <th width="60px">ECU</th>
+                                <th width="60px">AppID</th>
+                                <th width="60px">CtxID</th>
+                                <th width="60px">Len</th>
+                                <th width="60px">Type</th>
+                                <th width="60px">Level</th>
+                                <th width="*">Payload</th>
+                            </tr>
+                        </thead>
+                        <tbody class="log-list" />
+                    </table>
                 </div>
-                <table id="log-table" fixed-layout="true" selectable="true">
-                    <thead>
-                        <tr>
-                            <th width="80px">Index</th>
-                            <th width="120px">Time</th>
-                            <th width="150px">Timestamp</th>
-                            <th width="60px">ECU</th>
-                            <th width="60px">AppID</th>
-                            <th width="60px">CtxID</th>
-                            <th width="60px">Len</th>
-                            <th width="60px">Type</th>
-                            <th width="60px">Level</th>
-                            <th width="*">Payload</th>
-                        </tr>
-                    </thead>
-                    <tbody id="log-list" />
-                </table>
             </div>
 
             <section id="details-panel">

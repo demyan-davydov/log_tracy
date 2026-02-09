@@ -47,6 +47,29 @@ function setTheme(theme) {
     Window.this.update();
 }
 
+globalThis.getTabContent = function () {
+    const tabContent = $("#tab-content");
+    return tabContent;
+}
+
+globalThis.getLoadingContainer = function () {
+    const tabContent = getTabContent();
+    const loading = tabContent.$(".loading-container");
+    return loading;
+}
+
+globalThis.getLogTable = function () {
+    const tabContent = getTabContent();
+    const list = tabContent.$("table.log-table");
+    return list;
+}
+
+globalThis.getLogList = function () {
+    const logTable = getLogTable();
+    const list = logTable.$("tbody.log-list");
+    return list;
+}
+
 function openSettingsAction() {
     const result = Window.this.modal({
         url: "settings.htm",
@@ -240,8 +263,8 @@ function updateViewMode() {
     const activeDoc = docs.find(d => d.active);
     const currentDocId = activeDoc ? activeDoc.id : null;
 
-    const table = $("#log-table");
-    const loading = $("#loading-container");
+    const table = getLogTable();
+    const loading = getLoadingContainer();
     const empty = $("#empty-placeholder");
 
     if (docs.length === 0) {
@@ -289,7 +312,7 @@ globalThis.onDocumentAdded = function (docId) {
 };
 
 globalThis.reloadLogTable = function (forceReset = false) {
-    const logList = $("#log-list");
+    const logList = getLogList();
     if (logList) {
         console.log("Reloading log table", forceReset ? "(force reset)" : "");
         if (forceReset) logList.scrollTo(0, 0);
@@ -299,7 +322,7 @@ globalThis.reloadLogTable = function (forceReset = false) {
 
 globalThis.getAppState = function () {
     const [left, top, width, height] = Window.this.box("xywh", "border", "screen", true);
-    const list = $("#log-list");
+    const list = getLogList();
     return JSON.stringify({
         windowRect: { left, top, width, height },
         scrollPosition: list ? (list.state.scrollPos || 0) : 0

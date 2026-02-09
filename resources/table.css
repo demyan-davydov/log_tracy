@@ -1,6 +1,12 @@
 /* Table Styles */
 
-#log-table {
+.log-table {
+    display: block;
+    width: *;
+    height: *;
+}
+
+.log-table {
     width: 100%;
     height: 100%;
     border-collapse: collapse;
@@ -30,7 +36,7 @@
     }
 }
 
-#log-list {
+.log-list {
     behavior: virtual-list;
     prototype: VirtualDltTBody;
     overflow-y: scroll;
@@ -47,14 +53,14 @@
 }
 */
 
-#log-table thead tr {
+.log-table thead tr {
     user-select: none;
     cursor: default;
     font-family: 'Courier New', Courier, monospace;
     background-color: bisque;
 }
 
-#log-table th {
+.log-table th {
     user-select: none;
     cursor: default;
     padding: 2px 4px;
@@ -65,59 +71,59 @@
     border-right: 1px solid var(--border-color);
 }
 
-#log-list tr:nth-child(even) {
+.log-list tr:nth-child(even) {
     background-color: lightgoldenrodyellow;
 }
 
-#log-list td:first-child {
+.log-list td:first-child {
     font-family: 'Courier New', Courier, monospace;
     font-size: 80%;
     text-align: right;
 }
 
-#log-list td:nth-child(2) {
+.log-list td:nth-child(2) {
     font-family: 'Courier New', Courier, monospace;
     font-size: 80%;
     text-align: right;
 }
 
-#log-list td:nth-child(3) {
+.log-list td:nth-child(3) {
     font-family: 'Courier New', Courier, monospace;
     font-size: 80%;
     text-align: right;
 }
 
-#log-list td:nth-child(4) {
+.log-list td:nth-child(4) {
     font-family: 'Courier New', Courier, monospace;
     font-size: 80%;
     text-align: right;
 }
 
-#log-list td:nth-child(5) {
+.log-list td:nth-child(5) {
     font-family: 'Courier New', Courier, monospace;
     font-size: 80%;
     text-align: right;
 }
 
-#log-list td:nth-child(6) {
+.log-list td:nth-child(6) {
     font-family: 'Courier New', Courier, monospace;
     font-size: 80%;
     text-align: right;
 }
 
-#log-list td:nth-child(7) {
+.log-list td:nth-child(7) {
     font-family: 'Courier New', Courier, monospace;
     font-size: 80%;
     text-align: right;
 }
 
-#log-list td:nth-child(8) {
+.log-list td:nth-child(8) {
     font-family: 'Courier New', Courier, monospace;
     font-size: 80%;
     text-align: right;
 }
 
-#log-list td {
+.log-list td {
     -user-select: text;
     cursor: text;
     padding: 2px 4px;
@@ -128,8 +134,8 @@
 }
 
 /* Force Payload column to take remaining space */
-#log-table th:last-child,
-#log-table td:last-child {
+.log-table th:last-child,
+.log-table td:last-child {
     width: 100%;
 }
 
