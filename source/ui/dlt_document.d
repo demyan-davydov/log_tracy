@@ -1,5 +1,6 @@
-module ui.document;
+module ui.dlt_document;
 
+import ui.document;
 import dlt_core.search;
 import dlt_core.fibex;
 import dlt_core.indexer;
@@ -7,7 +8,7 @@ import dlt_core.dlt;
 import ui.app_settings;
 import std.stdio;
 
-final class Document
+final class DltDocument : Document
 {
     private string _sourcePath; // path to opened document
     private string _fibexPath;
@@ -52,22 +53,22 @@ final class Document
         }
     }
 
-    size_t length() const pure
+    override size_t length() const
     {
         return _searchEngine.getLogCount();
     }
 
-    LogItem logItem(size_t index)
+    override LogItem logItem(size_t index)
     {
         return _searchEngine.getLogItem(index);
     }
 
-    string logItemAsJson(size_t index)
+    override string logItemAsJson(size_t index)
     {
         return _searchEngine.getLogItemAsJson(index);
     }
 
-    int progress() const pure nothrow @nogc
+    override int progress() const
     {
         return _searchEngine.getProgress();
     }
