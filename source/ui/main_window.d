@@ -262,7 +262,8 @@ class MainWindow : SciterWindow
                 {
                     if (item.docId.toInt() == id)
                     {
-                        _workspace.removeDocument(item.docId);
+                        auto doc = _workspace.removeDocument(item.docId);
+                        doc.destroy();
                         break;
                     }
                 }

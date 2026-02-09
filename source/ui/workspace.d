@@ -135,6 +135,19 @@ final class Workspace
         return _current < _documents.length;
     }
 
+    inout(Document) doc(DocumentId docId) inout @property
+    {
+        ptrdiff_t idx = findIndexById(docId);
+        if (idx != -1)
+        {
+            return _documents[idx].document;
+        }
+        else
+        {
+            return cast(inout(Document)) k_nullDocument;
+        }
+    }
+
     inout(Document) current() inout @property
     {
         if (_current < _documents.length)

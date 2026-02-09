@@ -41,6 +41,20 @@ final class DltDocument : Document
         t.executeInNewThread();
     }
 
+    ~this()
+    {
+        if (_currentIndexer)
+            _currentIndexer.destroy();
+
+        if (_searchEngine)
+            _searchEngine.destroy();
+
+        if (_fibexParser)
+            _fibexParser.destroy();
+
+        writeln("Destroyed DltDocument: ", _sourcePath);
+    }
+
     override string sourcePath() const
     {
         return _sourcePath;
