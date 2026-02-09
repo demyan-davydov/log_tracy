@@ -9,13 +9,44 @@
     table-layout: fixed;
 }
 
+@set dropdown-scrollbar {
+
+    .prev,
+    .next {
+        display: none;
+    }
+
+    .slider {
+        background-color: #D6D6D6;
+        border-radius: 6dip;
+        border: none;
+        width: 6dip;
+        min-height: 20dip;
+    }
+
+    .base {
+        width: 16dip;
+        border: none;
+        outline: 1dip solid red;
+    }
+}
+
 #log-list {
     behavior: virtual-list;
+    prototype: VirtualDltTBody;
     overflow-y: scroll;
     width: *;
     height: *;
     display: block;
+    vertical-scrollbar: dropdown-scrollbar;
 }
+
+/*
+#log-list scrollbar[orientation="vertical"] slider {
+    min-height: 80dip;
+    background-color: red;
+}
+*/
 
 #log-table thead tr {
     user-select: none;
@@ -35,59 +66,59 @@
     border-right: 1px solid var(--border-color);
 }
 
-#log-table tbody tr:nth-child(even) {
+#log-list tr:nth-child(even) {
     background-color: lightgoldenrodyellow;
 }
 
-#log-table tbody td:first-child {
+#log-list td:first-child {
     font-family: 'Courier New', Courier, monospace;
     font-size: 80%;
     text-align: right;
 }
 
-#log-table tbody td:nth-child(2) {
+#log-list td:nth-child(2) {
     font-family: 'Courier New', Courier, monospace;
     font-size: 80%;
     text-align: right;
 }
 
-#log-table tbody td:nth-child(3) {
+#log-list td:nth-child(3) {
     font-family: 'Courier New', Courier, monospace;
     font-size: 80%;
     text-align: right;
 }
 
-#log-table tbody td:nth-child(4) {
+#log-list td:nth-child(4) {
     font-family: 'Courier New', Courier, monospace;
     font-size: 80%;
     text-align: right;
 }
 
-#log-table tbody td:nth-child(5) {
+#log-list td:nth-child(5) {
     font-family: 'Courier New', Courier, monospace;
     font-size: 80%;
     text-align: right;
 }
 
-#log-table tbody td:nth-child(6) {
+#log-list td:nth-child(6) {
     font-family: 'Courier New', Courier, monospace;
     font-size: 80%;
     text-align: right;
 }
 
-#log-table tbody td:nth-child(7) {
+#log-list td:nth-child(7) {
     font-family: 'Courier New', Courier, monospace;
     font-size: 80%;
     text-align: right;
 }
 
-#log-table tbody td:nth-child(8) {
+#log-list td:nth-child(8) {
     font-family: 'Courier New', Courier, monospace;
     font-size: 80%;
     text-align: right;
 }
 
-#log-table td {
+#log-list td {
     -user-select: text;
     cursor: text;
     padding: 2px 4px;

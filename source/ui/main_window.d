@@ -316,7 +316,7 @@ class MainWindow : SciterWindow
             auto j = parseJSON(json);
 
             // window rect
-            {
+            /*{
                 const winRc = getPlacement();
                 settings.windowRect.left = winRc.left;
                 settings.windowRect.top = winRc.top;
@@ -324,7 +324,7 @@ class MainWindow : SciterWindow
                 settings.windowRect.height = winRc.bottom - winRc.top;
 
                 writeln("windowRect: ", settings.windowRect);
-            }
+            }*/
 
             if ("windowRect" in j)
             {

@@ -1,4 +1,7 @@
 import { $, $$ } from "@sciter";
+import { VirtualDltTBody } from "virtual-dlt-view.js";
+
+globalThis.VirtualDltTBody = VirtualDltTBody;
 
 //const ROW_HEIGHT = 20; // Exact pixel height of a row (must match CSS)
 
@@ -142,7 +145,7 @@ function initVirtualList() {
     // Native Virtual List Setup
     const logList = $("#log-list");
 
-    // Handle contentrequired event from Sciter's virtual-list behavior
+    /*
     logList.on("contentrequired", function (evt) {
         // evt.data contains: where (int), start (int), length (int)
         const where = evt.data.where;
@@ -170,11 +173,8 @@ function initVirtualList() {
             moreafter: Math.max(0, totalLogs - start - items.length)
         };
     });
+    */
 
-    // Resize handler to update virtual list
-    /*logView.on("sizechange", () => {
-        // Virtual list handles this automatically
-    });*/
 
     // Tab switching logic
     const tabs = $$(".tab");
@@ -269,10 +269,19 @@ function updateTableContent(logList, items, where) {
 }
 
 function reloadLogTable() {
+    const logList = $("#log-list");
+
+    if (logList) {
+        console.log("reloadLogTable");
+        // Это заставит компонент вызвать render(), который внутри себя 
+        // вызовет и totalItems(), и itemAt()
+        logList.componentUpdate();
+    }
+    console.log("VirtualDltTBody in globalThis:", !!globalThis.VirtualDltTBody);
+    return;
+
     totalLogs = Window.this.xcall("getLogCount");
     console.log("Total Logs:", totalLogs);
-
-    const logList = $("#log-list");
 
     if (logList) {
         logList.clear();
