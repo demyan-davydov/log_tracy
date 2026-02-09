@@ -85,7 +85,7 @@ class SearchEngine
     }
 
     //! @returns progress as value [0..100]
-    int getProgress() const pure nothrow
+    int getProgress() const pure nothrow @nogc
     {
         return atomicLoad(_progress);
     }

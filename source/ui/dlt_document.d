@@ -10,6 +10,7 @@ import std.stdio;
 final class Document
 {
     private string _sourcePath; // path to opened document
+    private string _fibexPath;
     private SearchEngine _searchEngine;
     private FibexParser _fibexParser;
     private Indexer _currentIndexer;
@@ -38,8 +39,9 @@ final class Document
     {
         try
         {
+            _fibexPath = path;
             _fibexParser = new FibexParser();
-            _fibexParser.load(path);
+            _fibexParser.load(_fibexPath);
             if (_searchEngine)
                 _searchEngine._fibex = _fibexParser;
         }
@@ -63,5 +65,10 @@ final class Document
     string logItemAsJson(size_t index)
     {
         return _searchEngine.getLogItemAsJson(index);
+    }
+
+    int progress() const pure nothrow @nogc
+    {
+        return _searchEngine.getProgress();
     }
 }
