@@ -281,32 +281,6 @@ class SearchEngine
         return item;
     }
 
-    string getLogItemAsJson(size_t index)
-    {
-        import std.conv : to;
-
-        const size_t total = getLogCount();
-        if (index < 0 || index >= total)
-            return "{}";
-
-        LogItem item = getLogItem(index);
-
-        JSONValue j = [
-            "index": JSONValue(item.index),
-            "offset": JSONValue(item.offset),
-            "length": JSONValue(item.length),
-            "timestamp": JSONValue(item.timestamp),
-            "ecu": JSONValue(item.ecu),
-            "appId": JSONValue(item.appId),
-            "ctxId": JSONValue(item.ctxId),
-            "level": JSONValue(to!string(item.level)),
-            "type": JSONValue(dlt_core.dlt.toString(item.type)),
-            "payload": JSONValue(item.payload)
-        ];
-
-        return j.toString();
-    }
-
     private string cleanId(const ubyte[4] id) const pure
     {
         import std.ascii : isPrintable;
@@ -517,32 +491,5 @@ class SearchEngine
         }
 
         return "Legacy DLT Message";
-    }
-
-    string getLogItemsAsJson(size_t start, size_t count)
-    {
-        import std.conv : to;
-
-        JSONValue[] arr;
-        const auto total = getLogCount();
-        for (size_t i = start; i < start + count && i < total; ++i)
-        {
-            LogItem item = getLogItem(i);
-
-            JSONValue j = [
-                "index": JSONValue(item.index),
-                "offset": JSONValue(item.offset),
-                "length": JSONValue(item.length),
-                "timestamp": JSONValue(item.timestamp),
-                "ecu": JSONValue(item.ecu),
-                "appId": JSONValue(item.appId),
-                "ctxId": JSONValue(item.ctxId),
-                "level": JSONValue(to!string(item.level)),
-                "type": JSONValue(dlt_core.dlt.toString(item.type)),
-                "payload": JSONValue(item.payload)
-            ];
-            arr ~= j;
-        }
-        return JSONValue(arr).toString();
     }
 }

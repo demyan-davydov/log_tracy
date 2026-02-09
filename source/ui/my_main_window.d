@@ -434,8 +434,9 @@ class MyMainWindow
                 {
                     int start = getParamInt(0);
                     int count = getParamInt(1, 10);
-                    string s = self._searchEngine ? self._searchEngine.getLogItemsAsJson(start, count)
-                        : "[]";
+                    //string s = self._searchEngine ? self._searchEngine.getLogItemsAsJson(start, count)
+                    //    : "[]";
+                    string s = "[]";
                     import std.utf : toUTF16;
 
                     wstring ws = toUTF16(s);
@@ -445,8 +446,9 @@ class MyMainWindow
                 if (method == "getLogItem")
                 {
                     int index = getParamInt(0);
-                    string s = self._searchEngine ? self._searchEngine.getLogItemAsJson(
-                        index) : "{}"; // Assuming implementation exists or using existing
+                    //string s = self._searchEngine ? self._searchEngine.getLogItemAsJson(
+                    //    index) : "{}"; // Assuming implementation exists or using existing
+                    string s = "{}";
                     import std.utf : toUTF16;
 
                     wstring ws = toUTF16(s);

@@ -3,6 +3,8 @@ module ui.main_window;
 import sciter_wrapper.sciter_window;
 import sciter_wrapper.sciter_value;
 import ui.app_settings;
+import ui.workspace;
+import ui.dlt_document;
 
 import sciter.types;
 import sciter.behavior;
@@ -21,15 +23,13 @@ import dlt_core.fibex;
 
 class MainWindow : SciterWindow
 {
-    private SearchEngine _searchEngine;
-    private FibexParser _fibexParser;
-    private Indexer _currentIndexer;
-    private FilterConfig _currentConfig;
     private AppSettings _settings;
+    private Workspace _workspace;
 
     this(AppSettings settings)
     {
         _settings = settings;
+        _workspace = new Workspace();
         import sciter.def;
 
         enum uint creationFlags =
@@ -139,7 +139,7 @@ class MainWindow : SciterWindow
         }
         // ... (rest) ...
 
-        // ... getLogCount, getLogItems etc ...
+        // ... getLogCount, getLogItem etc ...
 
         if (method != "getSettings")
         { // Handled above
@@ -165,27 +165,14 @@ class MainWindow : SciterWindow
 
             if (method == "getLogCount")
             {
-                const int count = _searchEngine ? cast(int) _searchEngine.getLogCount() : 0;
+                const int count = cast(int) _workspace.current.length;
                 resultView = count;
-                return true;
-            }
-            if (method == "getLogItems")
-            {
-                int start = getParamInt(0);
-                int count = getParamInt(1, 10);
-                string s = _searchEngine ? _searchEngine.getLogItemsAsJson(start, count) : "[]";
-                import std.utf : toUTF16;
-
-                wstring ws = toUTF16(s);
-                resultView = ws;
                 return true;
             }
             if (method == "getLogItem")
             {
                 int index = getParamInt(0);
-                string s = _searchEngine ? _searchEngine.getLogItemAsJson(
-                    index) : "{}"; // Assuming implementation exists or using existing
-                import std.utf : toUTF16;
+                string s = _workspace.current.logItemAsJson(index);
 
                 wstring ws = toUTF16(s);
                 resultView = ws;
@@ -224,29 +211,19 @@ class MainWindow : SciterWindow
         return false;
     }
 
-    /*bool onVirtualListGetItem(uint index, out SCITER_VIRTUAL_LIST_ITEM item)
-    {
-        item.text = "Item " ~ to!string(index);
-        item.value = index;
-        return true;
-    }*/
-
     private void onFileSelected(string path)
     {
         writeln("Opening file: ", path);
         try
         {
-            _currentIndexer = new Indexer(path);
-            _currentIndexer.scan();
-            _searchEngine = new SearchEngine(_currentIndexer);
-            _searchEngine._fibex = this._fibexParser;
-            writeln("Indexed messages: ", _currentIndexer.totalMessages);
-
-            saveSettings();
+            auto newDoc = new DltDocument(path);
+            auto docId = _workspace.addDocument(newDoc);
+            _workspace.setCurrent(docId);
+            callScript("reloadLogTable");
         }
         catch (Exception e)
         {
-            writeln("Error indexing: ", e.msg);
+            writeln("Error opening file: ", e.msg);
         }
     }
 
@@ -255,8 +232,8 @@ class MainWindow : SciterWindow
     {
         try
         {
-            _fibexParser = new FibexParser();
-            _fibexParser.load(path);
+            _workspace.current.openFibex(path);
+            callScript("reloadLogTable");
         }
         catch (Exception e)
         {
@@ -274,8 +251,8 @@ class MainWindow : SciterWindow
             c.appId = j["appId"].str;
             c.ctxId = j["ctxId"].str;
             c.payloadRegex = j["payloadRegex"].str;
-            if (_searchEngine)
-                _searchEngine.applyFilter(c);
+
+            _workspace.current.applyFilter(c);
         }
         catch (Exception e)
         {

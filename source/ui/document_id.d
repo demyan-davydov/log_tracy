@@ -23,9 +23,9 @@ struct DocumentId
         return _id;
     }
 
-    bool invalid() const pure nothrow @nogc
+    bool isValid() const pure nothrow @nogc
     {
-        return _id == 0;
+        return _id != 0;
     }
 
     string toString() const
@@ -48,12 +48,12 @@ struct DocumentIdGenerator
 unittest
 {
     DocumentId id0 = DocumentId(0);
-    assert(id0.invalid());
+    assert(!id0.isValid());
     assert(id0.toHash() == 0);
     assert(id0.toString() == "0");
 
     DocumentId id1 = DocumentId(1);
-    assert(!id1.invalid());
+    assert(id1.isValid());
     assert(id1.toHash() == 1);
     assert(id1.toString() == "1");
 

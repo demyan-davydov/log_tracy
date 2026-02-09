@@ -3,19 +3,49 @@ module ui.workspace;
 import ui.document;
 import ui.document_id;
 
+import dlt_core.search : LogItem, FilterConfig;
+
 import std.algorithm : countUntil, remove;
 import std.array : insertInPlace;
 
 //! Workspace is a collection of documents
 
-final class Workspace
+private class NullDocument : Document
 {
-    private struct DocumentItem
+    size_t length() const
     {
-        Document document;
-        DocumentId docId;
+        return 0;
     }
 
+    LogItem logItem(ulong index)
+    {
+        return LogItem.init;
+    }
+
+    void openFibex(string path)
+    {
+    }
+
+    void applyFilter(FilterConfig config)
+    {
+    }
+
+    int progress() const
+    {
+        return 100;
+    }
+}
+
+__gshared NullDocument k_nullDocument = new NullDocument();
+
+private struct DocumentItem
+{
+    Document document;
+    DocumentId docId;
+}
+
+final class Workspace
+{
     private DocumentItem[] _documents;
     private size_t _current; // currently displayed document
     private DocumentIdGenerator _idGenerator;
@@ -50,10 +80,11 @@ final class Workspace
         }
     }
 
-    void addDocument(Document document)
+    DocumentId addDocument(Document document)
     {
         auto item = DocumentItem(document, _idGenerator.popId());
         _documents ~= item;
+        return item.docId;
     }
 
     Document removeDocument(DocumentId docId)
@@ -84,15 +115,32 @@ final class Workspace
         return false;
     }
 
-    inout(DocumentItem) current() inout @property
+    bool hasCurrent() const pure nothrow @nogc @property
+    {
+        return _current < _documents.length;
+    }
+
+    inout(Document) current() inout @property
     {
         if (_current < _documents.length)
         {
-            return _documents[_current];
+            return _documents[_current].document;
         }
         else
         {
-            return DocumentItem();
+            return cast(inout(Document)) k_nullDocument;
+        }
+    }
+
+    inout(DocumentId) currentId() inout @property
+    {
+        if (_current < _documents.length)
+        {
+            return _documents[_current].docId;
+        }
+        else
+        {
+            return DocumentId();
         }
     }
 
@@ -131,9 +179,12 @@ unittest
             return LogItem.init;
         }
 
-        string logItemAsJson(size_t index)
+        void openFibex(string path)
         {
-            return "{}";
+        }
+
+        void applyFilter(FilterConfig config)
+        {
         }
 
         int progress() const
@@ -158,9 +209,9 @@ unittest
     auto id2 = docs[1].docId;
 
     // Test current document
-    assert(ws.current.document is doc1);
+    assert(ws.current is doc1);
     ws.setCurrent(id2);
-    assert(ws.current.document is doc2);
+    assert(ws.current is doc2);
 
     // Test move
     ws.moveDocumentBefore(id2, 0);
@@ -171,10 +222,11 @@ unittest
     auto removed = ws.removeDocument(id2);
     assert(removed is doc2);
     assert(ws.length == 1);
-    assert(ws.current.document is doc1);
+    assert(ws.current is doc1);
 
     // Test clear
     ws.clear();
     assert(ws.length == 0);
-    assert(ws.current.document is null);
+    assert(ws.current is k_nullDocument);
+    assert(!ws.currentId.isValid);
 }

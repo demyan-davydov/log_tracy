@@ -11,9 +11,38 @@ interface Document
 {
     size_t length() const;
 
+    void openFibex(string path);
+
+    void applyFilter(FilterConfig config);
+
     LogItem logItem(size_t index);
 
-    string logItemAsJson(size_t index);
-
     int progress() const;
+
+    final string logItemAsJson(size_t index)
+    {
+        import std.conv : to;
+        import std.json;
+
+        const size_t total = length();
+        if (index < 0 || index >= total)
+            return "{}";
+
+        LogItem item = logItem(index);
+
+        JSONValue j = [
+            "index": JSONValue(item.index),
+            "offset": JSONValue(item.offset),
+            "length": JSONValue(item.length),
+            "timestamp": JSONValue(item.timestamp),
+            "ecu": JSONValue(item.ecu),
+            "appId": JSONValue(item.appId),
+            "ctxId": JSONValue(item.ctxId),
+            "level": JSONValue(to!string(item.level)),
+            "type": JSONValue(dlt_core.dlt.toString(item.type)),
+            "payload": JSONValue(item.payload)
+        ];
+
+        return j.toString();
+    }
 }

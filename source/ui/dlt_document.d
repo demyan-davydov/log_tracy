@@ -36,7 +36,7 @@ final class DltDocument : Document
         }
     }
 
-    void openFibex(string path)
+    override void openFibex(string path)
     {
         try
         {
@@ -53,6 +53,12 @@ final class DltDocument : Document
         }
     }
 
+    override void applyFilter(FilterConfig config)
+    {
+        _filterConfig = config;
+        _searchEngine.applyFilter(config);
+    }
+
     override size_t length() const
     {
         return _searchEngine.getLogCount();
@@ -61,11 +67,6 @@ final class DltDocument : Document
     override LogItem logItem(size_t index)
     {
         return _searchEngine.getLogItem(index);
-    }
-
-    override string logItemAsJson(size_t index)
-    {
-        return _searchEngine.getLogItemAsJson(index);
     }
 
     override int progress() const
