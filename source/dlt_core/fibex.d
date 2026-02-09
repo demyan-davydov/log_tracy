@@ -152,7 +152,7 @@ class FibexParser
         return _idMap.get(id, null);
     }
 
-    bool hasId(uint id) const pure
+    bool hasId(uint id) const pure nothrow
     {
         return (id in _idMap) !is null;
     }

@@ -5,9 +5,12 @@ import sciter.value;
 import sciter_wrapper.sciter_api : sciterApi;
 import std.utf : toUTF16;
 
-/// Wraper for SCITER_VALUE
+/// 
+/// @brief Wraper for SCITER_VALUE
+///
 
 /// @brief Checks if two SCITER_VALUE's are refferes to the same object
+/// @todo probably is more correct to compare them by value because SCITER_VALUE itself is a reverence type
 private bool isSame(const(SCITER_VALUE)* value1, const(SCITER_VALUE)* value2) nothrow @safe @nogc
 {
     return value1 is value2;

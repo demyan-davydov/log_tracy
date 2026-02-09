@@ -74,29 +74,30 @@ class SearchEngine
         _cancelFlag = false;
     }
 
-    bool isFiltered() const
+    bool isFiltered() const pure nothrow
     {
         return _isFiltered;
     }
 
-    bool isSearching()
+    bool isSearching() const pure nothrow
     {
         return atomicLoad(_isSearching);
     }
 
-    int getProgress()
+    //! @returns progress as value [0..100]
+    int getProgress() const pure nothrow
     {
         return atomicLoad(_progress);
     }
 
-    size_t[] getIndices()
+    const(size_t[]) getIndices() const pure nothrow @nogc
     {
         if (_isFiltered)
             return _filteredIndices;
         return _filteredIndices;
     }
 
-    ulong getLogCount()
+    size_t getLogCount() const pure nothrow @nogc
     {
         if (_isFiltered)
             return _filteredIndices.length;
@@ -206,11 +207,11 @@ class SearchEngine
         }
     }
 
-    LogItem getLogItem(int index)
+    LogItem getLogItem(size_t index)
     {
         import std.conv : to;
 
-        ulong total = getLogCount();
+        const size_t total = getLogCount();
         if (index < 0 || index >= total)
             return LogItem.init;
 
@@ -242,7 +243,7 @@ class SearchEngine
             if (data.length >= StorageHeader.sizeof + headerSize)
             {
                 const(ubyte)[] payload = data[StorageHeader.sizeof + headerSize .. $];
-                item.payload = decodePayload(stdPtr, payload);
+                item.payload = decodePayload(stdPtr, payload, _fibex);
 
                 auto stdHdr = cast(const(StandardHeader)*) stdPtr;
                 if (useExtendedHeader(stdHdr.headerType))
@@ -280,35 +281,15 @@ class SearchEngine
         return item;
     }
 
-    string getLogItemAsJson(int index)
+    string getLogItemAsJson(size_t index)
     {
         import std.conv : to;
 
-        ulong total = getLogCount();
+        const size_t total = getLogCount();
         if (index < 0 || index >= total)
             return "{}";
 
         LogItem item = getLogItem(index);
-
-        string typeStr;
-        switch (item.type)
-        {
-        case DltType.Log:
-            typeStr = "LOG";
-            break;
-        case DltType.AppTrace:
-            typeStr = "APP";
-            break;
-        case DltType.NwTrace:
-            typeStr = "NW";
-            break;
-        case DltType.Control:
-            typeStr = "CTRL";
-            break;
-        default:
-            typeStr = "UNK";
-            break;
-        }
 
         JSONValue j = [
             "index": JSONValue(item.index),
@@ -319,14 +300,14 @@ class SearchEngine
             "appId": JSONValue(item.appId),
             "ctxId": JSONValue(item.ctxId),
             "level": JSONValue(to!string(item.level)),
-            "type": JSONValue(typeStr),
+            "type": JSONValue(dlt_core.dlt.toString(item.type)),
             "payload": JSONValue(item.payload)
         ];
 
         return j.toString();
     }
 
-    private string cleanId(const ubyte[4] id) const
+    private string cleanId(const ubyte[4] id) const pure
     {
         import std.ascii : isPrintable;
 
@@ -343,13 +324,13 @@ class SearchEngine
         return s.empty ? "-" : s;
     }
 
-    private string decodePayload(const(ubyte)* stdHdrPtr, const(ubyte)[] payload)
+    static private string decodePayload(const(ubyte)* stdHdrPtr, const(ubyte)[] payload, in FibexParser fibex) pure
     {
         import std.conv : to;
         import std.format : format;
 
         auto stdHdr = cast(const(StandardHeader)*) stdHdrPtr;
-        bool msbf = (stdHdr.headerType & HeaderType.MostSignificantByteFirst) != 0;
+        const bool msbf = (stdHdr.headerType & HeaderType.MostSignificantByteFirst) != 0;
 
         bool isVerbose = false;
         if (useExtendedHeader(stdHdr.headerType))
@@ -526,9 +507,9 @@ class SearchEngine
         {
             // Non-Verbose: Use MsgID for FIBEX lookup
             uint msgId = peekMessageId(stdHdrPtr);
-            if (_fibex)
+            if (fibex)
             {
-                string desc = _fibex.getDescription(msgId);
+                string desc = fibex.getDescription(msgId);
                 if (!desc.empty)
                     return desc;
             }
@@ -538,35 +519,15 @@ class SearchEngine
         return "Legacy DLT Message";
     }
 
-    string getLogItemsAsJson(int start, int count)
+    string getLogItemsAsJson(size_t start, size_t count)
     {
         import std.conv : to;
 
         JSONValue[] arr;
-        int total = cast(int) getLogCount();
-        for (int i = start; i < start + count && i < total; ++i)
+        const auto total = getLogCount();
+        for (size_t i = start; i < start + count && i < total; ++i)
         {
             LogItem item = getLogItem(i);
-
-            string typeStr;
-            switch (item.type)
-            {
-            case DltType.Log:
-                typeStr = "LOG";
-                break;
-            case DltType.AppTrace:
-                typeStr = "APP";
-                break;
-            case DltType.NwTrace:
-                typeStr = "NW";
-                break;
-            case DltType.Control:
-                typeStr = "CTRL";
-                break;
-            default:
-                typeStr = "UNK";
-                break;
-            }
 
             JSONValue j = [
                 "index": JSONValue(item.index),
@@ -577,7 +538,7 @@ class SearchEngine
                 "appId": JSONValue(item.appId),
                 "ctxId": JSONValue(item.ctxId),
                 "level": JSONValue(to!string(item.level)),
-                "type": JSONValue(typeStr),
+                "type": JSONValue(dlt_core.dlt.toString(item.type)),
                 "payload": JSONValue(item.payload)
             ];
             arr ~= j;

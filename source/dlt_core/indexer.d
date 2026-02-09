@@ -32,7 +32,7 @@ class Indexer
         return _index;
     }
 
-    @property ulong totalMessages() const pure nothrow @nogc
+    @property size_t totalMessages() const pure nothrow @nogc
     {
         return _index.length;
     }

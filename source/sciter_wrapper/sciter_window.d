@@ -12,6 +12,10 @@ import std.stdio : writeln;
 import std.string : toStringz;
 import std.utf : toUTF16z, toUTFz;
 
+/// 
+/// @brief Base class for application window
+/// 
+
 //import std.string : toStringz;
 
 // Helper for toUTF8z-like behavior if missing from std.utf (Sciter sometimes expects UTF8 as well)

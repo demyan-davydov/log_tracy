@@ -6,6 +6,8 @@ import sciter.api;
 import sciter_wrapper.sciter_api;
 import std.stdio;
 
+// Allow to enable Sciter debug output
+
 void enableSciterDebugOutput()
 {
     sciterApi.SciterSetupDebugOutput(null, null, &_output_debug);
