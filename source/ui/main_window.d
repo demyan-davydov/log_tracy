@@ -22,6 +22,7 @@ import std.conv : to;
 import dlt_core.indexer;
 import dlt_core.search;
 import dlt_core.fibex;
+import dlt_core.dlf_parser;
 
 class MainWindow : SciterWindow
 {
@@ -214,6 +215,33 @@ class MainWindow : SciterWindow
                 string tabId = getParamString(0);
                 if (!tabId.empty)
                     onTabClicked(tabId);
+                return true;
+            }
+            if (method == "loadDlf")
+            {
+                string path = getParamString(0);
+                if (!path.empty)
+                {
+                    try
+                    {
+                        import std.file : readText;
+
+                        string content = readText(normalizePath(path));
+                        auto config = parseDlf(content);
+
+                        JSONValue j = [
+                            "ecuId": config.ecuId,
+                            "appId": config.appId,
+                            "ctxId": config.ctxId,
+                            "payloadRegex": config.payloadRegex
+                        ];
+                        resultView = j.toString().toUTF16();
+                    }
+                    catch (Exception e)
+                    {
+                        writeln("Error loading DLF: ", e.msg);
+                    }
+                }
                 return true;
             }
             if (method == "getWorkspaceInfo")
