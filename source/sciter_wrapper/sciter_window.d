@@ -50,12 +50,21 @@ class SciterWindow : SciterEventHandler
 
     ~this()
     {
+        writeln("SciterWindow d'tor");
+        super.detachEventHandler(_hwnd);
+        //detachEventHandler();
         // _api.SciterDestroyWindow(_hwnd); // Missing in SciterAPI_T
     }
 
     private static extern (C) long sciterWindowDelegate(HWINDOW hwnd, uint msg, size_t wParam, ptrdiff_t lParam, void* pParam, int* handled)
     {
         return 0;
+    }
+
+    // workaround. better to call it in d'tor
+    final void detachEventHandler()
+    {
+        super.detachEventHandler(_hwnd);
     }
 
     final HWINDOW hwnd()

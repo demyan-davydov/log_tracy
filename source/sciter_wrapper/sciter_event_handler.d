@@ -33,6 +33,13 @@ class SciterEventHandler
         writeln("Window event handler attached (Direct), result: ", res);
     }
 
+    protected void detachEventHandler(HWINDOW hwnd)
+    {
+        writeln("Window event handler detaching... ");
+        const auto res = _api.SciterWindowDetachEventHandler(hwnd, &elementProc, cast(void*) this);
+        writeln("Window event handler detached (Direct), result: ", res);
+    }
+
     private static extern (C) SBOOL elementProc(void* tag, HELEMENT he, uint evtg, void* prms)
     {
         auto self = cast(SciterEventHandler) tag;

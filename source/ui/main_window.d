@@ -55,6 +55,8 @@ class MainWindow : SciterWindow
         {
             writeln("BEHAVIOR_DETACH");
             saveSettings();
+            //detachEventHandler();
+            return true;
         }
 
         return false;
@@ -62,14 +64,14 @@ class MainWindow : SciterWindow
 
     override bool handleEvent(HELEMENT he, BEHAVIOR_EVENT_PARAMS* params)
     {
-        /*if (params.cmd == BEHAVIOR_EVENTS.DOCUMENT_CLOSE)
+        if (params.cmd == BEHAVIOR_EVENTS.DOCUMENT_CLOSE)
         {
-            writeln("DOCUMENT_CLOSE_REQUEST");
+            writeln("DOCUMENT_CLOSE");
             saveSettings();
             return false; // Let it continue closing
-        }*/
+        }
 
-        const(wchar)[] eventName = fromStringz(params.name);
+        const(wchar)[] eventName = params.name ? fromStringz(params.name) : null;
 
         auto asString = () {
             const auto dataView = SciterValueConstView(&params.data);

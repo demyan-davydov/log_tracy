@@ -58,23 +58,23 @@ int main()
 
 	writeln("DLT Explorer starting...");
 
+	sciterApplication().start();
+
+	sciterApi().SciterSetOption(null,
+		SCITER_RT_OPTIONS.SCITER_SET_SCRIPT_RUNTIME_FEATURES,
+		SCRIPT_RUNTIME_FEATURES.ALLOW_FILE_IO |
+			SCRIPT_RUNTIME_FEATURES.ALLOW_SOCKET_IO |
+			SCRIPT_RUNTIME_FEATURES
+			.ALLOW_EVAL |
+			SCRIPT_RUNTIME_FEATURES.ALLOW_SYSINFO |
+			SCRIPT_RUNTIME_FEATURES.ALLOW_CMODULES);
+
 	int result = 0;
 
 	try
 	{
-		sciterApplication().start();
-
-		sciterApi().SciterSetOption(null,
-			SCITER_RT_OPTIONS.SCITER_SET_SCRIPT_RUNTIME_FEATURES,
-			SCRIPT_RUNTIME_FEATURES.ALLOW_FILE_IO |
-				SCRIPT_RUNTIME_FEATURES.ALLOW_SOCKET_IO |
-				SCRIPT_RUNTIME_FEATURES
-				.ALLOW_EVAL |
-				SCRIPT_RUNTIME_FEATURES.ALLOW_SYSINFO |
-				SCRIPT_RUNTIME_FEATURES.ALLOW_CMODULES);
-
 		auto settings = loadSettings();
-		auto win = new MainWindow(settings);
+		scope auto win = new MainWindow(settings); // scope ensures that d'tor is called on exit
 
 		// Load the main HTML resource
 		// In a real build, we would use "this://app/main.htm" and handle SC_LOAD_DATA to serve from import("main.htm")
@@ -99,19 +99,21 @@ int main()
 
 		win.expand();
 
-		writeln("DLT Explorer exiting...");
+		writeln("Event loop starting...");
 		//win.saveSettings();
 
 		result = sciterApplication().runEventLoop();
+		writeln("Event loop stopped");
 
-		sciterApplication().shutdown();
-
-		return result;
+		//win.detachEventHandler();
+		//win.destroy(); // call d'tor
 	}
 	catch (Exception e)
 	{
 		writeln("Error: ", e.msg);
 	}
+
+	sciterApplication().shutdown();
 
 	return result;
 }
