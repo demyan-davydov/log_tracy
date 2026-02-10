@@ -7,6 +7,8 @@ import dlt_core.indexer;
 import dlt_core.dlt;
 import ui.app_settings;
 import std.stdio;
+import dlt_core.filter : FilterConfig;
+import dlt_core.log_item : LogItem;
 
 final class DltDocument : Document
 {

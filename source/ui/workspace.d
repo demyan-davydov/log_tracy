@@ -3,7 +3,8 @@ module ui.workspace;
 import ui.document;
 import ui.document_id;
 
-import dlt_core.search : LogItem, FilterConfig;
+import dlt_core.log_item : LogItem;
+import dlt_core.filter : FilterConfig;
 
 import std.algorithm : countUntil, remove;
 import std.array : insertInPlace;
@@ -205,7 +206,7 @@ final class Workspace
 @("Workspace operations")
 unittest
 {
-    import dlt_core.search : LogItem;
+    import dlt_core.log_item : LogItem;
 
     // Minimal implementation of Document for testing
     class MockDocument : Document

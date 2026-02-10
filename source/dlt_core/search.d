@@ -3,6 +3,8 @@ module dlt_core.search;
 import dlt_core.indexer;
 import dlt_core.dlt;
 import dlt_core.fibex;
+import dlt_core.filter;
+import dlt_core.log_item;
 
 import std.algorithm;
 import std.array;
@@ -12,30 +14,6 @@ import core.thread;
 import core.atomic;
 import std.stdio;
 import std.json;
-
-/// Structure defining active filters
-struct FilterConfig
-{
-    string ecuId;
-    string appId;
-    string ctxId;
-    string payloadRegex;
-}
-
-/// Represents a decoded log message
-struct LogItem
-{
-    size_t index;
-    ulong offset;
-    ushort length;
-    ulong timestamp;
-    string ecu;
-    string appId;
-    string ctxId;
-    LogLevel level;
-    DltType type;
-    string payload;
-}
 
 class SearchEngine
 {
@@ -234,7 +212,7 @@ class SearchEngine
         item.level = LogLevel.Info;
         item.appId = "-";
         item.ctxId = "-";
-        item.type = DltType.Log;
+        item.type = LogType.Log;
 
         if (data.length >= StorageHeader.sizeof + StandardHeader.sizeof)
         {
@@ -259,8 +237,8 @@ class SearchEngine
                     auto extHdr = cast(const(ExtendedHeader)*)(stdPtr + extOffset);
                     item.level = getLogLevel(extHdr.messageInfo);
 
-                    // DltType is in bits 1-3 of messageInfo
-                    item.type = cast(DltType)((extHdr.messageInfo & MessageInfo.TypeMask) >> 1);
+                    // LogType is in bits 1-3 of messageInfo
+                    item.type = cast(LogType)((extHdr.messageInfo & MessageInfo.TypeMask) >> 1);
 
                     // DLT IDs are 4 bytes, usually ASCII. 
                     // Use cleanId to strip null bytes and non-printable characters

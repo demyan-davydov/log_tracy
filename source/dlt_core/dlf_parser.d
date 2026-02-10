@@ -1,6 +1,6 @@
 module dlt_core.dlf_parser;
 
-import dlt_core.search : FilterConfig;
+import dlt_core.filter : FilterConfig;
 import std.regex;
 import std.string;
 import std.algorithm;

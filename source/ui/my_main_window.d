@@ -9,6 +9,7 @@ import dlt_core.indexer;
 import dlt_core.search;
 import dlt_core.fibex;
 import dlt_core.dlt;
+import dlt_core.filter;
 import ui.app_settings;
 import sciter_wrapper.sciter_api;
 import sciter_wrapper.sciter_value;

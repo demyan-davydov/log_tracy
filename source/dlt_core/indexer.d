@@ -1,10 +1,10 @@
 module dlt_core.indexer;
 
 import dlt_core.dlt;
+import dlt_core.log_item;
 
 import std.mmfile;
 import std.stdio;
-import std.datetime;
 import std.algorithm : min;
 
 /// Information about a single DLT message used for indexing

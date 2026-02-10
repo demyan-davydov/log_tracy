@@ -7,6 +7,13 @@ import ui.workspace;
 import ui.dlt_document;
 import ui.document_id;
 
+import dlt_core.indexer;
+import dlt_core.search;
+import dlt_core.fibex;
+import dlt_core.dlf_parser;
+import dlt_core.filter : FilterConfig;
+import dlt_core.log_item : LogItem;
+
 import sciter.types;
 import sciter.behavior;
 
@@ -18,11 +25,6 @@ import std.algorithm;
 import std.stdio;
 import std.json;
 import std.conv : to;
-
-import dlt_core.indexer;
-import dlt_core.search;
-import dlt_core.fibex;
-import dlt_core.dlf_parser;
 
 class MainWindow : SciterWindow
 {

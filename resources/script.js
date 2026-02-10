@@ -145,6 +145,31 @@ function setupEvents() {
         }
     });
 
+    document.on("click", "#btn-dlf", () => {
+        const fn = Window.this.selectFile({
+            mode: "open",
+            filter: "DLT Filter Files (*.dlf)|*.dlf|All Files (*.*)|*.*"
+        });
+        if (fn) {
+            try {
+                const json = Window.this.xcall("loadDlf", fn);
+                if (json) {
+                    const config = JSON.parse(json);
+                    console.log("Loaded DLF config:", config);
+
+                    $("#filter-ecu").value = config.ecuId || "";
+                    $("#filter-app").value = config.appId || "";
+                    $("#filter-ctx").value = config.ctxId || "";
+                    $("#filter-payload").value = config.payloadRegex || "";
+
+                    applyFilters();
+                }
+            } catch (e) {
+                console.error("Failed to load DLF:", e);
+            }
+        }
+    });
+
     document.on("click", "#btn-clear-filters", () => {
         for (const sel of ["#filter-ecu", "#filter-app", "#filter-ctx", "#filter-payload"]) {
             $(sel).value = "";
