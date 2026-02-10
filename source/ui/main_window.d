@@ -66,6 +66,7 @@ class MainWindow : SciterWindow
     {
         if (params.cmd == BEHAVIOR_EVENTS.DOCUMENT_CLOSE)
         {
+            // this branch is not called for some reason
             writeln("DOCUMENT_CLOSE");
             saveSettings();
             return false; // Let it continue closing

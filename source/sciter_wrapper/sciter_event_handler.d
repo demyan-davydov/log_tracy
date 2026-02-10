@@ -35,8 +35,13 @@ class SciterEventHandler
 
     protected void detachEventHandler(HWINDOW hwnd)
     {
+        import sciter.dom : SCDOM_OK;
+
         writeln("Window event handler detaching... ");
         const auto res = _api.SciterWindowDetachEventHandler(hwnd, &elementProc, cast(void*) this);
+        if (res != SCDOM_OK)
+            writeln("can not detach event handler, res: ", res);
+
         writeln("Window event handler detached (Direct), result: ", res);
     }
 

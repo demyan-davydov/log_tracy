@@ -12,6 +12,37 @@ document.on("ready", function () {
     initApp();
 });
 
+function stopScroll(element) {
+    const currentScroll = element.scrollTop;
+    element.scrollTo({ top: currentScroll, behavior: "instant" });
+}
+
+Window.this.on("close", (evt) => {
+    console.log("Closing Window...");
+
+    // 1. Останавливаем инерционный скролл
+    // Перебрасываем скролл в текущую позицию без анимации
+    const logList = getLogList();
+    stopScroll(logList);
+    logList.style.behavior = "none";
+    logList.state.disabled = true;
+    logList.itemAt = null;
+    logList.totalItems = 0;
+
+    //logList.vlist.itemsTotal = 0;
+
+    logList.onScroll = null;
+    logList.onVisualChange = null;
+
+    //logList.stopTimers();
+
+    logList.remove(); // remove from DOM
+    // 2. Если есть специфические таймеры в виртуальной таблице:
+    // logList.stopTimers(); // если вы их создавали
+
+    console.log("Окно закрывается, ресурсы зачищены");
+});
+
 function initApp() {
     restoreSettings();
     setupEvents();

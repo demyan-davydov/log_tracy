@@ -69,6 +69,9 @@ int main()
 			SCRIPT_RUNTIME_FEATURES.ALLOW_SYSINFO |
 			SCRIPT_RUNTIME_FEATURES.ALLOW_CMODULES);
 
+	sciterApi().SciterSetMediaType(null, "desktop,gsciter"w.ptr);
+	//   SciterSetMediaType(pwin->get_hwnd(), WSTR("desktop,gsciter"));
+
 	int result = 0;
 
 	try
