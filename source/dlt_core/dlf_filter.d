@@ -133,7 +133,10 @@ struct DlfFilterRecord
     EnableableRegex regexSearch;
     EnableableRegex regexReplace;
 
-    // invariant (regexSearch.enabled == regexReplace.enabled);
+    invariant
+    {
+        assert(regexSearch.enabled == regexReplace.enabled);
+    }
 
     bool enableMarker;
     bool enableCtrlMsgs;
