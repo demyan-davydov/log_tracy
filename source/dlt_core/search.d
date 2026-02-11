@@ -3,7 +3,7 @@ module dlt_core.search;
 import dlt_core.indexer;
 import dlt_core.dlt;
 import dlt_core.fibex;
-import dlt_core.filter;
+import dlt_core.log_filter;
 import dlt_core.log_item;
 
 import std.algorithm;

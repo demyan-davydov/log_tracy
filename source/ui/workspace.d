@@ -4,7 +4,7 @@ import ui.document;
 import ui.document_id;
 
 import dlt_core.log_item : LogItem;
-import dlt_core.filter : LogFilter;
+import dlt_core.log_filter : LogFilter;
 
 import std.algorithm : countUntil, remove;
 import std.array : insertInPlace;

@@ -1,6 +1,6 @@
 module dlt_core.dlf_filter_serialization;
 
-import dlt_core.dlf_filter;
+import dlt_core.dlf_filter_record;
 import dlt_core.log_item;
 import dxml.dom;
 import std.stdio : writeln;

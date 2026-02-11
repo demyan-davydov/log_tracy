@@ -1,7 +1,7 @@
-module dlt_core.dlf_filter;
+module dlt_core.dlf_filter_record;
 
 import dlt_core.log_item;
-import dlt_core.filter;
+import dlt_core.log_filter;
 import std.regex;
 import std.uni : toLower;
 

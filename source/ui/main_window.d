@@ -11,8 +11,9 @@ import dlt_core.indexer;
 import dlt_core.search;
 import dlt_core.fibex;
 import dlt_core.dlf_filter_serialization;
-import dlt_core.dlf_filter;
-import dlt_core.filter : DlfLogFilter;
+import dlt_core.dlf_filter_record;
+import dlt_core.dlf_log_filter : DlfLogFilter;
+import dlt_core.log_filter : LogFilter;
 import dlt_core.log_item : LogItem;
 
 import sciter.types;
@@ -227,8 +228,11 @@ class MainWindow : SciterWindow
                 {
                     try
                     {
-                        auto filters = loadDlf(normalizePath(path));
-
+                        auto filter = new DlfLogFilter();
+                        filter.load(normalizePath(path));
+                        _workspace.current.applyFilter(filter);
+                        // @todo: return filter info to UI
+                        /*
                         if (filters.length > 0)
                         {
                             auto f = filters[0];
@@ -239,7 +243,7 @@ class MainWindow : SciterWindow
                                 "payloadRegex": f.payloadText.value.asString()
                             ];
                             resultView = j.toString().toUTF16();
-                        }
+                        }*/
                     }
                     catch (Exception e)
                     {
