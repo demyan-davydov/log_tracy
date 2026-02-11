@@ -3,7 +3,6 @@ module dlt_core.dlf_filter;
 import dlt_core.log_item;
 import dlt_core.filter;
 import std.regex;
-import std.sumtype : SumType, matchSum = match;
 import std.uni : toLower;
 
 private struct Enableable(T)
@@ -180,81 +179,6 @@ struct DlfFilterRecord
     bool enableCtrlMsgs;
 
     string filterColour; // is RGB like #ff0000, but stored as string
-
-    /*
-    string toXml() const
-    {
-        auto sb = appender!string;
-        sb.put("<filter>\n");
-
-        // Helper specifically for DLT XML booleans (0/1)
-        static string b2s(bool b)
-        {
-            return b ? "1" : "0";
-        }
-
-        // Helper to check if a SumType value is actually holding a Regex type
-        static bool isRegex(T)(const T t)
-        {
-            return t.value.matchSum!(
-                (const(Regex!char) r) => true,
-                (const(string) s) => false
-            );
-        }
-
-        sb.put("  <type>" ~ type.to!int
-                .to!string ~ "</type>\n");
-        sb.put("  <name>" ~ name ~ "</name>\n");
-        sb.put("  <ecuid>" ~ ecuId.value ~ "</ecuid>\n");
-        sb.put("  <applicationid>" ~ applicationId.toString() ~ "</applicationid>\n");
-        sb.put("  <contextid>" ~ contextId.toString() ~ "</contextid>\n");
-        sb.put("  <headertext>" ~ headerText.toString() ~ "</headertext>\n");
-        sb.put("  <payloadtext>" ~ payloadText.toString() ~ "</payloadtext>\n");
-
-        sb.put("  <regex_search>" ~ regexSearch.toString() ~ "</regex_search>\n");
-        sb.put("  <regex_replace>" ~ regexReplace.toString() ~ "</regex_replace>\n");
-
-        sb.put("  <messageIdMin>" ~ messageId.min.to!string ~ "</messageIdMin>\n");
-        sb.put("  <messageIdMax>" ~ messageId.max.to!string ~ "</messageIdMax>\n");
-
-        sb.put("  <enableregexp_Appid>" ~ b2s(isRegex(applicationId)) ~ "</enableregexp_Appid>\n");
-        sb.put("  <enableregexp_Context>" ~ b2s(isRegex(contextId)) ~ "</enableregexp_Context>\n");
-        sb.put("  <enableregexp_Header>" ~ b2s(isRegex(headerText)) ~ "</enableregexp_Header>\n");
-        sb.put("  <enableregexp_Payload>" ~ b2s(isRegex(payloadText)) ~ "</enableregexp_Payload>\n");
-
-        sb.put("  <ignoreCase_Header>" ~ b2s(headerText.caseInsensitive) ~ "</ignoreCase_Header>\n");
-        sb.put("  <ignoreCase_Payload>" ~ b2s(
-                payloadText.caseInsensitive) ~ "</ignoreCase_Payload>\n");
-
-        sb.put("  <enablefilter>" ~ b2s(enabled) ~ "</enablefilter>\n");
-        sb.put("  <enableecuid>" ~ b2s(ecuId.enabled) ~ "</enableecuid>\n");
-        sb.put("  <enableapplicationid>" ~ b2s(applicationId.enabled) ~ "</enableapplicationid>\n");
-        sb.put("  <enablecontextid>" ~ b2s(contextId.enabled) ~ "</enablecontextid>\n");
-        sb.put("  <enableheadertext>" ~ b2s(headerText.enabled) ~ "</enableheadertext>\n");
-        sb.put("  <enablepayloadtext>" ~ b2s(payloadText.enabled) ~ "</enablepayloadtext>\n");
-        sb.put("  <enablectrlmsgs>" ~ b2s(enableCtrlMsgs) ~ "</enablectrlmsgs>\n");
-
-        sb.put("  <enableLogLevelMin>" ~ b2s(logLevel.enabled) ~ "</enableLogLevelMin>\n");
-        sb.put("  <enableLogLevelMax>" ~ b2s(logLevel.enabled) ~ "</enableLogLevelMax>\n");
-        sb.put("  <enableMarker>" ~ b2s(enableMarker) ~ "</enableMarker>\n");
-        sb.put("  <enableMessageId>" ~ b2s(messageId.enabled) ~ "</enableMessageId>\n");
-
-        sb.put("  <enableRegexSearchReplace>" ~ b2s(
-                regexSearch.enabled) ~ "</enableRegexSearchReplace>\n");
-
-        sb.put("  <filterColour>" ~ filterColour ~ "</filterColour>\n");
-
-        sb.put("  <logLevelMax>" ~ logLevel.max
-                .to!int
-                .to!string ~ "</logLevelMax>\n");
-        sb.put("  <logLevelMin>" ~ logLevel.min
-                .to!int
-                .to!string ~ "</logLevelMin>\n");
-
-        sb.put("</filter>");
-        return sb.data;
-    }
-    */
 }
 
 bool isMatched(ulong index, in const(LogItem) item, in const(DlfFilterRecord) config)

@@ -3,5 +3,5 @@ description "DLT file viewer"
 authors "Demian Davidov"
 copyright "Copyright © 2026, Demian Davidov"
 license "proprietary"
-
+dependency "dxml" version="~>0.4.5"
 lflags "-framework" "Cocoa" "-L/usr/lib" platform="osx"
