@@ -6,6 +6,7 @@ import dlt_core.log_item;
 import std.mmfile;
 import std.stdio;
 import std.algorithm : min;
+import std.stdint;
 
 /// Information about a single DLT message used for indexing
 struct MsgInfo
@@ -13,7 +14,44 @@ struct MsgInfo
     ulong offset;
     ushort length;
     ulong timestamp; // Timestamp from Storage Header (microseconds since epoch usually, or from Standard Header)
-    uint ecuId; // Helper mapping needed later
+    uint32_t ecuId; // Helper mapping needed later
+}
+
+//! @returns slice of original buffer containing DLT header (DLT\01) 
+//! or empty slice reffered to bufferEnd
+const(char)[] findHeaderPattern(const(char)[] buffer)
+{
+    const(char)* ptr = buffer.ptr;
+    const(char)* end = buffer.ptr + buffer.length - StorageHeader.sizeof + 1;
+
+    // DLT header is 4 bytes "DLT\01".
+    // This sequence do not contain repeated symbols, 
+    // so we can use simplier algorithm to search for it:
+    // we do not to return to the start of the buffer
+    // and search for the pattern from the start
+    // we can just move forward and check each byte
+
+    while (ptr < end)
+    {
+        if (*ptr++ != DLT_PATTERN[0])
+            continue;
+
+        if (*ptr != DLT_PATTERN[1])
+            continue;
+        ++ptr;
+
+        if (*ptr != DLT_PATTERN[2])
+            continue;
+        ++ptr;
+
+        if (*ptr != DLT_PATTERN[3])
+            continue;
+
+        ptr -= DLT_PATTERN.sizeof - 1;
+        return ptr[0 .. DLT_PATTERN.sizeof];
+    }
+
+    return buffer[$ .. $];
 }
 
 class Indexer
@@ -53,7 +91,7 @@ class Indexer
     {
         ulong offset = 0;
         const void* data = _mmFile[].ptr;
-        ulong size = _mmFile.length;
+        const ulong size = _mmFile.length;
 
         while (offset < size)
         {
@@ -62,7 +100,7 @@ class Indexer
                 break;
 
             auto sh = cast(const(StorageHeader)*)(data + offset);
-            if (sh.pattern != "DLT\01")
+            if (sh.pattern != DLT_PATTERN)
             {
                 // Determine recovery strategy (search next pattern? for now assume valid DLT)
                 // Simplest recovery: advance 1 byte
@@ -90,7 +128,7 @@ class Indexer
 
             // Create Index Entry
             // ECU ID is char[4]. We cast it to uint for storage in MsgInfo.
-            uint ecuId = *cast(uint*) sh.ecuId.ptr;
+            const uint32_t ecuId = *cast(const(uint32_t)*) sh.ecuId.ptr;
             _index ~= MsgInfo(msgOffset, length, currentTimestamp, ecuId);
 
             // Advance to next message (skip the rest of this known message)
@@ -119,4 +157,29 @@ private ushort bigEndianToNative(ushort val) pure nothrow @nogc
         return val;
     else
         return cast(ushort)((val >> 8) | (val << 8));
+}
+
+// test findHeaderPattern
+unittest
+{
+    const(char)[] data1 = "DLT\01___________________";
+    assert(findHeaderPattern(data1).ptr == data1.ptr);
+
+    const(char)[] data2 = "--DLT\01___________________";
+    assert(findHeaderPattern(data2).ptr == data2.ptr + 2);
+
+    const(char)[] data3 = "DLL\01___________________";
+    assert(findHeaderPattern(data3).ptr == data3.ptr + data3.length);
+
+    // 1 letter of prefix
+    const(char)[] data4 = "DDLT\01___________________";
+    assert(findHeaderPattern(data4).ptr == data4.ptr + 1);
+
+    // 2 letters of prefix
+    const(char)[] data5 = "DLDLT\01___________________";
+    assert(findHeaderPattern(data5).ptr == data5.ptr + 2);
+
+    // 3 letters of prefix
+    const(char)[] data6 = "DLTDLT\01___________________";
+    assert(findHeaderPattern(data6).ptr == data6.ptr + 3);
 }

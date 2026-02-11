@@ -3,9 +3,11 @@ module dlt_core.dlt;
 import dlt_core.log_item;
 import std.bitmanip;
 
-// DLT Data Structures
+///
+/// DLT Data Structures
+///
 
-/// The storage header used in DLT files (16 bytes)
+//! @brief The storage header used in DLT files (16 bytes)
 struct StorageHeader
 {
 align(1):
@@ -15,7 +17,10 @@ align(1):
     char[4] ecuId;
 }
 
-/// Standard Header Flags
+//! @brief Mark for beginning of DLT message
+enum char[4] DLT_PATTERN = ['D', 'L', 'T', '\01'];
+
+//! @brief Standard Header Flags
 enum HeaderType : ubyte
 {
     UseExtendedHeader = 1 << 0,
@@ -26,7 +31,7 @@ enum HeaderType : ubyte
     VersionMask = 0xE0
 }
 
-/// Fixed part of the Standard Header (4 bytes)
+//! @brief Fixed part of the Standard Header (4 bytes)
 struct StandardHeader
 {
 align(1):
@@ -35,7 +40,7 @@ align(1):
     ushort length; // Total length of the message
 }
 
-/// Extended Header (optional, 10 bytes)
+//! @brief Extended Header (optional, 10 bytes)
 struct ExtendedHeader
 {
 align(1):
@@ -45,7 +50,7 @@ align(1):
     ubyte[4] contextId;
 }
 
-/// Message Info extended header field details
+//! @brief Message Info extended header field details
 enum MessageInfo : ubyte
 {
     Verbose = 1 << 0,
@@ -53,7 +58,7 @@ enum MessageInfo : ubyte
     // ... Type definitions
 }
 
-/// Type Info flags for Verbose arguments
+//! @brief Type Info flags for Verbose arguments
 enum TypeInfoFlags : uint
 {
     TypeBoolean = 1 << 4,
@@ -71,13 +76,13 @@ enum TypeInfoFlags : uint
     StringCodingUTF8 = 1 << 15
 }
 
-/// Helper to check if extended header is present
+//! @brief Helper to check if extended header is present
 bool useExtendedHeader(ubyte ht) pure nothrow @nogc
 {
     return (ht & HeaderType.UseExtendedHeader) != 0;
 }
 
-/// Helper to get Log Level from Extended Header Message Info
+//! @brief Helper to get Log Level from Extended Header Message Info
 LogLevel getLogLevel(ubyte info) pure nothrow @nogc
 {
     // Bit 0: Verbose.
@@ -94,7 +99,7 @@ LogLevel getLogLevel(ubyte info) pure nothrow @nogc
     return LogLevel.Info; // Default/Unknown for Non-Verbose
 }
 
-/// Calculate the full header length (Standard + Extras + Extended)
+//! @brief Calculate the full header length (Standard + Extras + Extended)
 uint getHeaderSize(const(ubyte)* ptr) pure nothrow @nogc
 {
     // Ptr points to Standard Header (after Storage Header)
