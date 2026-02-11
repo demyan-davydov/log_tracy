@@ -10,7 +10,7 @@ import std.stdio;
  * Parses DLT Viewer Filter file (.dlf)
  * Returns the first enabled filter found in the file.
  */
-FilterConfig parseDlf(string xmlContent)
+FilterConfig parseDlf(const(char)[] xmlContent) pure
 {
     FilterConfig config;
 
@@ -26,11 +26,11 @@ FilterConfig parseDlf(string xmlContent)
 
         if (!filterParams.empty)
         {
-            string bodyContent = filterParams[1];
+            auto bodyContent = filterParams[1];
 
-            auto extract = (string tag) {
+            auto extract = (const(char)[] tag) {
                 auto m = matchFirst(bodyContent, regex("<" ~ tag ~ ">(.*?)</" ~ tag ~ ">", "s"));
-                return m.empty ? "" : m[1].strip;
+                return m.empty ? "" : m[1].strip.idup;
             };
 
             config.ecuId = extract("ecuid");
