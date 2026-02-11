@@ -8,6 +8,81 @@ import std.array : appender;
 import std.conv : to;
 import std.range;
 
+import std.file : write, readText;
+
+void saveDlf(string filename, const DlfFilterRecord[] filters)
+{
+    auto sb = appender!string;
+    sb.put("<dltfilter>\n");
+    foreach (ref f; filters)
+    {
+        sb.put(toXml(f));
+        sb.put("\n");
+    }
+    sb.put("</dltfilter>");
+
+    // std.file.write takes void[], string is compatible
+    write(filename, sb.data);
+}
+
+DlfFilterRecord[] loadDlf(string filename)
+{
+    string content = readText(filename);
+    DlfFilterRecord[] filters;
+
+    try
+    {
+        auto dom = parseDOM(content);
+        // Root should be dltfilter, usually
+        // But dxml parseDOM returns a "root" pseudo-element containing the document elements
+
+        // Find dltfilter node
+        DOMEntity!string rootNode;
+        bool foundRoot = false;
+
+        foreach (child; dom.children)
+        {
+            if (child.name == "dltfilter")
+            {
+                rootNode = child;
+                foundRoot = true;
+                break;
+            }
+        }
+
+        if (!foundRoot)
+        {
+            // Fallback: maybe the file is just one <filter> or root is implicit? 
+            // Standard DLF starts with <dltfilter>
+            // Let's try iterating top level children if they are <filter>
+            foreach (child; dom.children)
+            {
+                if (child.name == "filter")
+                {
+                    filters ~= fromXml(child);
+                }
+            }
+            return filters;
+        }
+
+        // Iterate children of <dltfilter>
+        foreach (child; rootNode.children)
+        {
+            if (child.name == "filter")
+            {
+                filters ~= fromXml(child);
+            }
+        }
+    }
+    catch (Exception e)
+    {
+        writeln("Error loading DLF: ", e.msg);
+        throw e; // Rethrow or handle? For now rethrow or empty?
+    }
+
+    return filters;
+}
+
 string toXml(const DlfFilterRecord record)
 {
     auto sb = appender!string;
@@ -330,4 +405,56 @@ unittest
     assert(parsed.regexReplace.value.asString() == original.regexReplace.value.asString());
 
     writeln("Serialization/Deserialization Test Passed");
+
+}
+
+unittest
+{
+    writeln("Test List Serialization (saveDlf/loadDlf)");
+    string tempFile = "temp_test_filters.dlf";
+
+    DlfFilterRecord[] filters;
+
+    // Filter 1
+    DlfFilterRecord f1;
+    f1.enabled = true;
+    f1.name = "Filter One";
+    f1.type = LogType.Log;
+    f1.ecuId.value = "ECU1";
+    f1.ecuId.enabled = true;
+    filters ~= f1;
+
+    // Filter 2
+    DlfFilterRecord f2;
+    f2.enabled = false;
+    f2.name = "Filter Two";
+    f2.type = LogType.Control;
+    f2.applicationId.value.setRegex("APP.*");
+    f2.applicationId.enabled = true;
+    filters ~= f2;
+
+    // Save
+    saveDlf(tempFile, filters);
+
+    // Load
+    DlfFilterRecord[] loaded = loadDlf(tempFile);
+
+    assert(loaded.length == 2);
+
+    assert(loaded[0].name == "Filter One");
+    assert(loaded[0].ecuId.value == "ECU1");
+    assert(loaded[0].type == LogType.Log);
+
+    assert(loaded[1].name == "Filter Two");
+    assert(loaded[1].applicationId.value.asString() == "APP.*");
+    assert(loaded[1].applicationId.value.isRegex == true);
+    assert(loaded[1].type == LogType.Control);
+
+    // Cleanup
+    import std.file : remove, exists;
+
+    if (exists(tempFile))
+        remove(tempFile);
+
+    writeln("List Serialization Test Passed");
 }
