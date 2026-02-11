@@ -12,6 +12,7 @@ struct LogItem
     string ctxId;
     LogLevel level;
     LogType type;
+    uint messageId;
     string payload;
 }
 

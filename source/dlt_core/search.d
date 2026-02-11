@@ -223,6 +223,7 @@ class SearchEngine
                 const(ubyte)[] payload = data[StorageHeader.sizeof + headerSize .. $];
                 item.payload = decodePayload(stdPtr, payload, _fibex);
 
+                item.messageId = peekMessageId(stdPtr);
                 auto stdHdr = cast(const(StandardHeader)*) stdPtr;
                 if (useExtendedHeader(stdHdr.headerType))
                 {
