@@ -84,18 +84,40 @@ int main()
 		// For now, load from filesystem absolute path or relative?
 		// SciterLoadFile handles absolute paths well.
 
+		import std.file : thisExePath;
+		import std.path : dirName;
+
+		string exeDir = thisExePath().dirName;
 		string projectRoot = getcwd();
-		// If projectRoot already ends with resources, don't add it again (though dub usually runs from root)
-		string resources = buildPath(projectRoot, "resources", "main.htm");
-		if (exists(resources))
+
+		string[] possiblePaths = [
+			// Relative to executable (Best for deployed apps)
+			buildPath(exeDir, "resources", "main.htm"),
+			buildPath(exeDir, "main.htm"),
+			buildPath(exeDir, "../Resources/main.htm"), // macOS Bundle standard
+
+			// Relative to CWD (Development)
+			buildPath(projectRoot, "resources", "main.htm"),
+			buildPath(projectRoot, "main.htm")
+		];
+
+		string resources;
+		foreach (path; possiblePaths)
+		{
+			if (exists(path))
+			{
+				resources = path;
+				break;
+			}
+		}
+
+		if (resources.length > 0)
 		{
 			win.loadFile(resources);
 		}
 		else
 		{
-			// Try without "resources" if dub is running from within resources/ for some reason
-			resources = buildPath(projectRoot, "main.htm");
-			win.loadFile(resources);
+			writeln("Error: Could not find main.htm in any of the expected locations.");
 		}
 
 		//win.run();

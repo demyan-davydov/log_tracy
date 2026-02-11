@@ -22,3 +22,5 @@ sciter-webview.dylib
 *.lst
 *.dlt
 *.log
+DltExplorer.app
+dlt_explorer.desktop
