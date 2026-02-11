@@ -10,7 +10,8 @@ import ui.document_id;
 import dlt_core.indexer;
 import dlt_core.search;
 import dlt_core.fibex;
-import dlt_core.dlf_parser;
+import dlt_core.dlf_filter_serialization;
+import dlt_core.dlf_filter;
 import dlt_core.filter : FilterConfig;
 import dlt_core.log_item : LogItem;
 
@@ -226,18 +227,19 @@ class MainWindow : SciterWindow
                 {
                     try
                     {
-                        import std.file : readText;
+                        auto filters = loadDlf(normalizePath(path));
 
-                        string content = readText(normalizePath(path));
-                        auto config = parseDlf(content);
-
-                        JSONValue j = [
-                            "ecuId": config.ecuId,
-                            "appId": config.appId,
-                            "ctxId": config.ctxId,
-                            "payloadRegex": config.payloadRegex
-                        ];
-                        resultView = j.toString().toUTF16();
+                        if (filters.length > 0)
+                        {
+                            auto f = filters[0];
+                            JSONValue j = [
+                                "ecuId": f.ecuId.value,
+                                "appId": f.applicationId.value.asString(),
+                                "ctxId": f.contextId.value.asString(),
+                                "payloadRegex": f.payloadText.value.asString()
+                            ];
+                            resultView = j.toString().toUTF16();
+                        }
                     }
                     catch (Exception e)
                     {
