@@ -83,14 +83,13 @@ class SearchEngine
     }
 
     /// Apply filters asynchronously
-    void applyFilter(FilterConfig config)
+    void applyFilter(LogFilter filter)
     {
         // Cancel existing
         cancel();
 
-        // If config is empty, just reset
-        if (config.ecuId.empty && config.appId.empty && config.ctxId.empty && config
-            .payloadRegex.empty)
+        // If filter is null, just reset
+        if (filter is null)
         {
             reset();
             return;
@@ -103,7 +102,7 @@ class SearchEngine
         _searchThread = new Thread({
             try
             {
-                runFilter(config);
+                runFilter(filter);
             }
             catch (Exception e)
             {
@@ -115,29 +114,14 @@ class SearchEngine
         _searchThread.start();
     }
 
-    private void runFilter(FilterConfig config)
+    private void runFilter(LogFilter filter)
     {
         import std.conv : to;
 
         size_t[] newIndices;
 
-        // Setup Regex
-        Regex!char re;
-        bool useRegex = !config.payloadRegex.empty;
-        if (useRegex)
-        {
-            try
-            {
-                re = regex(config.payloadRegex);
-            }
-            catch (Exception e)
-            {
-                useRegex = false;
-            }
-        }
-
         auto total = _indexer.totalMessages;
-        auto msgs = _indexer.index;
+        //auto msgs = _indexer.index; // Not needed if we use getLogItem
 
         // Iterate
         int lastProg = 0;
@@ -154,25 +138,17 @@ class SearchEngine
                 lastProg = p;
             }
 
-            bool match = true;
+            // We need to construct a LogItem to pass to the filter
+            // This is slower but correct for the abstract interface
+            // Optimization: Maybe add a specialized matches(Indexer, index) to LogFilter?
+            // For now, let's use a helper that doesn't rely on getLogItem's view logic
+            // actually getLogItem checks _isFiltered which is false here (we reset it)
 
-            if (useRegex)
-            {
-                auto msg = msgs[i];
-                auto slice = _indexer.getSlice(msg.offset, msg.length);
-                if (slice)
-                {
-                    string s = cast(string) slice;
-                    if (matchFirst(s, re).empty)
-                        match = false;
-                }
-                else
-                {
-                    match = false;
-                }
-            }
+            // However, getLogItem is public and uses size_t index.
+            // Let's use it.
+            LogItem item = getLogItemCommon(i);
 
-            if (match)
+            if (filter.matches(item))
             {
                 newIndices ~= i;
             }
@@ -185,15 +161,12 @@ class SearchEngine
         }
     }
 
-    LogItem getLogItem(size_t index)
+    // Helper to get LogItem by REAL index (skipping view mapping)
+    private LogItem getLogItemCommon(size_t realIndex)
     {
-        import std.conv : to;
+        // Should effectively duplicate getLogItem logic but for a known real index
+        // Or refactor getLogItem to use this.
 
-        const size_t total = getLogCount();
-        if (index < 0 || index >= total)
-            return LogItem.init;
-
-        size_t realIndex = _isFiltered ? _filteredIndices[index] : index;
         auto msg = _indexer.index[realIndex];
 
         // Fetch real data for decoding
@@ -222,6 +195,8 @@ class SearchEngine
             {
                 const(ubyte)[] payload = data[StorageHeader.sizeof + headerSize .. $];
                 item.payload = decodePayload(stdPtr, payload, _fibex);
+
+                // ... (rest of parsing logic matching getLogItem)
 
                 item.messageId = peekMessageId(stdPtr);
                 auto stdHdr = cast(const(StandardHeader)*) stdPtr;
@@ -258,6 +233,18 @@ class SearchEngine
         }
 
         return item;
+    }
+
+    LogItem getLogItem(size_t index)
+    {
+        import std.conv : to;
+
+        const size_t total = getLogCount();
+        if (index < 0 || index >= total)
+            return LogItem.init;
+
+        size_t realIndex = _isFiltered ? _filteredIndices[index] : index;
+        return getLogItemCommon(realIndex);
     }
 
     private string cleanId(const ubyte[4] id) const pure

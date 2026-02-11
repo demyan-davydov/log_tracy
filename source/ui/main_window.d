@@ -12,7 +12,7 @@ import dlt_core.search;
 import dlt_core.fibex;
 import dlt_core.dlf_filter_serialization;
 import dlt_core.dlf_filter;
-import dlt_core.filter : FilterConfig;
+import dlt_core.filter : DlfLogFilter;
 import dlt_core.log_item : LogItem;
 
 import sciter.types;
@@ -361,14 +361,14 @@ class MainWindow : SciterWindow
     {
         try
         {
-            auto j = parseJSON(json);
-            FilterConfig c;
-            c.ecuId = j["ecuId"].str;
-            c.appId = j["appId"].str;
-            c.ctxId = j["ctxId"].str;
-            c.payloadRegex = j["payloadRegex"].str;
+            // @todo: implementation
+            return;
 
-            _workspace.current.applyFilter(c);
+            //auto j = parseJSON(json);
+            //DlfLogFilter c = new DlfLogFilter();
+            //c.load(json);
+
+            //_workspace.current.applyFilter(c);
         }
         catch (Exception e)
         {

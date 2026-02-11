@@ -89,7 +89,6 @@ class MyMainWindow
     private SearchEngine _searchEngine;
     private FibexParser _fibexParser;
     private Indexer _currentIndexer;
-    private FilterConfig _currentConfig;
     private AppSettings _settings;
 
     this(AppSettings settings)
@@ -571,14 +570,7 @@ class MyMainWindow
     private void onApplyFilter(string json)
     { /* ... */ try
         {
-            auto j = parseJSON(json);
-            FilterConfig c;
-            c.ecuId = j["ecuId"].str;
-            c.appId = j["appId"].str;
-            c.ctxId = j["ctxId"].str;
-            c.payloadRegex = j["payloadRegex"].str;
-            if (_searchEngine)
-                _searchEngine.applyFilter(c);
+            // not implemented
         }
         catch (Exception e)
         {

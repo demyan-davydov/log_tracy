@@ -7,7 +7,7 @@ import dlt_core.indexer;
 import dlt_core.dlt;
 import ui.app_settings;
 import std.stdio;
-import dlt_core.filter : FilterConfig;
+import dlt_core.filter : LogFilter;
 import dlt_core.log_item : LogItem;
 
 final class DltDocument : Document
@@ -17,7 +17,7 @@ final class DltDocument : Document
     private SearchEngine _searchEngine;
     private FibexParser _fibexParser;
     private Indexer _currentIndexer;
-    private FilterConfig _filterConfig;
+    private LogFilter _filter;
 
     this(string path)
     {
@@ -84,10 +84,10 @@ final class DltDocument : Document
         }
     }
 
-    override void applyFilter(FilterConfig config)
+    override void applyFilter(LogFilter filter)
     {
-        _filterConfig = config;
-        _searchEngine.applyFilter(config);
+        _filter = filter;
+        _searchEngine.applyFilter(filter);
     }
 
     override size_t length() const

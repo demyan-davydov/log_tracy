@@ -4,7 +4,7 @@ import ui.document;
 import ui.document_id;
 
 import dlt_core.log_item : LogItem;
-import dlt_core.filter : FilterConfig;
+import dlt_core.filter : LogFilter;
 
 import std.algorithm : countUntil, remove;
 import std.array : insertInPlace;
@@ -37,7 +37,7 @@ private class NullDocument : Document
     {
     }
 
-    void applyFilter(FilterConfig config)
+    void applyFilter(LogFilter filter)
     {
     }
 
@@ -241,7 +241,7 @@ unittest
         {
         }
 
-        void applyFilter(FilterConfig config)
+        void applyFilter(LogFilter filter)
         {
         }
 

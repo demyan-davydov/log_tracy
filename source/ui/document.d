@@ -4,7 +4,7 @@ import dlt_core.search;
 import dlt_core.fibex;
 import dlt_core.indexer;
 import dlt_core.dlt;
-import dlt_core.filter : FilterConfig;
+import dlt_core.filter : LogFilter;
 import dlt_core.log_item;
 import ui.app_settings;
 import std.stdio;
@@ -19,7 +19,7 @@ interface Document
 
     void openFibex(string path);
 
-    void applyFilter(FilterConfig config);
+    void applyFilter(LogFilter filter);
 
     LogItem logItem(size_t index);
 
