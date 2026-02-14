@@ -247,7 +247,7 @@ class SearchEngine
         return getLogItemCommon(realIndex);
     }
 
-    private string cleanId(const ubyte[4] id) const pure
+    static private string cleanId(const ubyte[4] id) pure
     {
         import std.ascii : isPrintable;
 
@@ -296,6 +296,11 @@ class SearchEngine
                     uint typeInfo = readValue!uint(p[0 .. 4], msbf);
                     p = p[4 .. $];
 
+                    debug
+                    {
+                        writefln("type info: %b", typeInfo);
+                    }
+
                     if (typeInfo & TypeInfoFlags.VariableInfo)
                     {
                         for (int k = 0; k < 2; ++k)
@@ -309,14 +314,12 @@ class SearchEngine
                             }
                         }
                     }
-
-                    if (typeInfo & TypeInfoFlags.FixedPoint)
+                    else if (typeInfo & TypeInfoFlags.FixedPoint)
                     {
                         if (p.length >= 8)
                             p = p[8 .. $];
                     }
-
-                    if (typeInfo & TypeInfoFlags.TypeBoolean)
+                    else if (typeInfo & TypeInfoFlags.TypeBoolean)
                     {
                         if (p.length >= 1)
                         {
@@ -411,7 +414,12 @@ class SearchEngine
                             if (p.length >= len)
                             {
                                 const(ubyte)[] rawData = p[0 .. len];
-                                bool printable = (len > 0);
+
+                                // some strings are null terminated, just remove null terminator
+                                if (len > 0 && rawData[$ - 1] == 0)
+                                    rawData = rawData[0 .. $ - 1];
+
+                                bool printable = (rawData.length > 0);
                                 foreach (b; rawData)
                                     if (b < 32 && b != 10 && b != 13 && b != 9)
                                     {
@@ -420,8 +428,27 @@ class SearchEngine
                                     }
 
                                 if (printable)
-                                    args ~= "\"" ~ cast(string) rawData ~ "\"";
-                                else if (len <= 16)
+                                    args ~= cast(string) rawData;
+                                else
+                                {
+                                    // 
+
+                                    string res;
+                                    foreach (const(ubyte) b; rawData)
+                                    {
+                                        if (b < 32 && b != 10 && b != 13 && b != 9)
+                                        {
+                                            res ~= format("[%02X]", b);
+                                        }
+                                        else
+                                        {
+                                            res ~= cast(char) b;
+                                        }
+                                    }
+
+                                    args ~= res;
+                                }
+                                /*else if (len <= 16)
                                 {
                                     string hex;
                                     foreach (b; rawData)
@@ -429,7 +456,8 @@ class SearchEngine
                                     args ~= "[" ~ hex ~ "]";
                                 }
                                 else
-                                    args ~= format("Raw(%d bytes)", len);
+                                    args ~= format("Raw(%d bytes)", len);*/
+
                                 p = p[len .. $];
                             }
                         }
@@ -437,23 +465,29 @@ class SearchEngine
                     else
                         args ~= format("<UnknownTI:0x%08X>", typeInfo);
                 }
+
                 if (args.length > 0)
+                {
+                    debug
+                    {
+                        import std.stdio;
+
+                        writeln("str: ", args.join(" "));
+                    }
                     return args.join(" ");
+                }
+
                 return "Verbose Msg (" ~ to!string(extHdr.numberOfArguments) ~ " args)";
             }
         }
-
-        if (!isVerbose)
+        else // not useExtendedHeader
         {
-            // Non-Verbose: Use MsgID for FIBEX lookup
-            uint msgId = peekMessageId(stdHdrPtr);
-            if (fibex)
+            debug
             {
-                string desc = fibex.getDescription(msgId);
-                if (!desc.empty)
-                    return desc;
+                import std.stdio;
+
+                writeln("useExtendedHeader = false");
             }
-            return format("Non-Verbose ID: 0x%08X", msgId);
         }
 
         return "Legacy DLT Message";

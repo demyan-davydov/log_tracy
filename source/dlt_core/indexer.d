@@ -92,6 +92,7 @@ class Indexer
         ulong offset = 0;
         const void* data = _mmFile[].ptr;
         const ulong size = _mmFile.length;
+        const(char)* dataChar = cast(const(char)*) data;
 
         while (offset < size)
         {
@@ -107,6 +108,13 @@ class Indexer
                 offset++;
                 continue;
             }
+
+            // find next header
+            auto nextHeader = findHeaderPattern(dataChar[offset .. size]);
+            if (nextHeader.length == 0)
+                break;
+
+            offset += nextHeader.ptr - (dataChar + offset);
 
             ulong msgOffset = offset;
             ulong currentTimestamp = cast(ulong) sh.seconds * 1_000_000 + sh.microseconds;
