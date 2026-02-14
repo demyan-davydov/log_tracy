@@ -100,19 +100,12 @@ class Indexer
             if (size - offset < StorageHeader.sizeof)
                 break;
 
-            auto sh = cast(const(StorageHeader)*)(data + offset);
-            if (sh.pattern != DLT_PATTERN)
-            {
-                // Determine recovery strategy (search next pattern? for now assume valid DLT)
-                // Simplest recovery: advance 1 byte
-                offset++;
-                continue;
-            }
-
             // find next header
             auto nextHeader = findHeaderPattern(dataChar[offset .. size]);
             if (nextHeader.length == 0)
                 break;
+
+            auto sh = cast(const(StorageHeader)*) nextHeader.ptr;
 
             offset += nextHeader.ptr - (dataChar + offset);
 
