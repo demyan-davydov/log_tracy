@@ -41,6 +41,7 @@ LogItemHeaders findHeaders(const(ubyte)[] data) pure nothrow
 
     if (useExtendedHeader(headers.standard.headerType))
     {
+        /*
         uint extOffset = StandardHeader.sizeof;
         if (headers.standard.headerType & StandardHeader.Type.WithEcuId)
             extOffset += 4;
@@ -53,10 +54,17 @@ LogItemHeaders findHeaders(const(ubyte)[] data) pure nothrow
 
         if (data.length < extendedOffset + ExtendedHeader.sizeof)
             return headers; // invalid (no extended header)
+        */
+
+        const auto extendedOffset = StorageHeader.sizeof + headers.standard.fullHeaderSize();
+        const auto headersSize = extendedOffset + ExtendedHeader.sizeof;
+
+        if (data.length < headersSize)
+            return headers; // invalid (no extended header)
 
         headers.extended = cast(const(ExtendedHeader)*)(data.ptr + extendedOffset);
 
-        size_t payloadOffset = extendedOffset + ExtendedHeader.sizeof;
+        const size_t payloadOffset = headersSize;
         if (data.length > payloadOffset)
             headers.payload = data[payloadOffset .. $];
         else
@@ -81,7 +89,7 @@ LogItemHeaders findHeaders(const(ubyte)[] data) pure nothrow
     }
     else
     {
-        size_t payloadOffset = StorageHeader.sizeof + StandardHeader.sizeof;
+        const size_t payloadOffset = StorageHeader.sizeof + StandardHeader.sizeof;
         if (data.length > payloadOffset)
             headers.payload = data[payloadOffset .. $];
         else
