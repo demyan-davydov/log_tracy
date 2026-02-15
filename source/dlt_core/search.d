@@ -167,6 +167,24 @@ class SearchEngine
         // Should effectively duplicate getLogItem logic but for a known real index
         // Or refactor getLogItem to use this.
 
+        import dlt_core.dlt_parser : parseDltItem;
+
+        auto msg = _indexer.index[realIndex];
+
+        // Fetch real data for decoding
+        const(ubyte[]) data = _indexer.getSlice(msg.offset, msg.length + StorageHeader.sizeof);
+
+        LogItem item = parseDltItem(realIndex, msg.offset, data, _fibex);
+
+        return item;
+    }
+
+    // Helper to get LogItem by REAL index (skipping view mapping)
+    private LogItem getLogItemCommon2(size_t realIndex)
+    {
+        // Should effectively duplicate getLogItem logic but for a known real index
+        // Or refactor getLogItem to use this.
+
         auto msg = _indexer.index[realIndex];
 
         // Fetch real data for decoding

@@ -27,7 +27,15 @@ struct LogItemHeaders
 LogItemHeaders findHeaders(const(ubyte)[] data) pure nothrow
 {
     LogItemHeaders headers;
+
+    if (data.length < StorageHeader.sizeof)
+        return headers; // invalid
+
     headers.storage = cast(const(StorageHeader)*) data.ptr;
+
+    if (data.length < StorageHeader.sizeof + StandardHeader.sizeof)
+        return headers; // invalid (no standard header)
+
     headers.standard = cast(const(StandardHeader)*)(data.ptr + StorageHeader.sizeof);
     headers.extended = null;
 
@@ -41,11 +49,18 @@ LogItemHeaders findHeaders(const(ubyte)[] data) pure nothrow
         if (headers.standard.headerType & StandardHeader.Type.WithTimestamp)
             extOffset += 4;
 
-        const auto extendedOffset = StorageHeader.sizeof + StandardHeader.sizeof + extOffset;
+        const auto extendedOffset = StorageHeader.sizeof + extOffset;
+
+        if (data.length < extendedOffset + ExtendedHeader.sizeof)
+            return headers; // invalid (no extended header)
 
         headers.extended = cast(const(ExtendedHeader)*)(data.ptr + extendedOffset);
 
-        headers.payload = data[extendedOffset + ExtendedHeader.sizeof .. $];
+        size_t payloadOffset = extendedOffset + ExtendedHeader.sizeof;
+        if (data.length > payloadOffset)
+            headers.payload = data[payloadOffset .. $];
+        else
+            headers.payload = [];
 
         // Non-Verbose: Message ID is in the first 4 bytes of payload
         // Standard DLT says for Non-Verbose, Message ID is mandatory? 
@@ -56,31 +71,45 @@ LogItemHeaders findHeaders(const(ubyte)[] data) pure nothrow
         }
         else
         {
-            const(ubyte)[] msgIdBytes = headers.payload[0 .. 4];
-            headers.messageId = readValue!uint(msgIdBytes, headers.standard.isBigEndian());
-            headers.payload = headers.payload[4 .. $];
+            if (headers.payload.length >= 4)
+            {
+                const(ubyte)[] msgIdBytes = headers.payload[0 .. 4];
+                headers.messageId = readValue!uint(msgIdBytes, headers.standard.isBigEndian());
+                headers.payload = headers.payload[4 .. $];
+            }
         }
     }
     else
     {
-        headers.payload = data[StorageHeader.sizeof + StandardHeader.sizeof .. $];
+        size_t payloadOffset = StorageHeader.sizeof + StandardHeader.sizeof;
+        if (data.length > payloadOffset)
+            headers.payload = data[payloadOffset .. $];
+        else
+            headers.payload = [];
     }
 
     return headers;
 }
 
-LogItem parseDltItem(const(ubyte)[] data)
+LogItem parseDltItem(size_t index, ulong offset, const(ubyte)[] data, FibexParser fibex = null)
 {
     const LogItemHeaders headers = findHeaders(data);
+
+    LogItem item;
+    item.index = index;
+    item.offset = offset;
+
+    if (headers.storage is null || headers.standard is null)
+    {
+        item.payload = "<Truncated Data>";
+        return item;
+    }
 
     const ulong timestamp = cast(ulong) headers.storage.seconds * 1_000_000 + headers
         .storage.microseconds;
 
     const ushort length = headers.standard.nativeLength();
 
-    LogItem item;
-    //item.index = realIndex;
-    //item.offset = msg.offset;
     item.length = length;
     item.timestamp = timestamp;
 
@@ -91,11 +120,6 @@ LogItem parseDltItem(const(ubyte)[] data)
     item.appId = "-";
     item.ctxId = "-";
     item.type = MessageType.Log;
-
-    item.payload = decodePayload(headers.standard, headers.extended, headers.payload);
-
-    // ... (rest of parsing logic matching getLogItem)
-
     item.messageId = headers.messageId;
 
     if (headers.extended)
@@ -109,11 +133,14 @@ LogItem parseDltItem(const(ubyte)[] data)
         item.ctxId = cleanId(headers.extended.contextId);
     }
 
+    item.payload = decodePayload(headers.standard, headers.extended, headers.payload, fibex, headers
+            .messageId);
+
     return item;
 }
 
 //string decodePayload(const(ubyte)* stdHdrPtr, const(ubyte)[] payload, FibexParser fibex)
-string decodePayload(const(StandardHeader)* stdHdr, const(ExtendedHeader)* extHdr, const(ubyte)[] payload)
+string decodePayload(const(StandardHeader)* stdHdr, const(ExtendedHeader)* extHdr, const(ubyte)[] payload, FibexParser fibex = null, uint messageId = 0)
 {
     const bool msbf = (stdHdr.headerType & StandardHeader.Type.MostSignificantByteFirst) != 0;
 
@@ -147,6 +174,16 @@ string decodePayload(const(StandardHeader)* stdHdr, const(ExtendedHeader)* extHd
                             p = p[2 .. $];
                             if (p.length >= strLen)
                                 p = p[strLen .. $];
+                            else
+                            {
+                                p = []; // Truncated
+                                break;
+                            }
+                        }
+                        else
+                        {
+                            p = []; // Truncated
+                            break;
                         }
                     }
                 }
@@ -154,6 +191,8 @@ string decodePayload(const(StandardHeader)* stdHdr, const(ExtendedHeader)* extHd
                 {
                     if (p.length >= 8)
                         p = p[8 .. $];
+                    else
+                        p = [];
                 }
                 else if (typeInfo & TypeInfoFlags.TypeBoolean)
                 {
@@ -239,6 +278,10 @@ string decodePayload(const(StandardHeader)* stdHdr, const(ExtendedHeader)* extHd
                             args ~= s;
                             p = p[len .. $];
                         }
+                        else
+                        {
+                            p = [];
+                        }
                     }
                 }
                 else if (typeInfo & TypeInfoFlags.TypeRaw)
@@ -267,8 +310,6 @@ string decodePayload(const(StandardHeader)* stdHdr, const(ExtendedHeader)* extHd
                                 args ~= cast(string) rawData;
                             else
                             {
-                                // 
-
                                 string res;
                                 foreach (const(ubyte) b; rawData)
                                 {
@@ -284,17 +325,12 @@ string decodePayload(const(StandardHeader)* stdHdr, const(ExtendedHeader)* extHd
 
                                 args ~= res;
                             }
-                            /*else if (len <= 16)
-                                {
-                                    string hex;
-                                    foreach (b; rawData)
-                                        hex ~= format("%02X", b);
-                                    args ~= "[" ~ hex ~ "]";
-                                }
-                                else
-                                    args ~= format("Raw(%d bytes)", len);*/
 
                             p = p[len .. $];
+                        }
+                        else
+                        {
+                            p = [];
                         }
                     }
                 }
@@ -310,14 +346,18 @@ string decodePayload(const(StandardHeader)* stdHdr, const(ExtendedHeader)* extHd
             return "Verbose Msg (" ~ to!string(extHdr.numberOfArguments) ~ " args)";
         }
     }
-    else // not useExtendedHeader
-    {
-        debug
-        {
-            import std.stdio;
 
-            writeln("useExtendedHeader = false");
+    // Non-Verbose or Legacy
+    if (fibex !is null && messageId != 0)
+    {
+        string desc = fibex.getDescription(messageId);
+        if (desc.length > 0)
+        {
+            // TODO: Real PDUs decoding? 
+            // For now just return description?
+            return "FIBEX: " ~ desc;
         }
+        return format("ID: %u", messageId);
     }
 
     return "Legacy DLT Message";
