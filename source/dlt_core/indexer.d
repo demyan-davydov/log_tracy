@@ -1,6 +1,6 @@
 module dlt_core.indexer;
 
-import dlt_core.dlt;
+import dlt_core.dlt_protocol;
 import dlt_core.log_item;
 
 import std.mmfile;
@@ -109,8 +109,8 @@ class Indexer
 
             offset += nextHeader.ptr - (dataChar + offset);
 
-            ulong msgOffset = offset;
-            ulong currentTimestamp = cast(ulong) sh.seconds * 1_000_000 + sh.microseconds;
+            const ulong msgOffset = offset;
+            const ulong currentTimestamp = cast(ulong) sh.seconds * 1_000_000 + sh.microseconds;
 
             offset += StorageHeader.sizeof;
 

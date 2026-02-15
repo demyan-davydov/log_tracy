@@ -2,6 +2,7 @@ module dlt_core.dlf_filter_serialization;
 
 import dlt_core.dlf_filter_record;
 import dlt_core.log_item;
+import dlt_core.dlt_protocol;
 import dxml.dom;
 import std.stdio : writeln;
 import std.array : appender;
@@ -193,7 +194,7 @@ DlfFilterRecord fromXml(DOMEntity!string filterNode)
     {
         string typeStr = getChildText("type");
         if (typeStr.length > 0)
-            config.type = cast(LogType) typeStr.to!int;
+            config.type = cast(MessageType) typeStr.to!int;
     }
     catch (Exception e)
     {
@@ -291,7 +292,7 @@ unittest
     DlfFilterRecord original;
     original.enabled = true;
     original.name = "Comprehensive Filter";
-    original.type = LogType.Control; // Non-default
+    original.type = MessageType.Control; // Non-default
     original.filterColour = "#123456";
 
     // String fields
@@ -419,7 +420,7 @@ unittest
     DlfFilterRecord f1;
     f1.enabled = true;
     f1.name = "Filter One";
-    f1.type = LogType.Log;
+    f1.type = MessageType.Log;
     f1.ecuId.value = "ECU1";
     f1.ecuId.enabled = true;
     filters ~= f1;
@@ -428,7 +429,7 @@ unittest
     DlfFilterRecord f2;
     f2.enabled = false;
     f2.name = "Filter Two";
-    f2.type = LogType.Control;
+    f2.type = MessageType.Control;
     f2.applicationId.value.setRegex("APP.*");
     f2.applicationId.enabled = true;
     filters ~= f2;
@@ -443,12 +444,12 @@ unittest
 
     assert(loaded[0].name == "Filter One");
     assert(loaded[0].ecuId.value == "ECU1");
-    assert(loaded[0].type == LogType.Log);
+    assert(loaded[0].type == MessageType.Log);
 
     assert(loaded[1].name == "Filter Two");
     assert(loaded[1].applicationId.value.asString() == "APP.*");
     assert(loaded[1].applicationId.value.isRegex == true);
-    assert(loaded[1].type == LogType.Control);
+    assert(loaded[1].type == MessageType.Control);
 
     // Cleanup
     import std.file : remove, exists;

@@ -2,6 +2,7 @@ module dlt_core.dlf_filter_record;
 
 import dlt_core.log_item;
 import dlt_core.log_filter;
+import dlt_core.dlt_protocol;
 import std.regex;
 import std.uni : toLower;
 
@@ -156,7 +157,7 @@ struct DlfFilterRecord
     bool enabled;
     string name;
 
-    LogType type;
+    MessageType type;
 
     Enableable!string ecuId;
     Enableable!(Range!uint) messageId;
@@ -279,7 +280,7 @@ unittest
     DlfFilterRecord record;
     record.enabled = true;
     record.name = "Test Filter";
-    record.type = LogType.Log;
+    record.type = MessageType.Log;
     record.ecuId.value = "Test ECU";
     record.ecuId.enabled = true;
     record.applicationId.value.setPattern("Test App");

@@ -3,7 +3,7 @@ module ui.document;
 import dlt_core.search;
 import dlt_core.fibex;
 import dlt_core.indexer;
-import dlt_core.dlt;
+import dlt_core.dlt_protocol;
 import dlt_core.log_filter : LogFilter;
 import dlt_core.log_item;
 import ui.app_settings;

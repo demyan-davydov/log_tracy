@@ -4,7 +4,7 @@ import ui.document;
 import dlt_core.search;
 import dlt_core.fibex;
 import dlt_core.indexer;
-import dlt_core.dlt;
+import dlt_core.dlt_protocol;
 import ui.app_settings;
 import std.stdio;
 import dlt_core.log_filter : LogFilter;

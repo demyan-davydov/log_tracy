@@ -1,12 +1,13 @@
 module dlt_core.dlt_parser;
 
-import dlt_core.dlt;
+import dlt_core.dlt_protocol;
 import dlt_core.log_item;
 import dlt_core.fibex;
 import std.stdio;
 import std.array;
 import std.conv : to;
 import std.format : format;
+import std.stdint;
 
 // Message structure:
 //   StorageHeader (16 bytes)
@@ -14,89 +15,112 @@ import std.format : format;
 //   ExtendedHeader (optional)
 //   Payload
 
-LogItem parseDltItem(const(ubyte)[] data, FibexParser fibex)
+struct LogItemHeaders
 {
-    LogItem item;
-    //item.index = realIndex;
-    //item.offset = msg.offset;
-    //item.length = msg.length;
-    //item.timestamp = msg.timestamp;
+    const(StorageHeader)* storage;
+    const(StandardHeader)* standard;
+    const(ExtendedHeader)* extended;
+    const(ubyte)[] payload;
+    uint32_t messageId; // 0 by default, set if standard header has message id
+}
 
-    // ECU ID is stored as uint (4 bytes) in indexer, convert to ubyte[4] and clean
-    //ubyte[4] ecuBytes = (cast(ubyte*)&msg.ecuId)[0 .. 4];
-    //item.ecu = cleanId(ecuBytes);
+LogItemHeaders findHeaders(const(ubyte)[] data) pure nothrow
+{
+    LogItemHeaders headers;
+    headers.storage = cast(const(StorageHeader)*) data.ptr;
+    headers.standard = cast(const(StandardHeader)*)(data.ptr + StorageHeader.sizeof);
+    headers.extended = null;
 
-    item.level = LogLevel.Info;
-    item.appId = "-";
-    item.ctxId = "-";
-    item.type = LogType.Log;
-
-    if (data.length >= StorageHeader.sizeof + StandardHeader.sizeof)
+    if (useExtendedHeader(headers.standard.headerType))
     {
-        const(ubyte)* stdPtr = data.ptr + StorageHeader.sizeof;
-        uint headerSize = getHeaderSize(stdPtr);
-        if (data.length >= StorageHeader.sizeof + headerSize)
+        uint extOffset = StandardHeader.sizeof;
+        if (headers.standard.headerType & StandardHeader.Type.WithEcuId)
+            extOffset += 4;
+        if (headers.standard.headerType & StandardHeader.Type.WithSessionId)
+            extOffset += 4;
+        if (headers.standard.headerType & StandardHeader.Type.WithTimestamp)
+            extOffset += 4;
+
+        const auto extendedOffset = StorageHeader.sizeof + StandardHeader.sizeof + extOffset;
+
+        headers.extended = cast(const(ExtendedHeader)*)(data.ptr + extendedOffset);
+
+        headers.payload = data[extendedOffset + ExtendedHeader.sizeof .. $];
+
+        // Non-Verbose: Message ID is in the first 4 bytes of payload
+        // Standard DLT says for Non-Verbose, Message ID is mandatory? 
+        // Usually yes. Some implementations might vary, but we'll follow common practice.
+        if (headers.extended.messageInfo.isVerbose())
         {
-            const(ubyte)[] payload = data[StorageHeader.sizeof + headerSize .. $];
-            item.payload = decodePayload(stdPtr, payload, fibex);
-
-            // ... (rest of parsing logic matching getLogItem)
-
-            item.messageId = peekMessageId(stdPtr);
-            auto stdHdr = cast(const(StandardHeader)*) stdPtr;
-            if (useExtendedHeader(stdHdr.headerType))
-            {
-                uint extOffset = StandardHeader.sizeof;
-                if (stdHdr.headerType & HeaderType.WithEcuId)
-                    extOffset += 4;
-                if (stdHdr.headerType & HeaderType.WithSessionId)
-                    extOffset += 4;
-                if (stdHdr.headerType & HeaderType.WithTimestamp)
-                    extOffset += 4;
-
-                auto extHdr = cast(const(ExtendedHeader)*)(stdPtr + extOffset);
-                item.level = getLogLevel(extHdr.messageInfo);
-
-                // LogType is in bits 1-3 of messageInfo
-                item.type = cast(LogType)((extHdr.messageInfo & MessageInfo.TypeMask) >> 1);
-
-                // DLT IDs are 4 bytes, usually ASCII. 
-                // Use cleanId to strip null bytes and non-printable characters
-                item.appId = cleanId(extHdr.applicationId);
-                item.ctxId = cleanId(extHdr.contextId);
-            }
+            headers.messageId = 0;
         }
         else
         {
-            item.payload = "Invalid header size";
+            const(ubyte)[] msgIdBytes = headers.payload[0 .. 4];
+            headers.messageId = readValue!uint(msgIdBytes, headers.standard.isBigEndian());
+            headers.payload = headers.payload[4 .. $];
         }
     }
     else
     {
-        item.payload = "Data truncated";
+        headers.payload = data[StorageHeader.sizeof + StandardHeader.sizeof .. $];
+    }
+
+    return headers;
+}
+
+LogItem parseDltItem(const(ubyte)[] data)
+{
+    const LogItemHeaders headers = findHeaders(data);
+
+    const ulong timestamp = cast(ulong) headers.storage.seconds * 1_000_000 + headers
+        .storage.microseconds;
+
+    const ushort length = headers.standard.nativeLength();
+
+    LogItem item;
+    //item.index = realIndex;
+    //item.offset = msg.offset;
+    item.length = length;
+    item.timestamp = timestamp;
+
+    // ECU ID is stored as uint (4 bytes) in indexer, convert to ubyte[4] and clean
+    item.ecu = cleanId(cast(const(ubyte)[4]) headers.storage.ecuId);
+
+    item.level = LogLevel.Info;
+    item.appId = "-";
+    item.ctxId = "-";
+    item.type = MessageType.Log;
+
+    item.payload = decodePayload(headers.standard, headers.extended, headers.payload);
+
+    // ... (rest of parsing logic matching getLogItem)
+
+    item.messageId = headers.messageId;
+
+    if (headers.extended)
+    {
+        item.level = headers.extended.messageInfo.logLevel();
+        item.type = headers.extended.messageInfo.messageType();
+
+        // DLT IDs are 4 bytes, usually ASCII. 
+        // Use cleanId to strip null bytes and non-printable characters
+        item.appId = cleanId(headers.extended.applicationId);
+        item.ctxId = cleanId(headers.extended.contextId);
     }
 
     return item;
 }
 
-string decodePayload(const(ubyte)* stdHdrPtr, const(ubyte)[] payload, FibexParser fibex)
+//string decodePayload(const(ubyte)* stdHdrPtr, const(ubyte)[] payload, FibexParser fibex)
+string decodePayload(const(StandardHeader)* stdHdr, const(ExtendedHeader)* extHdr, const(ubyte)[] payload)
 {
-    auto stdHdr = cast(const(StandardHeader)*) stdHdrPtr;
-    const bool msbf = (stdHdr.headerType & HeaderType.MostSignificantByteFirst) != 0;
+    const bool msbf = (stdHdr.headerType & StandardHeader.Type.MostSignificantByteFirst) != 0;
 
     bool isVerbose = false;
-    if (useExtendedHeader(stdHdr.headerType))
+    if (extHdr)
     {
-        uint extOffset = StandardHeader.sizeof;
-        if (stdHdr.headerType & HeaderType.WithEcuId)
-            extOffset += 4;
-        if (stdHdr.headerType & HeaderType.WithSessionId)
-            extOffset += 4;
-        if (stdHdr.headerType & HeaderType.WithTimestamp)
-            extOffset += 4;
-
-        auto extHdr = cast(const(ExtendedHeader)*)(stdHdrPtr + extOffset);
-        if (extHdr.messageInfo & MessageInfo.Verbose)
+        if (extHdr.messageInfo.isVerbose())
         {
             isVerbose = true;
             string[] args;
@@ -280,12 +304,6 @@ string decodePayload(const(ubyte)* stdHdrPtr, const(ubyte)[] payload, FibexParse
 
             if (args.length > 0)
             {
-                debug
-                {
-                    import std.stdio;
-
-                    writeln("str: ", args.join(" "));
-                }
                 return args.join(" ");
             }
 

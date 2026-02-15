@@ -1,5 +1,7 @@
 module dlt_core.log_item;
 
+import dlt_core.dlt_protocol : LogLevel, MessageType;
+
 /// Represents a decoded DLT log message
 struct LogItem
 {
@@ -11,20 +13,12 @@ struct LogItem
     string appId;
     string ctxId;
     LogLevel level;
-    LogType type;
+    MessageType type;
     uint messageId;
     string payload;
 }
 
-enum LogType : ubyte
-{
-    Log = 0x0,
-    AppTrace = 0x1,
-    NwTrace = 0x2,
-    Control = 0x3
-}
-
-string toString(LogType type) pure nothrow @nogc
+string toString(MessageType type) pure nothrow @nogc
 {
     enum STR_LOG = "LOG";
     enum STR_APP = "APP";
@@ -34,27 +28,17 @@ string toString(LogType type) pure nothrow @nogc
 
     switch (type)
     {
-    case LogType.Log:
+    case MessageType.Log:
         return STR_LOG;
-    case LogType.AppTrace:
+    case MessageType.AppTrace:
         return STR_APP;
-    case LogType.NwTrace:
+    case MessageType.NwTrace:
         return STR_NW;
-    case LogType.Control:
+    case MessageType.Control:
         return STR_CTRL;
     default:
         return STR_UNK;
     }
-}
-
-enum LogLevel : ubyte
-{
-    Fatal = 0x1,
-    Error = 0x2,
-    Warn = 0x3,
-    Info = 0x4,
-    Debug = 0x5,
-    Verbose = 0x6
 }
 
 string toString(LogLevel level) pure nothrow @nogc
@@ -87,14 +71,14 @@ string toString(LogLevel level) pure nothrow @nogc
     }
 }
 
-@("toString(LogType)")
+@("toString(MessageType)")
 unittest
 {
-    assert(toString(LogType.Log) == "LOG");
-    assert(toString(LogType.AppTrace) == "APP");
-    assert(toString(LogType.NwTrace) == "NW");
-    assert(toString(LogType.Control) == "CTRL");
-    assert(toString(cast(LogType) 0xFF) == "UNK");
+    assert(toString(MessageType.Log) == "LOG");
+    assert(toString(MessageType.AppTrace) == "APP");
+    assert(toString(MessageType.NwTrace) == "NW");
+    assert(toString(MessageType.Control) == "CTRL");
+    assert(toString(cast(MessageType) 0xFF) == "UNK");
 }
 
 @("toString(LogLevel)")

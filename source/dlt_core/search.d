@@ -1,7 +1,7 @@
 module dlt_core.search;
 
 import dlt_core.indexer;
-import dlt_core.dlt;
+import dlt_core.dlt_protocol;
 import dlt_core.fibex;
 import dlt_core.log_filter;
 import dlt_core.log_item;
@@ -185,7 +185,7 @@ class SearchEngine
         item.level = LogLevel.Info;
         item.appId = "-";
         item.ctxId = "-";
-        item.type = LogType.Log;
+        item.type = MessageType.Log;
 
         if (data.length >= StorageHeader.sizeof + StandardHeader.sizeof)
         {
@@ -203,18 +203,16 @@ class SearchEngine
                 if (useExtendedHeader(stdHdr.headerType))
                 {
                     uint extOffset = StandardHeader.sizeof;
-                    if (stdHdr.headerType & HeaderType.WithEcuId)
+                    if (stdHdr.headerType & StandardHeader.Type.WithEcuId)
                         extOffset += 4;
-                    if (stdHdr.headerType & HeaderType.WithSessionId)
+                    if (stdHdr.headerType & StandardHeader.Type.WithSessionId)
                         extOffset += 4;
-                    if (stdHdr.headerType & HeaderType.WithTimestamp)
+                    if (stdHdr.headerType & StandardHeader.Type.WithTimestamp)
                         extOffset += 4;
 
                     auto extHdr = cast(const(ExtendedHeader)*)(stdPtr + extOffset);
-                    item.level = getLogLevel(extHdr.messageInfo);
-
-                    // LogType is in bits 1-3 of messageInfo
-                    item.type = cast(LogType)((extHdr.messageInfo & MessageInfo.TypeMask) >> 1);
+                    item.level = extHdr.messageInfo.logLevel();
+                    item.type = extHdr.messageInfo.messageType();
 
                     // DLT IDs are 4 bytes, usually ASCII. 
                     // Use cleanId to strip null bytes and non-printable characters
@@ -270,21 +268,21 @@ class SearchEngine
         import std.format : format;
 
         auto stdHdr = cast(const(StandardHeader)*) stdHdrPtr;
-        const bool msbf = (stdHdr.headerType & HeaderType.MostSignificantByteFirst) != 0;
+        const bool msbf = stdHdr.isBigEndian();
 
         bool isVerbose = false;
         if (useExtendedHeader(stdHdr.headerType))
         {
             uint extOffset = StandardHeader.sizeof;
-            if (stdHdr.headerType & HeaderType.WithEcuId)
+            if (stdHdr.headerType & StandardHeader.Type.WithEcuId)
                 extOffset += 4;
-            if (stdHdr.headerType & HeaderType.WithSessionId)
+            if (stdHdr.headerType & StandardHeader.Type.WithSessionId)
                 extOffset += 4;
-            if (stdHdr.headerType & HeaderType.WithTimestamp)
+            if (stdHdr.headerType & StandardHeader.Type.WithTimestamp)
                 extOffset += 4;
 
             auto extHdr = cast(const(ExtendedHeader)*)(stdHdrPtr + extOffset);
-            if (extHdr.messageInfo & MessageInfo.Verbose)
+            if (extHdr.messageInfo.isVerbose())
             {
                 isVerbose = true;
                 string[] args;
@@ -468,12 +466,6 @@ class SearchEngine
 
                 if (args.length > 0)
                 {
-                    debug
-                    {
-                        import std.stdio;
-
-                        writeln("str: ", args.join(" "));
-                    }
                     return args.join(" ");
                 }
 
