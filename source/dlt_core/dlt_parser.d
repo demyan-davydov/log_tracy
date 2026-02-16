@@ -9,11 +9,12 @@ import std.conv : to;
 import std.format : format;
 import std.stdint;
 
-// Message structure:
-//   StorageHeader (16 bytes)
-//   StandardHeader (16 bytes)
-//   ExtendedHeader (optional)
-//   Payload
+//! @brief DLT Message structure:
+//! [ Storage Header ]        (16 bytes, always in file)
+//! [ Standard Header ]       (minimum 4 bytes)
+//! [ Extra Header Fields ]   (up to 12 bytes, depends on 'StandardHeader.headerType', byte order depends on 'StandardHeader.isBigEndian()')
+//! [ Extended Header ]       (if 'StandardHeader.headerType' has 'UseExtendedHeader' flag)
+//! [ Payload ]
 
 struct LogItemHeaders
 {
@@ -24,7 +25,7 @@ struct LogItemHeaders
     uint32_t messageId; // 0 by default, set if standard header has message id
 }
 
-LogItemHeaders findHeaders(const(ubyte)[] data) pure nothrow
+LogItemHeaders findHeaders(const(ubyte)[] data) pure nothrow @nogc
 {
     LogItemHeaders headers;
 
@@ -113,10 +114,10 @@ LogItem parseDltItem(size_t index, ulong offset, const(ubyte)[] data, FibexParse
         return item;
     }
 
-    const ulong timestamp = cast(ulong) headers.storage.seconds * 1_000_000 + headers
-        .storage.microseconds;
+    const ulong timestamp = cast(ulong) headers.storage.nativeSeconds * 1_000_000 + headers
+        .storage.nativeMicroseconds;
 
-    const ushort length = headers.standard.nativeLength();
+    const ushort length = headers.standard.nativeLength;
 
     item.length = length;
     item.timestamp = timestamp;
@@ -146,8 +147,8 @@ LogItem parseDltItem(size_t index, ulong offset, const(ubyte)[] data, FibexParse
 
     debug
     {
-        //if (item.messageId != 0)
-        //    writefln("messageId: [%d] %s", item.messageId, item.payload);
+        if (item.messageId != 0)
+            writefln("messageId: [%d] %s", item.messageId, item.payload);
     }
 
     return item;

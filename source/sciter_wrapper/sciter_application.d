@@ -33,14 +33,14 @@ private struct SciterApplication
         return _hinstance;
     }
 
-    private INT_PTR appExec(UINT cmd, UINT_PTR p1, UINT_PTR p2) nothrow @nogc
+    private INT_PTR sciterExec(UINT cmd, UINT_PTR p1, UINT_PTR p2) nothrow @nogc
     {
         return sciterApi().SciterExec(cmd, p1, p2);
     }
 
     private INT_PTR appInit(UINT_PTR p1, UINT_PTR p2) nothrow @nogc
     {
-        return appExec(SCITER_APP_CMD.SCITER_APP_INIT, p1, p2);
+        return sciterExec(SCITER_APP_CMD.SCITER_APP_INIT, p1, p2);
     }
 
     void start() nothrow @nogc
@@ -64,26 +64,26 @@ private struct SciterApplication
 
     int runEventLoop() nothrow @nogc
     {
-        return cast(int) appExec(SCITER_APP_CMD.SCITER_APP_LOOP, 0, 0);
+        return cast(int) sciterExec(SCITER_APP_CMD.SCITER_APP_LOOP, 0, 0);
     }
 
     bool requestQuit(int returnValue = 0) nothrow @nogc
     {
-        return appExec(SCITER_APP_CMD.SCITER_APP_STOP, returnValue, 0) == 0;
+        return sciterExec(SCITER_APP_CMD.SCITER_APP_STOP, returnValue, 0) == 0;
     }
 
     void shutdown() nothrow @nogc
     {
-        appExec(SCITER_APP_CMD.SCITER_APP_SHUTDOWN, 0, 0);
+        sciterExec(SCITER_APP_CMD.SCITER_APP_SHUTDOWN, 0, 0);
     }
 
     bool runIteration() nothrow @nogc
     {
-        return cast(bool) appExec(SCITER_APP_CMD.SCITER_APP_LOOP_ITERATION, 0, 0);
+        return cast(bool) sciterExec(SCITER_APP_CMD.SCITER_APP_LOOP_ITERATION, 0, 0);
     }
 
     bool runHeartbit() nothrow @nogc
     {
-        return cast(bool) appExec(SCITER_APP_CMD.SCITER_APP_LOOP_HEARTBIT, 0, 0);
+        return cast(bool) sciterExec(SCITER_APP_CMD.SCITER_APP_LOOP_HEARTBIT, 0, 0);
     }
 }

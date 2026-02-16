@@ -3,30 +3,55 @@ module dlt_core.dlt_protocol;
 import dlt_core.log_item;
 import std.bitmanip;
 
-///
-/// DLT Data Structures
-///
 //! @brief DLT Message structure:
-//!   StorageHeader (16 bytes)
-//!   StandardHeader (16 bytes)
-//!   ExtendedHeader (optional)
-//!   Payload
+//! [ Storage Header ]        (16 bytes, always in file)
+//! [ Standard Header ]       (minimum 4 bytes)
+//! [ Extra Header Fields ]   (up to 12 bytes, depends on 'StandardHeader.headerType', byte order depends on 'StandardHeader.isBigEndian()')
+//! [ Extended Header ]       (if 'StandardHeader.headerType' has 'UseExtendedHeader' flag)
+//! [ Payload ]
 
 //! @brief The storage header used in DLT files (16 bytes)
+//! @note Byte order is always little-endian
+//! @note Storage Header is always in file, it is skipped for network messages
 align(1) struct StorageHeader
 {
     char[4] pattern; // "DLT\01"
-    uint seconds;
-    uint microseconds;
+    private uint _seconds;
+    private uint _microseconds;
     char[4] ecuId;
+
+    uint nativeSeconds() const pure nothrow @nogc @property
+    {
+        return littleEndianToNative(_seconds);
+    }
+
+    void nativeSeconds(uint value) pure nothrow @nogc @property
+    {
+        _seconds = nativeToLittleEndian(value);
+    }
+
+    uint nativeMicroseconds() const pure nothrow @nogc @property
+    {
+        return littleEndianToNative(_microseconds);
+    }
+
+    void nativeMicroseconds(uint value) pure nothrow @nogc @property
+    {
+        _microseconds = nativeToLittleEndian(value);
+    }
 }
 
 //! @brief Mark for beginning of DLT message
 enum char[4] DLT_PATTERN = ['D', 'L', 'T', '\01'];
 
 //! @brief Fixed part of the Standard Header (4 bytes)
+//! @note Byte order is always big-endian
 align(1) struct StandardHeader
 {
+    ubyte headerType;
+    ubyte messageCounter;
+    private ushort _length; // Total length of the message (big endian)
+
     //! @brief Standard Header Flags
     enum Type : ubyte
     {
@@ -37,10 +62,6 @@ align(1) struct StandardHeader
         WithTimestamp = 1 << 4,
         VersionMask = 0xE0
     }
-
-    ubyte headerType;
-    ubyte messageCounter;
-    ushort length; // Total length of the message
 
     bool useExtendedHeader() const pure nothrow @nogc
     {
@@ -98,7 +119,7 @@ align(1) struct StandardHeader
     }
 
     //! @brief Get the length of the message converted to host byte order
-    ushort nativeLength() const pure nothrow @nogc
+    ushort nativeLength() const pure nothrow @nogc @property
     {
         // Parse length (big endian usually in DLT, assume NATIVE for now or need bswap)
         // TODO: Handle Endianness properly based on system and file? 
@@ -106,11 +127,13 @@ align(1) struct StandardHeader
         // Actually Storage Header is usually Little Endian (x86).
         // Standard Header fields are Big Endian.
 
-        //if (headerType & StandardHeader.Type.MostSignificantByteFirst)
-        //    return bigEndianToNative(length);
-        //else
-        //    return littleEndianToNative(length);
-        return bigEndianToNative(length);
+        return bigEndianToNative(_length);
+    }
+
+    //! @brief Set the length of the message converted to big endian
+    void nativeLength(ushort value) pure nothrow @nogc @property
+    {
+        _length = nativeToBigEndian(value);
     }
 }
 
@@ -452,12 +475,35 @@ private ushort bigEndianToNative(ushort val) pure nothrow @nogc
         return cast(ushort)((val >> 8) | (val << 8));
 }
 
+private ushort nativeToBigEndian(ushort val) pure nothrow @nogc
+{
+    return bigEndianToNative(val);
+}
+
 private ushort littleEndianToNative(ushort val) pure nothrow @nogc
 {
     version (LittleEndian)
         return val;
     else
         return cast(ushort)((val >> 8) | (val << 8));
+}
+
+private ushort nativeToLittleEndian(ushort val) pure nothrow @nogc
+{
+    return littleEndianToNative(val);
+}
+
+private uint littleEndianToNative(uint val) pure nothrow @nogc
+{
+    version (LittleEndian)
+        return val;
+    else
+        return cast(uint)((val >> 24) | ((val >> 8) & 0xFF00) | ((val << 8) & 0xFF0000) | (val << 24));
+}
+
+private uint nativeToLittleEndian(uint val) pure nothrow @nogc
+{
+    return littleEndianToNative(val);
 }
 
 @("MessageInfo: Log")

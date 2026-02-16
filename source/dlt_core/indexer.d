@@ -142,8 +142,8 @@ class Indexer2
                 break;
             }
             const ulong msgOffset = _stream.position() - StorageHeader.sizeof;
-            const ulong currentTimestamp = cast(ulong) storageHeader.seconds * 1_000_000 + storageHeader
-                .microseconds;
+            const ulong currentTimestamp = cast(ulong) storageHeader.nativeSeconds * 1_000_000 + storageHeader
+                .nativeMicroseconds;
 
             StandardHeader standardHeader;
             if (!_stream.pop!(StandardHeader)(standardHeader))
@@ -152,7 +152,7 @@ class Indexer2
                 break;
             }
 
-            ushort length = bigEndianToNative(standardHeader.length);
+            const ushort length = standardHeader.nativeLength;
 
             // Create Index Entry
             // ECU ID is char[4]. We cast it to uint for storage in MsgInfo.
@@ -228,7 +228,8 @@ class Indexer
             offset += nextHeader.ptr - (dataChar + offset);
 
             const ulong msgOffset = offset;
-            const ulong currentTimestamp = cast(ulong) sh.seconds * 1_000_000 + sh.microseconds;
+            const ulong currentTimestamp = cast(ulong) sh.nativeSeconds * 1_000_000 + sh
+                .nativeMicroseconds;
 
             offset += StorageHeader.sizeof;
 
@@ -243,7 +244,7 @@ class Indexer
             // Actually Storage Header is usually Little Endian (x86).
             // Standard Header fields are Big Endian.
 
-            ushort length = bigEndianToNative(stdHdr.length);
+            const ushort length = stdHdr.nativeLength;
 
             // Create Index Entry
             // ECU ID is char[4]. We cast it to uint for storage in MsgInfo.
@@ -259,6 +260,20 @@ class Indexer
             _processedSize = offset;
         }
         _processedSize = _totalSize;
+
+        debug
+        {
+            import std.stdio;
+
+            writeln("Processed ", _processedSize, " of ", _totalSize, " bytes");
+
+            auto slice = _index[0 .. 20];
+            foreach (e; slice)
+            {
+                writeln("offset: ", e.offset, " length: ", e.length, " next offset: ", e.offset + e
+                        .length + StorageHeader.sizeof);
+            }
+        }
     }
 
     int getProgress() const
@@ -270,13 +285,13 @@ class Indexer
 }
 
 // Helper for endianness
-private ushort bigEndianToNative(ushort val) pure nothrow @nogc
+/*private ushort bigEndianToNative(ushort val) pure nothrow @nogc
 {
     version (BigEndian)
         return val;
     else
         return cast(ushort)((val >> 8) | (val << 8));
-}
+}*/
 
 // test findHeaderPattern
 unittest

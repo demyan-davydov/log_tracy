@@ -66,7 +66,8 @@ int main()
 			SCRIPT_RUNTIME_FEATURES.ALLOW_SOCKET_IO |
 			SCRIPT_RUNTIME_FEATURES.ALLOW_EVAL |
 			SCRIPT_RUNTIME_FEATURES.ALLOW_SYSINFO |
-			SCRIPT_RUNTIME_FEATURES.ALLOW_CMODULES);
+			SCRIPT_RUNTIME_FEATURES.ALLOW_CMODULES
+	);
 
 	sciterApi().SciterSetMediaType(null, "desktop,gsciter"w.ptr);
 	//   SciterSetMediaType(pwin->get_hwnd(), WSTR("desktop,gsciter"));
@@ -121,7 +122,8 @@ int main()
 
 		//win.run();
 
-		win.expand();
+		//win.expand();
+		win.activate(true); // Explicit activation for new Sciter version
 
 		writeln("Event loop starting...");
 
