@@ -194,6 +194,36 @@ align(1) struct MessageInfo
 
         return LogLevel.Info; // Default/Unknown for Non-Verbose
     }
+
+    AppTraceType appTraceType() const pure nothrow @nogc
+    {
+        if (isVerbose() && messageType() == MessageType.AppTrace)
+        {
+            return cast(AppTraceType)(messageTypeInfo());
+        }
+
+        return AppTraceType.Variable;
+    }
+
+    NwTraceType nwTraceType() const pure nothrow @nogc
+    {
+        if (isVerbose() && messageType() == MessageType.NwTrace)
+        {
+            return cast(NwTraceType)(messageTypeInfo());
+        }
+
+        return NwTraceType.ToDo1;
+    }
+
+    ControlType controlType() const pure nothrow @nogc
+    {
+        if (isVerbose() && messageType() == MessageType.Control)
+        {
+            return cast(ControlType)(messageTypeInfo());
+        }
+
+        return ControlType.Request;
+    }
 }
 
 //! @brief Extended Header (optional, 10 bytes)

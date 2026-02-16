@@ -64,8 +64,7 @@ int main()
 		SCITER_RT_OPTIONS.SCITER_SET_SCRIPT_RUNTIME_FEATURES,
 		SCRIPT_RUNTIME_FEATURES.ALLOW_FILE_IO |
 			SCRIPT_RUNTIME_FEATURES.ALLOW_SOCKET_IO |
-			SCRIPT_RUNTIME_FEATURES
-			.ALLOW_EVAL |
+			SCRIPT_RUNTIME_FEATURES.ALLOW_EVAL |
 			SCRIPT_RUNTIME_FEATURES.ALLOW_SYSINFO |
 			SCRIPT_RUNTIME_FEATURES.ALLOW_CMODULES);
 
@@ -125,9 +124,9 @@ int main()
 		win.expand();
 
 		writeln("Event loop starting...");
-		//win.saveSettings();
 
 		result = sciterApplication().runEventLoop();
+
 		writeln("Event loop stopped");
 
 		//win.detachEventHandler();

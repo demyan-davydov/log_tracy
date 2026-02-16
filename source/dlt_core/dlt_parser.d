@@ -144,6 +144,12 @@ LogItem parseDltItem(size_t index, ulong offset, const(ubyte)[] data, FibexParse
     item.payload = decodePayload(headers.standard, headers.extended, headers.payload, fibex, headers
             .messageId);
 
+    debug
+    {
+        //if (item.messageId != 0)
+        //    writefln("messageId: [%d] %s", item.messageId, item.payload);
+    }
+
     return item;
 }
 
@@ -169,7 +175,7 @@ string decodePayload(const(StandardHeader)* stdHdr, const(ExtendedHeader)* extHd
 
                 debug
                 {
-                    writefln("type info: %b", typeInfo);
+                    //writefln("type info: %b", typeInfo);
                 }
 
                 if (typeInfo & TypeInfoFlags.VariableInfo)

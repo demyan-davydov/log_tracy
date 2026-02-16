@@ -176,7 +176,7 @@ class MainWindow : SciterWindow
             if (method == "getLogCount")
             {
                 const int count = cast(int) _workspace.current.length;
-                writeln("getLogCount: ", count, " for doc: ", _workspace.currentId.toString());
+                //writeln("getLogCount: ", count, " for doc: ", _workspace.currentId.toString());
                 resultView = count;
                 return true;
             }

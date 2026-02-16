@@ -54,6 +54,116 @@ const(char)[] findHeaderPattern(const(char)[] buffer)
     return buffer[$ .. $];
 }
 
+import dlt_core.file_stream;
+import dlt_core.stream;
+
+private bool skipDltHeader(InputStream stream)
+{
+    char currSymbol = 0;
+    while (!stream.empty())
+    {
+        if (currSymbol != DLT_PATTERN[0])
+        {
+            if (!stream.pop!char(currSymbol))
+                return false;
+            if (currSymbol != DLT_PATTERN[0])
+                continue;
+        }
+
+        if (!stream.pop!char(currSymbol))
+            return false;
+        if (currSymbol != DLT_PATTERN[1])
+            continue;
+        if (!stream.pop!char(currSymbol))
+            return false;
+        if (currSymbol != DLT_PATTERN[2])
+            continue;
+        if (!stream.pop!char(currSymbol))
+            return false;
+        if (currSymbol != DLT_PATTERN[3])
+            continue;
+
+        return true;
+    }
+
+    return false;
+}
+
+class Indexer2
+{
+    private InputStream _stream;
+    private MsgInfo[] _index;
+    private ulong _processedSize;
+    private ulong _totalSize;
+
+    this(string filePath)
+    {
+        _stream = new FileStream(filePath);
+        _totalSize = 1000; //_stream.size();
+    }
+
+    @property const(MsgInfo)[] index() const pure nothrow @nogc
+    {
+        return _index;
+    }
+
+    @property size_t totalMessages() const pure nothrow @nogc
+    {
+        return _index.length;
+    }
+
+    const(ubyte[]) getSlice(ulong offset, size_t length)
+    {
+        if (offset + length > _totalSize)
+            return null;
+        _stream.seek(offset);
+        ubyte[] result = new ubyte[length];
+        return _stream.popArrayOrThrow(result);
+    }
+
+    void scan()
+    {
+        //size_t index = 0;
+        //_fileStream.rewind();
+        _processedSize = 0;
+        _index = [];
+        while (!_stream.empty())
+        {
+            if (!skipDltHeader(_stream))
+            {
+                writeln("Failed to skip DLT header. File size: ", _totalSize);
+                break;
+            }
+
+            StorageHeader storageHeader;
+            if (!_stream.pop!(StorageHeader)(storageHeader))
+            {
+                writeln("Failed to read storage header. File size: ", _totalSize);
+                break;
+            }
+            const ulong msgOffset = _stream.position() - StorageHeader.sizeof;
+            const ulong currentTimestamp = cast(ulong) storageHeader.seconds * 1_000_000 + storageHeader
+                .microseconds;
+
+            StandardHeader standardHeader;
+            if (!_stream.pop!(StandardHeader)(standardHeader))
+            {
+                writeln("Failed to read standard header. File size: ", _totalSize);
+                break;
+            }
+
+            ushort length = bigEndianToNative(standardHeader.length);
+
+            // Create Index Entry
+            // ECU ID is char[4]. We cast it to uint for storage in MsgInfo.
+            const uint32_t ecuId = *cast(const(uint32_t)*) storageHeader.ecuId.ptr;
+            _index ~= MsgInfo(msgOffset, length, currentTimestamp, ecuId);
+            _processedSize = _stream.position();
+            _stream.skip(length);
+        }
+    }
+}
+
 class Indexer
 {
     private MmFile _mmFile;
@@ -89,6 +199,14 @@ class Indexer
     /// Scan the file and build the index
     void scan()
     {
+        import std.datetime.stopwatch;
+
+        auto sw = StopWatch(AutoStart.yes);
+        scope (exit)
+        {
+            writeln("scan time: ", sw.peek.total!"msecs", " ms");
+        }
+
         ulong offset = 0;
         const void* data = _mmFile[].ptr;
         const ulong size = _mmFile.length;
