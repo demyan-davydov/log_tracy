@@ -55,7 +55,7 @@ const(char)[] findHeaderPattern(const(char)[] buffer)
 }
 
 import dlt_core.file_stream;
-import dlt_core.stream;
+import dlt_core.input_stream;
 
 private bool skipDltHeader(InputStream stream)
 {

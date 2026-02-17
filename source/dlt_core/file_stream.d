@@ -1,6 +1,6 @@
 module dlt_core.file_stream;
 
-import dlt_core.stream;
+import dlt_core.input_stream;
 import std.stdio : File, StdioException;
 
 class FileStream : InputStream

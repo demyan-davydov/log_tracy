@@ -1,4 +1,4 @@
-module dlt_core.stream;
+module dlt_core.input_stream;
 
 /// Interface for a sequential read-only stream
 
