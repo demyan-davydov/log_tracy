@@ -6,8 +6,10 @@
     <style src="style.css" />
     <style src="table.css" />
     <style src="tab-content.css" />
+    <style src="query-builder.css" />
     <script type="module" src="script.js" />
     <script type="module" src="virtual-dlt-view.js" />
+    <script type="module" src="query-builder.js" />
 </head>
 
 <body>
@@ -20,6 +22,20 @@
             <button id="btn-theme">Toggle Theme</button>
             <button id="btn-settings">Settings</button>
         </div>
+        <div class="toolbar" style="flow: horizontal; border-spacing: 10px;">
+            <widget id="query-builder"></widget>
+            <div class="controls" style="margin-top: 10px; flow: horizontal; border-spacing: 10px;">
+                <button id="btn-get-regex">Get Regex</button>
+                <button id="btn-save-mru">Search & Save</button>
+
+                <select id="select-mru">
+                    <option>History...</option>
+                </select>
+            </div>
+        </div>
+        <div id="result-output" style="margin-top:10px; font-family: monospace; background:#eee; padding:5px;">
+        </div>
+
         <div id="tabs-container">
             <button id="btn-add-tab">+</button>
             <!-- Tabs will be dynamically added here -->

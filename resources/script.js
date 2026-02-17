@@ -1,7 +1,9 @@
 import { $, $$ } from "@sciter";
 import { VirtualDltTBody } from "virtual-dlt-view.js";
+import { QueryBuilder } from "query-builder.js";
 
 globalThis.VirtualDltTBody = VirtualDltTBody;
+globalThis.QueryBuilder = QueryBuilder;
 
 let currentTheme = "light";
 let lastProgress = -1;
@@ -10,6 +12,7 @@ let lastDocId = null;
 document.on("ready", function () {
     console.log("Starting DLT Explorer UI...");
     initApp();
+    initQueryBuilder();
 });
 
 function stopScroll(element) {
@@ -48,6 +51,62 @@ function initApp() {
     setupEvents();
     refreshTabs();
     pollLoadingProgress();
+}
+
+function initQueryBuilder() {
+    const builder = new QueryBuilder();
+    builder.initMRU(5); // Хранить 5 последних
+    $("#query-builder").append(builder);
+
+
+    // 1. Получение Regex
+    document.on("click", "#btn-get-regex", () => {
+        const regexStr = builder.getCurrentRegex();
+        $("#result-output").innerText = "/" + regexStr + "/";
+
+        // Можно сразу проверить валидность
+        try {
+            new RegExp(regexStr);
+        } catch (e) {
+            $("#result-output").innerText += "\n[Error]: Invalid Regex Logic!";
+        }
+    });
+
+    // 2. Сохранение в MRU (обычно происходит при нажатии Enter или кнопки Поиск)
+    function updateHistoryUI() {
+        const selectMru = $("#select-mru");
+        selectMru.innerHTML = ""; // Очистка
+        let elOption = document.createElement("option");
+        elOption.text = "History...";
+        selectMru.append(elOption);
+
+        const list = builder.getMRUList();
+        list.forEach((json, index) => {
+            // Генерируем краткое описание для UI (обрезаем JSON для красоты)
+            // В идеале: распарсить JSON и сделать human-readable строку "Error & (500 | 404)"
+            let label = `Query #${index + 1}`;
+            let elOption = document.createElement("option");
+            elOption.text = label;
+            elOption.value = json;
+            selectMru.append(elOption);
+        });
+    }
+
+    document.on("click", "#btn-save-mru", () => {
+        builder.saveCurrentToMRU();
+        updateHistoryUI();
+        $("#result-output").innerText = "Saved to History";
+    });
+
+    // 3. Загрузка из MRU
+    document.on("change", "#select-mru", (evt, select) => {
+        const json = select.value;
+        if (json) {
+            builder.loadCurrentFromJson(json);
+            // Сбрасываем селект обратно в дефолт
+            select.value = "";
+        }
+    });
 }
 
 function restoreSettings() {

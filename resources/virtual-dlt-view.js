@@ -6,7 +6,6 @@ export class VirtualDltTBody extends VirtualSelect {
     //list; // array of items
 
     this(props) {
-        console.log("VirtualDltTBody.this", props);
         super.this(props);
     }
 
@@ -23,7 +22,6 @@ export class VirtualDltTBody extends VirtualSelect {
     }
 
     indexOf(item) {
-        console.log("indexOf: ", item);
         return item.index;
         //return this.list.indexOf(item);
     }
