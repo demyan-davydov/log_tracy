@@ -81,7 +81,7 @@ struct SciterAPI_T
         void* SciterCreateNSView; // 29
     }
 
-    version (Linux)
+    version (linux)
     {
         //! returns GtkWidget*
         extern (C) HWINDOW function(RECT*) SciterCreateWidget; // 30

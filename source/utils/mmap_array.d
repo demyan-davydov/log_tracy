@@ -3,6 +3,8 @@ module utils.mmap_array;
 import core.sys.posix.sys.mman;
 import core.sys.posix.unistd;
 
+@nogc:
+
 //! Array that stores data in memory mapped file.
 struct MmapArray(T)
 {
@@ -68,6 +70,11 @@ struct MmapArray(T)
     size_t length() const pure nothrow @nogc
     {
         return _length;
+    }
+
+    size_t capacity() const pure nothrow @nogc
+    {
+        return _capacity;
     }
 
     size_t[2] opSlice(size_t start, size_t end)

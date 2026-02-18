@@ -339,7 +339,7 @@ struct SCROLL_PARAMS
   }
   */
 
-align(8) struct GESTURE_PARAMS
+struct GESTURE_PARAMS
 {
     UINT cmd; // GESTURE_EVENTS
     HELEMENT target; // target element
@@ -368,7 +368,7 @@ enum DD_MODES
     DD_MODE_LINK = 4, // DROPEFFECT_LINK	( 4 )
 }
 
-align(8) struct EXCHANGE_PARAMS
+struct EXCHANGE_PARAMS
 {
     UINT cmd; // EXCHANGE_EVENTS
     HELEMENT target; // target element
@@ -387,9 +387,9 @@ enum DRAW_EVENTS
     DRAW_OUTLINE = 3,
 }
 
-align(8) struct SCITER_GRAPHICS;
+struct SCITER_GRAPHICS;
 
-align(8) struct DRAW_PARAMS
+struct DRAW_PARAMS
 {
     UINT cmd; // DRAW_EVENTS
     HGFX gfx; // hdc to paint on
@@ -533,7 +533,7 @@ enum EDIT_CHANGED_REASON
     BY_UNDO_REDO, // undo/redo
 }
 
-align(8) struct BEHAVIOR_EVENT_PARAMS
+struct BEHAVIOR_EVENT_PARAMS
 {
     UINT cmd; // BEHAVIOR_EVENTS
     HELEMENT heTarget; // target element handler, in MENU_ITEM_CLICK this is owner element that caused this menu - e.g. context menu owner
@@ -547,7 +547,7 @@ align(8) struct BEHAVIOR_EVENT_PARAMS
     LPCWSTR name; // name of custom event (when cmd == CUSTOM)
 }
 
-align(8) struct TIMER_PARAMS
+struct TIMER_PARAMS
 {
     UINT* timerId; // timerId that was used to create timer by using SciterSetTimer
 }
@@ -569,7 +569,7 @@ enum BEHAVIOR_METHOD_IDENTIFIERS
     FIRST_APPLICATION_METHOD_ID = 0x100
 }
 
-align(8) struct SCRIPTING_METHOD_PARAMS
+struct SCRIPTING_METHOD_PARAMS
 {
     LPCSTR name; ///< method name
     const(SCITER_VALUE)* argv; ///< vector of arguments
@@ -578,14 +578,14 @@ align(8) struct SCRIPTING_METHOD_PARAMS
 }
 
 // GET_VALUE/SET_VALUE methods params
-align(8) struct VALUE_PARAMS
+struct VALUE_PARAMS
 {
     UINT methodID;
     SCITER_VALUE val;
 }
 
 // IS_EMPTY method params
-align(8) struct IS_EMPTY_PARAMS
+struct IS_EMPTY_PARAMS
 {
     UINT methodID;
     UINT is_empty; // !0 - is empty
@@ -593,7 +593,7 @@ align(8) struct IS_EMPTY_PARAMS
 
 // see SciterRequestElementData
 
-align(8) struct DATA_ARRIVED_PARAMS
+struct DATA_ARRIVED_PARAMS
 {
     HELEMENT initiator; // element intiator of SciterRequestElementData request,
     LPCBYTE data; // data buffer
@@ -605,7 +605,7 @@ align(8) struct DATA_ARRIVED_PARAMS
     LPCWSTR uri; // requested url
 }
 
-align(8) struct ATTRIBUTE_CHANGE_PARAMS
+struct ATTRIBUTE_CHANGE_PARAMS
 {
     HELEMENT he; // this element
     LPCSTR name; // attribute name

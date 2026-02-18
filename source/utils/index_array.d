@@ -2,6 +2,8 @@ module utils.index_array;
 
 import utils.mmap_array;
 
+@nogc:
+
 //! Container to store indexes of DLT messages in file.
 struct IndexArray
 {
@@ -38,6 +40,11 @@ struct IndexArray
     size_t length() const pure nothrow @nogc
     {
         return _data.length;
+    }
+
+    size_t capacity() const pure nothrow @nogc
+    {
+        return _data.capacity;
     }
 
     void clear() @nogc

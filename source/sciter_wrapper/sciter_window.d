@@ -74,7 +74,23 @@ class SciterWindow : SciterEventHandler
 
     final void loadFile(string path)
     {
-        _api.SciterLoadFile(_hwnd, path.toUTF16z());
+        version (linux)
+        {
+            // Workaround: SciterLoadFile crashes on Linux with buffer overflow
+            // (bug inside the native library's file path handling).
+            // Read file content ourselves and use SciterLoadHtml instead.
+            import std.file : read;
+            import std.path : dirName, absolutePath;
+
+            auto content = cast(const(ubyte)[]) read(path);
+            string absDir = absolutePath(path).dirName;
+            string baseUrl = "file://" ~ absDir ~ "/";
+            _api.SciterLoadHtml(_hwnd, content.ptr, cast(uint) content.length, baseUrl.toUTF16z());
+        }
+        else
+        {
+            _api.SciterLoadFile(_hwnd, path.toUTF16z());
+        }
     }
 
     private INT_PTR exec(uint cmd, UINT_PTR param1, UINT_PTR param2) const

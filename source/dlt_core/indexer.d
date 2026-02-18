@@ -96,6 +96,16 @@ class Indexer2
     private ulong _processedSize;
     private ulong _totalSize;
 
+    enum State
+    {
+        Scanning,
+        Filtering,
+        Searching,
+        Done,
+    }
+
+    private State _state = State.Scanning;
+
     this(string filePath)
     {
         _stream = new FileStream(filePath);
@@ -161,6 +171,16 @@ class Indexer2
             _processedSize = _stream.position();
             _stream.skip(length);
         }
+    }
+
+    void applyFilter(bool function(const(MsgInfo) info) filter)
+    {
+        //_index = _index.filter(filter);
+    }
+
+    void enumerateMessages(bool function(const(MsgInfo) info) action)
+    {
+        //_index = _index.filter(filter);
     }
 }
 

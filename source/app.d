@@ -122,7 +122,7 @@ int main()
 
 		//win.run();
 
-		//win.expand();
+		win.expand();
 		win.activate(true); // Explicit activation for new Sciter version
 
 		writeln("Event loop starting...");

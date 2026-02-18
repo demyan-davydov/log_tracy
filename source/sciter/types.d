@@ -106,7 +106,7 @@ else version (OSX)
 {
     enum GFX_LAYER_SKIA_GPU = GFX_LAYER.GFX_LAYER_SKIA_GPU_OSX;
 }
-else version (Linux)
+else version (linux)
 {
     enum GFX_LAYER_SKIA_GPU = GFX_LAYER.GFX_LAYER_SKIA_GPU_LINUX;
 }
@@ -135,7 +135,7 @@ version (OSX)
     enum SCITER_DLL_NAME = "libsciter.dylib";
 }
 
-version (Linux)
+version (linux)
 {
     alias HWINDOW = void*;
     alias HINSTANCE = void*; //
