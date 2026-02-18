@@ -106,9 +106,14 @@ export class QueryBuilder extends Element {
         // ВАЖНО: Добавляем подсказку, чтобы поле было видно
         input.attributes["placeholder"] = "Type query (e.g. Error & 500)...";
 
-        //input.onkeydown = (evt) => this.handleKeyDown(evt);
+        // keydown — только для Enter и Backspace (не-символьные клавиши)
         input.addEventListener('keydown', this.handleKeyDown.bind(this));
-        input.oninput = (evt) => { this.inputBuffer = input.value; };
+
+        // input/change — для обнаружения спецсимволов (&, |, (, ))
+        // Sciter's keydown fires BEFORE character composition, so evt.key
+        // doesn't reflect the actual typed character with modifiers (Shift+7 = &).
+        // The input event fires AFTER the character is inserted.
+        input.addEventListener('input', this.handleInput.bind(this));
 
         container.append(input);
 
@@ -123,64 +128,95 @@ export class QueryBuilder extends Element {
 
     // --- LOGIC & CONTROLLER ---
 
+    // keydown — только для не-символьных клавиш (Enter, Backspace)
     handleKeyDown(evt) {
         const key = evt.key;
-        const val = this.inputBuffer;
-        const code = evt.code;
-        var charCode = evt.which || evt.keyCode;
+        const val = this.inputEl ? this.inputEl.value : "";
 
-        // Лог для отладки: посмотрим, что реально приходит
-        console.log(`Event: code=${code}, key=${key}, val=${val}, keyCode=${evt.keyCode}, shiftKey=${evt.shiftKey}, charCode=${charCode}`);
-
-        // 1. Enter: Создать токен
+        // 1. Enter: Создать токен из текста в буфере
         if (key === 'Enter') {
             if (val.trim()) {
-                this.addToken(val);
+                this.addToken(val.trim());
                 this.inputBuffer = "";
                 this.render();
             }
             return true;
         }
 
-        // 2. Спецсимволы (&, |)
-        if (key === '&' || key === '|') {
-            console.log("query-builder.js: handleKeyDown == & or |: " + key);
-            // Если есть текст в буфере, сначала добавим его как токен
-            if (val.trim()) {
-                this.addToken(val);
-                this.inputBuffer = "";
-            }
-
-            // ВАЛИДАЦИЯ: Можно ли добавить оператор?
-            if (this.canAddOperator()) {
-                this.addOperator(key === '&' ? 'AND' : 'OR');
-                this.render();
-            } else {
-                this.showErrorTooltip(evt.target, "Enter search criteria first");
-            }
-
-            return true; // Prevent default input
-        }
-
-        // 3. Группировка (Символ '(' )
-        if (key === '(') {
-            console.log("query-builder.js: handleKeyDown == (: " + key);
-            if (this.selectionIds.size > 0) {
-                this.groupSelectedItems();
-                this.render();
-                return true;
-            }
-        }
-
-        // 4. Backspace
+        // 2. Backspace на пустом поле — удалить последний токен/оператор
         if (key === 'Backspace' && val === "") {
-            // Удаляем последний элемент или выделенные
             this.removeLastOrSelected();
             this.render();
             return true;
         }
 
         return false;
+    }
+
+    // input event — обнаружение спецсимволов после их появления в поле
+    handleInput(evt) {
+        const input = this.inputEl;
+        if (!input) return;
+
+        const val = input.value;
+
+        // Ищем спецсимволы в текущем значении
+        const specialIndex = this.findSpecialChar(val);
+
+        if (specialIndex === -1) {
+            // Нет спецсимволов — просто обновляем буфер
+            this.inputBuffer = val;
+            return;
+        }
+
+        const specialChar = val[specialIndex];
+        // Текст ДО спецсимвола — потенциальный токен
+        const textBefore = val.substring(0, specialIndex);
+        // Текст ПОСЛЕ — остаток для буфера
+        const textAfter = val.substring(specialIndex + 1);
+
+        console.log(`Special char '${specialChar}' detected. Before: '${textBefore}', After: '${textAfter}'`);
+
+        // Обработка & и |
+        if (specialChar === '&' || specialChar === '|') {
+            // Если есть текст перед оператором, создаём токен
+            if (textBefore.trim()) {
+                this.addToken(textBefore.trim());
+            }
+
+            // Можно ли добавить оператор?
+            if (this.canAddOperator()) {
+                this.addOperator(specialChar === '&' ? 'AND' : 'OR');
+            } else if (input) {
+                this.showErrorTooltip(input, "Enter search criteria first");
+            }
+
+            this.inputBuffer = textAfter;
+            this.render();
+            return;
+        }
+
+        // Обработка ( — группировка выделенных элементов
+        if (specialChar === '(') {
+            if (this.selectionIds.size > 0) {
+                this.groupSelectedItems();
+            }
+            // Убираем символ ( из буфера
+            this.inputBuffer = textBefore + textAfter;
+            this.render();
+            return;
+        }
+    }
+
+    // Возвращает индекс первого спецсимвола в строке, или -1
+    findSpecialChar(str) {
+        for (let i = 0; i < str.length; i++) {
+            const ch = str[i];
+            if (ch === '&' || ch === '|' || ch === '(') {
+                return i;
+            }
+        }
+        return -1;
     }
 
     // --- CORE LOGIC METHODS ---
