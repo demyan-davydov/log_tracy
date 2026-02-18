@@ -51,7 +51,7 @@ class MainWindow : SciterWindow
         super(creationFlags, frame);
 
         // Disable extended touchpad support on Mac to prevent gesture-related crashes
-        _api.SciterSetOption(hwnd, 19 /*SCITER_EXTENDED_TOUCHPAD_SUPPORT*/ , 0);
+        _api.SciterSetOption(hwnd, SCITER_RT_OPTIONS.SCITER_EXTENDED_TOUCHPAD_SUPPORT, 0);
     }
 
     override bool handleEvent(HELEMENT he, INITIALIZATION_PARAMS* params)

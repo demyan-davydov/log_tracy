@@ -37,7 +37,7 @@ class SciterWindow : SciterEventHandler
     {
         //super();
 
-        _hwnd = _api.SciterCreateWindow(creationFlags, &frame, &sciterWindowDelegate, null, null);
+        _hwnd = _api.SciterCreateWindow(creationFlags, &frame, null, null, null);
 
         attachEventHandler(_hwnd);
 
@@ -91,6 +91,16 @@ class SciterWindow : SciterEventHandler
         {
             _api.SciterLoadFile(_hwnd, path.toUTF16z());
         }
+    }
+
+    final void loadHtml(const(ubyte)[] content, string baseUrl = "")
+    {
+        _api.SciterLoadHtml(_hwnd, content.ptr, cast(uint) content.length, baseUrl.toUTF16z());
+    }
+
+    final void updateWindow()
+    {
+        _api.SciterUpdateWindow(_hwnd);
     }
 
     private INT_PTR exec(uint cmd, UINT_PTR param1, UINT_PTR param2) const

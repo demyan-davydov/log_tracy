@@ -91,7 +91,8 @@ struct SciterAPI_T
         void* SciterCreateWidget; // 30
     }
 
-    extern (C) HWINDOW function(uint, const(RECT)* rect, SciterWindowDelegate callback, void* param, HWINDOW parent) SciterCreateWindow; // 31
+    //extern (C) HWINDOW function(uint, const(RECT)* rect, SciterWindowDelegate callback, void* param, HWINDOW parent) SciterCreateWindow; // 31
+    extern (C) HWINDOW function(uint, const(RECT)* rect, void*, void*, HWINDOW parent) SciterCreateWindow; // 31
 
     extern (C) void function(HWINDOW, void* param, DEBUG_OUTPUT_PROC pfOutput) SciterSetupDebugOutput; // 32
 

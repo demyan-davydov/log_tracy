@@ -111,6 +111,9 @@ int main()
 			}
 		}
 
+		win.expand();
+		win.activate(true); // Explicit activation for new Sciter version
+
 		if (resources.length > 0)
 		{
 			win.loadFile(resources);
@@ -120,10 +123,9 @@ int main()
 			writeln("Error: Could not find main.htm in any of the expected locations.");
 		}
 
-		//win.run();
+		win.updateWindow();
 
-		win.expand();
-		win.activate(true); // Explicit activation for new Sciter version
+		//win.run();
 
 		writeln("Event loop starting...");
 
