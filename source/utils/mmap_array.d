@@ -56,6 +56,14 @@ struct MmapArray(T)
         _data[_length++] = v;
     }
 
+    //! Append slice of elements to array.
+    void append(const(T)[] slice) pure @nogc
+    {
+        assert(_length + slice.length <= _capacity);
+        _data[_length .. _length + slice.length] = slice;
+        _length += slice.length;
+    }
+
     //! Get element at index.
     T opIndex(size_t i) const pure @nogc
     {

@@ -27,6 +27,11 @@ struct IndexArray
         _data.append(offset);
     }
 
+    void append(const(size_t)[] slice) pure @nogc
+    {
+        _data.append(slice);
+    }
+
     size_t opIndex(size_t i) const pure @nogc
     {
         return _data[i];

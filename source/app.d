@@ -14,6 +14,26 @@ import std.file : getcwd, exists;
 import std.path : buildPath;
 import std.stdio : writeln;
 
+// macOS: Workaround for Sciter not calling setNeedsDisplay on NSView.
+version (OSX)
+{
+	private extern (C)
+	{
+		alias objc_id = void*;
+		alias SEL = void*;
+		SEL sel_registerName(const(char)* name);
+		void* objc_msgSend(objc_id self, SEL op, ...);
+	}
+
+	// Call [nsView setNeedsDisplay:YES] via objc_msgSend
+	private void nsViewSetNeedsDisplay(objc_id nsView, SEL sel)
+	{
+		alias Fn = extern (C) void function(objc_id, SEL, byte);
+		auto fn = cast(Fn)&objc_msgSend;
+		fn(nsView, sel, 1); // YES = 1
+	}
+}
+
 /+ 
 class frame : public sciter::window {
 public:
@@ -129,7 +149,37 @@ int main()
 
 		writeln("Event loop starting...");
 
-		result = sciterApplication().runEventLoop();
+		//version (OSX)
+		static if (false)
+		{
+			// Workaround: New Sciter versions don't call setNeedsDisplay on macOS.
+			// Use manual event loop iteration + direct NSView invalidation.
+			// HWINDOW on macOS is NSWindow*, so we get its contentView first.
+			auto selContentView = sel_registerName("contentView");
+			auto selSetNeedsDisplay = sel_registerName("setNeedsDisplay:");
+
+			auto nsWindow = cast(objc_id) win.hwnd();
+			alias ContentViewFn = extern (C) objc_id function(objc_id, SEL);
+			auto getContentView = cast(ContentViewFn)&objc_msgSend;
+			auto nsView = getContentView(nsWindow, selContentView);
+
+			import core.thread : Thread;
+			import core.time : dur;
+
+			enum FRAME_TIME = dur!"msecs"(16); // ~60fps cap
+
+			while (sciterApplication().runIteration())
+			{
+				// Invalidate + sleep to cap at ~60fps, prevent busy-waiting
+				nsViewSetNeedsDisplay(nsView, selSetNeedsDisplay);
+				Thread.sleep(FRAME_TIME);
+			}
+			result = 0;
+		}
+		else
+		{
+			result = sciterApplication().runEventLoop();
+		}
 
 		writeln("Event loop stopped");
 
