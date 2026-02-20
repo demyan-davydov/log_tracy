@@ -74,7 +74,7 @@ struct DecodedMessage(Char = char) if (isSomeChar!Char)
         return result;
     }
 
-    PayloadBuilder!Char setupPayload(const(char)[] ecu, const(char)[] appId, const(char)[] ctxId)
+    PayloadBuilder!Char setupPayload(const(char)[] ecu, const(char)[] appId, const(char)[] ctxId) nothrow @nogc
     {
         enum capacity = 16 * 1024 + 1024;
         _allocator.reset(capacity);

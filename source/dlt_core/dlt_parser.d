@@ -8,6 +8,9 @@ import std.array;
 import std.conv : to;
 import std.format : format;
 import std.stdint;
+import std.traits : isSomeChar;
+
+import dlt_core.decoded_message;
 
 //! @brief DLT Message structure:
 //! [ Storage Header ]        (16 bytes, always in file)
@@ -393,4 +396,595 @@ private string cleanId(const ubyte[4] id) pure
             s ~= '.'; // Replace non-printable with dot
     }
     return s.empty ? "-" : s;
+}
+
+bool parseDltItem(Char)(out DecodedMessage!Char msg, const(ubyte)[] data, FibexParser fibex = null) nothrow @nogc
+        if (isSomeChar!Char)
+{
+    const LogItemHeaders headers = findHeaders(data);
+
+    if (headers.storage is null || headers.standard is null)
+        return false;
+
+    const bool msbf = headers.standard.isBigEndian();
+
+    // ── ECU ID ──────────────────────────────────────────────────────────────
+    // Storage header has ecuId as char[4]; cast to char[] for allocAndCopyAscii
+    const char[] ecuId = cast(const char[]) headers.storage.ecuId[];
+
+    // ── AppId / CtxId / level / type ────────────────────────────────────────
+    const(char)[] appId = "-";
+    const(char)[] ctxId = "-";
+    LogLevel level = LogLevel.Info;
+    MessageType msgType = MessageType.Log;
+
+    if (headers.extended)
+    {
+        appId = cast(const char[]) headers.extended.applicationId[];
+        ctxId = cast(const char[]) headers.extended.contextId[];
+        level = headers.extended.messageInfo.logLevel();
+        msgType = headers.extended.messageInfo.messageType();
+    }
+
+    // setupPayload also resets the allocator and stores ecu/appId/ctxId
+    auto builder = msg.setupPayload(ecuId, appId, ctxId);
+
+    // ── scalar metadata ─────────────────────────────────────────────────────
+    msg.timestampSeconds = headers.storage.nativeSeconds;
+    msg.timestampMicroseconds = headers.storage.nativeMicroseconds;
+    msg.level = level;
+    msg.type = msgType;
+    msg.messageId = headers.messageId;
+
+    // ── Payload decoding ────────────────────────────────────────────────────
+    const(ubyte)[] p = headers.payload;
+
+    bool payloadDecoded = false;
+
+    if (headers.extended && headers.extended.messageInfo.isVerbose())
+    {
+        // ── Verbose message: iterate typed arguments ─────────────────────
+        const int numArgs = headers.extended.numberOfArguments;
+
+        for (int i = 0; i < numArgs && p.length >= 4; ++i)
+        {
+            const uint typeInfo = readValue!uint(p[0 .. 4], msbf);
+            p = p[4 .. $];
+
+            // Skip VariableInfo metadata (name + unit, each prefixed with ushort length)
+            if (typeInfo & TypeInfoFlags.VariableInfo)
+            {
+                foreach (_; 0 .. 2) // name, then unit
+                {
+                    if (p.length < 2)
+                    {
+                        p = [];
+                        break;
+                    }
+                    const ushort slen = readValue!ushort(p[0 .. 2], msbf);
+                    p = p[2 .. $];
+                    if (p.length < slen)
+                    {
+                        p = [];
+                        break;
+                    }
+                    p = p[slen .. $];
+                }
+            }
+
+            // Skip FixedPoint quantization block (4 bytes offset + 4 bytes quant = 8)
+            if (typeInfo & TypeInfoFlags.FixedPoint)
+            {
+                if (p.length >= 8)
+                    p = p[8 .. $];
+                else
+                    p = [];
+            }
+
+            if (typeInfo & TypeInfoFlags.TypeBoolean)
+            {
+                if (p.length >= 1)
+                {
+                    builder.appendBool(p[0] != 0);
+                    p = p[1 .. $];
+                }
+            }
+            else if (typeInfo & TypeInfoFlags.TypeSigned)
+            {
+                const uint tyle = typeInfo & TypeInfoFlags.LengthMask;
+                if (tyle == Tyle.Tyle8Bit && p.length >= 1)
+                {
+                    builder.append(cast(byte) p[0]);
+                    p = p[1 .. $];
+                }
+                else if (tyle == Tyle.Tyle16Bit && p.length >= 2)
+                {
+                    builder.append(readValue!short(p[0 .. 2], msbf));
+                    p = p[2 .. $];
+                }
+                else if (tyle == Tyle.Tyle32Bit && p.length >= 4)
+                {
+                    builder.append(readValue!int(p[0 .. 4], msbf));
+                    p = p[4 .. $];
+                }
+                else if (tyle == Tyle.Tyle64Bit && p.length >= 8)
+                {
+                    builder.append(readValue!long(p[0 .. 8], msbf));
+                    p = p[8 .. $];
+                }
+            }
+            else if (typeInfo & TypeInfoFlags.TypeUnsigned)
+            {
+                const uint tyle = typeInfo & TypeInfoFlags.LengthMask;
+                if (tyle == Tyle.Tyle8Bit && p.length >= 1)
+                {
+                    builder.append(cast(ubyte) p[0]);
+                    p = p[1 .. $];
+                }
+                else if (tyle == Tyle.Tyle16Bit && p.length >= 2)
+                {
+                    builder.append(readValue!ushort(p[0 .. 2], msbf));
+                    p = p[2 .. $];
+                }
+                else if (tyle == Tyle.Tyle32Bit && p.length >= 4)
+                {
+                    builder.append(readValue!uint(p[0 .. 4], msbf));
+                    p = p[4 .. $];
+                }
+                else if (tyle == Tyle.Tyle64Bit && p.length >= 8)
+                {
+                    builder.append(readValue!ulong(p[0 .. 8], msbf));
+                    p = p[8 .. $];
+                }
+            }
+            else if (typeInfo & TypeInfoFlags.TypeFloat)
+            {
+                const uint tyle = typeInfo & TypeInfoFlags.LengthMask;
+                if (tyle == Tyle.Tyle32Bit && p.length >= 4)
+                {
+                    builder.append(readValue!float(p[0 .. 4], msbf));
+                    p = p[4 .. $];
+                }
+                else if (tyle == Tyle.Tyle64Bit && p.length >= 8)
+                {
+                    builder.append(readValue!double(p[0 .. 8], msbf));
+                    p = p[8 .. $];
+                }
+            }
+            else if (typeInfo & TypeInfoFlags.TypeString)
+            {
+                if (p.length >= 2)
+                {
+                    const ushort slen = readValue!ushort(p[0 .. 2], msbf);
+                    p = p[2 .. $];
+                    if (p.length >= slen)
+                    {
+                        const(char)[] str = cast(const char[]) p[0 .. slen];
+                        // strip trailing null terminator if present
+                        if (str.length > 0 && str[$ - 1] == '\0')
+                            str = str[0 .. $ - 1];
+
+                        const bool isUtf8 =
+                            (typeInfo & TypeInfoFlags.StringCodingMask)
+                            == TypeInfoFlags.StringCodingUTF8;
+
+                        if (isUtf8)
+                            builder.appendUtf8(str);
+                        else
+                            builder.appendAscii(str);
+
+                        p = p[slen .. $];
+                    }
+                    else
+                    {
+                        p = [];
+                    }
+                }
+            }
+            else if (typeInfo & TypeInfoFlags.TypeRaw)
+            {
+                if (p.length >= 2)
+                {
+                    const ushort rlen = readValue!ushort(p[0 .. 2], msbf);
+                    p = p[2 .. $];
+                    if (p.length >= rlen)
+                    {
+                        builder.appendHex(cast(const char[]) p[0 .. rlen]);
+                        p = p[rlen .. $];
+                    }
+                    else
+                    {
+                        p = [];
+                    }
+                }
+            }
+            // Unknown TypeInfo — skip silently
+        }
+
+        payloadDecoded = true;
+    }
+
+    if (!payloadDecoded)
+    {
+        // ── Non-Verbose or no Extended Header ────────────────────────────
+        if (headers.messageId != 0)
+        {
+            builder.appendAscii("ID:");
+            builder.append(headers.messageId);
+        }
+        else
+        {
+            builder.appendAscii("Legacy DLT Message");
+        }
+    }
+
+    // builder destructor calls storePayload() automatically
+    return true;
+}
+
+/// Non-@nogc overload that also performs FIBEX lookup.
+/// Call this when you have a FibexParser and don't need @nogc.
+bool parseDltItemWithFibex(Char)(out DecodedMessage!Char msg, const(ubyte)[] data, FibexParser fibex)
+        if (isSomeChar!Char)
+{
+    if (!parseDltItem(msg, data))
+        return false;
+
+    // If the result is a bare "ID:N" message and FIBEX has a description, replace it.
+    if (msg.messageId != 0 && fibex !is null)
+    {
+        string desc = fibex.getDescription(msg.messageId);
+        if (desc.length > 0)
+        {
+            // Re-decode: append the FIBEX description instead
+            auto builder = msg.setupPayload(
+                cast(const char[]) msg.ecu,
+                cast(const char[]) msg.appId,
+                cast(const char[]) msg.ctxId);
+            builder.appendAscii("FIBEX: ");
+            builder.appendAscii(desc);
+        }
+    }
+
+    return true;
+}
+
+// ─── Helper: build a minimal raw DLT message byte array ──────────────────────
+// Returns a ubyte[] with StorageHeader + StandardHeader + optional ExtendedHeader + payload.
+version (unittest)
+{
+    import std.bitmanip : nativeToBigEndian, nativeToLittleEndian;
+
+    // Build a complete DLT message in a ubyte[] for unit testing.
+    // All pointer casts are safe because we own the GC array.
+    ubyte[] buildDltMessage(
+        bool withExtHeader,
+        bool verbose,
+        ubyte numArgs,
+        ubyte msgType, // MessageType raw value
+        ubyte logLevel, // LogLevel raw value (used in MessageInfo bits 4-7)
+        uint messageId, // for non-verbose (big endian in payload)
+        ubyte[] payload, // for verbose: raw argument bytes; for non-verbose: appended after messageId
+        string ecuId = "ECU1",
+        string appId = "APP1",
+        string ctxId = "CTX1",
+        uint seconds = 1000,
+        uint usecs = 500
+    )
+    {
+        import core.stdc.string : memset, memcpy;
+
+        // ── Storage Header ───────────────────────────────────────────────
+        StorageHeader sh;
+        sh.pattern = cast(char[4]) "DLT\x01";
+        sh.nativeSeconds = seconds;
+        sh.nativeMicroseconds = usecs;
+        foreach (i, c; ecuId[0 .. (ecuId.length < 4 ? ecuId.length : 4)])
+            sh.ecuId[i] = c;
+
+        // ── Standard Header ──────────────────────────────────────────────
+        StandardHeader stdH;
+        ubyte ht = StandardHeader.Type.MostSignificantByteFirst; // big-endian
+        if (withExtHeader)
+            ht |= StandardHeader.Type.UseExtendedHeader;
+        stdH.headerType = ht;
+
+        // ── Extended Header ──────────────────────────────────────────────
+        ExtendedHeader extH;
+        if (withExtHeader)
+        {
+            // MessageInfo: bits [0]=verbose, [1-3]=msgType, [4-7]=logLevel
+            ubyte info = cast(ubyte)((verbose ? 1 : 0)
+                    | ((msgType & 0x07) << 1)
+                    | (
+                        (logLevel & 0x0F) << 4));
+            extH.messageInfo = MessageInfo(info);
+            extH.numberOfArguments = numArgs;
+            foreach (i, c; appId[0 .. (appId.length < 4 ? appId.length : 4)])
+                extH.applicationId[i] = cast(ubyte) c;
+            foreach (i, c; ctxId[0 .. (ctxId.length < 4 ? ctxId.length : 4)])
+                extH.contextId[i] = cast(ubyte) c;
+        }
+
+        // ── Assemble ─────────────────────────────────────────────────────
+        ubyte[] body;
+        if (!verbose && withExtHeader)
+        {
+            // Non-verbose: prepend message ID (big endian)
+            ubyte[4] idBytes = nativeToBigEndian(messageId);
+            body ~= idBytes[];
+        }
+        body ~= payload;
+
+        const size_t totalLen = StandardHeader.sizeof
+            + (withExtHeader ? ExtendedHeader.sizeof : 0)
+            + body.length;
+
+        stdH.nativeLength = cast(ushort) totalLen;
+
+        ubyte[] result;
+        result ~= (cast(ubyte*)&sh)[0 .. StorageHeader.sizeof];
+        result ~= (cast(ubyte*)&stdH)[0 .. StandardHeader.sizeof];
+        if (withExtHeader)
+            result ~= (cast(ubyte*)&extH)[0 .. ExtendedHeader.sizeof];
+        result ~= body;
+
+        return result;
+    }
+
+    // Helper: pack a 4-byte TypeInfo word + data bytes for a verbose uint32 argument
+    ubyte[] verboseUint32Arg(uint value)
+    {
+        import std.bitmanip : nativeToBigEndian;
+
+        // TypeInfo: TypeUnsigned | Tyle32Bit
+        const uint ti = TypeInfoFlags.TypeUnsigned | Tyle.Tyle32Bit;
+        ubyte[4] tib = nativeToBigEndian(ti);
+        ubyte[4] vb = nativeToBigEndian(value);
+        return tib[] ~ vb[];
+    }
+
+    ubyte[] verboseInt32Arg(int value)
+    {
+        import std.bitmanip : nativeToBigEndian;
+
+        const uint ti = TypeInfoFlags.TypeSigned | Tyle.Tyle32Bit;
+        ubyte[4] tib = nativeToBigEndian(ti);
+        ubyte[4] vb = nativeToBigEndian(cast(uint) value);
+        return tib[] ~ vb[];
+    }
+
+    ubyte[] verboseBoolArg(bool value)
+    {
+        import std.bitmanip : nativeToBigEndian;
+
+        const uint ti = TypeInfoFlags.TypeBoolean;
+        ubyte[4] tib = nativeToBigEndian(ti);
+        return tib[] ~ [cast(ubyte)(value ? 1 : 0)];
+    }
+
+    ubyte[] verboseAsciiStringArg(string s)
+    {
+        import std.bitmanip : nativeToBigEndian;
+
+        const uint ti = TypeInfoFlags.TypeString | TypeInfoFlags.StringCodingASCII;
+        ubyte[4] tib = nativeToBigEndian(ti);
+        ushort len = cast(ushort)(s.length + 1); // +1 for null terminator
+        ubyte[2] lb = nativeToBigEndian(len);
+        ubyte[] result = tib[] ~ lb[];
+        result ~= cast(ubyte[]) s;
+        result ~= [cast(ubyte) 0]; // null terminator
+        return result;
+    }
+
+    ubyte[] verboseFloat32Arg(float value)
+    {
+        import std.bitmanip : nativeToBigEndian;
+
+        const uint ti = TypeInfoFlags.TypeFloat | Tyle.Tyle32Bit;
+        ubyte[4] tib = nativeToBigEndian(ti);
+        ubyte[4] vb = nativeToBigEndian(*cast(uint*)&value);
+        return tib[] ~ vb[];
+    }
+}
+
+// ─── parseDltItem Tests ───────────────────────────────────────────────────────
+
+@("parseDltItem: truncated data returns false")
+unittest
+{
+    DecodedMessage!char msg;
+    ubyte[] data = [0, 1, 2]; // too short
+    assert(parseDltItem(msg, data) == false);
+}
+
+@("parseDltItem: non-verbose without extended header")
+unittest
+{
+    auto data = buildDltMessage(
+        false, // no ext header
+        false, // non-verbose
+        0, // numArgs
+        0, // msgType
+        0, // logLevel
+        0, // messageId
+        [], // payload
+
+        
+
+    );
+
+    DecodedMessage!char msg;
+    assert(parseDltItem(msg, data));
+    assert(msg.ecu == "ECU1");
+
+    writeln("msg: ", msg.payloadText);
+
+    assert(msg.payloadText == "Legacy DLT Message");
+}
+
+@("parseDltItem: non-verbose with message ID, no FIBEX")
+unittest
+{
+    auto data = buildDltMessage(
+        true, // with ext header
+        false, // non-verbose
+        0, // numArgs
+        0, // msgType Log
+        0, // logLevel
+        0xDEAD, // messageId
+        [], // extra payload after ID
+
+        
+
+    );
+
+    DecodedMessage!char msg;
+    assert(parseDltItem(msg, data));
+    assert(msg.messageId == 0xDEAD);
+    import std.string : startsWith;
+
+    assert(msg.payloadText.startsWith("ID:"));
+}
+
+@("parseDltItem: verbose bool argument")
+unittest
+{
+    ubyte[] args = verboseBoolArg(true) ~ verboseBoolArg(false);
+    auto data = buildDltMessage(
+        true, // with ext header
+        true, // verbose
+        2, // numArgs
+        cast(ubyte) MessageType.Log,
+        cast(ubyte) LogLevel.Info,
+        0,
+        args,
+    );
+
+    DecodedMessage!char msg;
+    assert(parseDltItem(msg, data));
+    assert(msg.payloadText == "true false");
+}
+
+@("parseDltItem: verbose int32 argument")
+unittest
+{
+    ubyte[] args = verboseInt32Arg(-42);
+    auto data = buildDltMessage(true, true, 1,
+        cast(ubyte) MessageType.Log, cast(ubyte) LogLevel.Error, 0, args);
+
+    DecodedMessage!char msg;
+    assert(parseDltItem(msg, data));
+    assert(msg.payloadText == "-42");
+    assert(msg.level == LogLevel.Error);
+}
+
+@("parseDltItem: verbose uint32 argument")
+unittest
+{
+    ubyte[] args = verboseUint32Arg(12_345);
+    auto data = buildDltMessage(true, true, 1,
+        cast(ubyte) MessageType.Log, cast(ubyte) LogLevel.Debug, 0, args);
+
+    DecodedMessage!char msg;
+    assert(parseDltItem(msg, data));
+    assert(msg.payloadText == "12345");
+    assert(msg.level == LogLevel.Debug);
+}
+
+@("parseDltItem: verbose ASCII string argument")
+unittest
+{
+    ubyte[] args = verboseAsciiStringArg("Hello DLT");
+    auto data = buildDltMessage(true, true, 1,
+        cast(ubyte) MessageType.Log, cast(ubyte) LogLevel.Info, 0, args);
+
+    DecodedMessage!char msg;
+    assert(parseDltItem(msg, data));
+    assert(msg.payloadText == "Hello DLT");
+}
+
+@("parseDltItem: verbose mixed arguments")
+unittest
+{
+    ubyte[] args = verboseAsciiStringArg("count")
+        ~ verboseUint32Arg(7)
+        ~ verboseBoolArg(true);
+
+    auto data = buildDltMessage(true, true, 3,
+        cast(ubyte) MessageType.Log, cast(ubyte) LogLevel.Warn, 0, args);
+
+    DecodedMessage!char msg;
+    assert(parseDltItem(msg, data));
+    assert(msg.payloadText == "count 7 true");
+    assert(msg.level == LogLevel.Warn);
+}
+
+@("parseDltItem: ECU/AppId/CtxId populated correctly")
+unittest
+{
+    ubyte[] args = verboseBoolArg(true);
+    auto data = buildDltMessage(true, true, 1,
+        cast(ubyte) MessageType.Log, cast(ubyte) LogLevel.Info, 0, args,
+        "MYEC", "MYAP", "MYCT");
+
+    DecodedMessage!char msg;
+    assert(parseDltItem(msg, data));
+    assert(msg.ecu == "MYEC");
+    assert(msg.appId == "MYAP");
+    assert(msg.ctxId == "MYCT");
+}
+
+@("parseDltItem: timestamp populated correctly")
+unittest
+{
+    ubyte[] args = verboseBoolArg(true);
+    auto data = buildDltMessage(true, true, 1,
+        cast(ubyte) MessageType.Log, cast(ubyte) LogLevel.Info, 0, args,
+        "ECU1", "APP1", "CTX1", 9999, 123);
+
+    DecodedMessage!char msg;
+    assert(parseDltItem(msg, data));
+    assert(msg.timestampSeconds == 9999);
+    assert(msg.timestampMicroseconds == 123);
+}
+
+@("parseDltItem: message type AppTrace")
+unittest
+{
+    ubyte[] args = verboseBoolArg(false);
+    auto data = buildDltMessage(true, true, 1,
+        cast(ubyte) MessageType.AppTrace, 0, 0, args);
+
+    DecodedMessage!char msg;
+    assert(parseDltItem(msg, data));
+    assert(msg.type == MessageType.AppTrace);
+}
+
+@("parseDltItem: verbose float32 argument")
+unittest
+{
+    ubyte[] args = verboseFloat32Arg(1.5f);
+    auto data = buildDltMessage(true, true, 1,
+        cast(ubyte) MessageType.Log, cast(ubyte) LogLevel.Info, 0, args);
+
+    DecodedMessage!char msg;
+    assert(parseDltItem(msg, data));
+    import std.string : startsWith;
+
+    assert(msg.payloadText.startsWith("1.5"));
+}
+
+@("parseDltItem: truncated verbose payload is handled gracefully")
+unittest
+{
+    // Claim 3 args but supply bytes only for 1
+    ubyte[] args = verboseUint32Arg(1); // only 1 arg worth of bytes
+    auto data = buildDltMessage(true, true, 3,
+        cast(ubyte) MessageType.Log, cast(ubyte) LogLevel.Info, 0, args);
+
+    DecodedMessage!char msg;
+    assert(parseDltItem(msg, data)); // must not crash
+    // At least the one valid arg was decoded
+    assert(msg.payloadText == "1");
 }
