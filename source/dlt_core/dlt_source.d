@@ -12,6 +12,7 @@ struct DltSource
 {
     private MmFile _mmFile;
     private const(char)* _dataBegin;
+    private const(char)* _dataEnd;
     private const(char)[] _rest; // slice for not readed part of mmFile content
     private const bool _hasStorageHeader;
 
@@ -24,6 +25,7 @@ struct DltSource
         _mmFile = new MmFile(filePath, MmFile.Mode.read, 0, null);
         _rest = cast(const(char)[]) _mmFile[0 .. _mmFile.length];
         _dataBegin = _rest.ptr;
+        _dataEnd = _dataBegin + _mmFile.length;
         _hasStorageHeader = containsStorageHeader;
     }
 
@@ -38,6 +40,12 @@ struct DltSource
         _rest = cast(const(char)[]) _mmFile[0 .. _mmFile.length];
     }
 
+    //! @returns the length of the file
+    size_t overallLength() const pure nothrow @nogc @property
+    {
+        return _dataEnd - _dataBegin;
+    }
+
     //! @returns the length of the rest of the file
     size_t length() const pure nothrow @nogc @property
     {
@@ -48,6 +56,37 @@ struct DltSource
     bool hasStorageHeader() const pure nothrow @nogc @property
     {
         return _hasStorageHeader;
+    }
+
+    //! @returns slice of original buffer starting from DLT header pattern (DLT\01) 
+    //! or empty slice reffered to bufferEnd
+    //! @note The result slice will have at least StorageHeader.sizeof bytes, 
+    //! otherwise the empty slice is returned
+    const(char)[] getMessage(size_t offset) const pure @nogc nothrow
+    {
+        const(char)[] buffer = cast(const(char)[]) _dataBegin[offset .. overallLength - offset];
+
+        if (hasStorageHeader)
+        {
+            buffer = findNextStorageHeader(buffer);
+        }
+
+        const(char)[] result = buffer[0 .. 0];
+
+        if (buffer.length > StorageHeader.sizeof)
+        {
+            buffer = buffer[StorageHeader.sizeof .. $];
+            if (buffer.length >= StandardHeader.sizeof)
+            {
+                auto standardHeader = cast(const(StandardHeader)*) buffer.ptr;
+                const ushort length = standardHeader.nativeLength;
+
+                buffer = buffer[length .. $];
+                result = result.ptr[0 .. buffer.ptr - result.ptr];
+            }
+        }
+
+        return result;
     }
 
     //! @returns slice of original buffer starting from DLT header pattern (DLT\01) 
