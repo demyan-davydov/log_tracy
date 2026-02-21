@@ -63,27 +63,27 @@ align(1) struct StandardHeader
         VersionMask = 0xE0
     }
 
-    bool useExtendedHeader() const pure nothrow @nogc
+    bool useExtendedHeader() const pure nothrow @nogc @property
     {
         return (headerType & Type.UseExtendedHeader) != 0;
     }
 
-    bool isBigEndian() const pure nothrow @nogc
+    bool isBigEndian() const pure nothrow @nogc @property
     {
         return (headerType & Type.MostSignificantByteFirst) != 0;
     }
 
-    bool withEcuId() const pure nothrow @nogc
+    bool withEcuId() const pure nothrow @nogc @property
     {
         return (headerType & Type.WithEcuId) != 0;
     }
 
-    bool withSessionId() const pure nothrow @nogc
+    bool withSessionId() const pure nothrow @nogc @property
     {
         return (headerType & Type.WithSessionId) != 0;
     }
 
-    bool withTimestamp() const pure nothrow @nogc
+    bool withTimestamp() const pure nothrow @nogc @property
     {
         return (headerType & Type.WithTimestamp) != 0;
     }
@@ -187,22 +187,22 @@ align(1) struct MessageInfo
     enum ubyte MessageTypeMask = 0b0000_1110; // MST, 0x0E, // Bits 1-3
     enum ubyte MessageTypeInfoMask = 0b1111_0000; // MTIN, 0x0F, // Bits 4-7
 
-    bool isVerbose() const pure nothrow @nogc
+    bool isVerbose() const pure nothrow @nogc @property
     {
         return (info & VerboseMask) != 0;
     }
 
-    MessageType messageType() const pure nothrow @nogc
+    MessageType messageType() const pure nothrow @nogc @property
     {
         return cast(MessageType)((info & MessageTypeMask) >> 1);
     }
 
-    ubyte messageTypeInfo() const pure nothrow @nogc
+    ubyte messageTypeInfo() const pure nothrow @nogc @property
     {
         return (info & MessageTypeInfoMask) >> 4;
     }
 
-    LogLevel logLevel() const pure nothrow @nogc
+    LogLevel logLevel() const pure nothrow @nogc @property
     {
         if (isVerbose() && messageType() == MessageType.Log)
         {
@@ -218,7 +218,7 @@ align(1) struct MessageInfo
         return LogLevel.Info; // Default/Unknown for Non-Verbose
     }
 
-    AppTraceType appTraceType() const pure nothrow @nogc
+    AppTraceType appTraceType() const pure nothrow @nogc @property
     {
         if (isVerbose() && messageType() == MessageType.AppTrace)
         {
@@ -228,7 +228,7 @@ align(1) struct MessageInfo
         return AppTraceType.Variable;
     }
 
-    NwTraceType nwTraceType() const pure nothrow @nogc
+    NwTraceType nwTraceType() const pure nothrow @nogc @property
     {
         if (isVerbose() && messageType() == MessageType.NwTrace)
         {
@@ -238,7 +238,7 @@ align(1) struct MessageInfo
         return NwTraceType.ToDo1;
     }
 
-    ControlType controlType() const pure nothrow @nogc
+    ControlType controlType() const pure nothrow @nogc @property
     {
         if (isVerbose() && messageType() == MessageType.Control)
         {

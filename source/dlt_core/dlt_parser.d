@@ -26,6 +26,11 @@ struct LogItemHeaders
     const(ExtendedHeader)* extended;
     const(ubyte)[] payload;
     uint32_t messageId; // 0 by default, set if standard header has message id
+
+    // Extra header fields for StandardHeader.Type.WithEcuId, StandardHeader.Type.WithSessionId, StandardHeader.Type.WithTimestamp
+    uint32_t extraEcuId;
+    uint32_t extraSessionId;
+    uint32_t extraTimestamp;
 }
 
 LogItemHeaders findHeaders(const(ubyte)[] data) pure nothrow @nogc
@@ -37,67 +42,78 @@ LogItemHeaders findHeaders(const(ubyte)[] data) pure nothrow @nogc
 
     headers.storage = cast(const(StorageHeader)*) data.ptr;
 
-    if (data.length < StorageHeader.sizeof + StandardHeader.sizeof)
+    data = data[StorageHeader.sizeof .. $];
+
+    if (data.length < StandardHeader.sizeof)
         return headers; // invalid (no standard header)
 
-    headers.standard = cast(const(StandardHeader)*)(data.ptr + StorageHeader.sizeof);
-    headers.extended = null;
+    headers.standard = cast(const(StandardHeader)*) data.ptr;
+    data = data[StandardHeader.sizeof .. $];
 
-    if (useExtendedHeader(headers.standard.headerType))
+    // read extra fields;
+
+    const bool msbf = headers.standard.isBigEndian();
+
+    if (headers.standard.withEcuId)
     {
-        /*
-        uint extOffset = StandardHeader.sizeof;
-        if (headers.standard.headerType & StandardHeader.Type.WithEcuId)
-            extOffset += 4;
-        if (headers.standard.headerType & StandardHeader.Type.WithSessionId)
-            extOffset += 4;
-        if (headers.standard.headerType & StandardHeader.Type.WithTimestamp)
-            extOffset += 4;
-
-        const auto extendedOffset = StorageHeader.sizeof + extOffset;
-
-        if (data.length < extendedOffset + ExtendedHeader.sizeof)
-            return headers; // invalid (no extended header)
-        */
-
-        const auto extendedOffset = StorageHeader.sizeof + headers.standard.fullHeaderSize();
-        const auto headersSize = extendedOffset + ExtendedHeader.sizeof;
-
-        if (data.length < headersSize)
-            return headers; // invalid (no extended header)
-
-        headers.extended = cast(const(ExtendedHeader)*)(data.ptr + extendedOffset);
-
-        const size_t payloadOffset = headersSize;
-        if (data.length > payloadOffset)
-            headers.payload = data[payloadOffset .. $];
+        if (data.length >= 4)
+        {
+            headers.extraEcuId = readValue!uint(data[0 .. 4], msbf);
+            data = data[4 .. $];
+        }
         else
-            headers.payload = [];
+            return headers;
+    }
+
+    if (headers.standard.withSessionId)
+    {
+        if (data.length >= 4)
+        {
+            headers.extraSessionId = readValue!uint(data[0 .. 4], msbf);
+            data = data[4 .. $];
+        }
+        else
+            return headers;
+    }
+
+    if (headers.standard.withTimestamp)
+    {
+        if (data.length >= 4)
+        {
+            headers.extraTimestamp = readValue!uint(data[0 .. 4], msbf);
+            data = data[4 .. $];
+        }
+        else
+            return headers;
+    }
+
+    if (headers.standard.useExtendedHeader)
+    {
+        if (data.length < ExtendedHeader.sizeof)
+            return headers; // invalid (no extended header)
+
+        headers.extended = cast(const(ExtendedHeader)*) data.ptr;
+        data = data[ExtendedHeader.sizeof .. $];
 
         // Non-Verbose: Message ID is in the first 4 bytes of payload
         // Standard DLT says for Non-Verbose, Message ID is mandatory? 
         // Usually yes. Some implementations might vary, but we'll follow common practice.
-        if (headers.extended.messageInfo.isVerbose())
+        if (headers.extended.messageInfo.isVerbose)
         {
-            headers.messageId = 0;
+            headers.payload = data;
         }
         else
         {
-            if (headers.payload.length >= 4)
+            if (data.length >= 4)
             {
-                const(ubyte)[] msgIdBytes = headers.payload[0 .. 4];
-                headers.messageId = readValue!uint(msgIdBytes, headers.standard.isBigEndian());
-                headers.payload = headers.payload[4 .. $];
+                headers.messageId = readValue!uint(data[0 .. 4], msbf);
+                headers.payload = data[4 .. $];
             }
         }
     }
     else
     {
-        const size_t payloadOffset = StorageHeader.sizeof + StandardHeader.sizeof;
-        if (data.length > payloadOffset)
-            headers.payload = data[payloadOffset .. $];
-        else
-            headers.payload = [];
+        headers.payload = data;
     }
 
     return headers;
@@ -609,8 +625,7 @@ bool parseDltItem(Char)(out DecodedMessage!Char msg, const(ubyte)[] data, FibexP
         // ── Non-Verbose or no Extended Header ────────────────────────────
         if (headers.messageId != 0)
         {
-            builder.appendAscii("ID:");
-            builder.append(headers.messageId);
+            msg.messageId = headers.messageId;
         }
         else
         {
@@ -817,9 +832,6 @@ unittest
     DecodedMessage!char msg;
     assert(parseDltItem(msg, data));
     assert(msg.ecu == "ECU1");
-
-    writeln("msg: ", msg.payloadText);
-
     assert(msg.payloadText == "Legacy DLT Message");
 }
 
@@ -841,14 +853,12 @@ unittest
 
     DecodedMessage!char msg;
     assert(parseDltItem(msg, data));
+    writefln("msg: %s (%d) msgId: %x", msg.payloadText, msg.payloadText.length, msg.messageId);
     assert(msg.messageId == 0xDEAD);
     import std.string : startsWith;
-
-    assert(msg.payloadText.startsWith("ID:"));
 }
 
-@("parseDltItem: verbose bool argument")
-unittest
+@("parseDltItem: verbose bool argument") unittest
 {
     ubyte[] args = verboseBoolArg(true) ~ verboseBoolArg(false);
     auto data = buildDltMessage(
