@@ -15,10 +15,10 @@ import std.bitmanip;
 //! @note Storage Header is always in file, it is skipped for network messages
 align(1) struct StorageHeader
 {
-    char[4] pattern; // "DLT\01"
+    char[4] pattern = 0; // "DLT\01"
     private uint _seconds;
     private uint _microseconds;
-    char[4] ecuId;
+    char[4] ecuId = 0;
 
     uint nativeSeconds() const pure nothrow @nogc @property
     {
@@ -254,8 +254,8 @@ align(1) struct ExtendedHeader
 {
     MessageInfo messageInfo; // 1 byte
     ubyte numberOfArguments; // 1 byte
-    ubyte[4] applicationId; // 4 bytes
-    ubyte[4] contextId; // 4 bytes
+    char[4] applicationId; // 4 bytes
+    char[4] contextId; // 4 bytes
 }
 
 /** 

@@ -25,24 +25,28 @@ struct LogItemHeaders
     const(StandardHeader)* standard;
     const(ExtendedHeader)* extended;
     const(ubyte)[] payload;
+
     uint32_t messageId; // 0 by default, set if standard header has message id
 
     // Extra header fields for StandardHeader.Type.WithEcuId, StandardHeader.Type.WithSessionId, StandardHeader.Type.WithTimestamp
-    uint32_t extraEcuId;
+    char[4] extraEcuId = 0;
     uint32_t extraSessionId;
     uint32_t extraTimestamp;
 }
 
-LogItemHeaders findHeaders(const(ubyte)[] data) pure nothrow @nogc
+LogItemHeaders findHeaders(const(ubyte)[] data, bool hasStorageHeader = true) pure nothrow @nogc
 {
     LogItemHeaders headers;
 
-    if (data.length < StorageHeader.sizeof)
-        return headers; // invalid
+    if (hasStorageHeader)
+    {
+        if (data.length < StorageHeader.sizeof)
+            return headers; // invalid
 
-    headers.storage = cast(const(StorageHeader)*) data.ptr;
+        headers.storage = cast(const(StorageHeader)*) data.ptr;
 
-    data = data[StorageHeader.sizeof .. $];
+        data = data[StorageHeader.sizeof .. $];
+    }
 
     if (data.length < StandardHeader.sizeof)
         return headers; // invalid (no standard header)
@@ -58,7 +62,7 @@ LogItemHeaders findHeaders(const(ubyte)[] data) pure nothrow @nogc
     {
         if (data.length >= 4)
         {
-            headers.extraEcuId = readValue!uint(data[0 .. 4], msbf);
+            headers.extraEcuId[] = cast(char[4]) data[0 .. 4];
             data = data[4 .. $];
         }
         else
@@ -119,22 +123,23 @@ LogItemHeaders findHeaders(const(ubyte)[] data) pure nothrow @nogc
     return headers;
 }
 
-LogItem parseDltItem(size_t index, ulong offset, const(ubyte)[] data, FibexParser fibex = null)
+LogItem parseDltItem(size_t index, ulong offset, const(ubyte)[] data, bool hasStorageHeader = true, FibexParser fibex = null)
 {
-    const LogItemHeaders headers = findHeaders(data);
+    const LogItemHeaders headers = findHeaders(data, hasStorageHeader);
 
     LogItem item;
     item.index = index;
     item.offset = offset;
 
-    if (headers.storage is null || headers.standard is null)
+    if (headers.standard is null)
     {
         item.payload = "<Truncated Data>";
         return item;
     }
 
-    const ulong timestamp = cast(ulong) headers.storage.nativeSeconds * 1_000_000 + headers
-        .storage.nativeMicroseconds;
+    const ulong timestamp = headers.storage !is null ? cast(ulong) headers
+        .storage.nativeSeconds * 1_000_000 + headers
+        .storage.nativeMicroseconds : 0;
 
     const ushort length = headers.standard.nativeLength;
 
@@ -142,7 +147,10 @@ LogItem parseDltItem(size_t index, ulong offset, const(ubyte)[] data, FibexParse
     item.timestamp = timestamp;
 
     // ECU ID is stored as uint (4 bytes) in indexer, convert to ubyte[4] and clean
-    item.ecu = cleanId(cast(const(ubyte)[4]) headers.storage.ecuId);
+    if (headers.storage !is null)
+        item.ecu = cleanId(headers.storage.ecuId);
+    else
+        item.ecu = "";
 
     item.level = LogLevel.Info;
     item.appId = "-";
@@ -397,7 +405,7 @@ string decodePayload(const(StandardHeader)* stdHdr, const(ExtendedHeader)* extHd
     return "Legacy DLT Message";
 }
 
-private string cleanId(const ubyte[4] id) pure
+private string cleanId(const(char)[] id) pure
 {
     import std.ascii : isPrintable;
 
@@ -407,26 +415,26 @@ private string cleanId(const ubyte[4] id) pure
         if (b == 0)
             break; // Stop at null terminator
         if (isPrintable(b))
-            s ~= cast(char) b;
+            s ~= b;
         else
             s ~= '.'; // Replace non-printable with dot
     }
-    return s.empty ? "-" : s;
+    return s.empty ? "-?-" : s;
 }
 
-bool parseDltItem(Char)(out DecodedMessage!Char msg, const(ubyte)[] data, FibexParser fibex = null) nothrow @nogc
+bool parseDltItem(Char)(out DecodedMessage!Char msg, const(ubyte)[] data, bool hasStorageHeader = true, FibexParser fibex = null) nothrow @nogc
         if (isSomeChar!Char)
 {
-    const LogItemHeaders headers = findHeaders(data);
+    const LogItemHeaders headers = findHeaders(data, hasStorageHeader);
 
-    if (headers.storage is null || headers.standard is null)
+    if (headers.standard is null)
         return false;
 
     const bool msbf = headers.standard.isBigEndian();
 
     // ── ECU ID ──────────────────────────────────────────────────────────────
     // Storage header has ecuId as char[4]; cast to char[] for allocAndCopyAscii
-    const char[] ecuId = cast(const char[]) headers.storage.ecuId[];
+    const char[] ecuId = headers.storage !is null ? headers.storage.ecuId : headers.extraEcuId;
 
     // ── AppId / CtxId / level / type ────────────────────────────────────────
     const(char)[] appId = "-";
@@ -446,8 +454,8 @@ bool parseDltItem(Char)(out DecodedMessage!Char msg, const(ubyte)[] data, FibexP
     auto builder = msg.setupPayload(ecuId, appId, ctxId);
 
     // ── scalar metadata ─────────────────────────────────────────────────────
-    msg.timestampSeconds = headers.storage.nativeSeconds;
-    msg.timestampMicroseconds = headers.storage.nativeMicroseconds;
+    msg.timestampSeconds = headers.storage ? headers.storage.nativeSeconds : 0;
+    msg.timestampMicroseconds = headers.storage ? headers.storage.nativeMicroseconds : 0;
     msg.level = level;
     msg.type = msgType;
     msg.messageId = headers.messageId;
@@ -672,7 +680,7 @@ version (unittest)
 
     // Build a complete DLT message in a ubyte[] for unit testing.
     // All pointer casts are safe because we own the GC array.
-    ubyte[] buildDltMessage(
+    ubyte[] buildDltMessage_without_storage_header(
         bool withExtHeader,
         bool verbose,
         ubyte numArgs,
@@ -680,22 +688,11 @@ version (unittest)
         ubyte logLevel, // LogLevel raw value (used in MessageInfo bits 4-7)
         uint messageId, // for non-verbose (big endian in payload)
         ubyte[] payload, // for verbose: raw argument bytes; for non-verbose: appended after messageId
-        string ecuId = "ECU1",
         string appId = "APP1",
         string ctxId = "CTX1",
-        uint seconds = 1000,
-        uint usecs = 500
     )
     {
         import core.stdc.string : memset, memcpy;
-
-        // ── Storage Header ───────────────────────────────────────────────
-        StorageHeader sh;
-        sh.pattern = cast(char[4]) "DLT\x01";
-        sh.nativeSeconds = seconds;
-        sh.nativeMicroseconds = usecs;
-        foreach (i, c; ecuId[0 .. (ecuId.length < 4 ? ecuId.length : 4)])
-            sh.ecuId[i] = c;
 
         // ── Standard Header ──────────────────────────────────────────────
         StandardHeader stdH;
@@ -738,11 +735,54 @@ version (unittest)
         stdH.nativeLength = cast(ushort) totalLen;
 
         ubyte[] result;
-        result ~= (cast(ubyte*)&sh)[0 .. StorageHeader.sizeof];
         result ~= (cast(ubyte*)&stdH)[0 .. StandardHeader.sizeof];
         if (withExtHeader)
             result ~= (cast(ubyte*)&extH)[0 .. ExtendedHeader.sizeof];
         result ~= body;
+
+        return result;
+    }
+
+    // Build a complete DLT message in a ubyte[] for unit testing.
+    // All pointer casts are safe because we own the GC array.
+    ubyte[] buildDltMessage(
+        bool withExtHeader,
+        bool verbose,
+        ubyte numArgs,
+        ubyte msgType, // MessageType raw value
+        ubyte logLevel, // LogLevel raw value (used in MessageInfo bits 4-7)
+        uint messageId, // for non-verbose (big endian in payload)
+        ubyte[] payload, // for verbose: raw argument bytes; for non-verbose: appended after messageId
+        string ecuId = "ECU1",
+        string appId = "APP1",
+        string ctxId = "CTX1",
+        uint seconds = 1000,
+        uint usecs = 500
+    )
+    {
+        import core.stdc.string : memset, memcpy;
+
+        // ── Storage Header ───────────────────────────────────────────────
+        StorageHeader sh;
+        sh.pattern = cast(char[4]) "DLT\x01";
+        sh.nativeSeconds = seconds;
+        sh.nativeMicroseconds = usecs;
+        foreach (i, c; ecuId[0 .. (ecuId.length < 4 ? ecuId.length : 4)])
+            sh.ecuId[i] = c;
+
+        ubyte[] result;
+        result ~= (cast(ubyte*)&sh)[0 .. StorageHeader.sizeof];
+
+        result ~= buildDltMessage_without_storage_header(
+            withExtHeader,
+            verbose,
+            numArgs,
+            msgType,
+            logLevel,
+            messageId,
+            payload,
+            appId,
+            ctxId);
 
         return result;
     }
@@ -813,6 +853,29 @@ unittest
     assert(parseDltItem(msg, data) == false);
 }
 
+@("parseDltItem: non-verbose without extended header and with storage header")
+unittest
+{
+    auto data = buildDltMessage_without_storage_header(
+        false, // no ext header
+        false, // non-verbose
+        0, // numArgs
+        0, // msgType
+        0, // logLevel
+        0, // messageId
+        [] // payload
+
+        
+
+    );
+
+    DecodedMessage!char msg;
+    assert(parseDltItem(msg, data, false));
+    writeln("---------- msg.ecu: ", msg.ecu);
+    assert(msg.ecu == "");
+    assert(msg.payloadText == "Legacy DLT Message");
+}
+
 @("parseDltItem: non-verbose without extended header")
 unittest
 {
@@ -823,7 +886,7 @@ unittest
         0, // msgType
         0, // logLevel
         0, // messageId
-        [], // payload
+        [] // payload
 
         
 

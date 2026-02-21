@@ -174,7 +174,7 @@ class SearchEngine
         // Fetch real data for decoding
         const(ubyte[]) data = _indexer.getSlice(msg.offset, msg.length + StorageHeader.sizeof);
 
-        LogItem item = parseDltItem(realIndex, msg.offset, data, _fibex);
+        LogItem item = parseDltItem(realIndex, msg.offset, data, true, _fibex);
 
         return item;
     }
@@ -196,8 +196,8 @@ class SearchEngine
         item.length = msg.length;
         item.timestamp = msg.timestamp;
 
-        // ECU ID is stored as uint (4 bytes) in indexer, convert to ubyte[4] and clean
-        ubyte[4] ecuBytes = (cast(ubyte*)&msg.ecuId)[0 .. 4];
+        // ECU ID is stored as uint (4 bytes) in indexer, convert to char[4] and clean
+        char[4] ecuBytes = (cast(char*)&msg.ecuId)[0 .. 4];
         item.ecu = cleanId(ecuBytes);
 
         item.level = LogLevel.Info;
@@ -263,7 +263,7 @@ class SearchEngine
         return getLogItemCommon(realIndex);
     }
 
-    static private string cleanId(const ubyte[4] id) pure
+    static private string cleanId(const char[4] id) pure
     {
         import std.ascii : isPrintable;
 

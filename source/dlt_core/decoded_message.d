@@ -76,6 +76,8 @@ struct DecodedMessage(Char = char) if (isSomeChar!Char)
 
     PayloadBuilder!Char setupPayload(const(char)[] ecu, const(char)[] appId, const(char)[] ctxId) nothrow @nogc
     {
+        import std.stdio;
+
         enum capacity = 16 * 1024 + 1024;
         _allocator.reset(capacity);
 
@@ -403,9 +405,8 @@ private struct PayloadBuilder(Char) if (isSomeChar!Char)
             _tail[0] = toHexChar(b >> 4); // high nibble first
             _tail[1] = toHexChar(b & 0x0F); // low nibble second
             _tail = _tail[2 .. $];
-            ++posInGroup;
 
-            if (posInGroup == groupSize)
+            if (++posInGroup == groupSize)
             {
                 posInGroup = 0;
                 if (_tail.length == 0)

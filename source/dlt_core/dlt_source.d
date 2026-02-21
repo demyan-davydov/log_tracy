@@ -14,8 +14,6 @@ struct DltSource
     private const(char)* _dataBegin;
     private const(char)[] _rest; // slice for not readed part of mmFile content
     private const bool _hasStorageHeader;
-    //private MmapArray!(size_t) _msgOffsets;
-    //private MmapArray!(uint32_t) _filteredIndices;
 
     @disable this();
     @disable this(ref DltSource);
@@ -27,38 +25,35 @@ struct DltSource
         _rest = cast(const(char)[]) _mmFile[0 .. _mmFile.length];
         _dataBegin = _rest.ptr;
         _hasStorageHeader = containsStorageHeader;
-
-        //const size_t capacity = 1 + _mmFile.length / (StorageHeader.sizeof + StandardHeader.sizeof);
-        //_msgOffsets = MmapArray!(size_t)(capacity);
     }
 
     ~this()
     {
-        // _mmFile.close();
+        destroy(_mmFile); // call d'tor of mmFile to unmap file
     }
 
+    //! @brief Rewind the source file to the beginning
     void rewind()
     {
         _rest = cast(const(char)[]) _mmFile[0 .. _mmFile.length];
     }
 
-    /*void close() pure @nogc nothrow
-    {
-        _mmFile.close();
-        _rest = [];
-        _dataBegin = _rest.ptr;
-    }*/
-
+    //! @returns the length of the rest of the file
     size_t length() const pure nothrow @nogc @property
     {
         return _rest.length;
     }
 
+    //! @returns true if the source file contains storage header
     bool hasStorageHeader() const pure nothrow @nogc @property
     {
         return _hasStorageHeader;
     }
 
+    //! @returns slice of original buffer starting from DLT header pattern (DLT\01) 
+    //! or empty slice reffered to bufferEnd
+    //! @note The result slice will have at least StorageHeader.sizeof bytes, 
+    //! otherwise the empty slice is returned
     const(char)[] popMessage() pure @nogc nothrow
     {
         if (hasStorageHeader)
@@ -83,36 +78,20 @@ struct DltSource
 
         return result;
     }
-
-    /*
-    LogItem fetchLogItem(const(char)* messageBegin, ref MessageBuffer buffer) const pure @nogc nothrow
-    in
-    {
-        assert(messageBegin >= _dataBegin && messageBegin < _dataBegin + length);
-    }
-    body
-    {
-        // todo
-    }
-
-    LogItem fetchLogItem(size_t offset, ref MessageBuffer buffer) const pure @nogc nothrow
-    {
-        return fetchLogItem(_dataBegin + offset, buffer);
-    }*/
 }
 
 //! @returns slice of original buffer starting from DLT header pattern (DLT\01) 
 //! or empty slice reffered to bufferEnd
 //! @note The result slice will have at least StorageHeader.sizeof bytes, 
 //! otherwise the empty slice is returned
-const(char)[] findNextStorageHeader(const(char)[] buffer) pure @nogc nothrow
+private const(char)[] findNextStorageHeader(const(char)[] buffer) pure @nogc nothrow
 in
 {
-    // assert(buffer.length >= StorageHeader.sizeof);
+    //debug assert(buffer.length >= StorageHeader.sizeof);
 }
 out
 {
-    // assert(result.length >= StorageHeader.sizeof || result.length == 0);
+    //debug assert(buffer.length >= StorageHeader.sizeof || buffer.length == 0);
 }
 body
 {
