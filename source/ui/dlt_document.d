@@ -17,7 +17,7 @@ final class DltDocument : Document
     private SearchEngine _searchEngine;
     private FibexParser _fibexParser;
     private Indexer _currentIndexer;
-    private LogFilter _filter;
+    private LogFilter!wchar _filter;
 
     this(string path)
     {
@@ -84,7 +84,7 @@ final class DltDocument : Document
         }
     }
 
-    override void applyFilter(LogFilter filter)
+    override void applyFilter(LogFilter!wchar filter)
     {
         _filter = filter;
         _searchEngine.applyFilter(filter);

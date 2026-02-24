@@ -83,7 +83,7 @@ class SearchEngine
     }
 
     /// Apply filters asynchronously
-    void applyFilter(LogFilter filter)
+    void applyFilter(LogFilter!wchar filter)
     {
         // Cancel existing
         cancel();
@@ -114,14 +114,14 @@ class SearchEngine
         _searchThread.start();
     }
 
-    private void runFilter(LogFilter filter)
+    private void runFilter(LogFilter!wchar filter)
     {
+        /*
         import std.conv : to;
 
         size_t[] newIndices;
 
         auto total = _indexer.totalMessages;
-        //auto msgs = _indexer.index; // Not needed if we use getLogItem
 
         // Iterate
         int lastProg = 0;
@@ -159,6 +159,7 @@ class SearchEngine
             _filteredIndices = newIndices;
             _isFiltered = true;
         }
+        */
     }
 
     // Helper to get LogItem by REAL index (skipping view mapping)

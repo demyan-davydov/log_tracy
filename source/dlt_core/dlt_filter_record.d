@@ -1,10 +1,33 @@
-module dlt_core.dlf_filter_record;
+module dlt_core.dlt_filter_record;
 
 import dlt_core.log_item;
 import dlt_core.log_filter;
 import dlt_core.dlt_protocol;
+import dlt_core.decoded_message;
 import std.regex;
 import std.uni : toLower;
+import std.utf : toUTF8, toUTF16, toUTF32;
+import std.traits : isSomeChar;
+
+immutable(Char)[] toUtf(Char)(string str) if (isSomeChar!Char)
+{
+    static if (is(Char == char))
+    {
+        return str;
+    }
+    else static if (is(Char == wchar))
+    {
+        return str.toUTF16();
+    }
+    else static if (is(Char == dchar))
+    {
+        return str.toUTF32();
+    }
+    else
+    {
+        static assert(false, "Unsupported character type: " ~ __traits(identifier, Char));
+    }
+}
 
 private struct Enableable(T)
 {
@@ -25,10 +48,12 @@ private struct Enableable(T)
     }
 }
 
-private struct RegexPattern
+private struct RegexPattern(CharType) if (isSomeChar!CharType)
 {
-    private string _pattern;
-    private Regex!char _regex;
+    alias String = immutable(CharType)[];
+
+    private String _pattern;
+    private Regex!CharType _regex;
     private bool _isRegex = false;
 
     bool isRegex() const pure nothrow @nogc @property
@@ -36,20 +61,33 @@ private struct RegexPattern
         return _isRegex;
     }
 
-    void setPattern(string pattern)
+    void setPattern(String pattern)
     {
         this._pattern = pattern;
         this._isRegex = false;
     }
 
-    void setRegex(string regexString)
+    void setRegex(String regexString)
     {
         this._regex = regex(regexString);
         this._pattern = regexString;
         this._isRegex = true;
     }
 
-    bool matches(string other) const
+    void setPatternFromUtf8(string patternUtf8)
+    {
+        this._pattern = patternUtf8.toUtf!CharType;
+        this._isRegex = false;
+    }
+
+    void setRegexFromUtf8(string regexStringUtf8)
+    {
+        this._pattern = regexStringUtf8.toUtf!CharType;
+        this._regex = regex(this._pattern);
+        this._isRegex = true;
+    }
+
+    bool matches(const(CharType)[] other) const
     {
         if (!_isRegex)
             return _pattern == other;
@@ -57,7 +95,7 @@ private struct RegexPattern
         return !matchFirst(other, _regex).empty;
     }
 
-    bool matches(string other, bool caseInsensitive) const
+    bool matches(const(CharType)[] other, bool caseInsensitive) const
     {
         if (!_isRegex)
             return (caseInsensitive) ? _pattern.toLower() == other.toLower() : _pattern == other;
@@ -65,35 +103,62 @@ private struct RegexPattern
         return !matchFirst(other, _regex).empty;
     }
 
-    string asString() const
+    String asString() const
     {
         return _pattern;
     }
+
+    string asUtf8String() const
+    {
+        static if (is(CharType == char))
+        {
+            return _pattern;
+        }
+        else static if (is(CharType == wchar))
+        {
+            return _pattern.toUTF8();
+        }
+        else static if (is(CharType == dchar))
+        {
+            return _pattern.toUTF8();
+        }
+        else
+        {
+            static assert(false, "Unsupported character type");
+        }
+    }
 }
 
-private struct EnableableRegex
+private struct EnableableRegex(CharType) if (isSomeChar!CharType)
 {
-    //SumType!(string, Regex!char) value;
-    RegexPattern value;
+    alias String = immutable(CharType)[];
+
+    RegexPattern!CharType value;
     bool enabled = false;
 
-    bool matches(in const(string) other) const
+    bool matches(const(CharType)[] other) const
     {
         if (!enabled)
             return true;
 
         return value.matches(other);
     }
+
+    bool isRegex() const
+    {
+        return value.isRegex();
+    }
 }
 
-private struct EnableableRegexWithCase
+private struct EnableableRegexWithCase(CharType) if (isSomeChar!CharType)
 {
-    //SumType!(string, Regex!char) value;
-    RegexPattern value;
+    alias String = immutable(CharType)[];
+
+    RegexPattern!CharType value;
     bool enabled = false;
     bool caseInsensitive = false;
 
-    bool matches(in const(string) other) const
+    bool matches(const(CharType)[] other) const
     {
         if (!enabled)
             return true;
@@ -152,24 +217,26 @@ private struct Range(T)
     </filter>
 */
 
-struct DlfFilterRecord
+struct DltFilterRecord(CharType : wchar) if (isSomeChar!CharType)
 {
+    alias String = immutable(CharType)[];
+
     bool enabled;
-    string name;
+    String name;
 
     MessageType type;
 
-    Enableable!string ecuId;
+    Enableable!String ecuId;
     Enableable!(Range!uint) messageId;
     Enableable!(Range!LogLevel) logLevel;
 
-    EnableableRegex applicationId;
-    EnableableRegex contextId;
-    EnableableRegexWithCase headerText;
-    EnableableRegexWithCase payloadText;
+    EnableableRegex!CharType applicationId;
+    EnableableRegex!CharType contextId;
+    EnableableRegexWithCase!CharType headerText;
+    EnableableRegexWithCase!CharType payloadText;
 
-    EnableableRegex regexSearch;
-    EnableableRegex regexReplace;
+    EnableableRegex!CharType regexSearch;
+    EnableableRegex!CharType regexReplace;
 
     invariant
     {
@@ -179,10 +246,12 @@ struct DlfFilterRecord
     bool enableMarker;
     bool enableCtrlMsgs;
 
-    string filterColour; // is RGB like #ff0000, but stored as string
+    String filterColour; // is RGB like #ff0000, but stored as string
 }
 
-bool isMatched(ulong index, in const(LogItem) item, in const(DlfFilterRecord) config)
+bool isMatched(CharType : wchar)(
+    ref const(DecodedMessage!CharType) item,
+    ref const(DltFilterRecord!CharType) config) if (isSomeChar!CharType)
 {
     if (!config.enabled)
         return true;
@@ -214,7 +283,7 @@ bool isMatched(ulong index, in const(LogItem) item, in const(DlfFilterRecord) co
     */
 
     // Payload text
-    if (!config.payloadText.matches(item.payload))
+    if (!config.payloadText.matches(item.payloadText))
         return false;
 
     // Regex search replace - skipped
@@ -228,36 +297,13 @@ bool isMatched(ulong index, in const(LogItem) item, in const(DlfFilterRecord) co
     return true;
 }
 
-final class DlfFilter : LogFilter
-{
-    DlfFilterRecord record;
-
-    this(DlfFilterRecord rec)
-    {
-        this.record = rec;
-    }
-
-    override bool matches(in const(LogItem) item) const
-    {
-        try
-        {
-            return isMatched(cast(uint) item.index, item, record);
-        }
-        catch (Exception e)
-        {
-            // Exceptions in regex matching or other pure functions (unlikely but possible if not protected)
-            return false;
-        }
-    }
-}
-
 unittest
 {
     import std.stdio : writeln;
 
     writeln("Test RegexPattern");
 
-    RegexPattern pattern;
+    RegexPattern!char pattern;
     pattern.setPattern("Test");
     assert(pattern.matches("Test"));
     assert(!pattern.matches("Test2"));
@@ -277,7 +323,7 @@ unittest
 {
     import std.stdio;
 
-    DlfFilterRecord record;
+    DltFilterRecord!char record;
     record.enabled = true;
     record.name = "Test Filter";
     record.type = MessageType.Log;
@@ -303,7 +349,14 @@ unittest
     record.enableCtrlMsgs = true;
     record.filterColour = "#ff0000";
 
-    LogItem item;
+    DecodedMessage!char msg;
+    auto builder = msg.setupPayload("Test ECU", "Test App", "Test Context");
+    builder.appendAscii("Test Payload");
+    builder.storePayload();
+    msg.level = LogLevel.Info;
+    msg.messageId = 0;
+
+    /*LogItem item;
     item.index = 0;
     item.ecu = "Test ECU";
     item.appId = "Test App";
@@ -312,6 +365,7 @@ unittest
     item.payload = "Test Payload";
     item.messageId = 0;
     item.level = LogLevel.Info;
+    */
 
-    assert(isMatched(item.index, item, record));
+    assert(isMatched(msg, record));
 }

@@ -10,9 +10,9 @@ import ui.document_id;
 import dlt_core.indexer;
 import dlt_core.search;
 import dlt_core.fibex;
-import dlt_core.dlf_filter_serialization;
-import dlt_core.dlf_filter_record;
-import dlt_core.dlf_log_filter : DlfLogFilter;
+import dlt_core.dlt_filter_serialization;
+import dlt_core.dlt_filter_record;
+import dlt_core.dlt_log_filter : DltLogFilter;
 import dlt_core.log_filter : LogFilter;
 import dlt_core.log_item : LogItem;
 
@@ -228,7 +228,7 @@ class MainWindow : SciterWindow
                 {
                     try
                     {
-                        auto filter = new DlfLogFilter();
+                        auto filter = new DltLogFilter!wchar();
                         filter.load(normalizePath(path));
                         _workspace.current.applyFilter(filter);
                         // @todo: return filter info to UI

@@ -19,7 +19,7 @@ interface Document
 
     void openFibex(string path);
 
-    void applyFilter(LogFilter filter);
+    void applyFilter(LogFilter!wchar filter);
 
     LogItem logItem(size_t index);
 

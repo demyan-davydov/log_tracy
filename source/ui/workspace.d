@@ -37,7 +37,7 @@ private class NullDocument : Document
     {
     }
 
-    void applyFilter(LogFilter filter)
+    void applyFilter(LogFilter!wchar filter)
     {
     }
 
@@ -241,7 +241,7 @@ unittest
         {
         }
 
-        void applyFilter(LogFilter filter)
+        void applyFilter(LogFilter!wchar filter)
         {
         }
 

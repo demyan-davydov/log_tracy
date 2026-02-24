@@ -7,7 +7,7 @@ import std.algorithm : copy, min;
 import dlt_core.dlt_protocol : LogLevel, MessageType;
 
 /// Represents a decoded DLT log message
-struct DecodedMessage(Char = char) if (isSomeChar!Char)
+struct DecodedMessage(Char) if (isSomeChar!Char)
 {
     @disable this(ref DecodedMessage);
     @disable void opAssign(ref DecodedMessage);

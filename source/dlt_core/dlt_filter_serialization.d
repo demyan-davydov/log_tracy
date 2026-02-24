@@ -1,6 +1,6 @@
-module dlt_core.dlf_filter_serialization;
+module dlt_core.dlt_filter_serialization;
 
-import dlt_core.dlf_filter_record;
+import dlt_core.dlt_filter_record;
 import dlt_core.log_item;
 import dlt_core.dlt_protocol;
 import dxml.dom;
@@ -10,8 +10,10 @@ import std.conv : to;
 import std.range;
 
 import std.file : write, readText;
+import std.traits : isSomeChar;
 
-void saveDlf(string filename, const DlfFilterRecord[] filters)
+void saveDlf(CharType)(string filename, const DltFilterRecord!CharType[] filters)
+        if (isSomeChar!CharType)
 {
     auto sb = appender!string;
     sb.put("<dltfilter>\n");
@@ -26,10 +28,13 @@ void saveDlf(string filename, const DlfFilterRecord[] filters)
     write(filename, sb.data);
 }
 
-DlfFilterRecord[] loadDlf(string filename)
+DltFilterRecord!CharType[] loadDlf(CharType)(string filename)
+        if (isSomeChar!CharType)
 {
-    string content = readText(filename);
-    DlfFilterRecord[] filters;
+    alias String = immutable(CharType)[];
+
+    String content = readText!String(filename);
+    DltFilterRecord!CharType[] filters;
 
     try
     {
@@ -38,7 +43,7 @@ DlfFilterRecord[] loadDlf(string filename)
         // But dxml parseDOM returns a "root" pseudo-element containing the document elements
 
         // Find dltfilter node
-        DOMEntity!string rootNode;
+        DOMEntity!String rootNode;
         bool foundRoot = false;
 
         foreach (child; dom.children)
@@ -84,8 +89,13 @@ DlfFilterRecord[] loadDlf(string filename)
     return filters;
 }
 
-string toXml(const DlfFilterRecord record)
+string toXml(CharType)(const DltFilterRecord!CharType record)
+        if (isSomeChar!CharType)
 {
+    import std.uni;
+
+    alias String = immutable(CharType)[];
+
     auto sb = appender!string;
     sb.put("<filter>\n");
 
@@ -96,9 +106,14 @@ string toXml(const DlfFilterRecord record)
     }
 
     // Helper to check if a SumType value is actually holding a Regex type
-    static bool isRegex(T)(const T t)
+    static bool isRegex(CharType)(const DltFilterRecord!CharType t)
     {
         return t.value.isRegex;
+    }
+
+    static string asString(CharType)(const DltFilterRecord!CharType t)
+    {
+        return t.value.asString();
     }
 
     sb.put("  <type>" ~ record.type
@@ -117,11 +132,11 @@ string toXml(const DlfFilterRecord record)
     sb.put("  <messageIdMin>" ~ record.messageId.value.min.to!string ~ "</messageIdMin>\n");
     sb.put("  <messageIdMax>" ~ record.messageId.value.max.to!string ~ "</messageIdMax>\n");
 
-    sb.put("  <enableregexp_Appid>" ~ b2s(isRegex(record.applicationId)) ~ "</enableregexp_Appid>\n");
-    sb.put("  <enableregexp_Context>" ~ b2s(isRegex(record.contextId)) ~ "</enableregexp_Context>\n");
-    sb.put("  <enableregexp_Header>" ~ b2s(isRegex(record.headerText)) ~ "</enableregexp_Header>\n");
+    sb.put("  <enableregexp_Appid>" ~ b2s(record.applicationId.isRegex) ~ "</enableregexp_Appid>\n");
+    sb.put("  <enableregexp_Context>" ~ b2s(record.contextId.isRegex) ~ "</enableregexp_Context>\n");
+    sb.put("  <enableregexp_Header>" ~ b2s(record.headerText.isRegex) ~ "</enableregexp_Header>\n");
     sb.put("  <enableregexp_Payload>" ~ b2s(
-            isRegex(record.payloadText)) ~ "</enableregexp_Payload>\n");
+            record.payloadText.isRegex) ~ "</enableregexp_Payload>\n");
 
     sb.put("  <ignoreCase_Header>" ~ b2s(
             record.headerText.caseInsensitive) ~ "</ignoreCase_Header>\n");
@@ -162,12 +177,14 @@ string toXml(const DlfFilterRecord record)
     return sb.data;
 }
 
-DlfFilterRecord fromXml(DOMEntity!string filterNode)
+DltFilterRecord!CharType fromXml(CharType)(DOMEntity!(immutable(CharType)[]) filterNode)
 {
-    DlfFilterRecord config;
+    alias String = immutable(CharType)[];
+
+    DltFilterRecord!CharType config;
 
     // Helper to extract text from a child node
-    string getChildText(string tagName)
+    String getChildText(String tagName)
     {
         foreach (child; filterNode.children)
         {
@@ -182,7 +199,7 @@ DlfFilterRecord fromXml(DOMEntity!string filterNode)
         return "";
     }
 
-    bool getBool(string tagName)
+    bool getBool(String tagName)
     {
         return getChildText(tagName) == "1";
     }
@@ -192,7 +209,7 @@ DlfFilterRecord fromXml(DOMEntity!string filterNode)
 
     try
     {
-        string typeStr = getChildText("type");
+        auto typeStr = getChildText("type");
         if (typeStr.length > 0)
             config.type = cast(MessageType) typeStr.to!int;
     }
@@ -205,7 +222,7 @@ DlfFilterRecord fromXml(DOMEntity!string filterNode)
 
     // Application ID
     bool appIdRegex = getBool("enableregexp_Appid");
-    string appIdStr = getChildText("applicationid");
+    auto appIdStr = getChildText("applicationid");
     config.applicationId.enabled = getBool("enableapplicationid");
     if (appIdRegex)
         config.applicationId.value.setRegex(appIdStr);
@@ -214,7 +231,7 @@ DlfFilterRecord fromXml(DOMEntity!string filterNode)
 
     // Context ID
     bool ctxIdRegex = getBool("enableregexp_Context");
-    string ctxIdStr = getChildText("contextid");
+    auto ctxIdStr = getChildText("contextid");
     config.contextId.enabled = getBool("enablecontextid");
     if (ctxIdRegex)
         config.contextId.value.setRegex(ctxIdStr);
@@ -223,7 +240,7 @@ DlfFilterRecord fromXml(DOMEntity!string filterNode)
 
     // Header Text
     bool headRegex = getBool("enableregexp_Header");
-    string headStr = getChildText("headertext");
+    auto headStr = getChildText("headertext");
     config.headerText.enabled = getBool("enableheadertext");
     config.headerText.caseInsensitive = getBool("ignoreCase_Header"); // Note: XML key might differ slightly? Copied from example.
     if (headRegex)
@@ -233,7 +250,7 @@ DlfFilterRecord fromXml(DOMEntity!string filterNode)
 
     // Payload Text
     bool payRegex = getBool("enableregexp_Payload");
-    string payStr = getChildText("payloadtext");
+    auto payStr = getChildText("payloadtext");
     config.payloadText.enabled = getBool("enablepayloadtext");
     config.payloadText.caseInsensitive = getBool("ignoreCase_Payload");
     if (payRegex)
@@ -265,8 +282,8 @@ DlfFilterRecord fromXml(DOMEntity!string filterNode)
     {
         // DLT Viewer XML example has min/max reversed or uses integer values directly.
         // Our struct uses LogLevel enum.
-        string minStr = getChildText("logLevelMin");
-        string maxStr = getChildText("logLevelMax");
+        auto minStr = getChildText("logLevelMin");
+        auto maxStr = getChildText("logLevelMax");
         if (minStr.length > 0)
             config.logLevel.value.min = cast(LogLevel) minStr.to!int;
         if (maxStr.length > 0)
@@ -289,7 +306,7 @@ unittest
 
     writeln("Test Serialization/Deserialization (Comprehensive)");
 
-    DlfFilterRecord original;
+    DltFilterRecord!char original;
     original.enabled = true;
     original.name = "Comprehensive Filter";
     original.type = MessageType.Control; // Non-default
@@ -341,7 +358,7 @@ unittest
     // writeln("Serialized XML:\n", xml);
 
     // 2. Deserialize
-    DlfFilterRecord parsed;
+    DltFilterRecord!char parsed;
     try
     {
         auto dom = parseDOM(xml);
@@ -414,10 +431,10 @@ unittest
     writeln("Test List Serialization (saveDlf/loadDlf)");
     string tempFile = "temp_test_filters.dlf";
 
-    DlfFilterRecord[] filters;
+    DltFilterRecord!char[] filters;
 
     // Filter 1
-    DlfFilterRecord f1;
+    DltFilterRecord!char f1;
     f1.enabled = true;
     f1.name = "Filter One";
     f1.type = MessageType.Log;
@@ -426,7 +443,7 @@ unittest
     filters ~= f1;
 
     // Filter 2
-    DlfFilterRecord f2;
+    DltFilterRecord!char f2;
     f2.enabled = false;
     f2.name = "Filter Two";
     f2.type = MessageType.Control;
@@ -438,7 +455,7 @@ unittest
     saveDlf(tempFile, filters);
 
     // Load
-    DlfFilterRecord[] loaded = loadDlf(tempFile);
+    DltFilterRecord!char[] loaded = loadDlf!char(tempFile);
 
     assert(loaded.length == 2);
 
