@@ -377,8 +377,12 @@ private struct PayloadBuilder(Char) if (isSomeChar!Char)
         import core.stdc.stdio : snprintf;
 
         appendSeparatorIfNeeded();
-        auto written = snprintf(_tail.ptr, _tail.length, "%f", value);
-        _tail = _tail[written .. $];
+        char[64] numBuf;
+        int written = snprintf(numBuf.ptr, numBuf.length, "%f", cast(double) value);
+        if (written > 0 && written < numBuf.length)
+        {
+            _tail = copyAsMuchAsPossible(numBuf[0 .. written], _tail);
+        }
     }
 
     void appendHex(const(char)[] hex) pure nothrow @nogc
@@ -971,6 +975,17 @@ unittest
     builder.storePayload();
 
     assert(msg.payloadText == "0.100000");
+}
+
+@("PayloadBuilder: append float for wchar")
+unittest
+{
+    DecodedMessage!wchar msg;
+    auto builder = msg.setupPayload("E", "A", "C");
+    builder.append(cast(float) 0.1f);
+    builder.storePayload();
+
+    assert(msg.payloadText == "0.100000"w);
 }
 
 @("PayloadBuilder: mixed types with separators")

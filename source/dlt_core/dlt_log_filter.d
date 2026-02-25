@@ -47,7 +47,7 @@ final class DltLogFilter(CharType) : LogFilter!CharType if (isSomeChar!(CharType
         saveDlf!CharType(path, _records);
     }
 
-    override bool matches(in const(DecodedMessage!CharType) item) const
+    override bool matches(ref const(DecodedMessage!CharType) item) const
     {
         foreach (ref record; _records)
         {

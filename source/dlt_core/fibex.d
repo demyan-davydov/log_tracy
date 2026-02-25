@@ -147,12 +147,12 @@ class FibexParser
     }
 
     /// Get description for a message ID
-    string getDescription(uint id) const pure
+    string getDescription(uint id) const
     {
         return _idMap.get(id, null);
     }
 
-    bool hasId(uint id) const pure nothrow
+    bool hasId(uint id) const pure nothrow @nogc
     {
         return (id in _idMap) !is null;
     }

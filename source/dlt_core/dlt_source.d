@@ -34,6 +34,12 @@ struct DltSource
         destroy(_mmFile); // call d'tor of mmFile to unmap file
     }
 
+    DltSourceRange range() const pure nothrow @nogc @property
+    {
+        const(ubyte)[] restArray = cast(const(ubyte)[]) _dataBegin[0 .. overallLength];
+        return DltSourceRange(restArray, _hasStorageHeader);
+    }
+
     //! @brief Rewind the source file to the beginning
     void rewind()
     {
@@ -56,6 +62,12 @@ struct DltSource
     bool hasStorageHeader() const pure nothrow @nogc @property
     {
         return _hasStorageHeader;
+    }
+
+    //! @returns offset of the given slice relative to the beginning of the source file
+    size_t offsetOf(const(char)[] message) const pure nothrow @nogc @property
+    {
+        return message.ptr - _dataBegin;
     }
 
     //! @returns slice of original buffer starting from DLT header pattern (DLT\01) 
@@ -165,6 +177,63 @@ body
     }
 
     return buffer[$ .. $];
+}
+
+struct DltSourceRange
+{
+    private const(ubyte)* _dataBegin;
+    private const(ubyte)* _dataEnd;
+    private const(ubyte)[] _rest; // slice for not readed part of mmFile content
+    private const bool _hasStorageHeader;
+
+    this(const(ubyte)[] rest, bool hasStorageHeader) pure nothrow @nogc
+    {
+        _rest = rest;
+        _dataBegin = _rest.ptr;
+        _dataEnd = _dataBegin + _rest.length;
+        _hasStorageHeader = hasStorageHeader;
+    }
+
+    bool hasNext() pure @nogc nothrow @property
+    {
+        return _rest.length > 0;
+    }
+
+    bool hasStorageHeader() const pure @nogc nothrow @property
+    {
+        return _hasStorageHeader;
+    }
+
+    // byte offset of the current message in the source file
+    size_t offset() const pure @nogc nothrow @property
+    {
+        return _rest.ptr - _dataBegin;
+    }
+
+    const(ubyte)[] pop() pure @nogc nothrow
+    {
+        if (_hasStorageHeader)
+        {
+            _rest = cast(const(ubyte)[]) findNextStorageHeader(cast(const(char)[]) _rest);
+        }
+
+        const(ubyte)[] result = _rest[0 .. 0];
+
+        if (_rest.length > StorageHeader.sizeof)
+        {
+            _rest = _rest[StorageHeader.sizeof .. $];
+            if (_rest.length >= StandardHeader.sizeof)
+            {
+                auto standardHeader = cast(const(StandardHeader)*) _rest.ptr;
+                const ushort length = standardHeader.nativeLength;
+
+                _rest = _rest[length .. $];
+                result = result.ptr[0 .. _rest.ptr - result.ptr];
+            }
+        }
+
+        return result;
+    }
 }
 
 // ─── Test Helpers ──────────────────────────────────────────────────────────

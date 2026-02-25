@@ -422,7 +422,7 @@ private string cleanId(const(char)[] id) pure
     return s.empty ? "-?-" : s;
 }
 
-bool parseDltItem(Char)(out DecodedMessage!Char msg, const(ubyte)[] data, bool hasStorageHeader = true, FibexParser fibex = null) nothrow @nogc
+bool parseDltItem(Char)(out DecodedMessage!Char msg, const(ubyte)[] data, bool hasStorageHeader = true) nothrow @nogc
         if (isSomeChar!Char)
 {
     const LogItemHeaders headers = findHeaders(data, hasStorageHeader);

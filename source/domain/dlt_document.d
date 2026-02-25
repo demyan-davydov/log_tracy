@@ -32,8 +32,12 @@ class DltDocument : Document
     private SearchIndex _searchIndex;
 
     private TaskPool _taskPool;
-    //private Task _worker;
     private Mutex _mutex;
+    private string _sourcePath;
+
+    private shared bool _cancelFileLoad;
+    private shared bool _cancelFilterLoad;
+    private shared bool _cancelSearchLoad;
 
     this(DocumentId id)
     {
@@ -41,44 +45,74 @@ class DltDocument : Document
         _rawView = new RawDocumentView();
         _filteredView = new FilteredDocumentView();
         _searchView = new SearchDocumentView();
+        _mutex = new Mutex();
     }
 
     void loadSource(string path)
     {
-        // auto source = new DltSource(path);
-        //_source.load();
+        import std.parallelism : task, taskPool;
+        import core.atomic : atomicStore;
 
-        // Load file in parallel
-        // need to clear all the indexes and views
+        _sourcePath = path;
+        _source = new DltSource(path);
 
-        DltSource* loader(string pathToLoad)
+        const size_t capacity = _source.overallLength / 4 + 10_000;
+
+        synchronized (_mutex)
         {
-            auto source = new DltSource(pathToLoad);
-            return source;
+            _fileIndex = FileIndex(capacity);
+            _filterIndex = FilterIndex(capacity);
+            _searchIndex = SearchIndex(capacity);
         }
 
-        //auto task = task!loader(path);
-        //_taskPool.put(task);
-        //_source = task.yieldForce;
+        atomicStore(_cancelFileLoad, false);
+        atomicStore(_cancelFilterLoad, true); // Don't start filter/search until applied
+        atomicStore(_cancelSearchLoad, true);
 
-        /*
-     // Execute both recursion branches in parallel.
-    auto recurseTask = task!parallelSort(greaterEqual);
-    taskPool.put(recurseTask);
-    parallelSort(less);
-    recurseTask.yieldForce;
- */
+        auto t = task!indexWorker(this, path, _source.hasStorageHeader);
+        taskPool.put(t);
+    }
 
-        /** 
-    auto file1Task = task(&read!string, "foo.txt", size_t.max);
-    file1Task.executeInNewThread();
+    private static void indexWorker(DltDocument doc, string path, bool hasStorageHeader)
+    {
+        import std.stdint : uint32_t;
 
-    // Read bar.txt in parallel.
-    auto file2Data = read("bar.txt");
+        import core.atomic : atomicLoad;
 
-    // Get the results of reading foo.txt.
-    auto file1Data = file1Task.yieldForce;
-  */
+        auto localSource = DltSource(path, hasStorageHeader);
+
+        size_t[16_384] buffer;
+        size_t count = 0;
+
+        while (true)
+        {
+            if (atomicLoad(doc._cancelFileLoad))
+                break;
+
+            auto msg = localSource.popMessage();
+            if (msg.length == 0)
+                break;
+
+            buffer[count++] = localSource.offsetOf(msg);
+
+            if (count == buffer.length)
+            {
+                synchronized (doc._mutex)
+                {
+                    doc._fileIndex.append(buffer[]);
+                }
+                count = 0;
+            }
+        }
+
+        synchronized (doc._mutex)
+        {
+            if (count > 0)
+            {
+                doc._fileIndex.append(buffer[0 .. count]);
+            }
+            doc._fileIndex.isReady = true;
+        }
     }
 
     override DocumentView rawView()
@@ -123,94 +157,391 @@ class DltDocument : Document
 
     override void applyViewFilter(LogFilter!wchar filter)
     {
-        _viewFilter = filter;
+        import std.parallelism : task, taskPool;
+        import core.atomic : atomicStore;
+
+        synchronized (_mutex)
+        {
+            _viewFilter = filter;
+            _filterIndex.clear();
+            _filterIndex.isReady = false;
+        }
+
+        atomicStore(_cancelFilterLoad, false);
+        if (_sourcePath.length > 0)
+        {
+            auto t = task!filterWorker(this, _sourcePath, _source.hasStorageHeader);
+            taskPool.put(t);
+        }
     }
 
     override void applySearchFilter(LogFilter!wchar filter)
     {
-        _searchFilter = filter;
+        import std.parallelism : task, taskPool;
+        import core.atomic : atomicStore;
+
+        synchronized (_mutex)
+        {
+            _searchFilter = filter;
+            _searchIndex.clear();
+            _searchIndex.isReady = false;
+        }
+
+        atomicStore(_cancelSearchLoad, false);
+        if (_sourcePath.length > 0)
+        {
+            auto t = task!searchWorker(this, _sourcePath, _source.hasStorageHeader);
+            taskPool.put(t);
+        }
+    }
+
+    void cancelFileLoad()
+    {
+        import core.atomic : atomicStore;
+
+        atomicStore(_cancelFileLoad, true);
+    }
+
+    void cancelFilterLoad()
+    {
+        import core.atomic : atomicStore;
+
+        atomicStore(_cancelFilterLoad, true);
+    }
+
+    void cancelSearchLoad()
+    {
+        import core.atomic : atomicStore;
+
+        atomicStore(_cancelSearchLoad, true);
+    }
+
+    private static void filterWorker(DltDocument doc, string path, bool hasStorageHeader)
+    {
+        import std.stdint : uint32_t;
+        import core.atomic : atomicLoad;
+        import core.thread : Thread;
+        import core.time : msecs;
+        import dlt_core.dlt_parser : parseDltItem;
+
+        auto localSource = DltSource(path, hasStorageHeader);
+        DecodedMessage!wchar msg;
+
+        uint32_t[16_384] buffer;
+        size_t count = 0;
+        uint32_t fileIndexPos = 0;
+
+        while (true)
+        {
+            if (atomicLoad(doc._cancelFilterLoad))
+                break;
+
+            bool hasMore;
+            size_t offset = 0;
+            LogFilter!wchar filter;
+
+            synchronized (doc._mutex)
+            {
+                hasMore = fileIndexPos < doc._fileIndex.length;
+                if (hasMore)
+                    offset = doc._fileIndex[fileIndexPos];
+                filter = doc._viewFilter;
+            }
+
+            if (!hasMore)
+            {
+                bool isReady;
+                synchronized (doc._mutex)
+                {
+                    isReady = doc._fileIndex.isReady;
+                }
+                if (isReady)
+                    break;
+
+                Thread.sleep(10.msecs);
+                continue;
+            }
+
+            auto rawMsg = cast(const(ubyte)[]) localSource.getMessage(offset);
+            if (parseDltItem(msg, rawMsg, hasStorageHeader))
+            {
+                if (filter is null || filter.matches(msg))
+                {
+                    buffer[count++] = fileIndexPos;
+                    if (count == buffer.length)
+                    {
+                        synchronized (doc._mutex)
+                        {
+                            doc._filterIndex.append(buffer[]);
+                        }
+                        count = 0;
+                    }
+                }
+            }
+            fileIndexPos++;
+        }
+
+        synchronized (doc._mutex)
+        {
+            if (count > 0)
+                doc._filterIndex.append(buffer[0 .. count]);
+            doc._filterIndex.isReady = true;
+        }
+    }
+
+    private static void searchWorker(DltDocument doc, string path, bool hasStorageHeader)
+    {
+        import std.stdint : uint32_t;
+        import core.atomic : atomicLoad;
+        import core.thread : Thread;
+        import core.time : msecs;
+        import dlt_core.dlt_parser : parseDltItem;
+
+        auto localSource = DltSource(path, hasStorageHeader);
+        DecodedMessage!wchar msg;
+
+        uint32_t[16_384] buffer;
+        size_t count = 0;
+        uint32_t fileIndexPos = 0;
+
+        while (true)
+        {
+            if (atomicLoad(doc._cancelSearchLoad))
+                break;
+
+            bool hasMore;
+            size_t offset = 0;
+            LogFilter!wchar filter;
+
+            synchronized (doc._mutex)
+            {
+                hasMore = fileIndexPos < doc._fileIndex.length;
+                if (hasMore)
+                    offset = doc._fileIndex[fileIndexPos];
+                filter = doc._searchFilter;
+            }
+
+            if (!hasMore)
+            {
+                bool isReady;
+                synchronized (doc._mutex)
+                {
+                    isReady = doc._fileIndex.isReady;
+                }
+                if (isReady)
+                    break;
+
+                Thread.sleep(10.msecs);
+                continue;
+            }
+
+            auto rawMsg = cast(const(ubyte)[]) localSource.getMessage(offset);
+            if (parseDltItem(msg, rawMsg, hasStorageHeader))
+            {
+                if (filter is null || filter.matches(msg))
+                {
+                    buffer[count++] = fileIndexPos;
+                    if (count == buffer.length)
+                    {
+                        synchronized (doc._mutex)
+                        {
+                            doc._searchIndex.append(buffer[]);
+                        }
+                        count = 0;
+                    }
+                }
+            }
+            fileIndexPos++;
+        }
+
+        synchronized (doc._mutex)
+        {
+            if (count > 0)
+                doc._searchIndex.append(buffer[0 .. count]);
+            doc._searchIndex.isReady = true;
+        }
     }
 
     /// Views
 
     private class RawDocumentView : DocumentView
     {
-        this()
-        {
-        }
-
         override size_t itemsCount() pure nothrow @nogc const
         {
-            return 0;
+            return this.outer._fileIndex.length;
         }
 
         override bool fetchItem(size_t index, out DocumentItem item)
         {
-            return false;
+            import std.stdint : uint32_t;
+            import dlt_core.dlt_parser : parseDltItem;
+
+            size_t offset = 0;
+
+            synchronized (this.outer._mutex)
+            {
+                if (index < this.outer._fileIndex.length)
+                    offset = this.outer._fileIndex[index];
+                else
+                    return false;
+            }
+
+            auto rawMsg = cast(const(ubyte)[]) this.outer._source.getMessage(offset);
+            if (!parseDltItem(item._decodedMessage, rawMsg, this.outer._source.hasStorageHeader))
+                return false;
+
+            item.realIndex = index;
+            // metadata logic (masks, filters) could be evaluated here, placeholder for now
+            return true;
         }
 
         override DocumentView.State state() const
         {
-            return DocumentView.State.Ready;
+            import core.atomic : atomicLoad;
+
+            if (atomicLoad(this.outer._cancelFileLoad))
+                return DocumentView.State.Error;
+
+            bool ready;
+            synchronized (cast(Mutex) this.outer._mutex)
+            {
+                ready = this.outer._fileIndex.isReady;
+            }
+
+            return ready ? DocumentView.State.Ready : DocumentView.State.BuildingIndex;
         }
 
         override double progress() const
         {
-            return 1.0;
+            bool ready;
+            synchronized (cast(Mutex) this.outer._mutex)
+            {
+                ready = this.outer._fileIndex.isReady;
+            }
+
+            if (ready)
+                return 1.0;
+            return 0.5;
         }
     }
 
     private class FilteredDocumentView : DocumentView
     {
-        this()
-        {
-        }
-
         override size_t itemsCount() pure nothrow @nogc const
         {
-            return 0;
+            return this.outer._filterIndex.length;
         }
 
         override bool fetchItem(size_t index, out DocumentItem item)
         {
-            return false;
+            import std.stdint : uint32_t;
+            import dlt_core.dlt_parser : parseDltItem;
+
+            uint32_t offset = 0;
+
+            synchronized (this.outer._mutex)
+            {
+                if (index < this.outer._filterIndex.length)
+                    offset = this.outer._filterIndex[index];
+                else
+                    return false;
+            }
+
+            auto rawMsg = cast(const(ubyte)[]) this.outer._source.getMessage(offset);
+            if (!parseDltItem(item._decodedMessage, rawMsg, this.outer._source.hasStorageHeader))
+                return false;
+
+            item.realIndex = index; // or matched logic if tracking index from original file
+            return true;
         }
 
         override DocumentView.State state() const
         {
-            return DocumentView.State.Ready;
+            import core.atomic : atomicLoad;
+
+            if (atomicLoad(this.outer._cancelFilterLoad))
+                return DocumentView.State.NotReady; // Uninitialized if unset/canceled
+
+            bool ready;
+            synchronized (cast(Mutex) this.outer._mutex)
+            {
+                ready = this.outer._filterIndex.isReady;
+            }
+
+            return ready ? DocumentView.State.Ready : DocumentView.State.BuildingIndex;
         }
 
         override double progress() const
         {
-            return 1.0;
+            bool ready;
+            synchronized (cast(Mutex) this.outer._mutex)
+            {
+                ready = this.outer._filterIndex.isReady;
+            }
+
+            if (ready)
+                return 1.0;
+            return 0.5;
         }
     }
 
     private class SearchDocumentView : DocumentView
     {
-        this()
-        {
-        }
-
         override size_t itemsCount() pure nothrow @nogc const
         {
-            return 0;
+            return this.outer._searchIndex.length;
         }
 
         override bool fetchItem(size_t index, out DocumentItem item)
         {
-            return false;
+            import std.stdint : uint32_t;
+            import dlt_core.dlt_parser : parseDltItem;
+
+            uint32_t offset = 0;
+
+            synchronized (this.outer._mutex)
+            {
+                if (index < this.outer._searchIndex.length)
+                    offset = this.outer._searchIndex[index];
+                else
+                    return false;
+            }
+
+            auto rawMsg = cast(const(ubyte)[]) this.outer._source.getMessage(offset);
+            if (!parseDltItem(item._decodedMessage, rawMsg, this.outer._source.hasStorageHeader))
+                return false;
+
+            item.realIndex = index;
+            return true;
         }
 
         override DocumentView.State state() const
         {
-            return DocumentView.State.Ready;
+            import core.atomic : atomicLoad;
+
+            if (atomicLoad(this.outer._cancelSearchLoad))
+                return DocumentView.State.NotReady; // Uninitialized/canceled
+
+            bool ready;
+            synchronized (cast(Mutex) this.outer._mutex)
+            {
+                ready = this.outer._searchIndex.isReady;
+            }
+
+            return ready ? DocumentView.State.Ready : DocumentView.State.BuildingIndex;
         }
 
         override double progress() const
         {
-            return 1.0;
+            bool ready;
+            synchronized (cast(Mutex) this.outer._mutex)
+            {
+                ready = this.outer._searchIndex.isReady;
+            }
+
+            if (ready)
+                return 1.0;
+            return 0.5;
         }
     }
 }

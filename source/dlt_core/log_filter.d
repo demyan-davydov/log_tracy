@@ -6,5 +6,5 @@ import std.traits : isSomeChar;
 
 interface LogFilter(T) if (isSomeChar!(T))
 {
-    bool matches(in const(DecodedMessage!T) item) const;
+    bool matches(ref const(DecodedMessage!T) item) const;
 }
