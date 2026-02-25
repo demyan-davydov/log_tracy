@@ -177,7 +177,7 @@ static AppSettings loadSettings(string path = defaultSettingsPath())
     return settings;
 }
 
-void saveSettings(in ref const(AppSettings) settings, string path = defaultSettingsPath())
+void saveSettings(in AppSettings settings, string path = defaultSettingsPath())
 {
     import std.string : replace;
 

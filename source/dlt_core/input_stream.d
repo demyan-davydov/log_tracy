@@ -33,16 +33,28 @@ interface InputStream
     //! Pops the specified number of bytes into the buffer
     final bool pop(T)(ref T result)
     {
-        void[] resultBuffer = (cast(void*)&result)[0 .. T.sizeof];
-        const auto receivedBuffer = pop(resultBuffer);
-        return receivedBuffer.length == T.sizeof;
+        import core.stdc.string : memcpy;
+
+        ubyte[T.sizeof] tmp = void;
+        void[] tmpBuf = tmp[];
+        const auto receivedBuffer = pop(tmpBuf);
+        if (receivedBuffer.length == T.sizeof)
+        {
+            memcpy(cast(void*)&result, tmp.ptr, T.sizeof);
+            return true;
+        }
+        return false;
     }
 
     //! Pops the specified number of bytes into the buffer
     final T popOrThrow(T)(ref T result)
     {
-        void[] resultBuffer = (cast(void*)&result)[0 .. T.sizeof];
-        popOrThrow(resultBuffer);
+        import core.stdc.string : memcpy;
+
+        ubyte[T.sizeof] tmp = void;
+        void[] tmpBuf = tmp[];
+        popOrThrow(tmpBuf);
+        memcpy(cast(void*)&result, tmp.ptr, T.sizeof);
         return result;
     }
 

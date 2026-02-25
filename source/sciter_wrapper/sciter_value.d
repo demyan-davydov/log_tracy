@@ -42,7 +42,7 @@ struct SciterValueConstView
         _value = value;
     }
 
-    private this(in ref const(SCITER_VALUE) value) nothrow @nogc
+    private this(ref const(SCITER_VALUE) value) nothrow @nogc
     {
         _value = &value;
     }
@@ -52,7 +52,7 @@ struct SciterValueConstView
         _value = value._value;
     }
 
-    this(in ref SciterValue value) nothrow @nogc
+    this(in SciterValue value) nothrow @nogc
     {
         _value = value.raw;
     }
@@ -70,7 +70,7 @@ struct SciterValueConstView
     ///
 
     //! @brief a special version of assign for internal use - we do not check if the value is valid.
-    private void opAssign(in ref const(SCITER_VALUE) value) nothrow @nogc
+    private void opAssign(ref const(SCITER_VALUE) value) nothrow @nogc
     {
         if (!isSame(raw, &value))
         {
@@ -92,7 +92,7 @@ struct SciterValueConstView
         }
     }
 
-    void opAssign(in ref const(SciterValue) other) nothrow @nogc
+    void opAssign(in SciterValue other) nothrow @nogc
     {
         if (!isSame(raw, other.raw))
         {
@@ -386,7 +386,7 @@ struct SciterValueView
 
     this() @disable;
 
-    private this(ref SCITER_VALUE value) nothrow @nogc
+    private this(ref const(SCITER_VALUE) value) nothrow @nogc
     {
         _constView = SciterValueConstView(value);
     }
@@ -427,7 +427,7 @@ struct SciterValueView
 
     //! @brief a special version of assign for internal use - we do not check if the value is valid.
     //! @note we do not check if the value is not valid.
-    private void opAssign(ref SCITER_VALUE other) nothrow @nogc
+    private void opAssign(ref const(SCITER_VALUE) other) nothrow @nogc
     {
         _constView = SciterValueConstView(other);
     }
@@ -747,7 +747,7 @@ struct SciterValue
         return &_value;
     }
 
-    bool opEquals(in ref const(SciterValue) other) const nothrow @nogc
+    bool opEquals(in SciterValue other) const nothrow @nogc
     {
         return view.opEquals(other.view);
     }

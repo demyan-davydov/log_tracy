@@ -76,7 +76,7 @@ struct DltSource
     //! otherwise the empty slice is returned
     const(char)[] getMessage(size_t offset) const pure @nogc nothrow
     {
-        const(char)[] buffer = cast(const(char)[]) _dataBegin[offset .. overallLength - offset];
+        const(char)[] buffer = cast(const(char)[]) _dataBegin[offset .. overallLength];
 
         if (hasStorageHeader)
         {

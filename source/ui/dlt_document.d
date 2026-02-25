@@ -26,21 +26,24 @@ final class DltDocument : Document
 
         import std.parallelism : task;
 
-        auto t = task({
-            try
-            {
-                _currentIndexer.scan();
-                _searchEngine = new SearchEngine(_currentIndexer);
-                if (_fibexParser)
-                    _searchEngine._fibex = _fibexParser;
-                writeln("Indexed messages: ", _currentIndexer.totalMessages);
-            }
-            catch (Exception e)
-            {
-                writeln("Error indexing in thread: ", e.msg);
-            }
-        });
+        auto t = task!scanWorker(this);
         t.executeInNewThread();
+    }
+
+    private static void scanWorker(DltDocument self)
+    {
+        try
+        {
+            self._currentIndexer.scan();
+            self._searchEngine = new SearchEngine(self._currentIndexer);
+            if (self._fibexParser)
+                self._searchEngine._fibex = self._fibexParser;
+            writeln("Indexed messages: ", self._currentIndexer.totalMessages);
+        }
+        catch (Exception e)
+        {
+            writeln("Error indexing in thread: ", e.msg);
+        }
     }
 
     ~this()

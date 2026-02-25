@@ -6,6 +6,10 @@ license "proprietary"
 dependency "dxml" version="~>0.4.5"
 lflags "-framework" "Cocoa" "-L/usr/lib" platform="osx"
 
+dflags "-preview=in" // in -> const scope
+dflags "-preview=dip1000" // strict control for scope and references lifetimes
+dflags "-preview=dtorfields" // correct fields destruction
+
 // Windows resource file
 sourceFiles "resources/app.rc" platform="windows"
 lflags "/SUBSYSTEM:WINDOWS" "/ENTRY:mainCRTStartup" platform="windows"
