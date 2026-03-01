@@ -7,6 +7,7 @@ import dlt_core.indexer;
 import dlt_core.dlt_protocol;
 import ui.app_settings;
 import std.stdio;
+import std.parallelism : task;
 import dlt_core.log_filter : LogFilter;
 import dlt_core.log_item : LogItem;
 
@@ -23,8 +24,6 @@ final class DltDocument : Document
     {
         _sourcePath = path;
         _currentIndexer = new Indexer(path);
-
-        import std.parallelism : task;
 
         auto t = task!scanWorker(this);
         t.executeInNewThread();

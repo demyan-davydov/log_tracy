@@ -7,7 +7,8 @@ import utils.mmap_array;
 //! Container to store indexes of DLT messages in file.
 struct IndexArray
 {
-    private MmapArray!size_t _data;
+    alias Type = size_t;
+    private MmapArray!Type _data;
 
     @disable this();
     @disable this(ref IndexArray);
@@ -15,29 +16,29 @@ struct IndexArray
 
     this(size_t capacity) @nogc
     {
-        _data = MmapArray!size_t(capacity);
+        _data = MmapArray!Type(capacity);
     }
 
     ~this() @nogc
     {
     }
 
-    void append(size_t offset) pure @nogc
+    void append(Type offset) pure @nogc
     {
         _data.append(offset);
     }
 
-    void append(const(size_t)[] slice) pure @nogc
+    void append(const(Type)[] slice) pure @nogc
     {
         _data.append(slice);
     }
 
-    size_t opIndex(size_t i) const pure @nogc
+    Type opIndex(size_t i) const pure @nogc
     {
         return _data[i];
     }
 
-    inout(size_t)[] opSlice(size_t i, size_t j) inout pure @nogc
+    inout(Type)[] opSlice(size_t i, size_t j) inout pure @nogc
     {
         return _data[i .. j];
     }

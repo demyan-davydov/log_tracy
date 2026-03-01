@@ -11,9 +11,9 @@ import dlt_core.dlt_protocol;
 struct DltSource
 {
     private MmFile _mmFile;
-    private const(char)* _dataBegin;
-    private const(char)* _dataEnd;
-    private const(char)[] _rest; // slice for not readed part of mmFile content
+    private const(ubyte)* _dataBegin;
+    private const(ubyte)* _dataEnd;
+    private const(ubyte)[] _rest; // slice for not readed part of mmFile content
     private const bool _hasStorageHeader;
 
     @disable this();
@@ -23,7 +23,7 @@ struct DltSource
     this(string filePath, bool containsStorageHeader = true)
     {
         _mmFile = new MmFile(filePath, MmFile.Mode.read, 0, null);
-        _rest = cast(const(char)[]) _mmFile[0 .. _mmFile.length];
+        _rest = cast(const(ubyte)[]) _mmFile[0 .. _mmFile.length];
         _dataBegin = _rest.ptr;
         _dataEnd = _dataBegin + _mmFile.length;
         _hasStorageHeader = containsStorageHeader;
@@ -36,14 +36,14 @@ struct DltSource
 
     DltSourceRange range() const pure nothrow @nogc @property
     {
-        const(ubyte)[] restArray = cast(const(ubyte)[]) _dataBegin[0 .. overallLength];
+        const(ubyte)[] restArray = _dataBegin[0 .. overallLength];
         return DltSourceRange(restArray, _hasStorageHeader);
     }
 
     //! @brief Rewind the source file to the beginning
     void rewind()
     {
-        _rest = cast(const(char)[]) _mmFile[0 .. _mmFile.length];
+        _rest = cast(const(ubyte)[]) _mmFile[0 .. _mmFile.length];
     }
 
     //! @returns the length of the file
@@ -65,7 +65,7 @@ struct DltSource
     }
 
     //! @returns offset of the given slice relative to the beginning of the source file
-    size_t offsetOf(const(char)[] message) const pure nothrow @nogc @property
+    size_t offsetOf(const(ubyte)[] message) const pure nothrow @nogc @property
     {
         return message.ptr - _dataBegin;
     }
@@ -74,16 +74,16 @@ struct DltSource
     //! or empty slice reffered to bufferEnd
     //! @note The result slice will have at least StorageHeader.sizeof bytes, 
     //! otherwise the empty slice is returned
-    const(char)[] getMessage(size_t offset) const pure @nogc nothrow
+    const(ubyte)[] getMessage(size_t offset) const pure @nogc nothrow
     {
-        const(char)[] buffer = cast(const(char)[]) _dataBegin[offset .. overallLength];
+        const(ubyte)[] buffer = _dataBegin[offset .. overallLength];
 
         if (hasStorageHeader)
         {
             buffer = findNextStorageHeader(buffer);
         }
 
-        const(char)[] result = buffer[0 .. 0];
+        const(ubyte)[] result = buffer[0 .. 0];
 
         if (buffer.length > StorageHeader.sizeof)
         {
@@ -105,14 +105,14 @@ struct DltSource
     //! or empty slice reffered to bufferEnd
     //! @note The result slice will have at least StorageHeader.sizeof bytes, 
     //! otherwise the empty slice is returned
-    const(char)[] popMessage() pure @nogc nothrow
+    const(ubyte)[] popMessage() pure @nogc nothrow
     {
         if (hasStorageHeader)
         {
             _rest = findNextStorageHeader(_rest);
         }
 
-        const(char)[] result = _rest[0 .. 0];
+        const(ubyte)[] result = _rest[0 .. 0];
 
         if (_rest.length > StorageHeader.sizeof)
         {
@@ -135,7 +135,7 @@ struct DltSource
 //! or empty slice reffered to bufferEnd
 //! @note The result slice will have at least StorageHeader.sizeof bytes, 
 //! otherwise the empty slice is returned
-private const(char)[] findNextStorageHeader(const(char)[] buffer) pure @nogc nothrow
+private const(ubyte)[] findNextStorageHeader(const(ubyte)[] buffer) pure @nogc nothrow
 in
 {
     //debug assert(buffer.length >= StorageHeader.sizeof);
@@ -146,8 +146,8 @@ out
 }
 body
 {
-    const(char)* ptr = buffer.ptr;
-    const(char)* end = buffer.ptr + buffer.length - StorageHeader.sizeof + 1;
+    const(ubyte)* ptr = buffer.ptr;
+    const(ubyte)* end = buffer.ptr + buffer.length - StorageHeader.sizeof + 1;
 
     // DLT header is 4 bytes "DLT\01".
     // This sequence do not contain repeated symbols, 
@@ -210,11 +210,16 @@ struct DltSourceRange
         return _rest.ptr - _dataBegin;
     }
 
+    size_t overallLength() const pure @nogc nothrow @property
+    {
+        return _dataEnd - _dataBegin;
+    }
+
     const(ubyte)[] pop() pure @nogc nothrow
     {
         if (_hasStorageHeader)
         {
-            _rest = cast(const(ubyte)[]) findNextStorageHeader(cast(const(char)[]) _rest);
+            _rest = findNextStorageHeader(_rest);
         }
 
         const(ubyte)[] result = _rest[0 .. 0];
@@ -304,7 +309,7 @@ version (unittest)
 @("findNextStorageHeader: finds header at start of buffer")
 unittest
 {
-    char[StorageHeader.sizeof] buf;
+    ubyte[StorageHeader.sizeof] buf;
     buf[0 .. 4] = DLT_PATTERN;
     auto result = findNextStorageHeader(buf[]);
     assert(result.ptr == buf.ptr);
@@ -314,7 +319,7 @@ unittest
 @("findNextStorageHeader: finds header after garbage bytes")
 unittest
 {
-    char[] buf;
+    ubyte[] buf;
     buf.length = 10 + StorageHeader.sizeof;
     buf[] = 'X';
     buf[10 .. 14] = DLT_PATTERN;
@@ -325,7 +330,7 @@ unittest
 @("findNextStorageHeader: returns empty slice when no header found")
 unittest
 {
-    char[StorageHeader.sizeof] buf = 'X';
+    ubyte[StorageHeader.sizeof] buf = 'X';
     auto result = findNextStorageHeader(buf[]);
     assert(result.length == 0);
 }
@@ -333,7 +338,7 @@ unittest
 @("findNextStorageHeader: partial DLT pattern is not matched")
 unittest
 {
-    char[] buf;
+    ubyte[] buf;
     buf.length = StorageHeader.sizeof;
     buf[] = '\0';
     buf[0] = 'D';
@@ -347,7 +352,7 @@ unittest
 @("findNextStorageHeader: multiple headers — returns first")
 unittest
 {
-    char[] buf;
+    ubyte[] buf;
     buf.length = StorageHeader.sizeof * 2;
     buf[] = '\0';
     buf[0 .. 4] = DLT_PATTERN;
@@ -359,7 +364,7 @@ unittest
 @("findNextStorageHeader: buffer too small for StorageHeader")
 unittest
 {
-    char[3] buf = "DLT";
+    ubyte[3] buf = cast(ubyte[]) "DLT";
     auto result = findNextStorageHeader(buf[]);
     assert(result.length == 0);
 }
@@ -367,7 +372,7 @@ unittest
 @("findNextStorageHeader: header at the very end of buffer")
 unittest
 {
-    char[] buf;
+    ubyte[] buf;
     buf.length = 20 + StorageHeader.sizeof;
     buf[] = 'X';
     buf[20 .. 24] = DLT_PATTERN;

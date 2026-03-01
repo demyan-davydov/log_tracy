@@ -42,7 +42,7 @@ align(1) struct StorageHeader
 }
 
 //! @brief Mark for beginning of DLT message
-enum char[4] DLT_PATTERN = ['D', 'L', 'T', '\01'];
+enum ubyte[4] DLT_PATTERN = ['D', 'L', 'T', '\01'];
 
 //! @brief Fixed part of the Standard Header (4 bytes)
 //! @note Byte order is always big-endian

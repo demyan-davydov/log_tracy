@@ -3,6 +3,8 @@ module utils.mmap_array;
 import core.sys.posix.sys.mman;
 import core.sys.posix.unistd;
 
+// todo: import std.experimental.allocator.mmap_allocator : MmapAllocator;
+
 @nogc:
 
 //! Array that stores data in memory mapped file.
@@ -11,6 +13,8 @@ struct MmapArray(T)
     private T* _data;
     private size_t _capacity;
     private size_t _length;
+
+    alias Type = T;
 
     private void alloc(size_t capacity) @nogc
     {
@@ -85,9 +89,13 @@ struct MmapArray(T)
         return _capacity;
     }
 
-    size_t[2] opSlice(size_t start, size_t end)
+    size_t[2] opSlice(size_t start, size_t end) const pure nothrow @nogc
     {
         return [start, end];
     }
 
+    size_t[2] range() const pure nothrow @nogc
+    {
+        return [0, _length];
+    }
 }
