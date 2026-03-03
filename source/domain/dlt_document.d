@@ -81,7 +81,7 @@ class DltDocument : Document
 
         auto localSource = DltSource(path, hasStorageHeader);
 
-        size_t[16_384] buffer;
+        FileIndexItem[16_384] buffer;
         size_t count = 0;
 
         while (true)
@@ -93,7 +93,7 @@ class DltDocument : Document
             if (msg.length == 0)
                 break;
 
-            buffer[count++] = localSource.offsetOf(msg);
+            buffer[count++].offset = localSource.offsetOf(msg);
 
             if (count == buffer.length)
             {
@@ -244,7 +244,7 @@ class DltDocument : Document
             {
                 hasMore = fileIndexPos < doc._fileIndex.length;
                 if (hasMore)
-                    offset = doc._fileIndex[fileIndexPos];
+                    offset = doc._fileIndex[fileIndexPos].offset;
                 filter = doc._viewFilter;
             }
 
@@ -317,7 +317,7 @@ class DltDocument : Document
             {
                 hasMore = fileIndexPos < doc._fileIndex.length;
                 if (hasMore)
-                    offset = doc._fileIndex[fileIndexPos];
+                    offset = doc._fileIndex[fileIndexPos].offset;
                 filter = doc._searchFilter;
             }
 
@@ -381,7 +381,7 @@ class DltDocument : Document
             synchronized (this.outer._mutex)
             {
                 if (index < this.outer._fileIndex.length)
-                    offset = this.outer._fileIndex[index];
+                    offset = this.outer._fileIndex[index].offset;
                 else
                     return false;
             }

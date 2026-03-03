@@ -10,6 +10,7 @@ import dlt_core.fibex;
 import domain.index.file_index;
 import domain.index.filter_index;
 import domain.index.search_index;
+import domain.document_item;
 
 import core.atomic : atomicLoad, atomicStore;
 import core.stdc.stdint : uint16_t, uint32_t;
@@ -21,6 +22,25 @@ import core.sync.mutex : Mutex;
 
 alias Filter = LogFilter!wchar;
 alias Message = DecodedMessage!wchar;
+
+interface DocumentView
+{
+    enum State
+    {
+        Ready,
+        NotReady,
+        BuildingIndex,
+        Error,
+    }
+
+    size_t itemsCount() pure nothrow @nogc const;
+
+    bool fetchItem(size_t index, out DocumentItem item);
+
+    State state() const;
+
+    double progress() const; // return 1.0 if ready
+}
 
 struct DltDoc
 {
@@ -52,6 +72,9 @@ struct DltDoc
     }
 
     private CurrentOperation _currentOperation = CurrentOperation.None;
+
+    private MainView _mainView;
+    //private SearchView _searchView;
 
     this(string path)
     {
@@ -88,6 +111,21 @@ struct DltDoc
         return atomicLoad(_cancelFlag);
     }
 
+    DocumentView.State state() const nothrow @nogc
+    {
+        if (_currentOperation == CurrentOperation.None)
+            return DocumentView.State.Ready;
+        return DocumentView.State.BuildingIndex;
+    }
+
+    double progress() const nothrow @nogc
+    {
+        import core.atomic : atomicLoad;
+
+        return atomicLoad(_progress);
+    }
+
+    /*
     private void resetIndex()
     {
         _fileIndex.clear();
@@ -100,27 +138,37 @@ struct DltDoc
     {
         _filterIndex.clear();
         _searchIndex.clear();
-    }
+    }*/
 
     bool setAnchor(size_t index, bool value)
     {
-        _anchors[index] = value;
-        return true;
+        synchronized (_mutex)
+        {
+            _anchors[index] = value;
+            return true;
+        }
     }
 
     bool switchAnchor(size_t index)
     {
-        // return (id in _idMap) !is null;
-        _anchors[index] = !_anchors[index];
-        return _anchors[index];
+        synchronized (_mutex)
+        {
+            // return (id in _idMap) !is null;
+            _anchors[index] = !_anchors[index];
+            return _anchors[index];
+        }
     }
 
-    const(bool[size_t]) anchors() const pure nothrow @nogc
+    const(bool[size_t]) anchors() const pure @nogc
     {
-        return _anchors;
+        synchronized (_mutex)
+        {
+            return _anchors;
+        }
     }
 
-    void udpateFilterAndSearchIndexes(scope ref const(Message) msg, uint32_t fileIndex)
+    /*
+    private void udpateFilterAndSearchIndexes(scope ref const(Message) msg, uint32_t fileIndex)
     {
         const bool isAnchoredMsg = (fileIndex in _anchors) !is null;
 
@@ -135,7 +183,7 @@ struct DltDoc
         }
     }
 
-    void udpateSearchIndexes(scope ref const(Message) msg, uint32_t fileIndex)
+    private void udpateSearchIndexes(scope ref const(Message) msg, uint32_t fileIndex)
     {
         const bool isAnchoredMsg = (fileIndex in _anchors) !is null;
 
@@ -144,11 +192,12 @@ struct DltDoc
             _searchIndex.append(fileIndex);
         }
     }
+    */
 
     //! @brief build file index, also rebuild filter and search indexes
     //! @param cancelFlag - flag to cancel the build process
     //! @return true if the build process was completed successfully, false otherwise
-    bool buildFileIndex()
+    private bool buildFileIndex()
     {
         synchronized (_mutex)
         {
@@ -174,7 +223,7 @@ struct DltDoc
                 if (msg.length == 0)
                     break;
 
-                tempIndex[i] = range.offset;
+                tempIndex[i].offset = range.offset;
             }
 
             synchronized (_mutex)
@@ -190,7 +239,7 @@ struct DltDoc
     //! @brief build filter index, also rebuild search index
     //! @param cancelFlag - flag to cancel the build process
     //! @return true if the build process was completed successfully, false otherwise
-    bool buildFilterIndex()
+    private bool buildFilterIndex()
     {
         bool[size_t] localAnchors;
         Filter localFilter;
@@ -250,7 +299,7 @@ struct DltDoc
     //! @brief build search index
     //! @param cancelFlag - flag to cancel the build process
     //! @return true if the build process was completed successfully, false otherwise
-    bool buildSearchIndex()
+    private bool buildSearchIndex()
     {
         bool[size_t] localAnchors;
         Filter localFilter;
@@ -291,9 +340,9 @@ struct DltDoc
             size_t tempLen = 0;
             for (size_t i = pos; i < batchEnd; ++i)
             {
-                const size_t fileOffset = _viewIsFiltered ? _fileIndex[_filterIndex[i]]
+                const auto fileOffset = _viewIsFiltered ? _fileIndex[_filterIndex[i]]
                     : _fileIndex[i];
-                const auto msgBytes = _source.getMessage(fileOffset);
+                const auto msgBytes = _source.getMessage(fileOffset.offset);
 
                 parseDltItem!wchar(parsedMsg, msgBytes, hasStorageHeader);
 
@@ -316,4 +365,96 @@ struct DltDoc
 
         return true;
     }
+
+    /// 
+    /// Views
+    ///
+
+    private final class MainView : DocumentView
+    {
+        private DltDoc* _doc;
+
+        this(DltDoc* doc)
+        {
+            _doc = doc;
+        }
+
+        override size_t itemsCount() const pure nothrow @nogc
+        {
+            return _doc._fileIndex.length;
+        }
+
+        override bool fetchItem(size_t index, out DocumentItem item)
+        {
+            if (index >= itemsCount())
+                return false;
+
+            if (_doc._viewIsFiltered)
+            {
+                index = cast(size_t) _doc._filterIndex[index];
+            }
+
+            const auto fileOffset = _doc._fileIndex[index];
+            const auto msgBytes = _doc._source.getMessage(fileOffset.offset);
+            parseDltItem!wchar(item._decodedMessage, msgBytes, _doc._source.hasStorageHeader);
+            item.realIndex = index;
+            item.filterMask = fileOffset.filterMask;
+            item.searchMask = 0;
+            item.anchored = false;
+            item.selected = false;
+            return true;
+        }
+
+        override State state() const
+        {
+            return _doc.state();
+        }
+
+        override double progress() const
+        {
+            return _doc.progress();
+        }
+    }
+
+    private final class FilteredView : DocumentView
+    {
+        private DltDoc* _doc;
+
+        this(DltDoc* doc)
+        {
+            _doc = doc;
+        }
+
+        override size_t itemsCount() pure nothrow @nogc const
+        {
+            return _doc._filterIndex.length;
+        }
+
+        override bool fetchItem(size_t index, out DocumentItem item)
+        {
+            if (index >= itemsCount())
+                return false;
+
+            const auto fileOffset = _doc._fileIndex[_doc._filterIndex[index]];
+            const auto msgBytes = _doc._source.getMessage(fileOffset.offset);
+            parseDltItem!wchar(item._decodedMessage, msgBytes, _doc._source.hasStorageHeader);
+            item.realIndex = index;
+            item.filterMask = fileOffset.filterMask;
+            item.searchMask = 0;
+            item.anchored = false;
+            item.selected = false;
+            return true;
+        }
+
+        override State state() const
+        {
+            return _doc.state();
+        }
+
+        override double progress() const
+        {
+            return _doc.progress();
+        }
+    }
+
 }
