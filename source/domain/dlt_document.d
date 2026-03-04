@@ -9,16 +9,19 @@ import dlt_core.dlt_log_filter;
 import dlt_core.decoded_message;
 import dlt_core.log_filter;
 
-import domain.index.file_index;
+import domain.index.offset_index;
 import domain.index.filter_index;
 import domain.index.search_index;
 
 import std.parallelism : Task, TaskPool;
+import std.typecons : scoped;
 import core.sync.mutex : Mutex;
 
 class DltDocument : Document
 {
-    private DltSource* _source;
+    //private alias Scoped(T) = typeof(scoped!T(string.init, bool.init));
+
+    private DltSourceFile _source;
     private DocumentId _id;
 
     private DocumentView _rawView;
@@ -27,7 +30,7 @@ class DltDocument : Document
 
     private LogFilter!wchar _viewFilter;
     private LogFilter!wchar _searchFilter;
-    private FileIndex _fileIndex;
+    private OffsetIndex _offsetIndex;
     private FilterIndex _filterIndex;
     private SearchIndex _searchIndex;
 
@@ -54,13 +57,13 @@ class DltDocument : Document
         import core.atomic : atomicStore;
 
         _sourcePath = path;
-        _source = new DltSource(path);
+        _source = new DltSourceFile(path);
 
         const size_t capacity = _source.overallLength / 4 + 10_000;
 
         synchronized (_mutex)
         {
-            _fileIndex = FileIndex(capacity);
+            _offsetIndex = OffsetIndex(capacity);
             _filterIndex = FilterIndex(capacity);
             _searchIndex = SearchIndex(capacity);
         }
@@ -79,9 +82,10 @@ class DltDocument : Document
 
         import core.atomic : atomicLoad;
 
-        auto localSource = DltSource(path, hasStorageHeader);
+        auto localSource = scoped!DltSourceFile(path, hasStorageHeader);
+        auto dataRange = localSource.range();
 
-        FileIndexItem[16_384] buffer;
+        OffsetIndex.Type[16_384] buffer;
         size_t count = 0;
 
         while (true)
@@ -89,17 +93,17 @@ class DltDocument : Document
             if (atomicLoad(doc._cancelFileLoad))
                 break;
 
-            auto msg = localSource.popMessage();
+            auto msg = dataRange.pop();
             if (msg.length == 0)
                 break;
 
-            buffer[count++].offset = localSource.offsetOf(msg);
+            buffer[count++].offset = dataRange.offset;
 
             if (count == buffer.length)
             {
                 synchronized (doc._mutex)
                 {
-                    doc._fileIndex.append(buffer[]);
+                    doc._offsetIndex.append(buffer[]);
                 }
                 count = 0;
             }
@@ -109,9 +113,9 @@ class DltDocument : Document
         {
             if (count > 0)
             {
-                doc._fileIndex.append(buffer[0 .. count]);
+                doc._offsetIndex.append(buffer[0 .. count]);
             }
-            doc._fileIndex.isReady = true;
+            doc._offsetIndex.isReady = true;
         }
     }
 
@@ -224,7 +228,7 @@ class DltDocument : Document
         import core.time : msecs;
         import dlt_core.dlt_parser : parseDltItem;
 
-        auto localSource = DltSource(path, hasStorageHeader);
+        auto localSource = scoped!DltSourceFile(path, hasStorageHeader);
         DecodedMessage!wchar msg;
 
         uint32_t[16_384] buffer;
@@ -242,9 +246,9 @@ class DltDocument : Document
 
             synchronized (doc._mutex)
             {
-                hasMore = fileIndexPos < doc._fileIndex.length;
+                hasMore = fileIndexPos < doc._offsetIndex.length;
                 if (hasMore)
-                    offset = doc._fileIndex[fileIndexPos].offset;
+                    offset = doc._offsetIndex[fileIndexPos].offset;
                 filter = doc._viewFilter;
             }
 
@@ -253,7 +257,7 @@ class DltDocument : Document
                 bool isReady;
                 synchronized (doc._mutex)
                 {
-                    isReady = doc._fileIndex.isReady;
+                    isReady = doc._offsetIndex.isReady;
                 }
                 if (isReady)
                     break;
@@ -297,7 +301,7 @@ class DltDocument : Document
         import core.time : msecs;
         import dlt_core.dlt_parser : parseDltItem;
 
-        auto localSource = DltSource(path, hasStorageHeader);
+        auto localSource = scoped!DltSourceFile(path, hasStorageHeader);
         DecodedMessage!wchar msg;
 
         uint32_t[16_384] buffer;
@@ -315,9 +319,9 @@ class DltDocument : Document
 
             synchronized (doc._mutex)
             {
-                hasMore = fileIndexPos < doc._fileIndex.length;
+                hasMore = fileIndexPos < doc._offsetIndex.length;
                 if (hasMore)
-                    offset = doc._fileIndex[fileIndexPos].offset;
+                    offset = doc._offsetIndex[fileIndexPos].offset;
                 filter = doc._searchFilter;
             }
 
@@ -326,7 +330,7 @@ class DltDocument : Document
                 bool isReady;
                 synchronized (doc._mutex)
                 {
-                    isReady = doc._fileIndex.isReady;
+                    isReady = doc._offsetIndex.isReady;
                 }
                 if (isReady)
                     break;
@@ -368,7 +372,7 @@ class DltDocument : Document
     {
         override size_t itemsCount() pure nothrow @nogc const
         {
-            return this.outer._fileIndex.length;
+            return this.outer._offsetIndex.length;
         }
 
         override bool fetchItem(size_t index, out DocumentItem item)
@@ -380,8 +384,8 @@ class DltDocument : Document
 
             synchronized (this.outer._mutex)
             {
-                if (index < this.outer._fileIndex.length)
-                    offset = this.outer._fileIndex[index].offset;
+                if (index < this.outer._offsetIndex.length)
+                    offset = this.outer._offsetIndex[index].offset;
                 else
                     return false;
             }
@@ -405,7 +409,7 @@ class DltDocument : Document
             bool ready;
             synchronized (cast(Mutex) this.outer._mutex)
             {
-                ready = this.outer._fileIndex.isReady;
+                ready = this.outer._offsetIndex.isReady;
             }
 
             return ready ? DocumentView.State.Ready : DocumentView.State.BuildingIndex;
@@ -416,7 +420,7 @@ class DltDocument : Document
             bool ready;
             synchronized (cast(Mutex) this.outer._mutex)
             {
-                ready = this.outer._fileIndex.isReady;
+                ready = this.outer._offsetIndex.isReady;
             }
 
             if (ready)

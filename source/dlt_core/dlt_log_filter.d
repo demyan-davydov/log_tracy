@@ -8,6 +8,8 @@ import dlt_core.decoded_message;
 import std.traits : isSomeChar;
 import std.algorithm.iteration : map;
 import std.array : array;
+import std.typecons : Nullable, nullable;
+import core.stdc.stdint : uint16_t;
 
 /// implements LogFilter interface using data loaded from .dlf file
 
@@ -62,17 +64,17 @@ final class DltLogFilter(CharType) : LogFilter!CharType if (isSomeChar!(CharType
         return false;
     }
 
-    override int matchIndex(scope ref const(DecodedMessage!CharType) item) const
+    override Nullable!uint matchIndex(scope ref const(DecodedMessage!CharType) item) const
     {
-        int idx = 0;
+        uint idx = 0;
         foreach (const ref record; _records)
         {
             if (isMatched!CharType(item, record))
-                return idx;
+                return idx.nullable;
             ++idx;
         }
 
-        return -1;
+        return Nullable!uint.init;
     }
 
     override immutable(LogFilter!CharType) idup() const

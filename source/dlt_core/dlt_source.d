@@ -8,23 +8,29 @@ import dlt_core.dlt_protocol;
 //! Represent source file of DLT document
 //! Allow to iterate over messages in the file
 
-struct DltSource
+interface DltSource
+{
+    DltSourceRange range() const pure nothrow @nogc @property;
+    size_t overallLength() const pure nothrow @nogc @property;
+    bool hasStorageHeader() const pure nothrow @nogc @property;
+    const(ubyte)[] getMessage(size_t offset) const pure @nogc nothrow;
+}
+
+final class DltSourceFile : DltSource
 {
     private MmFile _mmFile;
     private const(ubyte)* _dataBegin;
     private const(ubyte)* _dataEnd;
-    private const(ubyte)[] _rest; // slice for not readed part of mmFile content
     private const bool _hasStorageHeader;
 
     @disable this();
-    @disable this(ref DltSource);
-    @disable void opAssign(ref DltSource);
+    @disable this(ref DltSourceFile);
+    @disable void opAssign(ref DltSourceFile);
 
     this(string filePath, bool containsStorageHeader = true)
     {
         _mmFile = new MmFile(filePath, MmFile.Mode.read, 0, null);
-        _rest = cast(const(ubyte)[]) _mmFile[0 .. _mmFile.length];
-        _dataBegin = _rest.ptr;
+        _dataBegin = cast(const(ubyte)*) _mmFile[0 .. 0].ptr;
         _dataEnd = _dataBegin + _mmFile.length;
         _hasStorageHeader = containsStorageHeader;
     }
@@ -40,34 +46,16 @@ struct DltSource
         return DltSourceRange(restArray, _hasStorageHeader);
     }
 
-    //! @brief Rewind the source file to the beginning
-    void rewind()
-    {
-        _rest = cast(const(ubyte)[]) _mmFile[0 .. _mmFile.length];
-    }
-
     //! @returns the length of the file
     size_t overallLength() const pure nothrow @nogc @property
     {
         return _dataEnd - _dataBegin;
     }
 
-    //! @returns the length of the rest of the file
-    size_t length() const pure nothrow @nogc @property
-    {
-        return _rest.length;
-    }
-
     //! @returns true if the source file contains storage header
     bool hasStorageHeader() const pure nothrow @nogc @property
     {
         return _hasStorageHeader;
-    }
-
-    //! @returns offset of the given slice relative to the beginning of the source file
-    size_t offsetOf(const(ubyte)[] message) const pure nothrow @nogc @property
-    {
-        return message.ptr - _dataBegin;
     }
 
     //! @returns slice of original buffer starting from DLT header pattern (DLT\01) 
@@ -95,35 +83,6 @@ struct DltSource
 
                 buffer = buffer[length .. $];
                 result = result.ptr[0 .. buffer.ptr - result.ptr];
-            }
-        }
-
-        return result;
-    }
-
-    //! @returns slice of original buffer starting from DLT header pattern (DLT\01) 
-    //! or empty slice reffered to bufferEnd
-    //! @note The result slice will have at least StorageHeader.sizeof bytes, 
-    //! otherwise the empty slice is returned
-    const(ubyte)[] popMessage() pure @nogc nothrow
-    {
-        if (hasStorageHeader)
-        {
-            _rest = findNextStorageHeader(_rest);
-        }
-
-        const(ubyte)[] result = _rest[0 .. 0];
-
-        if (_rest.length > StorageHeader.sizeof)
-        {
-            _rest = _rest[StorageHeader.sizeof .. $];
-            if (_rest.length >= StandardHeader.sizeof)
-            {
-                auto standardHeader = cast(const(StandardHeader)*) _rest.ptr;
-                const ushort length = standardHeader.nativeLength;
-
-                _rest = _rest[length .. $];
-                result = result.ptr[0 .. _rest.ptr - result.ptr];
             }
         }
 
@@ -179,6 +138,8 @@ body
     return buffer[$ .. $];
 }
 
+// This struct refers to a part of the source file
+// It is valid only for the lifetime of the DltSource object
 struct DltSourceRange
 {
     private const(ubyte)* _dataBegin;
@@ -215,6 +176,11 @@ struct DltSourceRange
         return _dataEnd - _dataBegin;
     }
 
+    size_t length() const pure @nogc nothrow @property
+    {
+        return _rest.length;
+    }
+
     const(ubyte)[] pop() pure @nogc nothrow
     {
         if (_hasStorageHeader)
@@ -248,6 +214,7 @@ version (unittest)
     import std.bitmanip : nativeToBigEndian;
     import std.file : write, remove, tempDir;
     import std.path : buildPath;
+    import std.typecons : scoped;
 
     /// Build a minimal valid DLT message (StorageHeader + StandardHeader + payload)
     private ubyte[] buildDltMessage(
@@ -380,9 +347,9 @@ unittest
     assert(result.ptr == &buf[20]);
 }
 
-// ─── DltSource construction tests ──────────────────────────────────────────
+// ─── DltSourceFile construction tests ──────────────────────────────────────────
 
-@("DltSource: constructs from valid DLT file")
+@("DltSourceFile: constructs from valid DLT file")
 unittest
 {
     auto msg = buildDltMessage();
@@ -390,12 +357,12 @@ unittest
     scope (exit)
         remove(path);
 
-    auto source = DltSource(path);
-    assert(source.length == msg.length);
+    auto source = scoped!DltSourceFile(path);
+    assert(source.overallLength == msg.length);
     assert(source.hasStorageHeader == true);
 }
 
-@("DltSource: constructs with containsStorageHeader=false")
+@("DltSourceFile: constructs with containsStorageHeader=false")
 unittest
 {
     auto msg = buildDltMessage();
@@ -403,29 +370,13 @@ unittest
     scope (exit)
         remove(path);
 
-    auto source = DltSource(path, false);
+    auto source = scoped!DltSourceFile(path, false);
     assert(source.hasStorageHeader == false);
 }
 
-@("DltSource: rewind resets to beginning")
-unittest
-{
-    auto msg = buildDltMessage();
-    auto path = writeTempDlt(msg, "test_rewind.dlt");
-    scope (exit)
-        remove(path);
+// ─── DltSourceRange.pop tests ────────────────────────────────────────────
 
-    auto source = DltSource(path);
-    source.popMessage();
-    assert(source.length < msg.length || source.length == 0);
-
-    source.rewind();
-    assert(source.length == msg.length);
-}
-
-// ─── DltSource.popMessage tests ────────────────────────────────────────────
-
-@("DltSource.popMessage: returns message slice from single-message file")
+@("DltSourceRange.pop: returns message slice from single-message file")
 unittest
 {
     ubyte[] payload = [0x01, 0x02, 0x03, 0x04];
@@ -434,12 +385,13 @@ unittest
     scope (exit)
         remove(path);
 
-    auto source = DltSource(path);
-    auto result = source.popMessage();
+    auto source = scoped!DltSourceFile(path);
+    auto range = source.range();
+    auto result = range.pop();
     assert(result.length == msg.length);
 }
 
-@("DltSource.popMessage: iterates over multiple messages")
+@("DltSourceRange.pop: iterates over multiple messages")
 unittest
 {
     ubyte[] payload1 = [0xAA, 0xBB];
@@ -456,16 +408,17 @@ unittest
     scope (exit)
         remove(path);
 
-    auto source = DltSource(path);
+    auto source = scoped!DltSourceFile(path);
+    auto range = source.range();
 
-    auto first = source.popMessage();
+    auto first = range.pop();
     assert(first.length == msg1.length);
 
-    auto second = source.popMessage();
+    auto second = range.pop();
     assert(second.length == msg2.length);
 }
 
-@("DltSource.popMessage: returns empty on exhausted source")
+@("DltSourceRange.pop: returns empty on exhausted source")
 unittest
 {
     auto msg = buildDltMessage();
@@ -473,14 +426,15 @@ unittest
     scope (exit)
         remove(path);
 
-    auto source = DltSource(path);
-    source.popMessage();
+    auto source = scoped!DltSourceFile(path);
+    auto range = source.range();
+    range.pop();
 
-    auto result = source.popMessage();
+    auto result = range.pop();
     assert(result.length == 0);
 }
 
-@("DltSource.popMessage: skips garbage before valid header")
+@("DltSourceRange.pop: skips garbage before valid header")
 unittest
 {
     ubyte[] garbage = [0xFF, 0xFE, 0xFD, 0xFC, 0xFB];
@@ -494,12 +448,13 @@ unittest
     scope (exit)
         remove(path);
 
-    auto source = DltSource(path);
-    auto result = source.popMessage();
+    auto source = scoped!DltSourceFile(path);
+    auto range = source.range();
+    auto result = range.pop();
     assert(result.length == msg.length);
 }
 
-@("DltSource.popMessage: handles file with no valid DLT headers")
+@("DltSourceRange.pop: handles file with no valid DLT headers")
 unittest
 {
     ubyte[] garbage = [
@@ -511,12 +466,13 @@ unittest
     scope (exit)
         remove(path);
 
-    auto source = DltSource(path);
-    auto result = source.popMessage();
+    auto source = scoped!DltSourceFile(path);
+    auto range = source.range();
+    auto result = range.pop();
     assert(result.length == 0);
 }
 
-@("DltSource.popMessage: message with extended header")
+@("DltSourceRange.pop: message with extended header")
 unittest
 {
     ubyte headerType = StandardHeader.Type.UseExtendedHeader;
@@ -537,8 +493,9 @@ unittest
     scope (exit)
         remove(path);
 
-    auto source = DltSource(path);
-    auto result = source.popMessage();
+    auto source = scoped!DltSourceFile(path);
+    auto range = source.range();
+    auto result = range.pop();
     assert(result.length == msg.length);
 
     auto stdHdr = cast(const(StandardHeader)*)(result.ptr + StorageHeader.sizeof);

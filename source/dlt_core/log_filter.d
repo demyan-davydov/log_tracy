@@ -3,6 +3,7 @@ module dlt_core.log_filter;
 import dlt_core.decoded_message;
 
 import std.traits : isSomeChar;
+import std.typecons : Nullable;
 
 interface LogFilter(T) if (isSomeChar!(T))
 {
@@ -10,8 +11,8 @@ interface LogFilter(T) if (isSomeChar!(T))
 
     bool matches(ref const(DecodedMessage!CharType) item) const;
 
-    // return index of matched record or -1 if no match
-    int matchIndex(scope ref const(DecodedMessage!CharType) item) const;
+    //! Scan all of rules and return index of first matched record or Nullable.init if no match
+    Nullable!uint matchIndex(scope ref const(DecodedMessage!CharType) item) const;
 
     immutable(LogFilter!CharType) idup() const pure;
 

@@ -1,9 +1,9 @@
-module domain.index.file_index;
+module domain.index.offset_index;
 
 import domain.index.base_index;
 import core.stdc.stdint : uint16_t;
 
-struct FileIndexItem
+struct OffsetIndexItem
 {
     size_t data;
 
@@ -28,5 +28,5 @@ struct FileIndexItem
     }
 }
 
-//! file index refers position of message in file
-alias FileIndex = BaseIndex!FileIndexItem;
+//! offset index refers position of message in file
+alias OffsetIndex = BaseIndex!OffsetIndexItem;

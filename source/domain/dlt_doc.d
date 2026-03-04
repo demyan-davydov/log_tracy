@@ -7,10 +7,15 @@ import dlt_core.dlt_source;
 import dlt_core.dlt_parser : parseDltItem, parseDltItemWithFibex;
 import dlt_core.fibex;
 
-import domain.index.file_index;
+import domain.index.offset_index;
 import domain.index.filter_index;
 import domain.index.search_index;
 import domain.document_item;
+import domain.index.index_builders;
+import domain.index.anchors;
+
+import std.typecons;
+import std.parallelism;
 
 import core.atomic : atomicLoad, atomicStore;
 import core.stdc.stdint : uint16_t, uint32_t;
@@ -46,11 +51,13 @@ struct DltDoc
 {
     alias FilterFlags = uint16_t;
 
-    private DltSource _source; // file with source data
-    private FileIndex _fileIndex; // indecies of messages in the source file
+    private alias Scoped(T) = typeof(scoped!T(string.init, bool.init));
+
+    private Scoped!DltSourceFile _source; // file with source data
+    private OffsetIndex _offsetIndex; // indecies of messages in the source file
     private FilterIndex _filterIndex; // indecies of messages that match the filter
     private SearchIndex _searchIndex; // indecies of messages that match the search
-    private bool[size_t] _anchors; // anchors
+    private Anchors _anchors; // anchors
     private bool _viewIsFiltered = false; // filtered view is enabled
 
     private Filter _filter; // filter for filtered view
@@ -59,14 +66,14 @@ struct DltDoc
     private shared bool _cancelFlag = false; // cancel current operation
     private shared float _progress = 0.0f; // building index
     private Mutex _mutex; // mutex for building indexes
+    private TaskPool _taskPool;
 
-    enum maxAnchors = 16;
     enum bunchSize = 32; // number of messages to process in one bunch
 
     enum CurrentOperation
     {
         None,
-        BuildFileIndex,
+        BuildOffsetIndex,
         BuildFilterIndex,
         BuildSearchIndex,
     }
@@ -78,92 +85,164 @@ struct DltDoc
 
     this(string path)
     {
-        _source = DltSource(path);
+        _source = scoped!DltSourceFile(path);
 
         const size_t capacity = _source.overallLength / 40 + 10_000;
-        _fileIndex = FileIndex(capacity);
+        _offsetIndex = OffsetIndex(capacity);
         _filterIndex = FilterIndex(capacity);
         _searchIndex = SearchIndex(capacity);
     }
 
-    private bool canBuildIndex() const nothrow @nogc
+    private void runTask(Args...)(CurrentOperation op, bool delegate(Args) dg, scope Args args)
     {
-        return _currentOperation == CurrentOperation.None;
+        import std.parallelism : task;
+
+        synchronized (_mutex)
+        {
+            if (_currentOperation != CurrentOperation.None)
+                return;
+            _currentOperation = op;
+        }
+
+        atomicStore(_cancelFlag, false);
+        atomicStore(_progress, 0.0f);
+
+        auto currentTask = task(() {
+            dg(args);
+
+            synchronized (_mutex)
+            {
+                _progress = 1.0f;
+                _currentOperation = CurrentOperation.None;
+            }
+        });
+
+        _taskPool.put(currentTask);
     }
 
-    private bool canBuildFileIndex() const nothrow @nogc
+    void cancelCurrentOperation()
+    {
+        atomicStore(_cancelFlag, true);
+    }
+
+    bool busy() const @nogc
+    {
+        synchronized (_mutex)
+        {
+            return _currentOperation != CurrentOperation.None;
+        }
+    }
+
+    private void runBuildOffsetIndex()
+    {
+        runTask(CurrentOperation.BuildOffsetIndex, &buildOffsetIndex);
+    }
+
+    private void runBuildFilterIndex()
+    {
+        runTask(CurrentOperation.BuildFilterIndex, &buildFilterIndex);
+    }
+
+    private void runBuildSearchIndex()
+    {
+        runTask(CurrentOperation.BuildSearchIndex, &buildSearchIndex);
+    }
+
+    void enableFilter(bool enable)
+    {
+        synchronized (_mutex)
+        {
+            _viewIsFiltered = enable;
+        }
+        runBuildFilterIndex();
+    }
+
+    void setNewViewFilter(Filter filter)
+    {
+        synchronized (_mutex)
+        {
+            _filter = filter;
+            _filterIndex.clear();
+            _filterIndex.isReady = false;
+        }
+        runBuildFilterIndex();
+    }
+
+    void setNewSearchViewFilter(Filter filter)
+    {
+        synchronized (_mutex)
+        {
+            _searchFilter = filter;
+            _searchIndex.clear();
+            _searchIndex.isReady = false;
+        }
+        runBuildSearchIndex();
+    }
+
+    private bool canBuildIndex() const
+    {
+        synchronized (_mutex)
+        {
+            return _currentOperation == CurrentOperation.None;
+        }
+    }
+
+    private bool canBuildOffsetIndex() const
     {
         return canBuildIndex();
     }
 
-    private bool canBuildFilterIndex() const nothrow @nogc
+    private bool canBuildFilterIndex() const
     {
         return canBuildIndex();
     }
 
-    private bool canBuildSearchIndex() const nothrow @nogc
+    private bool canBuildSearchIndex() const
     {
         return canBuildIndex();
     }
 
-    private bool cancelRequested() const nothrow @nogc
+    private bool cancelRequested() const
     {
         return atomicLoad(_cancelFlag);
     }
 
-    DocumentView.State state() const nothrow @nogc
+    DocumentView.State state() const
     {
-        if (_currentOperation == CurrentOperation.None)
-            return DocumentView.State.Ready;
-        return DocumentView.State.BuildingIndex;
+        synchronized (_mutex)
+        {
+            if (_currentOperation == CurrentOperation.None)
+                return DocumentView.State.Ready;
+            return DocumentView.State.BuildingIndex;
+        }
     }
 
     double progress() const nothrow @nogc
     {
-        import core.atomic : atomicLoad;
-
         return atomicLoad(_progress);
     }
-
-    /*
-    private void resetIndex()
-    {
-        _fileIndex.clear();
-        _filterIndex.clear();
-        _searchIndex.clear();
-        _anchors.clear();
-    }
-
-    private void resetFilter()
-    {
-        _filterIndex.clear();
-        _searchIndex.clear();
-    }*/
 
     bool setAnchor(size_t index, bool value)
     {
         synchronized (_mutex)
         {
-            _anchors[index] = value;
-            return true;
+            return _anchors.set(index, value);
         }
     }
 
-    bool switchAnchor(size_t index)
+    size_t[] exportAnchors() const pure
     {
         synchronized (_mutex)
         {
-            // return (id in _idMap) !is null;
-            _anchors[index] = !_anchors[index];
-            return _anchors[index];
+            return _anchors.exportAnchors();
         }
     }
 
-    const(bool[size_t]) anchors() const pure @nogc
+    void importAnchors(const(size_t[]) anchors)
     {
         synchronized (_mutex)
         {
-            return _anchors;
+            _anchors.importAnchors(anchors);
         }
     }
 
@@ -197,11 +276,11 @@ struct DltDoc
     //! @brief build file index, also rebuild filter and search indexes
     //! @param cancelFlag - flag to cancel the build process
     //! @return true if the build process was completed successfully, false otherwise
-    private bool buildFileIndex()
+    private bool buildOffsetIndex()
     {
         synchronized (_mutex)
         {
-            _fileIndex.clear();
+            _offsetIndex.clear();
             _filterIndex.clear();
             _searchIndex.clear();
         }
@@ -215,7 +294,7 @@ struct DltDoc
                 return false;
             }
 
-            FileIndex.Type[bunchSize] tempIndex;
+            OffsetIndex.Type[bunchSize] tempIndex;
 
             for (size_t i = 0; i < bunchSize && range.hasNext; ++i)
             {
@@ -228,7 +307,7 @@ struct DltDoc
 
             synchronized (_mutex)
             {
-                _fileIndex.append(tempIndex);
+                _offsetIndex.append(tempIndex);
                 _progress = cast(float)(range.offset) / range.overallLength;
             }
         }
@@ -241,19 +320,19 @@ struct DltDoc
     //! @return true if the build process was completed successfully, false otherwise
     private bool buildFilterIndex()
     {
-        bool[size_t] localAnchors;
+        Anchors localAnchors;
         Filter localFilter;
 
         synchronized (_mutex)
         {
-            localAnchors = _anchors.dup();
+            localAnchors = _anchors;
             localFilter = _filter.dup();
             _filterIndex.clear();
             _searchIndex.clear();
         }
 
         auto isMatched = (ref const(Message) msg, size_t fileIndex) {
-            const bool isAnchoredMsg = (fileIndex in localAnchors) !is null;
+            const bool isAnchoredMsg = localAnchors.has(fileIndex);
             return isAnchoredMsg || localFilter.matches(msg);
         };
 
@@ -301,23 +380,23 @@ struct DltDoc
     //! @return true if the build process was completed successfully, false otherwise
     private bool buildSearchIndex()
     {
-        bool[size_t] localAnchors;
+        Anchors localAnchors;
         Filter localFilter;
 
         synchronized (_mutex)
         {
-            localAnchors = _anchors.dup();
+            localAnchors = _anchors;
             localFilter = _searchFilter.dup();
             _searchIndex.clear();
         }
 
         auto isMatched = (ref const(Message) msg, size_t fileIndex) {
-            const bool isAnchoredMsg = (fileIndex in localAnchors) !is null;
+            const bool isAnchoredMsg = localAnchors.has(fileIndex);
             return isAnchoredMsg || localFilter.matches(msg);
         };
 
         // Build a read-only list of file offsets to iterate over
-        const size_t indexLen = _viewIsFiltered ? _filterIndex.length : _fileIndex.length;
+        const size_t indexLen = _viewIsFiltered ? _filterIndex.length : _offsetIndex.length;
         const bool hasStorageHeader = _source.hasStorageHeader;
 
         uint32_t messageIndex = 0;
@@ -340,8 +419,8 @@ struct DltDoc
             size_t tempLen = 0;
             for (size_t i = pos; i < batchEnd; ++i)
             {
-                const auto fileOffset = _viewIsFiltered ? _fileIndex[_filterIndex[i]]
-                    : _fileIndex[i];
+                const auto fileOffset = _viewIsFiltered ? _offsetIndex[_filterIndex[i]]
+                    : _offsetIndex[i];
                 const auto msgBytes = _source.getMessage(fileOffset.offset);
 
                 parseDltItem!wchar(parsedMsg, msgBytes, hasStorageHeader);
@@ -381,7 +460,7 @@ struct DltDoc
 
         override size_t itemsCount() const pure nothrow @nogc
         {
-            return _doc._fileIndex.length;
+            return _doc._offsetIndex.length;
         }
 
         override bool fetchItem(size_t index, out DocumentItem item)
@@ -394,7 +473,7 @@ struct DltDoc
                 index = cast(size_t) _doc._filterIndex[index];
             }
 
-            const auto fileOffset = _doc._fileIndex[index];
+            const auto fileOffset = _doc._offsetIndex[index];
             const auto msgBytes = _doc._source.getMessage(fileOffset.offset);
             parseDltItem!wchar(item._decodedMessage, msgBytes, _doc._source.hasStorageHeader);
             item.realIndex = index;
@@ -435,7 +514,7 @@ struct DltDoc
             if (index >= itemsCount())
                 return false;
 
-            const auto fileOffset = _doc._fileIndex[_doc._filterIndex[index]];
+            const auto fileOffset = _doc._offsetIndex[_doc._filterIndex[index]];
             const auto msgBytes = _doc._source.getMessage(fileOffset.offset);
             parseDltItem!wchar(item._decodedMessage, msgBytes, _doc._source.hasStorageHeader);
             item.realIndex = index;
