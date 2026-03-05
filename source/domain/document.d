@@ -14,15 +14,15 @@ interface DocumentView
 {
     enum State
     {
-        Ready,
         NotReady,
+        Ready,
         BuildingIndex,
         Error,
     }
 
     size_t itemsCount() pure nothrow @nogc const;
 
-    bool fetchItem(size_t index, out DocumentItem item);
+    bool fetchItem(size_t index, scope ref DocumentItem item);
 
     State state() const;
 
@@ -31,16 +31,6 @@ interface DocumentView
 
 interface Document
 {
-    enum State
-    {
-        Ready,
-        NotReady,
-        BuildingIndex,
-        BuildingFilterIndex,
-        BuildingSearchIndex,
-        Error,
-    }
-
     enum Operation
     {
         None,
@@ -49,9 +39,7 @@ interface Document
         BuildingSearchIndex,
     }
 
-    DocumentView rawView();
-
-    DocumentView filteredView();
+    DocumentView mainView();
 
     DocumentView searchView();
 
@@ -68,32 +56,4 @@ interface Document
     void applyViewFilter(LogFilter!wchar filter);
 
     void applySearchFilter(LogFilter!wchar filter);
-
-    /*
-    final string logItemAsJson(size_t index)
-    {
-        import std.conv : to;
-        import std.json;
-
-        const size_t total = length();
-        if (index < 0 || index >= total)
-            return "{}";
-
-        LogItem item = logItem(index);
-
-        JSONValue j = [
-            "index": JSONValue(item.index),
-            "offset": JSONValue(item.offset),
-            "length": JSONValue(item.length),
-            "timestamp": JSONValue(item.timestamp),
-            "ecu": JSONValue(item.ecu),
-            "appId": JSONValue(item.appId),
-            "ctxId": JSONValue(item.ctxId),
-            "level": JSONValue(to!string(item.level)),
-            "type": JSONValue(toString(item.type)),
-            "payload": JSONValue(item.payload)
-        ];
-
-        return j.toString();
-    }*/
 }

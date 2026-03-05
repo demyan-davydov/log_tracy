@@ -24,29 +24,26 @@ class DltDocument : Document
     private DltSourceFile _source;
     private DocumentId _id;
 
-    private DocumentView _rawView;
-    private DocumentView _filteredView;
-    private DocumentView _searchView;
+    private MainDocumentView _mainView;
+    private SearchDocumentView _searchView;
 
     private LogFilter!wchar _viewFilter;
     private LogFilter!wchar _searchFilter;
     private OffsetIndex _offsetIndex;
     private FilterIndex _filterIndex;
     private SearchIndex _searchIndex;
+    private bool _isFilteredView; // true if _filterIndex is used, false if _offsetIndex is used
 
     private TaskPool _taskPool;
     private Mutex _mutex;
     private string _sourcePath;
 
-    private shared bool _cancelFileLoad;
-    private shared bool _cancelFilterLoad;
-    private shared bool _cancelSearchLoad;
+    private shared bool _cancelRequest;
 
     this(DocumentId id)
     {
         _id = id;
-        _rawView = new RawDocumentView();
-        _filteredView = new FilteredDocumentView();
+        _mainView = new MainDocumentView();
         _searchView = new SearchDocumentView();
         _mutex = new Mutex();
     }
@@ -68,9 +65,7 @@ class DltDocument : Document
             _searchIndex = SearchIndex(capacity);
         }
 
-        atomicStore(_cancelFileLoad, false);
-        atomicStore(_cancelFilterLoad, true); // Don't start filter/search until applied
-        atomicStore(_cancelSearchLoad, true);
+        atomicStore(_cancelRequest, false);
 
         auto t = task!indexWorker(this, path, _source.hasStorageHeader);
         taskPool.put(t);
@@ -90,7 +85,7 @@ class DltDocument : Document
 
         while (true)
         {
-            if (atomicLoad(doc._cancelFileLoad))
+            if (atomicLoad(doc._cancelRequest))
                 break;
 
             auto msg = dataRange.pop();
@@ -119,14 +114,9 @@ class DltDocument : Document
         }
     }
 
-    override DocumentView rawView()
+    override DocumentView mainView()
     {
-        return _rawView;
-    }
-
-    override DocumentView filteredView()
-    {
-        return _filteredView;
+        return _mainView;
     }
 
     override DocumentView searchView()
@@ -171,7 +161,7 @@ class DltDocument : Document
             _filterIndex.isReady = false;
         }
 
-        atomicStore(_cancelFilterLoad, false);
+        atomicStore(_cancelRequest, false);
         if (_sourcePath.length > 0)
         {
             auto t = task!filterWorker(this, _sourcePath, _source.hasStorageHeader);
@@ -191,7 +181,7 @@ class DltDocument : Document
             _searchIndex.isReady = false;
         }
 
-        atomicStore(_cancelSearchLoad, false);
+        atomicStore(_cancelRequest, false);
         if (_sourcePath.length > 0)
         {
             auto t = task!searchWorker(this, _sourcePath, _source.hasStorageHeader);
@@ -199,25 +189,11 @@ class DltDocument : Document
         }
     }
 
-    void cancelFileLoad()
+    void requestCancel()
     {
         import core.atomic : atomicStore;
 
-        atomicStore(_cancelFileLoad, true);
-    }
-
-    void cancelFilterLoad()
-    {
-        import core.atomic : atomicStore;
-
-        atomicStore(_cancelFilterLoad, true);
-    }
-
-    void cancelSearchLoad()
-    {
-        import core.atomic : atomicStore;
-
-        atomicStore(_cancelSearchLoad, true);
+        atomicStore(_cancelRequest, true);
     }
 
     private static void filterWorker(DltDocument doc, string path, bool hasStorageHeader)
@@ -237,7 +213,7 @@ class DltDocument : Document
 
         while (true)
         {
-            if (atomicLoad(doc._cancelFilterLoad))
+            if (atomicLoad(doc._cancelRequest))
                 break;
 
             bool hasMore;
@@ -310,7 +286,7 @@ class DltDocument : Document
 
         while (true)
         {
-            if (atomicLoad(doc._cancelSearchLoad))
+            if (atomicLoad(doc._cancelRequest))
                 break;
 
             bool hasMore;
@@ -368,14 +344,14 @@ class DltDocument : Document
 
     /// Views
 
-    private class RawDocumentView : DocumentView
+    private class MainDocumentView : DocumentView
     {
         override size_t itemsCount() pure nothrow @nogc const
         {
             return this.outer._offsetIndex.length;
         }
 
-        override bool fetchItem(size_t index, out DocumentItem item)
+        override bool fetchItem(size_t index, scope ref DocumentItem item)
         {
             import std.stdint : uint32_t;
             import dlt_core.dlt_parser : parseDltItem;
@@ -403,7 +379,7 @@ class DltDocument : Document
         {
             import core.atomic : atomicLoad;
 
-            if (atomicLoad(this.outer._cancelFileLoad))
+            if (atomicLoad(this.outer._cancelRequest))
                 return DocumentView.State.Error;
 
             bool ready;
@@ -436,7 +412,7 @@ class DltDocument : Document
             return this.outer._filterIndex.length;
         }
 
-        override bool fetchItem(size_t index, out DocumentItem item)
+        override bool fetchItem(size_t index, scope ref DocumentItem item)
         {
             import std.stdint : uint32_t;
             import dlt_core.dlt_parser : parseDltItem;
@@ -463,7 +439,7 @@ class DltDocument : Document
         {
             import core.atomic : atomicLoad;
 
-            if (atomicLoad(this.outer._cancelFilterLoad))
+            if (atomicLoad(this.outer._cancelRequest))
                 return DocumentView.State.NotReady; // Uninitialized if unset/canceled
 
             bool ready;
@@ -496,7 +472,7 @@ class DltDocument : Document
             return this.outer._searchIndex.length;
         }
 
-        override bool fetchItem(size_t index, out DocumentItem item)
+        override bool fetchItem(size_t index, scope ref DocumentItem item)
         {
             import std.stdint : uint32_t;
             import dlt_core.dlt_parser : parseDltItem;
@@ -523,7 +499,7 @@ class DltDocument : Document
         {
             import core.atomic : atomicLoad;
 
-            if (atomicLoad(this.outer._cancelSearchLoad))
+            if (atomicLoad(this.outer._cancelRequest))
                 return DocumentView.State.NotReady; // Uninitialized/canceled
 
             bool ready;

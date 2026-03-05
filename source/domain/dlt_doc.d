@@ -32,19 +32,35 @@ interface DocumentView
 {
     enum State
     {
-        Ready,
         NotReady,
+        Ready,
         BuildingIndex,
         Error,
     }
 
-    size_t itemsCount() pure nothrow @nogc const;
+    size_t itemsCount() nothrow @nogc;
 
-    bool fetchItem(size_t index, out DocumentItem item);
+    bool fetchItem(size_t index, scope ref DocumentItem item);
 
     State state() const;
 
     double progress() const; // return 1.0 if ready
+}
+
+struct LockGuard
+{
+    private Mutex _mutex;
+
+    this(Mutex mutex) nothrow @trusted @nogc
+    {
+        _mutex = mutex;
+        _mutex.lock_nothrow!Mutex();
+    }
+
+    ~this() nothrow @trusted @nogc
+    {
+        _mutex.unlock_nothrow!Mutex();
+    }
 }
 
 struct DltDoc
@@ -81,16 +97,21 @@ struct DltDoc
     private CurrentOperation _currentOperation = CurrentOperation.None;
 
     private MainView _mainView;
-    //private SearchView _searchView;
+    private SearchView _searchView;
 
     this(string path)
     {
+        _mutex = new Mutex();
+
         _source = scoped!DltSourceFile(path);
 
         const size_t capacity = _source.overallLength / 40 + 10_000;
         _offsetIndex = OffsetIndex(capacity);
         _filterIndex = FilterIndex(capacity);
         _searchIndex = SearchIndex(capacity);
+
+        _mainView = new MainView(&this);
+        _searchView = new SearchView(&this);
     }
 
     private void runTask(Args...)(CurrentOperation op, bool delegate(Args) dg, scope Args args)
@@ -458,22 +479,37 @@ struct DltDoc
             _doc = doc;
         }
 
-        override size_t itemsCount() const pure nothrow @nogc
+        override size_t itemsCount() nothrow @nogc
         {
-            return _doc._offsetIndex.length;
+            auto lock = LockGuard(_doc._mutex);
+            return _doc._viewIsFiltered ? _doc._filterIndex.length : _doc._offsetIndex.length;
         }
 
-        override bool fetchItem(size_t index, out DocumentItem item)
+        override bool fetchItem(size_t index, scope ref DocumentItem item)
         {
-            if (index >= itemsCount())
-                return false;
+            OffsetIndexItem fileOffset;
 
-            if (_doc._viewIsFiltered)
             {
-                index = cast(size_t) _doc._filterIndex[index];
+                auto lock = LockGuard(_doc._mutex);
+
+                if (_doc._viewIsFiltered)
+                {
+                    index = cast(size_t) _doc._filterIndex[index];
+
+                    const size_t count = _doc._filterIndex.length;
+
+                    if (index >= count)
+                        return false;
+                }
+                else
+                {
+                    if (index >= _doc._offsetIndex.length)
+                        return false;
+                }
+
+                fileOffset = _doc._offsetIndex[index];
             }
 
-            const auto fileOffset = _doc._offsetIndex[index];
             const auto msgBytes = _doc._source.getMessage(fileOffset.offset);
             parseDltItem!wchar(item._decodedMessage, msgBytes, _doc._source.hasStorageHeader);
             item.realIndex = index;
@@ -495,7 +531,7 @@ struct DltDoc
         }
     }
 
-    private final class FilteredView : DocumentView
+    private final class SearchView : DocumentView
     {
         private DltDoc* _doc;
 
@@ -504,17 +540,24 @@ struct DltDoc
             _doc = doc;
         }
 
-        override size_t itemsCount() pure nothrow @nogc const
+        override size_t itemsCount() nothrow @nogc
         {
-            return _doc._filterIndex.length;
+            auto lock = LockGuard(_doc._mutex);
+            return _doc._searchIndex.length;
         }
 
-        override bool fetchItem(size_t index, out DocumentItem item)
+        override bool fetchItem(size_t index, scope ref DocumentItem item)
         {
-            if (index >= itemsCount())
-                return false;
+            OffsetIndexItem fileOffset;
 
-            const auto fileOffset = _doc._offsetIndex[_doc._filterIndex[index]];
+            {
+                auto lock = LockGuard(_doc._mutex);
+                if (index >= _doc._searchIndex.length)
+                    return false;
+
+                fileOffset = _doc._offsetIndex[_doc._searchIndex[index]];
+            }
+
             const auto msgBytes = _doc._source.getMessage(fileOffset.offset);
             parseDltItem!wchar(item._decodedMessage, msgBytes, _doc._source.hasStorageHeader);
             item.realIndex = index;
