@@ -183,11 +183,12 @@ class MainWindow : SciterWindow
             if (method == "getLogItem")
             {
                 int index = getParamInt(0);
-                string s = _workspace.current.logItemAsJson(index);
-                // writeln("getLogItem: ", index, " for doc: ", _workspace.currentId.toString());
+                //string s = _workspace.current.logItemAsJson(index);
+                //wstring ws = toUTF16(s);
+                //resultView = ws;
+                auto item = _workspace.current.logItem(index);
+                resultView.set(asSciterArray(index, item));
 
-                wstring ws = toUTF16(s);
-                resultView = ws;
                 return true;
             }
             if (method == "openFile")
@@ -475,4 +476,37 @@ class MainWindow : SciterWindow
             writeln("Failed to call getSettings() ", e.msg);
         }
     }
+}
+
+SciterValue asSciterArray(int index, ref const(LogItem) item)
+{
+    /** 
+     size_t index;
+    ulong offset;
+    ushort length;
+    ulong timestamp;
+    string ecu;
+    string appId;
+    string ctxId;
+    LogLevel level;
+    MessageType type;
+    uint messageId;
+    string payload;
+ */
+
+    SciterValue array = SciterValue.makeArray(
+        index, //
+        item.timestamp, //
+        item.ecu, //
+        item.appId, //
+        item.ctxId, //
+        item.messageId, //
+        cast(int) item.level, //
+        cast(int) item.type, //
+        item.payload //
+
+        
+
+    );
+    return array;
 }
