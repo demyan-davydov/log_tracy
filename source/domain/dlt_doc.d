@@ -14,6 +14,8 @@ import domain.document_item;
 import domain.index.index_builders;
 import domain.index.anchors;
 
+import utils.lock_guard;
+
 import std.typecons;
 import std.parallelism;
 
@@ -45,22 +47,14 @@ interface DocumentView
     State state() const;
 
     double progress() const; // return 1.0 if ready
-}
 
-struct LockGuard
-{
-    private Mutex _mutex;
+    void enableFilter(bool enable);
 
-    this(Mutex mutex) nothrow @trusted @nogc
-    {
-        _mutex = mutex;
-        _mutex.lock_nothrow!Mutex();
-    }
+    bool isFilterEnabled() const;
 
-    ~this() nothrow @trusted @nogc
-    {
-        _mutex.unlock_nothrow!Mutex();
-    }
+    void applyFilter(Filter filter);
+
+    void resetFilter();
 }
 
 struct DltDoc
@@ -529,6 +523,42 @@ struct DltDoc
         {
             return _doc.progress();
         }
+
+        override void enableFilter(bool enable)
+        {
+            synchronized (_doc._mutex)
+            {
+                _doc._viewIsFiltered = enable;
+            }
+        }
+
+        override bool isFilterEnabled() const
+        {
+            synchronized (_doc._mutex)
+            {
+                return _doc._viewIsFiltered;
+            }
+        }
+
+        override void applyFilter(Filter filter)
+        {
+            synchronized (_doc._mutex)
+            {
+                _doc._filter = filter;
+                _doc._filterIndex.clear();
+                _doc._filterIndex.isReady = false;
+            }
+        }
+
+        override void resetFilter()
+        {
+            synchronized (_doc._mutex)
+            {
+                _doc._filter = null;
+                _doc._filterIndex.clear();
+                _doc._filterIndex.isReady = false;
+            }
+        }
     }
 
     private final class SearchView : DocumentView
@@ -576,6 +606,35 @@ struct DltDoc
         override double progress() const
         {
             return _doc.progress();
+        }
+
+        override void enableFilter(bool enable)
+        {
+            // do nothing
+        }
+
+        override bool isFilterEnabled() const
+        {
+            return false;
+        }
+
+        override void applyFilter(Filter filter)
+        {
+            synchronized (_doc._mutex)
+            {
+                _doc._searchFilter = filter;
+                _doc._searchIndex.clear();
+                _doc._searchIndex.isReady = false;
+            }
+        }
+
+        override void resetFilter()
+        {
+            synchronized (_doc._mutex)
+            {
+                _doc._searchIndex.clear();
+                _doc._searchIndex.isReady = false;
+            }
         }
     }
 

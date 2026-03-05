@@ -12,6 +12,9 @@ import dlt_core.log_filter;
 import domain.index.offset_index;
 import domain.index.filter_index;
 import domain.index.search_index;
+import domain.index.anchors;
+
+import utils.lock_guard;
 
 import std.parallelism : Task, TaskPool;
 import std.typecons : scoped;
@@ -32,6 +35,7 @@ class DltDocument : Document
     private OffsetIndex _offsetIndex;
     private FilterIndex _filterIndex;
     private SearchIndex _searchIndex;
+    private Anchors _anchors;
     private bool _isFilteredView; // true if _filterIndex is used, false if _offsetIndex is used
 
     private TaskPool _taskPool;
@@ -124,7 +128,7 @@ class DltDocument : Document
         return _searchView;
     }
 
-    override DocumentId id() const
+    override DocumentId id() const nothrow @nogc
     {
         return _id;
     }
@@ -186,6 +190,30 @@ class DltDocument : Document
         {
             auto t = task!searchWorker(this, _sourcePath, _source.hasStorageHeader);
             taskPool.put(t);
+        }
+    }
+
+    bool setAnchor(size_t index, bool value)
+    {
+        synchronized (_mutex)
+        {
+            return _anchors.set(index, value);
+        }
+    }
+
+    size_t[] exportAnchors() const pure
+    {
+        synchronized (_mutex)
+        {
+            return _anchors.exportAnchors();
+        }
+    }
+
+    void importAnchors(const(size_t[]) anchors)
+    {
+        synchronized (_mutex)
+        {
+            _anchors.importAnchors(anchors);
         }
     }
 
@@ -346,7 +374,7 @@ class DltDocument : Document
 
     private class MainDocumentView : DocumentView
     {
-        override size_t itemsCount() pure nothrow @nogc const
+        override size_t itemsCount() nothrow @nogc
         {
             return this.outer._offsetIndex.length;
         }
@@ -375,7 +403,7 @@ class DltDocument : Document
             return true;
         }
 
-        override DocumentView.State state() const
+        override DocumentView.State state()
         {
             import core.atomic : atomicLoad;
 
@@ -391,7 +419,7 @@ class DltDocument : Document
             return ready ? DocumentView.State.Ready : DocumentView.State.BuildingIndex;
         }
 
-        override double progress() const
+        override double progress()
         {
             bool ready;
             synchronized (cast(Mutex) this.outer._mutex)
@@ -403,72 +431,51 @@ class DltDocument : Document
                 return 1.0;
             return 0.5;
         }
-    }
 
-    private class FilteredDocumentView : DocumentView
-    {
-        override size_t itemsCount() pure nothrow @nogc const
+        override void enableFilter(bool enable)
         {
-            return this.outer._filterIndex.length;
-        }
-
-        override bool fetchItem(size_t index, scope ref DocumentItem item)
-        {
-            import std.stdint : uint32_t;
-            import dlt_core.dlt_parser : parseDltItem;
-
-            uint32_t offset = 0;
-
             synchronized (this.outer._mutex)
             {
-                if (index < this.outer._filterIndex.length)
-                    offset = this.outer._filterIndex[index];
-                else
-                    return false;
+                this.outer._isFilteredView = enable;
             }
-
-            auto rawMsg = cast(const(ubyte)[]) this.outer._source.getMessage(offset);
-            if (!parseDltItem(item._decodedMessage, rawMsg, this.outer._source.hasStorageHeader))
-                return false;
-
-            item.realIndex = index; // or matched logic if tracking index from original file
-            return true;
         }
 
-        override DocumentView.State state() const
+        override bool isFilterEnabled() const
         {
-            import core.atomic : atomicLoad;
-
-            if (atomicLoad(this.outer._cancelRequest))
-                return DocumentView.State.NotReady; // Uninitialized if unset/canceled
-
-            bool ready;
-            synchronized (cast(Mutex) this.outer._mutex)
+            synchronized (this.outer._mutex)
             {
-                ready = this.outer._filterIndex.isReady;
+                return this.outer._isFilteredView;
             }
-
-            return ready ? DocumentView.State.Ready : DocumentView.State.BuildingIndex;
         }
 
-        override double progress() const
+        override void applyFilter(LogFilter!wchar filter)
         {
-            bool ready;
-            synchronized (cast(Mutex) this.outer._mutex)
+            synchronized (this.outer._mutex)
             {
-                ready = this.outer._filterIndex.isReady;
+                this.outer._viewFilter = filter;
+                this.outer._filterIndex.clear();
+                this.outer._filterIndex.isReady = false;
             }
+            //this.outer.applyViewFilter(filter);
+        }
 
-            if (ready)
-                return 1.0;
-            return 0.5;
+        override void resetFilter()
+        {
+            synchronized (this.outer._mutex)
+            {
+                this.outer._viewFilter = null;
+                this.outer._filterIndex.clear();
+                this.outer._filterIndex.isReady = false;
+            }
+            //this.outer.resetFilter();
         }
     }
 
     private class SearchDocumentView : DocumentView
     {
-        override size_t itemsCount() pure nothrow @nogc const
+        override size_t itemsCount() nothrow @nogc
         {
+            auto guard = LockGuard(this.outer._mutex);
             return this.outer._searchIndex.length;
         }
 
@@ -479,8 +486,8 @@ class DltDocument : Document
 
             uint32_t offset = 0;
 
-            synchronized (this.outer._mutex)
             {
+                auto guard = LockGuard(this.outer._mutex);
                 if (index < this.outer._searchIndex.length)
                     offset = this.outer._searchIndex[index];
                 else
@@ -495,33 +502,48 @@ class DltDocument : Document
             return true;
         }
 
-        override DocumentView.State state() const
+        override DocumentView.State state()
         {
             import core.atomic : atomicLoad;
 
             if (atomicLoad(this.outer._cancelRequest))
                 return DocumentView.State.NotReady; // Uninitialized/canceled
 
-            bool ready;
-            synchronized (cast(Mutex) this.outer._mutex)
-            {
-                ready = this.outer._searchIndex.isReady;
-            }
-
+            auto guard = LockGuard(this.outer._mutex);
+            const bool ready = this.outer._searchIndex.isReady;
             return ready ? DocumentView.State.Ready : DocumentView.State.BuildingIndex;
         }
 
-        override double progress() const
+        override double progress()
         {
-            bool ready;
-            synchronized (cast(Mutex) this.outer._mutex)
-            {
-                ready = this.outer._searchIndex.isReady;
-            }
+            auto guard = LockGuard(this.outer._mutex);
+            const bool ready = this.outer._searchIndex.isReady;
+            return ready ? 1.0 : 0.5;
+        }
 
-            if (ready)
-                return 1.0;
-            return 0.5;
+        override void enableFilter(bool enable)
+        {
+            // do nothing
+        }
+
+        override bool isFilterEnabled() const
+        {
+            return false;
+        }
+
+        override void applyFilter(LogFilter!wchar filter)
+        {
+            auto guard = LockGuard(this.outer._mutex);
+            this.outer._searchFilter = filter;
+            this.outer._searchIndex.clear();
+            this.outer._searchIndex.isReady = false;
+        }
+
+        override void resetFilter()
+        {
+            auto guard = LockGuard(this.outer._mutex);
+            this.outer._searchIndex.clear();
+            this.outer._searchIndex.isReady = false;
         }
     }
 }
