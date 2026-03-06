@@ -17,7 +17,7 @@ import domain.index.anchors;
 import utils.lock_guard;
 
 import std.parallelism : Task, TaskPool;
-import std.typecons : scoped;
+import std.typecons : scoped, Unique, Proxy;
 import core.sync.mutex : Mutex;
 
 class DltDocument : Document
@@ -38,7 +38,7 @@ class DltDocument : Document
     private Anchors _anchors;
     private bool _isFilteredView; // true if _filterIndex is used, false if _offsetIndex is used
 
-    private TaskPool _taskPool;
+    private Unique!TaskPool _taskPool;
     private Mutex _mutex;
     private string _sourcePath;
 
@@ -50,6 +50,7 @@ class DltDocument : Document
         _mainView = new MainDocumentView();
         _searchView = new SearchDocumentView();
         _mutex = new Mutex();
+        _taskPool = Unique!TaskPool();
     }
 
     void loadSource(string path)

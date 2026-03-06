@@ -402,10 +402,10 @@ struct SciterValueView
         _constView = value._constView;
     }
 
-    this(ref SciterValue value) nothrow @nogc
+    /*this(ref SciterValue value) nothrow @nogc
     {
         _constView = *value.raw;
-    }
+    }*/
 
     /// 
     /// opEquals() methods
@@ -691,33 +691,14 @@ struct SciterValue
         clear();
     }
 
-    this(ref const(SciterValue) other) @nogc
+    this(scope ref const(SciterValue) other) @nogc
     {
         init();
         sciterApi().ValueCopy(&_value, &other._value);
     }
 
-    /*
-    void opAssign(T)(auto ref T other) @nogc if (is(T == SciterValue))
-    {
-        static if (__traits(isRef, other))
-        {
-            if (!isSame(&_value, &other._value))
-            {
-                sciterApi().ValueCopy(&_value, &other._value);
-            }
-        }
-        else // copy & swap for temporary objects
-        {
-            import std.algorithm.mutation : swap;
-
-            swap(this._value, other._value);
-        }
-    }
-    */
-
     // copy of lvalue objects
-    void opAssign(ref const(SciterValue) other) @nogc
+    void opAssign(scope ref const(SciterValue) other) @nogc
     {
         if (!isSame(&_value, &other._value))
         {
@@ -726,7 +707,7 @@ struct SciterValue
     }
 
     // copy rvalue objects (copy & swap for temporary objects)
-    void opAssign(SciterValue other) @nogc
+    void opAssign(scope SciterValue other) @nogc
     {
         import std.algorithm.mutation : swap;
 
@@ -931,6 +912,7 @@ struct AsMapView
     }
 }
 
+@("SciterValue")
 unittest
 {
     import std.stdio : writeln;
@@ -1306,4 +1288,34 @@ unittest
         writeln("String after temporary destruction: ", result);
         assert(result == "[1,2,3]", "toString() returned a dangling pointer! Result: " ~ result);
     }
+}
+
+@("SciterValueView: test c'tor and opEquals")
+unittest
+{
+    SciterValue sv = SciterValue(42);
+    SciterValue sv2 = SciterValue(43);
+
+    /*
+    //static assert(!__traits(compiles, { auto view = SciterValueView(sv); }));
+    static assert(__traits(compiles, { auto view = SciterValueView(sv.view); }));
+    static assert(!__traits(compiles, { SciterValueView view(sv.view); view = sv2; }));
+    static assert(!__traits(compiles, { auto view = SciterValueConstView(sv); }));
+    static assert(!__traits(compiles, {
+            SciterValueConstView view(sv.view);
+            view = sv2;
+        }));
+    */
+
+    SciterValueView vViewA = sv.view;
+    SciterValueView vViewB = sv.view;
+    assert(vViewA == vViewB);
+
+    // @todo: fix later
+    /*
+    vViewA = sv2; // should assign value of sv2 to sv
+    assert(vViewA == SciterValue(43));
+    sv2 = 44; // should not affect vViewA
+    assert(vViewA == SciterValue(43));
+    */
 }
