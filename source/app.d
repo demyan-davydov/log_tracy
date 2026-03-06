@@ -170,6 +170,7 @@ int main()
 
 			while (sciterApplication().runIteration())
 			{
+				win.onIdle();
 				// Invalidate + sleep to cap at ~60fps, prevent busy-waiting
 				nsViewSetNeedsDisplay(nsView, selSetNeedsDisplay);
 				Thread.sleep(FRAME_TIME);
@@ -178,7 +179,13 @@ int main()
 		}
 		else
 		{
-			result = sciterApplication().runEventLoop();
+			//result = sciterApplication().runEventLoop();
+			while (sciterApplication().runIteration())
+			{
+				win.onIdle();
+				// Invalidate + sleep to cap at ~60fps, prevent busy-waiting
+			}
+			result = 0;
 		}
 
 		writeln("Event loop stopped");

@@ -57,10 +57,11 @@ interface DocumentView
     void resetFilter();
 }
 
+//! @brief Этот класс не threadsafe. Предпологается что доступ к нему будет 
+//! происходить только из GUI-потока. Но он обеспечивает безопасное обновление
+//! индексов в фоне и доступ к содержимому Dlt файла.
 struct DltDoc
 {
-    alias FilterFlags = uint16_t;
-
     private alias Scoped(T) = typeof(scoped!T(string.init, bool.init));
 
     private Scoped!DltSourceFile _source; // file with source data
@@ -75,8 +76,6 @@ struct DltDoc
 
     private shared bool _cancelFlag = false; // cancel current operation
     private shared float _progress = 0.0f; // building index
-    private Mutex _mutex; // mutex for building indexes
-    private TaskPool _taskPool;
 
     enum bunchSize = 32; // number of messages to process in one bunch
 
@@ -92,6 +91,9 @@ struct DltDoc
 
     private MainView _mainView;
     private SearchView _searchView;
+
+    private Mutex _mutex; // mutex for building indexes
+    private TaskPool _taskPool;
 
     this(string path)
     {
@@ -110,8 +112,6 @@ struct DltDoc
 
     private void runTask(Args...)(CurrentOperation op, bool delegate(Args) dg, scope Args args)
     {
-        import std.parallelism : task;
-
         synchronized (_mutex)
         {
             if (_currentOperation != CurrentOperation.None)

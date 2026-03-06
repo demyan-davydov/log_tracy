@@ -174,8 +174,8 @@ LogItem parseDltItem(size_t index, ulong offset, const(ubyte)[] data, bool hasSt
 
     debug
     {
-        if (item.messageId != 0)
-            writefln("messageId: [%d] %s", item.messageId, item.payload);
+        //if (item.messageId != 0)
+        //    writefln("messageId: [%d] %s", item.messageId, item.payload);
     }
 
     return item;

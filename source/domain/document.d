@@ -15,9 +15,9 @@ interface DocumentView
 {
     enum State
     {
-        NotReady,
-        Ready,
-        BuildingIndex,
+        NotReady, // corresponded index not yet builded
+        Ready, // corresponded index is builded
+        BuildingIndex, // corresponded index is building
         Error,
     }
 
@@ -40,13 +40,28 @@ interface DocumentView
 
 interface Document
 {
-    /*enum Operation
+    enum Operation
     {
         None,
-        BuildingIndex,
-        BuildingFilterIndex,
-        BuildingSearchIndex,
-    }*/
+        BuildOffsetIndex, // can not be cancelled by user
+        BuildFilterIndex,
+        BuildSearchIndex,
+    }
+
+    struct OperationInfo
+    {
+        enum Status
+        {
+            Start,
+            Progress,
+            Finished,
+            Cancelled,
+        }
+
+        Operation operation;
+        Status status;
+        double progress = 0;
+    }
 
     DocumentView mainView();
 
@@ -71,4 +86,8 @@ interface Document
     size_t[] exportAnchors() const pure;
 
     void importAnchors(const(size_t[]) anchors);
+
+    alias OperationCb = void delegate(DocumentId, Operation);
+
+    void subscribeForOperation(OperationCb);
 }

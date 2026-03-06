@@ -18,6 +18,7 @@ import utils.lock_guard;
 
 import std.parallelism : Task, TaskPool;
 import std.typecons : scoped, Unique, Proxy;
+import std.signals;
 import core.sync.mutex : Mutex;
 
 class DltDocument : Document
@@ -43,6 +44,9 @@ class DltDocument : Document
     private string _sourcePath;
 
     private shared bool _cancelRequest;
+
+    //! signal for operation status
+    mixin Signal!(DocumentId, Operation);
 
     this(DocumentId id)
     {
@@ -216,6 +220,11 @@ class DltDocument : Document
         {
             _anchors.importAnchors(anchors);
         }
+    }
+
+    void subscribeForOperation(void delegate(DocumentId, Operation) dg)
+    {
+        connect(dg);
     }
 
     void requestCancel()

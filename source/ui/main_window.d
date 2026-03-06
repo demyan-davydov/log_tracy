@@ -476,6 +476,12 @@ class MainWindow : SciterWindow
             writeln("Failed to call getSettings() ", e.msg);
         }
     }
+
+    // should be called in main() in sciterApplication().runIteration() cycle
+    void onIdle()
+    {
+
+    }
 }
 
 SciterValue asSciterArray(int index, ref const(LogItem) item)
