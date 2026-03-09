@@ -363,6 +363,97 @@ struct DltDoc
     }
 
     /// 
+    /// Views utils
+    ///
+
+    size_t mainViewItemsCount() nothrow @nogc
+    {
+        auto lock = LockGuard(_mutex);
+        return _viewIsFiltered ? _filterIndex.length : _offsetIndex.length;
+    }
+
+    bool fetchMainViewItem(size_t index, scope ref DocumentItem item)
+    {
+        OffsetIndexItem fileOffset;
+
+        {
+            auto lock = LockGuard(_mutex);
+
+            if (_viewIsFiltered)
+            {
+                index = cast(size_t) _filterIndex[index];
+
+                const size_t count = _filterIndex.length;
+
+                if (index >= count)
+                    return false;
+            }
+            else
+            {
+                if (index >= _offsetIndex.length)
+                    return false;
+            }
+
+            fileOffset = _offsetIndex[index];
+        }
+
+        const auto msgBytes = _source.getMessage(fileOffset.offset);
+        parseDltItem!wchar(item._decodedMessage, msgBytes, _source.hasStorageHeader);
+        item.realIndex = index;
+        item.filterMask = fileOffset.filterMask;
+        item.searchMask = 0;
+        item.anchored = false;
+        item.selected = false;
+        return true;
+    }
+
+    void enableMainViewFilter(bool enable)
+    {
+        synchronized (_mutex)
+        {
+            _viewIsFiltered = enable;
+        }
+    }
+
+    bool isMainViewFilterEnabled() const
+    {
+        synchronized (_mutex)
+        {
+            return _viewIsFiltered;
+        }
+    }
+
+    // search view
+
+    size_t searchViewItemsCount() nothrow @nogc
+    {
+        auto lock = LockGuard(_mutex);
+        return _searchIndex.length;
+    }
+
+    bool fetchSearchViewItem(size_t index, scope ref DocumentItem item)
+    {
+        OffsetIndexItem fileOffset;
+
+        {
+            auto lock = LockGuard(_mutex);
+            if (index >= _searchIndex.length)
+                return false;
+
+            fileOffset = _offsetIndex[_searchIndex[index]];
+        }
+
+        const auto msgBytes = _source.getMessage(fileOffset.offset);
+        parseDltItem!wchar(item._decodedMessage, msgBytes, _source.hasStorageHeader);
+        item.realIndex = index;
+        item.filterMask = fileOffset.filterMask;
+        item.searchMask = 0;
+        item.anchored = false;
+        item.selected = false;
+        return true;
+    }
+
+    /// 
     /// Views
     ///
 
