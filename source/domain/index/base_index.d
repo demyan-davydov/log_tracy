@@ -6,7 +6,7 @@ struct BaseIndex(T)
 {
     alias Type = T;
     private MmapArray!Type _data;
-    public bool isReady;
+    public bool isReady = false;
 
     this(size_t capacity)
     {

@@ -16,8 +16,6 @@ import dlt_core.dlt_log_filter : DltLogFilter;
 import dlt_core.log_filter : LogFilter;
 import dlt_core.log_item : LogItem;
 
-import event_bus.event_bus_async;
-
 import sciter.types;
 import sciter.behavior;
 
@@ -34,13 +32,11 @@ class MainWindow : SciterWindow
 {
     private AppSettings _settings;
     private Workspace _workspace;
-    private EventBusAsync _eventBus;
 
     this(AppSettings settings)
     {
         _settings = settings;
         _workspace = new Workspace();
-        _eventBus = new EventBusAsync();
 
         import sciter.def;
 
@@ -485,7 +481,15 @@ class MainWindow : SciterWindow
     // should be called in main() in sciterApplication().runIteration() cycle
     void onIdle()
     {
-        _eventBus.dispatch();
+        processCurrentDocumentState();
+    }
+
+    void processCurrentDocumentState()
+    {
+        if (_workspace.current !is null)
+        {
+            //_workspace.current.processState();
+        }
     }
 }
 

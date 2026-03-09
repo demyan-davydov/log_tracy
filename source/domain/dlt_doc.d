@@ -10,9 +10,10 @@ import dlt_core.fibex;
 import domain.index.offset_index;
 import domain.index.filter_index;
 import domain.index.search_index;
-import domain.document_item;
 import domain.index.index_builders;
 import domain.index.anchors;
+import domain.background_slot;
+import domain.document_item;
 
 import utils.lock_guard;
 
@@ -46,20 +47,26 @@ interface DocumentView
 
     State state() const;
 
-    double progress() const; // return 1.0 if ready
+    float progress() const; // return 1.0 if ready
 
     void enableFilter(bool enable);
 
     bool isFilterEnabled() const;
 
-    void applyFilter(Filter filter);
+    //void applyFilter(Filter filter);
 
-    void resetFilter();
+    //void resetFilter();
 }
 
-//! @brief Этот класс не threadsafe. Предпологается что доступ к нему будет 
-//! происходить только из GUI-потока. Но он обеспечивает безопасное обновление
-//! индексов в фоне и доступ к содержимому Dlt файла.
+//! @brief Holds DLT file data and its associated indexes.
+//! Responsible for:
+//!   * Creating and maintaining indexes,
+//!   * Updating indexes in the background and
+//!     providing safe concurrent access to them from the GUI thread and the indexing thread.
+//!
+//! @brief This struct is not thread-safe. It is assumed that all access occurs
+//! from the GUI thread only. It does, however, provide safe background index updates
+//! and concurrent read access to the DLT file content.
 struct DltDoc
 {
     private alias Scoped(T) = typeof(scoped!T(string.init, bool.init));
@@ -68,14 +75,14 @@ struct DltDoc
     private OffsetIndex _offsetIndex; // indecies of messages in the source file
     private FilterIndex _filterIndex; // indecies of messages that match the filter
     private SearchIndex _searchIndex; // indecies of messages that match the search
-    private Anchors _anchors; // anchors
     private bool _viewIsFiltered = false; // filtered view is enabled
 
-    private Filter _filter; // filter for filtered view
-    private Filter _searchFilter; // filter for search view
+    //private Anchors _anchors; // anchors
+    //private Filter _filter; // filter for filtered view
+    //private Filter _searchFilter; // filter for search view
 
-    private shared bool _cancelFlag = false; // cancel current operation
-    private shared float _progress = 0.0f; // building index
+    //private shared bool _cancelFlag = false; // cancel current operation
+    //private shared float _progress = 0.0f; // building index
 
     enum bunchSize = 32; // number of messages to process in one bunch
 
@@ -89,16 +96,17 @@ struct DltDoc
 
     private CurrentOperation _currentOperation = CurrentOperation.None;
 
-    private MainView _mainView;
-    private SearchView _searchView;
+    //private MainView _mainView;
+    //private SearchView _searchView;
+
+    //private TaskPool _taskPool;
+
+    private BackgroundSlot _backgroundSlot;
 
     private Mutex _mutex; // mutex for building indexes
-    private TaskPool _taskPool;
 
     this(string path)
     {
-        _mutex = new Mutex();
-
         _source = scoped!DltSourceFile(path);
 
         const size_t capacity = _source.overallLength / 40 + 10_000;
@@ -106,38 +114,12 @@ struct DltDoc
         _filterIndex = FilterIndex(capacity);
         _searchIndex = SearchIndex(capacity);
 
-        _mainView = new MainView(&this);
-        _searchView = new SearchView(&this);
-    }
+        //_mainView = new MainView(&this);
+        //_searchView = new SearchView(&this);
 
-    private void runTask(Args...)(CurrentOperation op, bool delegate(Args) dg, scope Args args)
-    {
-        synchronized (_mutex)
-        {
-            if (_currentOperation != CurrentOperation.None)
-                return;
-            _currentOperation = op;
-        }
+        _backgroundSlot = BackgroundSlot(null);
 
-        atomicStore(_cancelFlag, false);
-        atomicStore(_progress, 0.0f);
-
-        auto currentTask = task(() {
-            dg(args);
-
-            synchronized (_mutex)
-            {
-                _progress = 1.0f;
-                _currentOperation = CurrentOperation.None;
-            }
-        });
-
-        _taskPool.put(currentTask);
-    }
-
-    void cancelCurrentOperation()
-    {
-        atomicStore(_cancelFlag, true);
+        _mutex = new Mutex();
     }
 
     bool busy() const @nogc
@@ -150,76 +132,32 @@ struct DltDoc
 
     private void runBuildOffsetIndex()
     {
-        runTask(CurrentOperation.BuildOffsetIndex, &buildOffsetIndex);
+        _backgroundSlot.runTask((BackgroundSlot.Ctx* ctx) {
+            buildOffsetIndex(ctx);
+        });
     }
 
-    private void runBuildFilterIndex()
+    private void runBuildFilterIndex(Filter filter, Anchors anchors)
     {
-        runTask(CurrentOperation.BuildFilterIndex, &buildFilterIndex);
+        _backgroundSlot.runTask((BackgroundSlot.Ctx* ctx) {
+            buildFilterIndex(ctx, filter, anchors);
+        });
     }
 
-    private void runBuildSearchIndex()
+    private void runBuildSearchIndex(Filter filter, Anchors anchors)
     {
-        runTask(CurrentOperation.BuildSearchIndex, &buildSearchIndex);
+        _backgroundSlot.runTask((BackgroundSlot.Ctx* ctx) {
+            buildSearchIndex(ctx, filter, anchors);
+        });
     }
 
     void enableFilter(bool enable)
     {
         synchronized (_mutex)
         {
+            //if (_filterIndex.isReady)
             _viewIsFiltered = enable;
         }
-        runBuildFilterIndex();
-    }
-
-    void setNewViewFilter(Filter filter)
-    {
-        synchronized (_mutex)
-        {
-            _filter = filter;
-            _filterIndex.clear();
-            _filterIndex.isReady = false;
-        }
-        runBuildFilterIndex();
-    }
-
-    void setNewSearchViewFilter(Filter filter)
-    {
-        synchronized (_mutex)
-        {
-            _searchFilter = filter;
-            _searchIndex.clear();
-            _searchIndex.isReady = false;
-        }
-        runBuildSearchIndex();
-    }
-
-    private bool canBuildIndex() const
-    {
-        synchronized (_mutex)
-        {
-            return _currentOperation == CurrentOperation.None;
-        }
-    }
-
-    private bool canBuildOffsetIndex() const
-    {
-        return canBuildIndex();
-    }
-
-    private bool canBuildFilterIndex() const
-    {
-        return canBuildIndex();
-    }
-
-    private bool canBuildSearchIndex() const
-    {
-        return canBuildIndex();
-    }
-
-    private bool cancelRequested() const
-    {
-        return atomicLoad(_cancelFlag);
     }
 
     DocumentView.State state() const
@@ -232,79 +170,28 @@ struct DltDoc
         }
     }
 
-    double progress() const nothrow @nogc
-    {
-        return atomicLoad(_progress);
-    }
-
-    bool setAnchor(size_t index, bool value)
-    {
-        synchronized (_mutex)
-        {
-            return _anchors.set(index, value);
-        }
-    }
-
-    size_t[] exportAnchors() const pure
-    {
-        synchronized (_mutex)
-        {
-            return _anchors.exportAnchors();
-        }
-    }
-
-    void importAnchors(const(size_t[]) anchors)
-    {
-        synchronized (_mutex)
-        {
-            _anchors.importAnchors(anchors);
-        }
-    }
-
-    /*
-    private void udpateFilterAndSearchIndexes(scope ref const(Message) msg, uint32_t fileIndex)
-    {
-        const bool isAnchoredMsg = (fileIndex in _anchors) !is null;
-
-        if (isAnchoredMsg || _filter.matches(msg))
-        {
-            _filterIndex.append(fileIndex);
-        }
-
-        if (isAnchoredMsg || _searchFilter.matches(msg))
-        {
-            _searchIndex.append(fileIndex);
-        }
-    }
-
-    private void udpateSearchIndexes(scope ref const(Message) msg, uint32_t fileIndex)
-    {
-        const bool isAnchoredMsg = (fileIndex in _anchors) !is null;
-
-        if (isAnchoredMsg || _searchFilter.matches(msg))
-        {
-            _searchIndex.append(fileIndex);
-        }
-    }
-    */
-
     //! @brief build file index, also rebuild filter and search indexes
     //! @param cancelFlag - flag to cancel the build process
     //! @return true if the build process was completed successfully, false otherwise
-    private bool buildOffsetIndex()
+    private bool buildOffsetIndex(BackgroundSlot.Ctx* ctx)
     {
         synchronized (_mutex)
         {
+            _currentOperation = CurrentOperation.BuildOffsetIndex;
+
             _offsetIndex.clear();
             _filterIndex.clear();
             _searchIndex.clear();
+            _offsetIndex.isReady = false;
+            _filterIndex.isReady = false;
+            _searchIndex.isReady = false;
         }
 
         auto range = _source.range();
 
         while (range.hasNext)
         {
-            if (cancelRequested())
+            if (ctx.cancelled)
             {
                 return false;
             }
@@ -323,8 +210,14 @@ struct DltDoc
             synchronized (_mutex)
             {
                 _offsetIndex.append(tempIndex);
-                _progress = cast(float)(range.offset) / range.overallLength;
+                ctx.progress = cast(float)(range.offset) / range.overallLength;
             }
+        }
+
+        synchronized (_mutex)
+        {
+            _offsetIndex.isReady = true;
+            ctx.progress = 1.0f;
         }
 
         return true;
@@ -333,22 +226,21 @@ struct DltDoc
     //! @brief build filter index, also rebuild search index
     //! @param cancelFlag - flag to cancel the build process
     //! @return true if the build process was completed successfully, false otherwise
-    private bool buildFilterIndex()
+    private bool buildFilterIndex(BackgroundSlot.Ctx* ctx, Filter filter, Anchors anchors)
     {
-        Anchors localAnchors;
-        Filter localFilter;
-
         synchronized (_mutex)
         {
-            localAnchors = _anchors;
-            localFilter = _filter.dup();
+            _currentOperation = CurrentOperation.BuildOffsetIndex;
+
             _filterIndex.clear();
             _searchIndex.clear();
+            _filterIndex.isReady = false;
+            _searchIndex.isReady = false;
         }
 
         auto isMatched = (ref const(Message) msg, size_t fileIndex) {
-            const bool isAnchoredMsg = localAnchors.has(fileIndex);
-            return isAnchoredMsg || localFilter.matches(msg);
+            const bool isAnchoredMsg = anchors.has(fileIndex);
+            return isAnchoredMsg || filter.matches(msg);
         };
 
         uint32_t messageIndex = 0;
@@ -357,7 +249,7 @@ struct DltDoc
 
         while (range.hasNext)
         {
-            if (cancelRequested())
+            if (ctx.cancelled)
             {
                 return false;
             }
@@ -383,8 +275,14 @@ struct DltDoc
             synchronized (_mutex)
             {
                 _filterIndex.append(tempIndex);
-                _progress = cast(float)(range.offset) / range.overallLength;
+                ctx.progress = cast(float)(range.offset) / range.overallLength;
             }
+        }
+
+        synchronized (_mutex)
+        {
+            _filterIndex.isReady = true;
+            ctx.progress = 1.0f;
         }
 
         return true;
@@ -393,21 +291,19 @@ struct DltDoc
     //! @brief build search index
     //! @param cancelFlag - flag to cancel the build process
     //! @return true if the build process was completed successfully, false otherwise
-    private bool buildSearchIndex()
+    private bool buildSearchIndex(BackgroundSlot.Ctx* ctx, Filter filter, Anchors anchors)
     {
-        Anchors localAnchors;
-        Filter localFilter;
-
         synchronized (_mutex)
         {
-            localAnchors = _anchors;
-            localFilter = _searchFilter.dup();
+            _currentOperation = CurrentOperation.BuildSearchIndex;
+
             _searchIndex.clear();
+            _searchIndex.isReady = false;
         }
 
         auto isMatched = (ref const(Message) msg, size_t fileIndex) {
-            const bool isAnchoredMsg = localAnchors.has(fileIndex);
-            return isAnchoredMsg || localFilter.matches(msg);
+            const bool isAnchoredMsg = anchors.has(fileIndex);
+            return isAnchoredMsg || filter.matches(msg);
         };
 
         // Build a read-only list of file offsets to iterate over
@@ -421,7 +317,7 @@ struct DltDoc
 
         while (pos < indexLen)
         {
-            if (cancelRequested())
+            if (ctx.cancelled)
             {
                 _searchIndex.clear();
                 return false;
@@ -451,10 +347,16 @@ struct DltDoc
             synchronized (_mutex)
             {
                 _searchIndex.append(tempIndex[0 .. tempLen]);
-                _progress = cast(float) batchEnd / indexLen;
+                ctx.progress = cast(float) batchEnd / indexLen;
             }
 
             pos = batchEnd;
+        }
+
+        synchronized (_mutex)
+        {
+            _searchIndex.isReady = true;
+            ctx.progress = 1.0f;
         }
 
         return true;
@@ -519,9 +421,9 @@ struct DltDoc
             return _doc.state();
         }
 
-        override double progress() const
+        override float progress() const
         {
-            return _doc.progress();
+            return _doc._backgroundSlot.progress();
         }
 
         override void enableFilter(bool enable)
@@ -537,26 +439,6 @@ struct DltDoc
             synchronized (_doc._mutex)
             {
                 return _doc._viewIsFiltered;
-            }
-        }
-
-        override void applyFilter(Filter filter)
-        {
-            synchronized (_doc._mutex)
-            {
-                _doc._filter = filter;
-                _doc._filterIndex.clear();
-                _doc._filterIndex.isReady = false;
-            }
-        }
-
-        override void resetFilter()
-        {
-            synchronized (_doc._mutex)
-            {
-                _doc._filter = null;
-                _doc._filterIndex.clear();
-                _doc._filterIndex.isReady = false;
             }
         }
     }
@@ -603,9 +485,9 @@ struct DltDoc
             return _doc.state();
         }
 
-        override double progress() const
+        override float progress() const
         {
-            return _doc.progress();
+            return _doc._backgroundSlot.progress();
         }
 
         override void enableFilter(bool enable)
@@ -616,25 +498,6 @@ struct DltDoc
         override bool isFilterEnabled() const
         {
             return false;
-        }
-
-        override void applyFilter(Filter filter)
-        {
-            synchronized (_doc._mutex)
-            {
-                _doc._searchFilter = filter;
-                _doc._searchIndex.clear();
-                _doc._searchIndex.isReady = false;
-            }
-        }
-
-        override void resetFilter()
-        {
-            synchronized (_doc._mutex)
-            {
-                _doc._searchIndex.clear();
-                _doc._searchIndex.isReady = false;
-            }
         }
     }
 

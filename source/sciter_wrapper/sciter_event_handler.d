@@ -138,7 +138,8 @@ class SciterEventHandler
 
     protected bool handleSubscription(HELEMENT he, UINT* event_groups)
     {
-        // Подписываемся на всё, кроме HANDLE_EXCHANGE и HANDLE_GESTURE (для изоляции краша на Mac)
+        // Subscribe to all events except HANDLE_EXCHANGE and HANDLE_GESTURE
+        // (excluded to isolate a crash on Mac)
         *event_groups = EVENT_GROUPS.HANDLE_ALL &
             ~EVENT_GROUPS.HANDLE_EXCHANGE &
             ~EVENT_GROUPS.HANDLE_GESTURE;
@@ -187,11 +188,11 @@ class SciterEventHandler
 
     protected bool handleEvent(HELEMENT he, MOUSE_PARAMS* params)
     {
-        // На Mac события часто приходят в фазе SINKING (0x80FE), поэтому маскируем cmd
+        // On Mac, events often arrive in the SINKING phase (0x80FE), so we mask cmd
         // Commented out to allow HTML5 drag-and-drop for tabs
         /*if ((params.cmd & 0xFF) == MOUSE_EVENTS.MOUSE_DRAG_REQUEST)
         {
-            return true; // Предотвращаем запуск системного Drag-and-Drop цикла
+            return true; // Prevent the system Drag-and-Drop loop from starting
         }*/
         return false;
     }

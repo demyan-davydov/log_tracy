@@ -19,18 +19,17 @@ private alias Filter = LogFilter!wchar;
 private alias Message = DecodedMessage!wchar;
 
 //! Description:
-//! У нас есть 3 индекса ассоциированные с DLT файлом:
-//! 1. OffsetIndex - хранит смещения начал сообщений в файле
-//! 2. FilterIndex - ссылается на OffsetIndex и хранит те индексы, которые 
-//!    соответствуют глобальному фильтру
-//! 3. SearchIndex - ссылается на OffsetIndex и хранит те индексы, которые 
-//!    соответствуют поисковому запросу
-//! 
-//! Главный вид приложения показывает либо неотфильтрованные сообщения (если 
-//! фильтр не задан) либо отфильтрованные сообщения (если фильтр задан)
-//! Окно поиска показывает сообщения из главного вида, которые соответствуют 
-//! поисковому запросу
-//! 
+//! The DLT file has 3 associated indexes:
+//! 1. OffsetIndex  - stores byte offsets of message starts within the file
+//! 2. FilterIndex  - references OffsetIndex and stores the entries that match
+//!    the global filter
+//! 3. SearchIndex  - references OffsetIndex and stores the entries that match
+//!    the current search query
+//!
+//! The main view shows either unfiltered messages (when no filter is active)
+//! or filtered messages (when a filter is set).
+//! The search pane shows messages from the main view that match the search query.
+//!
 
 //! @brief Scan DLT file and create offset index for messages
 OffsetIndex.Type[] buildOffsetIndexes(OffsetIndex.Type[] buffer, ref DltSourceRange range)
