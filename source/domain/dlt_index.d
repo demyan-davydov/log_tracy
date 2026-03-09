@@ -1,4 +1,4 @@
-module domain.dlt_doc;
+module domain.dlt_index;
 
 import dlt_core.dlt_log_filter;
 import dlt_core.decoded_message;
@@ -31,33 +31,6 @@ import core.sync.mutex : Mutex;
 alias Filter = LogFilter!wchar;
 alias Message = DecodedMessage!wchar;
 
-interface DocumentView
-{
-    enum State
-    {
-        NotReady,
-        Ready,
-        BuildingIndex,
-        Error,
-    }
-
-    size_t itemsCount() nothrow @nogc;
-
-    bool fetchItem(size_t index, scope ref DocumentItem item);
-
-    State state() const;
-
-    float progress() const; // return 1.0 if ready
-
-    void enableFilter(bool enable);
-
-    bool isFilterEnabled() const;
-
-    //void applyFilter(Filter filter);
-
-    //void resetFilter();
-}
-
 //! @brief Holds DLT file data and its associated indexes.
 //! Responsible for:
 //!   * Creating and maintaining indexes,
@@ -67,7 +40,7 @@ interface DocumentView
 //! @brief This struct is not thread-safe. It is assumed that all access occurs
 //! from the GUI thread only. It does, however, provide safe background index updates
 //! and concurrent read access to the DLT file content.
-struct DltDoc
+struct DltIndex
 {
     private alias Scoped(T) = typeof(scoped!T(string.init, bool.init));
 
@@ -157,16 +130,6 @@ struct DltDoc
         {
             //if (_filterIndex.isReady)
             _viewIsFiltered = enable;
-        }
-    }
-
-    DocumentView.State state() const
-    {
-        synchronized (_mutex)
-        {
-            if (_currentOperation == CurrentOperation.None)
-                return DocumentView.State.Ready;
-            return DocumentView.State.BuildingIndex;
         }
     }
 
@@ -456,140 +419,4 @@ struct DltDoc
     /// 
     /// Views
     ///
-
-    private final class MainView : DocumentView
-    {
-        private DltDoc* _doc;
-
-        this(DltDoc* doc)
-        {
-            _doc = doc;
-        }
-
-        override size_t itemsCount() nothrow @nogc
-        {
-            auto lock = LockGuard(_doc._mutex);
-            return _doc._viewIsFiltered ? _doc._filterIndex.length : _doc._offsetIndex.length;
-        }
-
-        override bool fetchItem(size_t index, scope ref DocumentItem item)
-        {
-            OffsetIndexItem fileOffset;
-
-            {
-                auto lock = LockGuard(_doc._mutex);
-
-                if (_doc._viewIsFiltered)
-                {
-                    index = cast(size_t) _doc._filterIndex[index];
-
-                    const size_t count = _doc._filterIndex.length;
-
-                    if (index >= count)
-                        return false;
-                }
-                else
-                {
-                    if (index >= _doc._offsetIndex.length)
-                        return false;
-                }
-
-                fileOffset = _doc._offsetIndex[index];
-            }
-
-            const auto msgBytes = _doc._source.getMessage(fileOffset.offset);
-            parseDltItem!wchar(item._decodedMessage, msgBytes, _doc._source.hasStorageHeader);
-            item.realIndex = index;
-            item.filterMask = fileOffset.filterMask;
-            item.searchMask = 0;
-            item.anchored = false;
-            item.selected = false;
-            return true;
-        }
-
-        override State state() const
-        {
-            return _doc.state();
-        }
-
-        override float progress() const
-        {
-            return _doc._backgroundSlot.progress();
-        }
-
-        override void enableFilter(bool enable)
-        {
-            synchronized (_doc._mutex)
-            {
-                _doc._viewIsFiltered = enable;
-            }
-        }
-
-        override bool isFilterEnabled() const
-        {
-            synchronized (_doc._mutex)
-            {
-                return _doc._viewIsFiltered;
-            }
-        }
-    }
-
-    private final class SearchView : DocumentView
-    {
-        private DltDoc* _doc;
-
-        this(DltDoc* doc)
-        {
-            _doc = doc;
-        }
-
-        override size_t itemsCount() nothrow @nogc
-        {
-            auto lock = LockGuard(_doc._mutex);
-            return _doc._searchIndex.length;
-        }
-
-        override bool fetchItem(size_t index, scope ref DocumentItem item)
-        {
-            OffsetIndexItem fileOffset;
-
-            {
-                auto lock = LockGuard(_doc._mutex);
-                if (index >= _doc._searchIndex.length)
-                    return false;
-
-                fileOffset = _doc._offsetIndex[_doc._searchIndex[index]];
-            }
-
-            const auto msgBytes = _doc._source.getMessage(fileOffset.offset);
-            parseDltItem!wchar(item._decodedMessage, msgBytes, _doc._source.hasStorageHeader);
-            item.realIndex = index;
-            item.filterMask = fileOffset.filterMask;
-            item.searchMask = 0;
-            item.anchored = false;
-            item.selected = false;
-            return true;
-        }
-
-        override State state() const
-        {
-            return _doc.state();
-        }
-
-        override float progress() const
-        {
-            return _doc._backgroundSlot.progress();
-        }
-
-        override void enableFilter(bool enable)
-        {
-            // do nothing
-        }
-
-        override bool isFilterEnabled() const
-        {
-            return false;
-        }
-    }
-
 }
