@@ -67,9 +67,7 @@ interface Document
 
     DocumentView searchView();
 
-    DocumentId id() const nothrow @nogc;
-
-    string sourcePath() const nothrow @nogc;
+    //string sourcePath() const nothrow @nogc;
 
     //string fibexPath() const nothrow @nogc;
 
@@ -85,7 +83,7 @@ interface Document
 
     void importAnchors(const(size_t[]) anchors);
 
-    alias OperationCb = void delegate(DocumentId, Operation);
+    //alias OperationCb = void delegate(DocumentId, Operation);
 
     //void subscribeForOperation(OperationCb);
 }

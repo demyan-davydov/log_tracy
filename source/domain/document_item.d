@@ -11,6 +11,8 @@ struct DocumentItem
 {
     alias Char = wchar;
 
+    @disable this(this); // disable copy constructor
+
     // index in the original log file, can differ from the index in the document if filters are applied
     size_t realIndex;
     uint32_t filterMask;
@@ -20,11 +22,6 @@ struct DocumentItem
     // bool visible;
 
     package DecodedMessage!Char _decodedMessage;
-
-    /*DecodedMessage!Char* decodedMessage() const
-    {
-        return &_decodedMessage;
-    }*/
 
     alias _decodedMessage this;
 }

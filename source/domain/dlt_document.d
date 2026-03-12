@@ -36,7 +36,6 @@ class DltDocument : Document
 
     this(DocumentId id, string path)
     {
-        _id = id;
         _index = DltIndex(path);
         _sourcePath = path;
         _mainView = new MainDocumentView();
@@ -53,15 +52,10 @@ class DltDocument : Document
         return _searchView;
     }
 
-    override DocumentId id() const nothrow @nogc
-    {
-        return _id;
-    }
-
-    override string sourcePath() const
+    /*override string sourcePath() const
     {
         return _sourcePath;
-    }
+    }*/
 
     override void applyViewFilter(LogFilter!wchar filter)
     {
