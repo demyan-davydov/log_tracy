@@ -71,11 +71,9 @@ interface Document
 
     string sourcePath() const nothrow @nogc;
 
-    string fibexPath() const nothrow @nogc;
+    //string fibexPath() const nothrow @nogc;
 
-    string filterPath() const nothrow @nogc;
-
-    void openFibex(string path);
+    //string filterPath() const nothrow @nogc;
 
     void applyViewFilter(LogFilter!wchar filter);
 
@@ -89,5 +87,5 @@ interface Document
 
     alias OperationCb = void delegate(DocumentId, Operation);
 
-    void subscribeForOperation(OperationCb);
+    //void subscribeForOperation(OperationCb);
 }

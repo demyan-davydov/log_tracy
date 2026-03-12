@@ -17,7 +17,7 @@ interface Document
 
     size_t length() const;
 
-    void openFibex(string path);
+    //void openFibex(string path);
 
     void applyFilter(LogFilter!wchar filter);
 

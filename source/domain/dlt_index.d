@@ -14,6 +14,7 @@ import domain.index.index_builders;
 import domain.index.anchors;
 import domain.background_slot;
 import domain.document_item;
+import domain.document : Document;
 
 import utils.lock_guard;
 
@@ -59,23 +60,10 @@ struct DltIndex
 
     enum bunchSize = 32; // number of messages to process in one bunch
 
-    enum CurrentOperation
-    {
-        None,
-        BuildOffsetIndex,
-        BuildFilterIndex,
-        BuildSearchIndex,
-    }
+    alias Operation = Document.Operation;
 
-    private CurrentOperation _currentOperation = CurrentOperation.None;
-
-    //private MainView _mainView;
-    //private SearchView _searchView;
-
-    //private TaskPool _taskPool;
-
+    private Operation _currentOperation = Operation.None;
     private BackgroundSlot _backgroundSlot;
-
     private Mutex _mutex; // mutex for building indexes
 
     this(string path)
@@ -87,39 +75,56 @@ struct DltIndex
         _filterIndex = FilterIndex(capacity);
         _searchIndex = SearchIndex(capacity);
 
-        //_mainView = new MainView(&this);
-        //_searchView = new SearchView(&this);
-
         _backgroundSlot = BackgroundSlot(null);
 
         _mutex = new Mutex();
     }
 
-    bool busy() const @nogc
+    ~this()
+    {
+        destroy(_mutex);
+    }
+
+    Operation currentOperation() const @nogc
     {
         synchronized (_mutex)
         {
-            return _currentOperation != CurrentOperation.None;
+            return _currentOperation;
         }
     }
 
-    private void runBuildOffsetIndex()
+    bool busy() const @nogc
     {
-        _backgroundSlot.runTask((BackgroundSlot.Ctx* ctx) {
+        return currentOperation() != Operation.None;
+    }
+
+    void cancelCurrentOperation()
+    {
+        _backgroundSlot.cancel();
+    }
+
+    float currentOperationProgress() const @nogc
+    {
+        return _backgroundSlot.progress();
+    }
+
+    bool runBuildOffsetIndex()
+    {
+        return _backgroundSlot.runTask((BackgroundSlot.Ctx* ctx) {
             buildOffsetIndex(ctx);
         });
     }
 
-    private void runBuildFilterIndex(Filter filter, Anchors anchors)
+    bool runBuildFilterIndex(Filter filter, Anchors anchors)
     {
-        _backgroundSlot.runTask((BackgroundSlot.Ctx* ctx) {
+        return _backgroundSlot.runTask((BackgroundSlot.Ctx* ctx) {
             buildFilterIndex(ctx, filter, anchors);
         });
     }
 
-    private void runBuildSearchIndex(Filter filter, Anchors anchors)
+    bool runBuildSearchIndex(Filter filter, Anchors anchors)
     {
-        _backgroundSlot.runTask((BackgroundSlot.Ctx* ctx) {
+        return _backgroundSlot.runTask((BackgroundSlot.Ctx* ctx) {
             buildSearchIndex(ctx, filter, anchors);
         });
     }
@@ -140,7 +145,7 @@ struct DltIndex
     {
         synchronized (_mutex)
         {
-            _currentOperation = CurrentOperation.BuildOffsetIndex;
+            _currentOperation = Operation.BuildOffsetIndex;
 
             _offsetIndex.clear();
             _filterIndex.clear();
@@ -193,7 +198,7 @@ struct DltIndex
     {
         synchronized (_mutex)
         {
-            _currentOperation = CurrentOperation.BuildOffsetIndex;
+            _currentOperation = Operation.BuildFilterIndex;
 
             _filterIndex.clear();
             _searchIndex.clear();
@@ -258,7 +263,7 @@ struct DltIndex
     {
         synchronized (_mutex)
         {
-            _currentOperation = CurrentOperation.BuildSearchIndex;
+            _currentOperation = Operation.BuildSearchIndex;
 
             _searchIndex.clear();
             _searchIndex.isReady = false;

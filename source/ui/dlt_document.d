@@ -69,7 +69,7 @@ final class DltDocument : Document
         return _fibexPath;
     }
 
-    override void openFibex(string path)
+    void openFibex(string path)
     {
         try
         {

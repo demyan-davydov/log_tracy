@@ -354,7 +354,7 @@ class MainWindow : SciterWindow
     {
         try
         {
-            _workspace.current.openFibex(path);
+            //_workspace.current.openFibex(path);
             callScript("reloadLogTable");
         }
         catch (Exception e)
