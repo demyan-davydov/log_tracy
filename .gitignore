@@ -2,6 +2,7 @@ docs.json
 docs/
 .dub
 .DS_Store
+.vscode
 ai-spec.md
 dlt_explorer.so
 dlt_explorer.dylib
