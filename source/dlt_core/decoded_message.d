@@ -132,7 +132,7 @@ private struct LinearAllocator(Char) if (isSomeChar!Char)
 
     private void allocateNew(size_t capacity) nothrow @nogc
     {
-        Char* ptr = cast(Char*) malloc(capacity);
+        Char* ptr = cast(Char*) malloc(capacity * Char.sizeof);
 
         if (ptr)
         {
