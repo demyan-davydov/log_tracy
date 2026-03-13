@@ -27,7 +27,7 @@ interface DocumentView
 
     State state();
 
-    double progress(); // return 1.0 if ready
+    float progress(); // return 1.0 if ready
 
     void enableFilter(bool enable);
 
@@ -36,6 +36,11 @@ interface DocumentView
     void applyFilter(LogFilter!wchar filter);
 
     void resetFilter();
+
+    final bool ready()
+    {
+        return state() == State.Ready;
+    }
 }
 
 interface Document
@@ -60,7 +65,7 @@ interface Document
 
         Operation operation;
         Status status;
-        double progress = 0;
+        float progress = 0;
     }
 
     DocumentView mainView();

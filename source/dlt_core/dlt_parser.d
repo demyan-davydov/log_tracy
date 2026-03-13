@@ -340,13 +340,7 @@ string decodePayload(const(StandardHeader)* stdHdr, const(ExtendedHeader)* extHd
                             if (len > 0 && rawData[$ - 1] == 0)
                                 rawData = rawData[0 .. $ - 1];
 
-                            bool printable = (rawData.length > 0);
-                            foreach (b; rawData)
-                                if (b < 32 && b != 10 && b != 13 && b != 9)
-                                {
-                                    printable = false;
-                                    break;
-                                }
+                            const bool printable = isPrintable(rawData);
 
                             if (printable)
                                 args ~= cast(string) rawData;
@@ -613,7 +607,20 @@ bool parseDltItem(Char)(out DecodedMessage!Char msg, const(ubyte)[] data, bool h
                     p = p[2 .. $];
                     if (p.length >= rlen)
                     {
-                        builder.appendHex(cast(const char[]) p[0 .. rlen]);
+                        const(char)[] rawData = cast(const char[]) p[0 .. rlen];
+
+                        // Strip trailing null terminator if present
+                        if (rawData.length > 0 && rawData[$ - 1] == '\0')
+                            rawData = rawData[0 .. $ - 1];
+
+                        // If all bytes are printable ASCII, treat as text (same as old decodePayload)
+                        const bool printable = isPrintable(rawData);
+
+                        if (printable)
+                            builder.appendUtf8(rawData); // handles ASCII + UTF-8 correctly
+                        else
+                            builder.appendHex(rawData);
+
                         p = p[rlen .. $];
                     }
                     else
@@ -625,6 +632,136 @@ bool parseDltItem(Char)(out DecodedMessage!Char msg, const(ubyte)[] data, bool h
             // Unknown TypeInfo — skip silently
         }
 
+        payloadDecoded = true;
+    }
+
+    // ── Control message decoding (non-verbose Control type) ──────────────────
+    // For non-verbose messages, findHeaders() puts the first 4 payload bytes
+    // (the DLT Message ID / Service ID) into headers.messageId, and
+    // headers.payload (= p) starts AFTER those 4 bytes.
+    if (!payloadDecoded && headers.extended &&
+        headers.extended.messageInfo.messageType() == MessageType.Control)
+    {
+        // Service ID already extracted by findHeaders → headers.messageId
+        const uint svcId = headers.messageId;
+        const ubyte ctrlTypeInfo = headers.extended.messageInfo.messageTypeInfo();
+        // p already points past the service ID, at status byte (response) or request data
+
+        // Helper function for service names including higher IDs (0xfXX)
+        const(char)[] getControlServiceName(uint id) @nogc nothrow
+        {
+            switch(id)
+            {
+                case 0x01: return "set_log_level";
+                case 0x02: return "set_trace_status";
+                case 0x03: return "get_log_info";
+                case 0x04: return "get_default_log_level";
+                case 0x05: return "store_config";
+                case 0x06: return "reset_to_factory_default";
+                case 0x07: return "set_com_interface_status";
+                case 0x08: return "set_com_bw";
+                case 0x09: return "set_verbose_mode";
+                case 0x0A: return "set_msg_filtering";
+                case 0x0B: return "set_timing_packets";
+                case 0x0C: return "get_local_time";
+                case 0x0D: return "use_ecu_id";
+                case 0x0E: return "use_session_id";
+                case 0x0F: return "use_timestamp";
+                case 0x10: return "use_extended_header";
+                case 0x11: return "set_default_log_level";
+                case 0x12: return "set_default_trace_status";
+                case 0x13: return "get_software_version";
+                case 0x14: return "message_buffer_overflow";
+                case 0xf01: return "unregister_context";
+                case 0xf02: return "connection_info";
+                case 0xf03: return "timezone";
+                case 0xf04: return "marker";
+                default: return "ctrl";
+            }
+        }
+
+        const(char)[] svcName = getControlServiceName(svcId);
+
+        const bool isResponse = (ctrlTypeInfo == cast(ubyte) ControlType.Response);
+
+        // Build prefix "[svcname ok]" / "[svcname err]" / "[svcname req]" in one call.
+        // PayloadBuilder adds a space separator between consecutive append*() calls,
+        // so we must write the full prefix as a SINGLE appendAscii() to avoid
+        // unwanted extra spaces. Content appended after will get exactly one separator.
+        char[64] label;
+        size_t llen = 0;
+        void addToLabel(const(char)[] s) @nogc nothrow
+        {
+            foreach (c; s)
+                if (llen < label.length)
+                    label[llen++] = c;
+        }
+
+        addToLabel("[");
+        addToLabel(svcName);
+
+        if (isResponse && p.length >= 1)
+        {
+            const ubyte status = p[0];
+            p = p[1 .. $];
+            const bool ok = (status == ServiceResponseStatus.Ok);
+
+            addToLabel(ok ? " ok]" : " err]");
+            builder.appendAscii(label[0 .. llen]); // single call: "[svcname ok]"
+
+            // GET_SOFTWARE_VERSION: uint32 length + string
+            if (svcId == ServiceID.GetSoftwareVersion && ok && p.length >= 4)
+            {
+                const uint strLen = readValue!uint(p[0 .. 4], msbf);
+                p = p[4 .. $];
+                if (p.length >= strLen)
+                {
+                    const(char)[] sv = cast(const char[]) p[0 .. strLen];
+                    if (sv.length > 0 && sv[$ - 1] == '\0')
+                        sv = sv[0 .. $ - 1];
+                    if (sv.length > 0) // skip empty: appendUtf8("") still adds a separator
+                        builder.appendUtf8(sv); // separator + version string
+                    p = p[strLen .. $];
+                }
+            }
+            // CONNECTION_INFO: payload often starts with state byte (1=Disconnected, 2=Connected)
+            else if (svcId == ServiceID.ConnectionInfo && ok && p.length >= 1)
+            {
+                // State is usually the first byte
+                const ubyte state = msbf && p.length >= 4 ? p[3] : p[0];
+                if (state == ServiceConnectionState.Connected)
+                    builder.appendAscii("connected");
+                else if (state == ServiceConnectionState.Disconnected)
+                    builder.appendAscii("disconnected");
+                else
+                    builder.appendHex(cast(const char[]) p); // unknown format, dump hex
+            }
+            else if (p.length > 0)
+            {
+                // Generic: remaining payload as text or hex
+                const(char)[] rest = cast(const char[]) p;
+                if (isPrintable(rest))
+                    builder.appendUtf8(rest);
+                else
+                    builder.appendHex(rest);
+            }
+        }
+        else
+        {
+            // Request or missing status: show "[svcname req]" + optional data
+            addToLabel(" req]");
+            builder.appendAscii(label[0 .. llen]); // single call: "[svcname req]"
+            if (p.length > 0)
+            {
+                const(char)[] rest = cast(const char[]) p;
+                if (isPrintable(rest))
+                    builder.appendUtf8(rest);
+                else
+                    builder.appendHex(rest);
+            }
+        }
+
+        msg.messageId = svcId;
         payloadDecoded = true;
     }
 
@@ -670,6 +807,21 @@ bool parseDltItemWithFibex(Char)(out DecodedMessage!Char msg, const(ubyte)[] dat
     }
 
     return true;
+}
+
+bool isPrintable(const(char)[] s) @nogc nothrow
+{
+    foreach (c; s)
+    {
+        if (c < 32 && c != '\n' && c != '\r' && c != '\t')
+            return false;
+    }
+    return true;
+}
+
+bool isPrintable(const(ubyte)[] s) @nogc nothrow
+{
+    return isPrintable(cast(const(char)[]) s);
 }
 
 // ─── Helper: build a minimal raw DLT message byte array ──────────────────────
@@ -871,7 +1023,6 @@ unittest
 
     DecodedMessage!char msg;
     assert(parseDltItem(msg, data, false));
-    writeln("---------- msg.ecu: ", msg.ecu);
     assert(msg.ecu == "");
     assert(msg.payloadText == "Legacy DLT Message");
 }
@@ -1060,4 +1211,188 @@ unittest
     assert(parseDltItem(msg, data)); // must not crash
     // At least the one valid arg was decoded
     assert(msg.payloadText == "1");
+}
+
+// ─── Control Message Tests ────────────────────────────────────────────────────
+//
+// buildDltMessage sets MSBF=1 (big-endian), so uint32 fields in payload must be BE.
+// Control message payload structure (response):
+//   [4 bytes service ID BE] [1 byte status] [service-specific data]
+// Control message payload structure (request):
+//   [4 bytes service ID BE] [service-specific data]
+
+version (unittest)
+{
+    // Build a non-verbose control message.
+    // ctrlType: ControlType.Request (1) or ControlType.Response (2)
+    ubyte[] buildControlMsg(uint svcId, ubyte ctrlType, ubyte[] payload,
+        string ecuId = "ECU1", string appId = "APP1", string ctxId = "CTX1")
+    {
+        return buildDltMessage(
+            true, // with extended header
+            false, // non-verbose
+            0, // numArgs unused for control
+            cast(ubyte) MessageType.Control,
+            ctrlType, // goes into bits 4-7 of messageInfo
+            svcId, // messageId (for non-verbose this is prepended by buildDltMessage)
+            payload,
+            ecuId, appId, ctxId,
+        );
+    }
+
+    // Build [status | extra] payload (service ID is handled by buildControlMsg)
+    ubyte[] ctrlResponsePayload(ubyte status, ubyte[] extra = [])
+    {
+        return [status] ~ extra;
+    }
+
+    // Build GET_SOFTWARE_VERSION ok response payload (string)
+    ubyte[] getSoftwareVersionPayload(string version_)
+    {
+        import std.bitmanip : nativeToBigEndian;
+
+        ubyte[] str = cast(ubyte[])(version_ ~ "\0"); // null-terminated
+        ubyte[4] len = nativeToBigEndian(cast(uint) str.length);
+        return ctrlResponsePayload(0x00, len[] ~ str);
+    }
+}
+
+@("parseDltItem: control get_software_version response ok")
+unittest
+{
+    // Use default 4-char IDs — 3-char IDs leave 4th byte as char.init=0xFF which fails isASCII
+    auto data = buildControlMsg(
+        0x13,
+        cast(ubyte) ControlType.Response,
+        getSoftwareVersionPayload("MyApp v2.5.1"),
+    );
+
+    DecodedMessage!char msg;
+    assert(parseDltItem(msg, data));
+    assert(msg.type == MessageType.Control);
+    assert(msg.messageId == 0x13);
+    assert(msg.payloadText == "[get_software_version ok] MyApp v2.5.1");
+}
+
+@("parseDltItem: control get_software_version response ok - empty version string")
+unittest
+{
+    // Edge: version string is just a null terminator (length=1, string="")
+    auto data = buildControlMsg(
+        0x13,
+        cast(ubyte) ControlType.Response,
+        getSoftwareVersionPayload(""),
+    );
+    DecodedMessage!char msg;
+    assert(parseDltItem(msg, data));
+    assert(msg.messageId == 0x13);
+    assert(msg.payloadText == "[get_software_version ok]");
+}
+
+@("parseDltItem: control get_software_version response error")
+unittest
+{
+    ubyte[] payload = [cast(ubyte) ServiceResponseStatus.Error];
+    auto data = buildControlMsg(0x13, cast(ubyte) ControlType.Response, payload);
+
+    DecodedMessage!char msg;
+    assert(parseDltItem(msg, data));
+    assert(msg.messageId == 0x13);
+
+    import std.algorithm : startsWith;
+
+    assert(msg.payloadText.startsWith("[get_software_version err]"));
+}
+
+@("parseDltItem: control set_log_level response ok")
+unittest
+{
+    auto data = buildControlMsg(
+        0x01,
+        cast(ubyte) ControlType.Response,
+        ctrlResponsePayload(ServiceResponseStatus.Ok),
+    );
+    DecodedMessage!char msg;
+    assert(parseDltItem(msg, data));
+    assert(msg.messageId == 0x01);
+
+    import std.algorithm : startsWith;
+
+    assert(msg.payloadText.startsWith("[set_log_level ok]"));
+}
+
+@("parseDltItem: control unknown service response")
+unittest
+{
+    // Service ID 0xFF (unknown) → falls into generic branch with "ctrl" name
+    ubyte[] payload = [cast(ubyte) ServiceResponseStatus.Ok] ~ cast(ubyte[]) "hello";
+    auto data = buildControlMsg(0xFF, cast(ubyte) ControlType.Response, payload);
+
+    DecodedMessage!char msg;
+    assert(parseDltItem(msg, data));
+    assert(msg.messageId == 0xFF);
+
+    import std.algorithm : startsWith, canFind;
+
+    assert(msg.payloadText.startsWith("[ctrl ok]"));
+    assert(msg.payloadText.canFind("hello"));
+}
+
+@("parseDltItem: control request message")
+unittest
+{
+    // Request: ctrlType = ControlType.Request, no status byte
+    auto data = buildControlMsg(0x09, cast(ubyte) ControlType.Request, []);
+
+    DecodedMessage!char msg;
+    assert(parseDltItem(msg, data));
+    assert(msg.messageId == 0x09);
+
+    import std.algorithm : startsWith;
+
+    assert(msg.payloadText.startsWith("[set_verbose_mode req]"));
+}
+
+@("parseDltItem: control golden test - real get_software_version from DLT file")
+unittest
+{
+    // Bytes captured from real DLT file, MSBF=0 (little-endian), with storage header.
+    // Message index=6: GET_SOFTWARE_VERSION response, payload = "ID=mbient\n..."
+    static immutable ubyte[] raw = cast(immutable ubyte[]) x"
+        444C5401 A6B03769 00000000 4C4E5800
+        350000E0 4C4E5800 0012D390 26014441
+        31004443 31001300 000000C1 00000049
+        443D6D62 69656E74 0A49445F 4C494B45
+        3D226175 746F6D6F 74697665 220A4E41
+        4D453D22 4D426945 4E542028 4275696C
+        74206F6E 20596F63 746F2031 2E302922
+        0A564552 53494F4E 3D22312E 3020286B
+        69726B73 746F6E65 29220A56 45525349
+        4F4E5F49 443D312E 300A5052 45545459
+        5F4E414D 453D224D 4269454E 54202842
+        75696C74 206F6E20 596F6374 6F20312E
+        30292031 2E302028 6B69726B 73746F6E
+        6529220A 44495354 524F5F43 4F44454E
+        414D453D 226B6972 6B73746F 6E65220A
+    ";
+
+    DecodedMessage!char msg;
+    assert(parseDltItem(msg, raw));
+
+    // Metadata from storage/standard/extended headers
+    assert(msg.ecu == "LNX");
+    assert(msg.appId == "DA1");
+    assert(msg.ctxId == "DC1");
+    assert(msg.type == MessageType.Control);
+    writeln("msg.messageId: ", msg.messageId);
+    assert(msg.messageId == 0x13);
+
+    // Relative timestamp: 0x0012D390 = 1233808 × 0.1ms ≈ 123380.8ms → stored as-is
+    // (relativeTimestampMs lives in DecodedMessage; we just check it parses):
+
+    import std.algorithm : startsWith, canFind;
+
+    assert(msg.payloadText.startsWith("[get_software_version ok]"));
+    assert(msg.payloadText.canFind("ID=mbient"));
+    assert(msg.payloadText.canFind("kirkstone"));
 }

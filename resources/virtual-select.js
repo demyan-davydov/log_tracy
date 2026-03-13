@@ -39,14 +39,14 @@ export class VirtualList extends Element {
         if (this.vlist.itemsTotal != totalItems) { // number of items reduced, update scroll
             if (firstVisibleIndex == 0) {
                 this.post(() => {
-                    this.vlist.navigate("start");
+                    this.vlist?.navigate("start");
                 });
                 return this.renderList([]); // render empty list and request "from start" navigation
             }
 
             if (lastVisibleIndex >= totalItems) {
                 this.post(() => {
-                    this.vlist.navigate("end");
+                    this.vlist?.navigate("end");
                 });
                 return this.renderList([]); // render empty list and request "from end" navigation
             }

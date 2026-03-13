@@ -78,6 +78,8 @@ struct DltIndex
         _backgroundSlot = BackgroundSlot(null);
 
         _mutex = new Mutex();
+
+        runBuildOffsetIndex();
     }
 
     ~this()
@@ -85,15 +87,15 @@ struct DltIndex
         destroy(_mutex);
     }
 
-    Operation currentOperation() const @nogc
+    Operation currentOperation()
     {
         synchronized (_mutex)
         {
-            return _currentOperation;
+            return _backgroundSlot.busy() ? _currentOperation : Operation.None;
         }
     }
 
-    bool busy() const @nogc
+    bool busy()
     {
         return currentOperation() != Operation.None;
     }
@@ -160,24 +162,24 @@ struct DltIndex
         while (range.hasNext)
         {
             if (ctx.cancelled)
-            {
                 return false;
-            }
 
             OffsetIndex.Type[bunchSize] tempIndex;
+            size_t n = 0; // items written into tempIndex this batch
 
-            for (size_t i = 0; i < bunchSize && range.hasNext; ++i)
+            while (n < bunchSize && range.hasNext)
             {
+                const size_t msgStart = range.offset; // offset BEFORE pop
                 const auto msg = range.pop();
                 if (msg.length == 0)
                     break;
 
-                tempIndex[i].offset = range.offset;
+                tempIndex[n++].offset = msgStart;
             }
 
             synchronized (_mutex)
             {
-                _offsetIndex.append(tempIndex);
+                _offsetIndex.append(tempIndex[0 .. n]); // only populated slice
                 ctx.progress = cast(float)(range.offset) / range.overallLength;
             }
         }
@@ -223,8 +225,9 @@ struct DltIndex
             }
 
             FilterIndex.Type[bunchSize] tempIndex;
+            size_t n = 0; // items written into tempIndex this batch
 
-            for (size_t i = 0; i < bunchSize && range.hasNext; ++i)
+            while (n < bunchSize && range.hasNext)
             {
                 const auto msg = range.pop();
                 if (msg.length == 0)
@@ -233,16 +236,14 @@ struct DltIndex
                 parseDltItem!wchar(parsedMsg, msg, range.hasStorageHeader);
 
                 if (isMatched(parsedMsg, messageIndex))
-                {
-                    tempIndex[i] = messageIndex;
-                }
+                    tempIndex[n++] = messageIndex;
 
                 ++messageIndex;
             }
 
             synchronized (_mutex)
             {
-                _filterIndex.append(tempIndex);
+                _filterIndex.append(tempIndex[0 .. n]); // only matched entries
                 ctx.progress = cast(float)(range.offset) / range.overallLength;
             }
         }

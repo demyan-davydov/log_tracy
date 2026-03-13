@@ -3,9 +3,16 @@ module ui.main_window;
 import sciter_wrapper.sciter_window;
 import sciter_wrapper.sciter_value;
 import ui.app_settings;
-import ui.workspace;
-import ui.dlt_document;
-import ui.document_id;
+
+//import ui.workspace;
+//import ui.dlt_document;
+//import ui.document_id;
+
+import domain.workspace;
+import domain.document_id;
+import domain.document;
+import domain.document_item;
+import domain.dlt_document;
 
 import dlt_core.indexer;
 import dlt_core.search;
@@ -174,21 +181,34 @@ class MainWindow : SciterWindow
                 return result.toUTF8().idup;
             };
 
-            if (method == "getLogCount")
+            if (method == "getMainViewCount")
             {
-                const int count = cast(int) _workspace.current.length;
+                const int count = cast(int) _workspace.current.mainView.itemsCount();
+                resultView = count;
+                return true;
+            }
+            if (method == "getMainViewItem")
+            {
+                const int index = getParamInt(0);
+                DocumentItem docItem;
+                const auto res = _workspace.current.mainView.fetchItem(index, docItem);
+                resultView.set(asSciterArray(index, docItem));
+
+                return true;
+            }
+            if (method == "getSearchViewCount")
+            {
+                const int count = cast(int) _workspace.current.searchView.itemsCount();
                 //writeln("getLogCount: ", count, " for doc: ", _workspace.currentId.toString());
                 resultView = count;
                 return true;
             }
-            if (method == "getLogItem")
+            if (method == "getSearchViewItem")
             {
-                int index = getParamInt(0);
-                //string s = _workspace.current.logItemAsJson(index);
-                //wstring ws = toUTF16(s);
-                //resultView = ws;
-                auto item = _workspace.current.logItem(index);
-                resultView.set(asSciterArray(index, item));
+                const int index = getParamInt(0);
+                DocumentItem docItem;
+                const auto res = _workspace.current.searchView.fetchItem(index, docItem);
+                resultView.set(asSciterArray(index, docItem));
 
                 return true;
             }
@@ -232,7 +252,7 @@ class MainWindow : SciterWindow
                     {
                         auto filter = new DltLogFilter!wchar();
                         filter.load(normalizePath(path));
-                        _workspace.current.applyFilter(filter);
+                        _workspace.current.applySearchFilter(filter);
                         // @todo: return filter info to UI
                         /*
                         if (filters.length > 0)
@@ -261,8 +281,8 @@ class MainWindow : SciterWindow
                 {
                     JSONValue d = [
                         "id": JSONValue(item.docId.toInt()),
-                        "name": JSONValue(item.document.sourcePath.baseName),
-                        "path": JSONValue(item.document.sourcePath),
+                        "name": JSONValue(item.sourcePath.baseName),
+                        "path": JSONValue(item.sourcePath),
                         "active": JSONValue(item.docId == _workspace.currentId)
                     ];
                     docs ~= d;
@@ -272,12 +292,12 @@ class MainWindow : SciterWindow
             }
             if (method == "getDocProgress")
             {
-                resultView = _workspace.current.progress();
+                resultView = _workspace.current.mainView.progress();
                 return true;
             }
             if (method == "isDocReady")
             {
-                resultView = _workspace.current.ready();
+                resultView = _workspace.current.mainView.ready();
                 return true;
             }
             if (method == "switchTab")
@@ -290,7 +310,7 @@ class MainWindow : SciterWindow
                     if (item.docId.toInt() == id)
                     {
                         _workspace.setCurrent(item.docId);
-                        writeln("Workspace current changed to: ", id, " (", item.document.sourcePath.baseName, ")");
+                        writeln("Workspace current changed to: ", id, " (", item.sourcePath.baseName, ")");
                         break;
                     }
                 }
@@ -336,8 +356,9 @@ class MainWindow : SciterWindow
         writeln("Opening file: ", path);
         try
         {
+            writeln("Creating new document: ", path);
             auto newDoc = new DltDocument(path);
-            auto docId = _workspace.addDocument(newDoc);
+            auto docId = _workspace.addDocument(newDoc, path);
             _workspace.setCurrent(docId);
             callScript("onDocumentAdded", docId.toInt());
             return docId;
@@ -518,6 +539,43 @@ SciterValue asSciterArray(int index, ref const(LogItem) item)
         item.messageId, //
         cast(int) item.level, //
         cast(int) item.type, //
+        item.payload //
+
+        
+
+    );
+    return array;
+}
+
+SciterValue asSciterArray(int index, ref const(DocumentItem) item)
+{
+    /** 
+     size_t index;
+    ulong offset;
+    ushort length;
+    ulong timestamp;
+    string ecu;
+    string appId;
+    string ctxId;
+    LogLevel level;
+    MessageType type;
+    uint messageId;
+    string payload;
+ */
+
+    // index, time, timestamp(rel), ecuId, appId, ctxId, level, type, (messageId), payload
+
+    SciterValue array = SciterValue.makeArray(
+        item.realIndex, //
+        0, // offset
+        0, // length
+        item.timestampSeconds, //
+        item.ecu, //
+        item.appId, //
+        item.ctxId, //
+        cast(int) item.level, //
+        cast(int) item.type, //
+        item.messageId, //
         item.payload //
 
         

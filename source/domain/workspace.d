@@ -30,9 +30,9 @@ private class NullDocumentView : DocumentView
         return State.Ready;
     }
 
-    override double progress()
+    override float progress()
     {
-        return 1.0;
+        return 1.0f;
     }
 
     override void enableFilter(bool enable)
@@ -149,10 +149,11 @@ final class Workspace
         return false;
     }
 
-    DocumentId addDocument(Document document)
+    DocumentId addDocument(Document document, string sourcePath)
     {
-        auto item = DocumentRecord(_idGenerator.popId());
+        auto item = DocumentRecord(_idGenerator.popId(), sourcePath);
         item.document = document;
+        item.sourcePath = sourcePath;
         _documents ~= item;
         return item.docId;
     }
@@ -326,8 +327,8 @@ unittest
     auto doc2 = new MockDocument("doc2");
 
     // Test adding
-    ws.addDocument(doc1);
-    ws.addDocument(doc2);
+    ws.addDocument(doc1, "doc1");
+    ws.addDocument(doc2, "doc2");
     assert(ws.length == 2);
 
     auto docs = ws.documents;

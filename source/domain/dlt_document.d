@@ -19,8 +19,6 @@ import std.typecons : scoped, Unique, Proxy;
 
 class DltDocument : Document
 {
-    private DocumentId _id;
-
     private MainDocumentView _mainView;
     private SearchDocumentView _searchView;
 
@@ -34,7 +32,7 @@ class DltDocument : Document
 
     this() @disable;
 
-    this(DocumentId id, string path)
+    this(string path)
     {
         _index = DltIndex(path);
         _sourcePath = path;
@@ -73,7 +71,7 @@ class DltDocument : Document
         }
     }
 
-    Operation currentOperation() const
+    Operation currentOperation()
     {
         return _index.currentOperation();
     }
@@ -119,7 +117,7 @@ class DltDocument : Document
                 : DocumentView.State.BuildingIndex;
         }
 
-        override double progress()
+        override float progress()
         {
             return this.outer._index.currentOperationProgress();
         }
@@ -164,7 +162,7 @@ class DltDocument : Document
                 : DocumentView.State.BuildingIndex;
         }
 
-        override double progress()
+        override float progress()
         {
             return this.outer._index.currentOperationProgress();
         }

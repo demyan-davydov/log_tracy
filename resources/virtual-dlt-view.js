@@ -9,17 +9,6 @@ export class VirtualDltTBody extends VirtualSelect {
         super.this(props);
     }
 
-    itemAt(at) {
-        //const jsonStr = Window.this.xcall("getLogItem", at);
-        //return JSON.parse(jsonStr);
-        return Window.this.xcall("getLogItem", at);
-    }
-
-    totalItems() {
-        const totalLogs = Window.this.xcall("getLogCount");
-        return totalLogs;
-    }
-
     indexOf(item) {
         return item.index;
     }
@@ -41,16 +30,20 @@ export class VirtualDltTBody extends VirtualSelect {
     }*/
 
     renderItem(item, isCurrent, isSelected) {
-        const idx_index = 0;
-        const idx_timestamp = 1;
-        const idx_ecu = 2;
-        const idx_appId = 3;
-        const idx_ctxId = 4;
-        const idx_messageId = 5;
-        const idx_level = 6;
-        const idx_type = 7;
-        const idx_payload = 8;
+        //console.log("--- renderItem called for item:", item);
 
+        // Array layout from D backend asSciterArray(index, DocumentItem):
+        const idx_index = 0;
+        const idx_offset = 1;
+        const idx_length = 2;
+        const idx_timestamp = 3;
+        const idx_ecu = 4;
+        const idx_appId = 5;
+        const idx_ctxId = 6;
+        const idx_level = 7;
+        const idx_type = 8;
+        const idx_messageId = 9;
+        const idx_payload = 10;
 
         const logLevel = function (levelAsInt) {
             switch (levelAsInt) {
@@ -76,12 +69,12 @@ export class VirtualDltTBody extends VirtualSelect {
 
         return <tr state-current={isCurrent} state-checked={isSelected}>
             <td>{item[idx_index]}</td>
-            <td>offset</td>
+            <td>{item[idx_offset]}</td>
             <td>{item[idx_timestamp]}</td>
             <td>{item[idx_ecu]}</td>
             <td>{item[idx_appId]}</td>
             <td>{item[idx_ctxId]}</td>
-            <td>len</td>
+            <td>{item[idx_length]}</td>
             <td>{messageType}</td>
             <td class={logLevel}>{logLevel}</td>
             <td>{item[idx_payload]}</td>
@@ -90,7 +83,39 @@ export class VirtualDltTBody extends VirtualSelect {
 
     renderList(items) // overridable
     {
-        //return <tbody>{items}</tbody>;
         return items;
+        //return <tbody {...this.attributes}>{items}</tbody>;
+    }
+}
+
+export class VirtualMainViewTBody extends VirtualDltTBody {
+    this(props) {
+        super.this(props);
+        console.log("VirtualMainViewTBody constructor");
+    }
+
+    itemAt(at) {
+        return Window.this.xcall("getMainViewItem", at);
+    }
+
+    totalItems() {
+        const totalLogs = Window.this.xcall("getMainViewCount");
+        return totalLogs;
+    }
+}
+
+export class VirtualSearchViewTBody extends VirtualDltTBody {
+    this(props) {
+        super.this(props);
+        console.log("VirtualSearchViewTBody constructor");
+    }
+
+    itemAt(at) {
+        return Window.this.xcall("getSearchViewItem", at);
+    }
+
+    totalItems() {
+        const totalLogs = Window.this.xcall("getSearchViewCount");
+        return totalLogs;
     }
 }

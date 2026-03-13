@@ -8,6 +8,7 @@
     background: var(--bg-main);
     color: var(--text-main);
     table-layout: fixed;
+    flow: table;
 }
 
 @set dropdown-scrollbar {
@@ -31,14 +32,36 @@
     }
 }
 
-.log-list {
+.log-table tbody {
+    display: block;
+    -flow: vertical;
     behavior: virtual-list;
-    prototype: VirtualDltTBody;
     overflow-y: scroll;
+    overflow-x: auto;
     width: *;
     height: *;
-    display: block;
     vertical-scrollbar: dropdown-scrollbar;
+}
+
+/* tr/td must be explicit blocks — display:table-row inside display:block has no layout box */
+.log-table>tbody>tr {
+    display: table-row;
+    -flow: horizontal;
+    width: *;
+}
+
+.log-table>tbody>tr>td {
+    display: table-cell;
+    -overflow: hidden;
+}
+
+
+.log-table.main-view>tbody {
+    prototype: VirtualMainViewTBody;
+}
+
+.log-table.search-view>tbody {
+    prototype: VirtualSearchViewTBody;
 }
 
 /*
@@ -66,59 +89,59 @@
     border-right: 1px solid var(--border-color);
 }
 
-.log-list tr:nth-child(even) {
+.log-table>tbody>tr:nth-child(even) {
     background-color: lightgoldenrodyellow;
 }
 
-.log-list td:first-child {
+.log-table>tbody>tr>td:first-child {
     font-family: 'Courier New', Courier, monospace;
     font-size: 80%;
     text-align: right;
 }
 
-.log-list td:nth-child(2) {
+.log-table>tbody>tr>td:nth-child(2) {
     font-family: 'Courier New', Courier, monospace;
     font-size: 80%;
     text-align: right;
 }
 
-.log-list td:nth-child(3) {
+.log-table>tbody>tr>td:nth-child(3) {
     font-family: 'Courier New', Courier, monospace;
     font-size: 80%;
     text-align: right;
 }
 
-.log-list td:nth-child(4) {
+.log-table>tbody>tr>td:nth-child(4) {
     font-family: 'Courier New', Courier, monospace;
     font-size: 80%;
     text-align: right;
 }
 
-.log-list td:nth-child(5) {
+.log-table>tbody>tr>td:nth-child(5) {
     font-family: 'Courier New', Courier, monospace;
     font-size: 80%;
     text-align: right;
 }
 
-.log-list td:nth-child(6) {
+.log-table>tbody>tr>td:nth-child(6) {
     font-family: 'Courier New', Courier, monospace;
     font-size: 80%;
     text-align: right;
 }
 
-.log-list td:nth-child(7) {
+.log-table>tbody>tr>td:nth-child(7) {
     font-family: 'Courier New', Courier, monospace;
     font-size: 80%;
     text-align: right;
 }
 
-.log-list td:nth-child(8) {
+.log-table>tbody>tr>td:nth-child(8) {
     font-family: 'Courier New', Courier, monospace;
     font-size: 80%;
     text-align: right;
 }
 
-.log-list td {
+.log-table>tbody>tr>td {
     -user-select: text;
     cursor: text;
     padding: 2px 4px;
@@ -129,8 +152,8 @@
 }
 
 /* Force Payload column to take remaining space */
-.log-table th:last-child,
-.log-table td:last-child {
+.log-table>thead>tr>th:last-child,
+.log-table>tbody>tr>td:last-child {
     width: 100%;
 }
 

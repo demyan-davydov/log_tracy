@@ -1,8 +1,10 @@
 import { $, $$ } from "@sciter";
-import { VirtualDltTBody } from "virtual-dlt-view.js";
+import { VirtualDltTBody, VirtualMainViewTBody, VirtualSearchViewTBody } from "virtual-dlt-view.js";
 import { QueryBuilder } from "query-builder.js";
 
 globalThis.VirtualDltTBody = VirtualDltTBody;
+globalThis.VirtualMainViewTBody = VirtualMainViewTBody;
+globalThis.VirtualSearchViewTBody = VirtualSearchViewTBody;
 globalThis.QueryBuilder = QueryBuilder;
 
 let currentTheme = "light";
@@ -25,7 +27,7 @@ Window.this.on("close", (evt) => {
 
     // 1. Останавливаем инерционный скролл
     // Перебрасываем скролл в текущую позицию без анимации
-    const logList = getLogList();
+    const logList = getMainViewList();
     stopScroll(logList);
     logList.style.behavior = "none";
     logList.state.disabled = true;
@@ -148,15 +150,27 @@ globalThis.getLoadingContainer = function () {
     return loading;
 }
 
-globalThis.getLogTable = function () {
+globalThis.getMainViewTable = function () {
     const tabContent = getTabContent();
-    const list = tabContent.$("table.log-table");
+    const list = tabContent.$("table.main-view");
     return list;
 }
 
-globalThis.getLogList = function () {
-    const logTable = getLogTable();
-    const list = logTable.$("tbody.log-list");
+globalThis.getMainViewList = function () {
+    const logTable = getMainViewTable();
+    const list = logTable.$("tbody");
+    return list;
+}
+
+globalThis.getSearchViewTable = function () {
+    const tabContent = getTabContent();
+    const list = tabContent.$("table.search-view");
+    return list;
+}
+
+globalThis.getSearchViewList = function () {
+    const logTable = getSearchViewTable();
+    const list = logTable.$("tbody");
     return list;
 }
 
@@ -378,7 +392,7 @@ function updateViewMode() {
     const activeDoc = docs.find(d => d.active);
     const currentDocId = activeDoc ? activeDoc.id : null;
 
-    const table = getLogTable();
+    const table = getMainViewTable();
     const loading = getLoadingContainer();
     const empty = $("#empty-placeholder");
 
@@ -394,7 +408,8 @@ function updateViewMode() {
     empty.style.display = "none";
 
     const isReady = Window.this.xcall("isDocReady");
-    const progress = Window.this.xcall("getDocProgress");
+    const progress01 = Window.this.xcall("getDocProgress");
+    const progress = Math.round(progress01 * 100);
 
     if (!isReady) {
         table.style.display = "none";
@@ -402,11 +417,11 @@ function updateViewMode() {
         $("#doc-load-progress").value = progress;
         $("#doc-load-status").innerText = `Loading DLT file... ${progress}%`;
     } else {
-        table.style.display = "block";
+        table.style.display = "block"; // clear inline style to let it act as a table
         loading.style.display = "none";
 
         if (currentDocId !== lastDocId || (lastProgress !== 100 && lastProgress !== -1)) {
-            console.log("View update: doc transition or ready state", currentDocId);
+            console.log("View update: doc transition or ready state, docId: ", currentDocId);
             reloadLogTable(currentDocId !== lastDocId);
         }
     }
@@ -427,17 +442,28 @@ globalThis.onDocumentAdded = function (docId) {
 };
 
 globalThis.reloadLogTable = function (forceReset = false) {
-    const logList = getLogList();
+    const logList = getMainViewList();
     if (logList) {
         console.log("Reloading log table", forceReset ? "(force reset)" : "");
         if (forceReset) logList.scrollTo(0, 0);
         logList.componentUpdate();
+
+        // Print DOM tree of the table after a short delay so vlist has time to render
+        /*setTimeout(() => {
+            const table = getMainViewTable();
+            if (table) {
+                console.log("\n--- DOM TREE DUMP (table) ---");
+                console.log(table.outerHTML);
+                console.log("-----------------------------\n");
+            }
+        }, 500);
+        */
     }
 };
 
 globalThis.getAppState = function () {
     const [left, top, width, height] = Window.this.box("xywh", "border", "screen", true);
-    const list = getLogList();
+    const list = getMainViewList();
     return JSON.stringify({
         windowRect: { left, top, width, height },
         scrollPosition: list ? (list.state.scrollPos || 0) : 0
