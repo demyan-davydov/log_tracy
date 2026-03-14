@@ -7,13 +7,51 @@
     <style src="table.css" />
     <style src="tab-content.css" />
     <style src="query-builder.css" />
-    <style src="main-frame.css" />
+    <style src="menu-bar.css" />
     <script type="module" src="script.js" />
     <script type="module" src="virtual-dlt-view.js" />
     <script type="module" src="query-builder.js" />
 </head>
 
 <body>
+    <div id="main-menu" style="display: none;">
+        <ul id="menu-bar"> <!-- top level - menu bar, it must match ul#menu-bar selector, see std-menu.css -->
+            <li accesskey="S"><u>S</u>imple
+                <menu class="cool">
+                    <li title="Hello world!">First item (with tooltip)</li>
+                    <li accesskey="^2">Second item<span class="accesskey">Ctrl+2</span></li>
+                    <li>Third item
+                        <menu>
+                            <li style="background:linear-gradient(left,yellow,red)">First sub-item</li>
+                            <li>Second sub-item</li>
+                        </menu>
+                    </li>
+                    <li accesskey="^4">Fourth item<span class="accesskey">Ctrl+4</span></li>
+                    <li>Table menu
+                        <menu.table>
+                            <tr>
+                                <td role="menu-item">1.1</td>
+                                <td role="menu-item">1.2</td>
+                                <td role="menu-item">1.3</td>
+                            </tr>
+                            <tr>
+                                <td role="menu-item">2.1</td>
+                                <td role="menu-item">2.2</td>
+                                <td role="menu-item">2.3</td>
+                            </tr>
+                </menu>
+            </li>
+            </menu>
+            </li>
+            <li>Simple 2
+                <menu>
+                    <li>First item</li>
+                    <li>Second item</li>
+                    <li>Third item</li>
+                </menu>
+            </li>
+        </ul>
+    </div>
     <header>
         <div class="toolbar">
             <button id="btn-open">Open File</button>
