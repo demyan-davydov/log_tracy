@@ -199,12 +199,12 @@ frameset {
 
 
 
-#details-panel {
+#search-results-panel {
     border-top: 1px solid var(--border-color);
     background: var(--bg-details);
 }
 
-#details-panel header {
+#search-results-panel header {
     padding: 4px;
     background: var(--bg-details-header);
     font-weight: bold;

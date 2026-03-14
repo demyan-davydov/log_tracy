@@ -36,9 +36,14 @@ struct DocumentItem
         return _decodedMessage.timestampMicroseconds;
     }
 
-    const(Char)[] ecu() const pure nothrow @nogc @property
+    uint relativeTimestamp_10000() const pure nothrow @nogc @property
     {
-        return _decodedMessage.ecu;
+        return _decodedMessage.relativeTimestamp_10000;
+    }
+
+    const(Char)[] ecuId() const pure nothrow @nogc @property
+    {
+        return _decodedMessage.ecuId;
     }
 
     const(Char)[] appId() const pure nothrow @nogc @property

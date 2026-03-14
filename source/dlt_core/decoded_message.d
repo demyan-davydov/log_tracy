@@ -21,11 +21,10 @@ struct DecodedMessage(Char) if (isSomeChar!Char)
     uint messageId;
 
     // from extended header (if present)
-    uint ecuId;
     uint sessionId;
-    uint relativeTimestampMs;
+    uint relativeTimestamp_10000; // in 1/10000 of a second
 
-    private Char[] _ecu;
+    private Char[] _ecuId;
     private Char[] _appId;
     private Char[] _ctxId;
     private Char[] _payloadText;
@@ -35,9 +34,9 @@ struct DecodedMessage(Char) if (isSomeChar!Char)
         return _allocator.allocAligned(count);
     }
 
-    const(Char)[] ecu() const pure nothrow @nogc @property
+    const(Char)[] ecuId() const pure nothrow @nogc @property
     {
-        return _ecu;
+        return _ecuId;
     }
 
     const(Char)[] appId() const pure nothrow @nogc @property
@@ -81,7 +80,7 @@ struct DecodedMessage(Char) if (isSomeChar!Char)
         enum capacity = 16 * 1024 + 1024;
         _allocator.reset(capacity);
 
-        this._ecu = allocAndCopyAscii(ecu);
+        this._ecuId = allocAndCopyAscii(ecu);
         this._appId = allocAndCopyAscii(appId);
         this._ctxId = allocAndCopyAscii(ctxId);
 
@@ -101,10 +100,9 @@ struct DecodedMessage(Char) if (isSomeChar!Char)
         level = LogLevel.Info;
         type = MessageType.Log;
         messageId = 0;
-        ecuId = 0;
         sessionId = 0;
-        relativeTimestampMs = 0;
-        _ecu = null;
+        relativeTimestamp_10000 = 0;
+        _ecuId = null;
         _appId = null;
         _ctxId = null;
         _payloadText = null;
@@ -760,7 +758,7 @@ unittest
     DecodedMessage!char msg;
 
     auto builder = msg.setupPayload("ECU1", "APP1", "CTX1");
-    assert(msg.ecu == "ECU1");
+    assert(msg.ecuId == "ECU1");
     assert(msg.appId == "APP1");
     assert(msg.ctxId == "CTX1");
 }
@@ -775,7 +773,7 @@ unittest
     char[4] ctxId = ['C', 'T', 'X', '1'];
 
     auto builder = msg.setupPayload(ecuId[], appId[], ctxId[]);
-    assert(msg.ecu == "EC");
+    assert(msg.ecuId == "EC");
     assert(msg.appId == "A?P");
     assert(msg.ctxId == "CTX1");
 }
@@ -791,9 +789,8 @@ unittest
     msg.level = LogLevel.Fatal;
     msg.type = MessageType.Control;
     msg.messageId = 42;
-    msg.ecuId = 0xDEAD;
     msg.sessionId = 0xBEEF;
-    msg.relativeTimestampMs = 999;
+    msg.relativeTimestamp_10000 = 999;
 
     msg.clear();
 
@@ -802,10 +799,9 @@ unittest
     assert(msg.level == LogLevel.Info);
     assert(msg.type == MessageType.Log);
     assert(msg.messageId == 0);
-    assert(msg.ecuId == 0);
     assert(msg.sessionId == 0);
-    assert(msg.relativeTimestampMs == 0);
-    assert(msg._ecu is null);
+    assert(msg.relativeTimestamp_10000 == 0);
+    assert(msg._ecuId is null);
     assert(msg._appId is null);
     assert(msg._ctxId is null);
     assert(msg._payloadText is null);
@@ -817,12 +813,12 @@ unittest
     DecodedMessage!char msg;
     msg._allocator = LinearAllocator!char(256);
 
-    msg._ecu = "ECU".dup;
+    msg._ecuId = "ECU".dup;
     msg._appId = "APP".dup;
     msg._ctxId = "CTX".dup;
     msg._payloadText = "payload".dup;
 
-    assert(msg.ecu == "ECU");
+    assert(msg.ecuId == "ECU");
     assert(msg.appId == "APP");
     assert(msg.ctxId == "CTX");
     assert(msg.payloadText == "payload");
@@ -1039,7 +1035,7 @@ unittest
         builder.append(42);
     }
 
-    assert(msg.ecu == "ECU1");
+    assert(msg.ecuId == "ECU1");
     assert(msg.appId == "MYAP");
     assert(msg.ctxId == "CTX1");
     assert(msg.payloadText == "Engine started 42");
@@ -1067,7 +1063,7 @@ unittest
         auto builder = msg.setupPayload("ECU2", "APP2", "CTX2");
         builder.appendAscii("second message");
     }
-    assert(msg.ecu == "ECU2");
+    assert(msg.ecuId == "ECU2");
     assert(msg.appId == "APP2");
     assert(msg.payloadText == "second message");
 }

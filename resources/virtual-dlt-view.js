@@ -33,17 +33,43 @@ export class VirtualDltTBody extends VirtualSelect {
         //console.log("--- renderItem called for item:", item);
 
         // Array layout from D backend asSciterArray(index, DocumentItem):
-        const idx_index = 0;
-        const idx_offset = 1;
-        const idx_length = 2;
-        const idx_timestamp = 3;
-        const idx_ecu = 4;
-        const idx_appId = 5;
-        const idx_ctxId = 6;
-        const idx_level = 7;
-        const idx_type = 8;
-        const idx_messageId = 9;
-        const idx_payload = 10;
+        const idx_anchor = 0;
+        const idx_filterMask = 1;
+        const idx_index = 2;
+        const idx_timestamp_seconds = 3;
+        const idx_timestamp_microseconds = 4;
+        const idx_rel_timestamp_10000 = 5;
+        const idx_ecuId = 6;
+        const idx_appId = 7;
+        const idx_ctxId = 8;
+        const idx_level = 9;
+        const idx_type = 10;
+        const idx_messageId = 11;
+        const idx_payload = 12;
+
+        const timestamp = function (seconds, microseconds) {
+            seconds = Number(seconds);
+            microseconds = Number(microseconds);
+            if (seconds === 0 && microseconds === 0) return "-";
+            const date = new Date(seconds * 1000);
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const hour = String(date.getHours()).padStart(2, '0');
+            const minute = String(date.getMinutes()).padStart(2, '0');
+            const second = String(date.getSeconds()).padStart(2, '0');
+            const us = String(microseconds).padStart(3, '0');
+            return `${year}/${month}/${day} ${hour}:${minute}:${second}.${us}`;
+        }(item[idx_timestamp_seconds], item[idx_timestamp_microseconds]);
+
+        const relTimestamp = function (timeUnits) {
+            timeUnits = Number(timeUnits);
+            if (timeUnits === 0) return "-";
+            // DLT relative time is basically in 0.1ms units
+            const second = Math.floor(timeUnits / 10000);
+            const fraction = String(timeUnits % 10000).padStart(4, '0');
+            return `${second}.${fraction}`;
+        }(item[idx_rel_timestamp_10000]);
 
         const logLevel = function (levelAsInt) {
             switch (levelAsInt) {
@@ -68,13 +94,13 @@ export class VirtualDltTBody extends VirtualSelect {
         }(item[idx_type]);
 
         return <tr state-current={isCurrent} state-checked={isSelected}>
+            <td has-anchor={item[idx_anchor]}></td>
             <td>{item[idx_index]}</td>
-            <td>{item[idx_offset]}</td>
-            <td>{item[idx_timestamp]}</td>
-            <td>{item[idx_ecu]}</td>
+            <td>{timestamp}</td>
+            <td>{relTimestamp}</td>
+            <td>{item[idx_ecuId]}</td>
             <td>{item[idx_appId]}</td>
             <td>{item[idx_ctxId]}</td>
-            <td>{item[idx_length]}</td>
             <td>{messageType}</td>
             <td class={logLevel}>{logLevel}</td>
             <td>{item[idx_payload]}</td>

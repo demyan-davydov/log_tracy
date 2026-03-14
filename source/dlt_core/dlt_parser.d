@@ -84,7 +84,9 @@ LogItemHeaders findHeaders(const(ubyte)[] data, bool hasStorageHeader = true) pu
     {
         if (data.length >= 4)
         {
-            headers.extraTimestamp = readValue!uint(data[0 .. 4], msbf);
+            // is little-endian
+            const bool isBigEndian = true;
+            headers.extraTimestamp = readValue!uint(data[0 .. 4], isBigEndian);
             data = data[4 .. $];
         }
         else
@@ -450,6 +452,8 @@ bool parseDltItem(Char)(out DecodedMessage!Char msg, const(ubyte)[] data, bool h
     // ── scalar metadata ─────────────────────────────────────────────────────
     msg.timestampSeconds = headers.storage ? headers.storage.nativeSeconds : 0;
     msg.timestampMicroseconds = headers.storage ? headers.storage.nativeMicroseconds : 0;
+    msg.relativeTimestamp_10000 = headers.extraTimestamp;
+    msg.sessionId = headers.extraSessionId;
     msg.level = level;
     msg.type = msgType;
     msg.messageId = headers.messageId;
@@ -650,33 +654,58 @@ bool parseDltItem(Char)(out DecodedMessage!Char msg, const(ubyte)[] data, bool h
         // Helper function for service names including higher IDs (0xfXX)
         const(char)[] getControlServiceName(uint id) @nogc nothrow
         {
-            switch(id)
+            switch (id)
             {
-                case 0x01: return "set_log_level";
-                case 0x02: return "set_trace_status";
-                case 0x03: return "get_log_info";
-                case 0x04: return "get_default_log_level";
-                case 0x05: return "store_config";
-                case 0x06: return "reset_to_factory_default";
-                case 0x07: return "set_com_interface_status";
-                case 0x08: return "set_com_bw";
-                case 0x09: return "set_verbose_mode";
-                case 0x0A: return "set_msg_filtering";
-                case 0x0B: return "set_timing_packets";
-                case 0x0C: return "get_local_time";
-                case 0x0D: return "use_ecu_id";
-                case 0x0E: return "use_session_id";
-                case 0x0F: return "use_timestamp";
-                case 0x10: return "use_extended_header";
-                case 0x11: return "set_default_log_level";
-                case 0x12: return "set_default_trace_status";
-                case 0x13: return "get_software_version";
-                case 0x14: return "message_buffer_overflow";
-                case 0xf01: return "unregister_context";
-                case 0xf02: return "connection_info";
-                case 0xf03: return "timezone";
-                case 0xf04: return "marker";
-                default: return "ctrl";
+            case 0x01:
+                return "set_log_level";
+            case 0x02:
+                return "set_trace_status";
+            case 0x03:
+                return "get_log_info";
+            case 0x04:
+                return "get_default_log_level";
+            case 0x05:
+                return "store_config";
+            case 0x06:
+                return "reset_to_factory_default";
+            case 0x07:
+                return "set_com_interface_status";
+            case 0x08:
+                return "set_com_bw";
+            case 0x09:
+                return "set_verbose_mode";
+            case 0x0A:
+                return "set_msg_filtering";
+            case 0x0B:
+                return "set_timing_packets";
+            case 0x0C:
+                return "get_local_time";
+            case 0x0D:
+                return "use_ecu_id";
+            case 0x0E:
+                return "use_session_id";
+            case 0x0F:
+                return "use_timestamp";
+            case 0x10:
+                return "use_extended_header";
+            case 0x11:
+                return "set_default_log_level";
+            case 0x12:
+                return "set_default_trace_status";
+            case 0x13:
+                return "get_software_version";
+            case 0x14:
+                return "message_buffer_overflow";
+            case 0xf01:
+                return "unregister_context";
+            case 0xf02:
+                return "connection_info";
+            case 0xf03:
+                return "timezone";
+            case 0xf04:
+                return "marker";
+            default:
+                return "ctrl";
             }
         }
 
@@ -725,7 +754,7 @@ bool parseDltItem(Char)(out DecodedMessage!Char msg, const(ubyte)[] data, bool h
                 }
             }
             // CONNECTION_INFO: payload often starts with state byte (1=Disconnected, 2=Connected)
-            else if (svcId == ServiceID.ConnectionInfo && ok && p.length >= 1)
+        else if (svcId == ServiceID.ConnectionInfo && ok && p.length >= 1)
             {
                 // State is usually the first byte
                 const ubyte state = msbf && p.length >= 4 ? p[3] : p[0];
@@ -1023,7 +1052,7 @@ unittest
 
     DecodedMessage!char msg;
     assert(parseDltItem(msg, data, false));
-    assert(msg.ecu == "");
+    assert(msg.ecuId == "");
     assert(msg.payloadText == "Legacy DLT Message");
 }
 
@@ -1045,7 +1074,7 @@ unittest
 
     DecodedMessage!char msg;
     assert(parseDltItem(msg, data));
-    assert(msg.ecu == "ECU1");
+    assert(msg.ecuId == "ECU1");
     assert(msg.payloadText == "Legacy DLT Message");
 }
 
@@ -1154,7 +1183,7 @@ unittest
 
     DecodedMessage!char msg;
     assert(parseDltItem(msg, data));
-    assert(msg.ecu == "MYEC");
+    assert(msg.ecuId == "MYEC");
     assert(msg.appId == "MYAP");
     assert(msg.ctxId == "MYCT");
 }
@@ -1380,7 +1409,7 @@ unittest
     assert(parseDltItem(msg, raw));
 
     // Metadata from storage/standard/extended headers
-    assert(msg.ecu == "LNX");
+    assert(msg.ecuId == "LNX");
     assert(msg.appId == "DA1");
     assert(msg.ctxId == "DC1");
     assert(msg.type == MessageType.Control);
@@ -1388,7 +1417,7 @@ unittest
     assert(msg.messageId == 0x13);
 
     // Relative timestamp: 0x0012D390 = 1233808 × 0.1ms ≈ 123380.8ms → stored as-is
-    // (relativeTimestampMs lives in DecodedMessage; we just check it parses):
+    // (relativeTimestamp_10000 lives in DecodedMessage; we just check it parses):
 
     import std.algorithm : startsWith, canFind;
 

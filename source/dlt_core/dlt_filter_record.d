@@ -257,7 +257,7 @@ bool isMatched(CharType : wchar)(
         return true;
 
     // ECU ID
-    if (!config.ecuId.matches(item.ecu))
+    if (!config.ecuId.matches(item.ecuId))
         return false;
 
     // Message ID
@@ -358,7 +358,7 @@ unittest
 
     /*LogItem item;
     item.index = 0;
-    item.ecu = "Test ECU";
+    item.ecuId = "Test ECU";
     item.appId = "Test App";
     item.ctxId = "Test Context";
     //item.headerText = "Test Header";

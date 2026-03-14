@@ -565,12 +565,16 @@ SciterValue asSciterArray(int index, ref const(DocumentItem) item)
 
     // index, time, timestamp(rel), ecuId, appId, ctxId, level, type, (messageId), payload
 
+    writeln("relativeTimestamp_10000: ", item.relativeTimestamp_10000);
+
     SciterValue array = SciterValue.makeArray(
+        item.anchored, //
+        item.filterMask, //
         item.realIndex, //
-        0, // offset
-        0, // length
         item.timestampSeconds, //
-        item.ecu, //
+        item.timestampMicroseconds, //
+        item.relativeTimestamp_10000, //
+        item.ecuId, //
         item.appId, //
         item.ctxId, //
         cast(int) item.level, //

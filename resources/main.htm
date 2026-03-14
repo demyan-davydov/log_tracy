@@ -22,20 +22,6 @@
             <button id="btn-theme">Toggle Theme</button>
             <button id="btn-settings">Settings</button>
         </div>
-        <div class="toolbar" style="flow: horizontal; border-spacing: 10px;">
-            <widget id="query-builder"></widget>
-            <div class="controls" style="margin-top: 10px; flow: horizontal; border-spacing: 10px;">
-                <button id="btn-get-regex">Get Regex</button>
-                <button id="btn-save-mru">Search & Save</button>
-
-                <select id="select-mru">
-                    <option>History...</option>
-                </select>
-            </div>
-        </div>
-        <div id="result-output" style="margin-top:10px; font-family: monospace; background:#eee; padding:5px;">
-        </div>
-
         <div id="tabs-container">
             <button id="btn-add-tab">+</button>
             <!-- Tabs will be dynamically added here -->
@@ -70,8 +56,9 @@
             </div>
         </section>
 
+        <!-- right side -->
         <frameset rows="*, 200px">
-            <div id="main-content">
+            <section id="main-content">
                 <div id="empty-placeholder" style="display:none;">
                     <div class="icon">📁</div>
                     <div class="text">No documents open. Click + to open a DLT file.</div>
@@ -84,13 +71,13 @@
                     <table class="log-table main-view" fixed-layout="true" selectable="true">
                         <thead>
                             <tr>
+                                <th width="20px">⚓</th>
                                 <th width="80px">Index</th>
                                 <th width="120px">Time</th>
                                 <th width="150px">Timestamp</th>
-                                <th width="60px">ECU</th>
-                                <th width="60px">AppID</th>
-                                <th width="60px">CtxID</th>
-                                <th width="60px">Len</th>
+                                <th width="60px">EcuId</th>
+                                <th width="60px">AppId</th>
+                                <th width="60px">CtxId</th>
                                 <th width="60px">Type</th>
                                 <th width="60px">Level</th>
                                 <th width="*">Payload</th>
@@ -99,9 +86,25 @@
                         <tbody />
                     </table>
                 </div>
-            </div>
+            </section>
 
-            <section id="details-panel">
+            <section id="search-input-panel">
+                <div class="toolbar" style="flow: horizontal; border-spacing: 10px;">
+                    <widget id="query-builder"></widget>
+                    <div class="controls" style="margin-top: 10px; flow: horizontal; border-spacing: 10px;">
+                        <button id="btn-get-regex">Get Regex</button>
+                        <button id="btn-save-mru">Search & Save</button>
+
+                        <select id="select-mru">
+                            <option>History...</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="result-output" style="margin-top:10px; font-family: monospace; background:#eee; padding:5px;">
+                </div>
+            </section>
+
+            <section id="search-results-panel">
                 <header>Details / Search Results</header>
                 <div id="search-loading-container" class="loading-container" style="display:none;">
                     <progress id="search-progress" value="0" max="100"></progress>
@@ -110,13 +113,13 @@
                 <table class="log-table search-view" fixed-layout="true" selectable="true">
                     <thead>
                         <tr>
+                            <th width="20px">⚓</th>
                             <th width="80px">Index</th>
                             <th width="120px">Time</th>
                             <th width="150px">Timestamp</th>
-                            <th width="60px">ECU</th>
-                            <th width="60px">AppID</th>
-                            <th width="60px">CtxID</th>
-                            <th width="60px">Len</th>
+                            <th width="60px">EcuId</th>
+                            <th width="60px">AppId</th>
+                            <th width="60px">CtxId</th>
                             <th width="60px">Type</th>
                             <th width="60px">Level</th>
                             <th width="*">Payload</th>
