@@ -256,3 +256,41 @@ menu.window-menu {
     display: none;
     /* Safely hide from layout */
 }
+
+htmlarea.filter-input[multiline="false"] {
+    display: inline-block;
+    height: 30px;
+    width: 200px;
+    border: 1px solid red;
+    white-space: nowrap;
+    /* Запрещаем перенос строк */
+    overflow-x: auto;
+    /* Позволяем скроллить текст по горизонтали */
+    /* Ограничиваем высоту одной строкой */
+    vertical-align: middle;
+    behavior: htmlarea;
+    /* Явно указываем поведение */
+    edit-selection-on-unused-char: false;
+}
+
+plaintext.filter-input {
+    //behavior: code;
+    /* Специальное поведение для подсветки */
+    flow: horizontal;
+    white-space: nowrap;
+    overflow-y: hidden;
+    height: 30px;
+    size: *;
+}
+
+/* Описываем стили для ваших "красивых" элементов */
+plaintext.filter-input span.keyword {
+    color: blue;
+    font-weight: bold;
+}
+
+plaintext.filter-input span.number {
+    color: green;
+    background: #eee;
+    border-radius: 3px;
+}
