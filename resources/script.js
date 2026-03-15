@@ -60,8 +60,14 @@ function initQueryBuilder() {
     builder.initMRU(5); // Хранить 5 последних
     $("#query-builder").append(builder);
 
-
-    // 1. Получение Regex
+    // Listen for search event from query builder
+    builder.on("search", () => {
+        console.log("query-builder.js: search event");
+        const regexStr = builder.getCurrentRegex();
+        Window.this.xcall("startSearch", regexStr);
+        updateHistoryUI();
+        $("#result-output").innerText = "Search started: /" + regexStr + "/";
+    });
     document.on("click", "#btn-get-regex", () => {
         const regexStr = builder.getCurrentRegex();
         $("#result-output").innerText = "/" + regexStr + "/";
@@ -429,9 +435,36 @@ function updateViewMode() {
     lastDocId = currentDocId;
 }
 
+function updateSearchViewMode() {
+    const table = getSearchViewTable();
+    if (!table) return;
+
+    const loading = $("#search-loading-container");
+    const isReady = Window.this.xcall("isSearchReady");
+    const progress01 = Window.this.xcall("getSearchProgress");
+    const progress = Math.round(progress01 * 100);
+
+    if (!isReady && progress01 > 0 && progress01 < 1.0) {
+        table.style.display = "none";
+        loading.style.display = "flex";
+        $("#search-progress").value = progress;
+        $("#search-status").innerText = `Searching... ${progress}%`;
+    } else {
+        table.style.display = "block";
+        loading.style.display = "none";
+
+        // Reload search list if it's ready
+        const searchList = getSearchViewList();
+        if (searchList) {
+            searchList.componentUpdate();
+        }
+    }
+}
+
 function pollLoadingProgress() {
     setInterval(() => {
         updateViewMode();
+        updateSearchViewMode();
     }, 500);
 }
 

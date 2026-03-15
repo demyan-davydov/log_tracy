@@ -15,7 +15,12 @@ export class QueryBuilder extends Element {
         this.selectionIds = new Set(); // Хранит ID выделенных элементов
         this.inputBuffer = "";      // Текущий текст ввода
 
+        this._idCounter = 0;
         //this.styleset = props.styleset || (__DIR__ + "query-builder.css#query-builder");
+    }
+
+    uniqueId() {
+        return `id-${++this._idCounter}-${Math.random().toString(36).substr(2, 9)}`;
     }
 
     componentDidMount() {
@@ -130,7 +135,7 @@ export class QueryBuilder extends Element {
 
     // keydown — только для не-символьных клавиш (Enter, Backspace)
     handleKeyDown(evt) {
-        const key = evt.key;
+        const key = evt.code; // Use evt.code for Sciter.js
         const val = this.inputEl ? this.inputEl.value : "";
 
         // 1. Enter: Создать токен из текста в буфере
@@ -140,6 +145,8 @@ export class QueryBuilder extends Element {
                 this.inputBuffer = "";
                 this.render();
             }
+            // Notify parent that search is requested
+            this.dispatchEvent(new CustomEvent("search", { bubbles: true }));
             return true;
         }
 
@@ -237,7 +244,7 @@ export class QueryBuilder extends Element {
         const isRegex = text.includes('*') || text.includes('?');
         this.model.children.push({
             type: 'token',
-            id: Window.this.uuid(), // Sciter native UUID gen
+            id: this.uniqueId(), // Sciter native UUID gen
             value: text,
             isRegex: isRegex
         });
@@ -246,7 +253,7 @@ export class QueryBuilder extends Element {
     addOperator(opType) {
         this.model.children.push({
             type: 'operator',
-            id: Window.this.uuid(),
+            id: this.uniqueId(),
             value: opType
         });
     }
@@ -288,7 +295,7 @@ export class QueryBuilder extends Element {
         // Создаем новую группу
         const newGroup = {
             type: 'group',
-            id: Window.this.uuid(),
+            id: this.uniqueId(),
             children: elementsToGroup
         };
 
@@ -360,7 +367,7 @@ export class QueryBuilder extends Element {
             // Рекурсивное восстановление с генерацией новых UUID для UI
             const hydrateNode = (node) => {
                 // Восстанавливаем ID для внутренней работы UI
-                node.id = Window.this.uuid(); // Sciter UUID
+                node.id = this.uniqueId(); // Sciter UUID
 
                 if (node.type === 'group' && node.children) {
                     node.children = node.children.map(hydrateNode);

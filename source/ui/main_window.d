@@ -300,6 +300,23 @@ class MainWindow : SciterWindow
                 resultView = _workspace.current.mainView.ready();
                 return true;
             }
+            if (method == "getSearchProgress")
+            {
+                resultView = _workspace.current.searchView.progress();
+                return true;
+            }
+            if (method == "isSearchReady")
+            {
+                resultView = _workspace.current.searchView.ready();
+                return true;
+            }
+            if (method == "startSearch")
+            {
+                string regex = getParamString(0);
+                writeln("startSearch request: ", regex);
+                onStartSearch(regex);
+                return true;
+            }
             if (method == "switchTab")
             {
                 int id = getParamInt(0);
@@ -400,6 +417,28 @@ class MainWindow : SciterWindow
         catch (Exception e)
         {
             writeln("Error applying filter: ", e.msg);
+        }
+    }
+
+    private void onStartSearch(string regexStr)
+    {
+        import std.utf : toUTF16;
+
+        try
+        {
+            writeln("Starting search with regex: ", regexStr);
+            auto filter = new DltLogFilter!wchar();
+            DltFilterRecord!wchar record;
+            record.enabled = true;
+            record.payloadText.enabled = true;
+            record.payloadText.value.setRegex(regexStr.toUTF16().idup);
+            filter.opAssign([record]);
+
+            _workspace.current.applySearchFilter(filter);
+        }
+        catch (Exception e)
+        {
+            writeln("Error starting search: ", e.msg);
         }
     }
 
