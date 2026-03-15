@@ -61,9 +61,12 @@ function initQueryBuilder() {
     $("#query-builder").append(builder);
 
     // Listen for search event from query builder
-    builder.on("search", () => {
-        console.log("query-builder.js: search event");
-        const regexStr = builder.getCurrentRegex();
+    // Using document.on because builder element (the reactor component) 
+    // might be replaced/re-rendered, causing "Element was deleted" if bound directly.
+    document.on("search", "#query-builder", (evt) => {
+        console.log("query-builder.js: search event detected via document");
+        const regexStr = evt.detail ? evt.detail.regex : builder.getCurrentRegex();
+        console.log("query-builder.js: searching for: ", regexStr);
         Window.this.xcall("startSearch", regexStr);
         updateHistoryUI();
         $("#result-output").innerText = "Search started: /" + regexStr + "/";

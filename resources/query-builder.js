@@ -143,10 +143,21 @@ export class QueryBuilder extends Element {
             if (val.trim()) {
                 this.addToken(val.trim());
                 this.inputBuffer = "";
+                // Capture regex before render replaces elements
+                const regexStr = this.getCurrentRegex();
                 this.render();
+                // Notify parent with the captured regex
+                this.dispatchEvent(new CustomEvent("search", { 
+                    bubbles: true,
+                    detail: { regex: regexStr }
+                }));
+            } else {
+                // If input is empty, just search with current tree
+                this.dispatchEvent(new CustomEvent("search", { 
+                    bubbles: true,
+                    detail: { regex: this.getCurrentRegex() }
+                }));
             }
-            // Notify parent that search is requested
-            this.dispatchEvent(new CustomEvent("search", { bubbles: true }));
             return true;
         }
 
