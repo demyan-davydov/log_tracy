@@ -143,6 +143,9 @@ int main()
 			writeln("Error: Could not find main.htm in any of the expected locations.");
 		}
 
+        import ui.main_menu_loader : loadAppMenu;
+        loadAppMenu(win);
+
 		win.updateWindow();
 
 		//win.run();

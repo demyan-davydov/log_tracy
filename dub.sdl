@@ -13,3 +13,5 @@ dflags "-preview=dtorfields" // correct fields destruction
 // Windows resource file
 sourceFiles "resources/app.rc" platform="windows"
 lflags "/SUBSYSTEM:WINDOWS" "/ENTRY:mainCRTStartup" platform="windows"
+
+stringImportPaths "resources"
