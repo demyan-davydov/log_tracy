@@ -258,7 +258,7 @@ version (unittest)
     /// LogFilter stub that always matches
     private final class AlwaysMatchFilter : LogFilter!wchar
     {
-        override bool matches(ref const(DecodedMessage!wchar) item) const
+        override bool matches(scope ref const(DecodedMessage!wchar) item) const
         {
             return true;
         }
@@ -282,7 +282,7 @@ version (unittest)
     /// LogFilter stub that never matches
     private final class NeverMatchFilter : LogFilter!wchar
     {
-        override bool matches(ref const(DecodedMessage!wchar) item) const
+        override bool matches(scope ref const(DecodedMessage!wchar) item) const
         {
             return false;
         }
@@ -317,7 +317,7 @@ version (unittest)
             _appId = appId.toUTF16();
         }
 
-        override bool matches(ref const(DecodedMessage!wchar) item) const
+        override bool matches(scope ref const(DecodedMessage!wchar) item) const
         {
             return item.appId == _appId;
         }

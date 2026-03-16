@@ -113,8 +113,10 @@ class DltDocument : Document
         override DocumentView.State state()
         {
             const auto op = this.outer.currentOperation();
-            return op == Operation.None ? DocumentView.State.Ready
-                : DocumentView.State.BuildingIndex;
+            // Main view is ready if it's not building initial index or applying main filter
+            if (op == Operation.BuildOffsetIndex || op == Operation.BuildFilterIndex)
+                return DocumentView.State.BuildingIndex;
+            return DocumentView.State.Ready;
         }
 
         override float progress()
@@ -158,8 +160,10 @@ class DltDocument : Document
         override DocumentView.State state()
         {
             const auto op = this.outer.currentOperation();
-            return op == Operation.None ? DocumentView.State.Ready
-                : DocumentView.State.BuildingIndex;
+            // Search view is only building when BuildSearchIndex is active
+            if (op == Operation.BuildSearchIndex)
+                return DocumentView.State.BuildingIndex;
+            return DocumentView.State.Ready;
         }
 
         override float progress()

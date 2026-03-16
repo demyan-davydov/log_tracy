@@ -20,6 +20,7 @@ import dlt_core.fibex;
 import dlt_core.dlt_filter_serialization;
 import dlt_core.dlt_filter_record;
 import dlt_core.dlt_log_filter : DltLogFilter;
+import domain.search_filter : SearchFilter;
 import dlt_core.log_filter : LogFilter;
 import dlt_core.log_item : LogItem;
 
@@ -422,17 +423,12 @@ class MainWindow : SciterWindow
 
     private void onStartSearch(string regexStr)
     {
-        import std.utf : toUTF16;
-
         try
         {
             writeln("Starting search with regex: ", regexStr);
-            auto filter = new DltLogFilter!wchar();
-            DltFilterRecord!wchar record;
-            record.enabled = true;
-            record.payloadText.enabled = true;
-            record.payloadText.value.setRegex(regexStr.toUTF16().idup);
-            filter.opAssign([record]);
+            auto filter = new SearchFilter();
+            filter.addRegex(regexStr);
+            filter.addCaseInsensetive("THEW"); // for test
 
             _workspace.current.applySearchFilter(filter);
         }

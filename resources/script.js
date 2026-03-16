@@ -172,8 +172,7 @@ globalThis.getMainViewList = function () {
 }
 
 globalThis.getSearchViewTable = function () {
-    const tabContent = getTabContent();
-    const list = tabContent.$("table.search-view");
+    const list = $("table.search-view");
     return list;
 }
 

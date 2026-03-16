@@ -9,7 +9,7 @@ interface LogFilter(T) if (isSomeChar!(T))
 {
     alias CharType = T;
 
-    bool matches(ref const(DecodedMessage!CharType) item) const;
+    bool matches(scope ref const(DecodedMessage!CharType) item) const;
 
     //! Scan all of rules and return index of first matched record or Nullable.init if no match
     Nullable!uint matchIndex(scope ref const(DecodedMessage!CharType) item) const;

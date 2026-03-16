@@ -279,7 +279,6 @@ struct DltIndex
         const size_t indexLen = _viewIsFiltered ? _filterIndex.length : _offsetIndex.length;
         const bool hasStorageHeader = _source.hasStorageHeader;
 
-        uint32_t messageIndex = 0;
         Message parsedMsg;
         SearchIndex.Type[bunchSize] tempIndex;
         size_t pos = 0;
@@ -299,18 +298,16 @@ struct DltIndex
             size_t tempLen = 0;
             for (size_t i = pos; i < batchEnd; ++i)
             {
-                const auto fileOffset = _viewIsFiltered ? _offsetIndex[_filterIndex[i]]
-                    : _offsetIndex[i];
+                const uint32_t globalIndex = _viewIsFiltered ? _filterIndex[i] : cast(uint32_t) i;
+                const auto fileOffset = _offsetIndex[globalIndex];
                 const auto msgBytes = _source.getMessage(fileOffset.offset);
 
                 parseDltItem!wchar(parsedMsg, msgBytes, hasStorageHeader);
 
-                if (isMatched(parsedMsg, i))
+                if (isMatched(parsedMsg, globalIndex))
                 {
-                    tempIndex[tempLen++] = cast(SearchIndex.Type) i;
+                    tempIndex[tempLen++] = globalIndex;
                 }
-
-                ++messageIndex;
             }
 
             synchronized (_mutex)
@@ -403,18 +400,20 @@ struct DltIndex
     bool fetchSearchViewItem(size_t index, scope ref DocumentItem item)
     {
         OffsetIndexItem fileOffset;
+        uint32_t globalIndex;
 
         {
             auto lock = LockGuard(_mutex);
             if (index >= _searchIndex.length)
                 return false;
 
-            fileOffset = _offsetIndex[_searchIndex[index]];
+            globalIndex = _searchIndex[index];
+            fileOffset = _offsetIndex[globalIndex];
         }
 
         const auto msgBytes = _source.getMessage(fileOffset.offset);
         parseDltItem!wchar(item._decodedMessage, msgBytes, _source.hasStorageHeader);
-        item.realIndex = index;
+        item.realIndex = globalIndex;
         item.filterMask = fileOffset.filterMask;
         item.searchMask = 0;
         item.anchored = false;
