@@ -84,6 +84,16 @@ final class SearchFilter : LogFilter!wchar
         addRule(patternUtf8, CompareType.CaseInsensetive);
     }
 
+    void addCaseSensetive(const(wchar)[] pattern)
+    {
+        addRule(pattern, CompareType.CaseSensetive);
+    }
+
+    void addCaseSensetive(const(char)[] patternUtf8)
+    {
+        addRule(patternUtf8, CompareType.CaseSensetive);
+    }
+
     // implement LogFilter
     bool matches(scope ref const(Message) item) const
     {

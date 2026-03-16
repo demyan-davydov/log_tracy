@@ -72,14 +72,14 @@
 */
 
 .log-table thead tr {
-    user-select: none;
+    -user-select: none;
     cursor: default;
     font-family: 'Courier New', Courier, monospace;
     background-color: bisque;
 }
 
 .log-table th {
-    user-select: none;
+    -user-select: none;
     cursor: default;
     padding: 2px 4px;
     white-space: nowrap;
@@ -141,8 +141,12 @@
     text-align: right;
 }
 
+.log-table>tbody>tr {
+    -user-select: none;
+}
+
 .log-table>tbody>tr>td {
-    -user-select: text;
+    -user-select: none;
     cursor: text;
     padding: 2px 4px;
     -white-space: nowrap;

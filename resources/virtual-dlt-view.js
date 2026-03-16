@@ -103,7 +103,7 @@ export class VirtualDltTBody extends VirtualSelect {
             <td>{item[idx_ctxId]}</td>
             <td>{messageType}</td>
             <td class={logLevel}>{logLevel}</td>
-            <td>{item[idx_payload]}</td>
+            <td selectable>{item[idx_payload]}</td>
         </tr>
     }
 

@@ -446,11 +446,11 @@ function updateSearchViewMode() {
     const progress01 = Window.this.xcall("getSearchProgress");
     const progress = Math.round(progress01 * 100);
 
-    if (!isReady && progress01 > 0 && progress01 < 1.0) {
+    if (!isReady) {
         table.style.display = "none";
         loading.style.display = "flex";
-        $("#search-progress").value = progress;
-        $("#search-status").innerText = `Searching... ${progress}%`;
+        $("#search-view-progress").value = progress;
+        $("#search-view-status").innerText = `Searching... ${progress}%`;
     } else {
         table.style.display = "block";
         loading.style.display = "none";

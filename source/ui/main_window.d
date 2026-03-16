@@ -427,8 +427,9 @@ class MainWindow : SciterWindow
         {
             writeln("Starting search with regex: ", regexStr);
             auto filter = new SearchFilter();
-            filter.addRegex(regexStr);
+            //filter.addRegex(regexStr);
             filter.addCaseInsensetive("THEW"); // for test
+            filter.addCaseSensetive("encryptPayload"); // for test
 
             _workspace.current.applySearchFilter(filter);
         }
