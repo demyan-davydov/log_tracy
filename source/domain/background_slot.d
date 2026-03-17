@@ -4,6 +4,8 @@ import core.thread : Thread;
 import core.atomic : atomicLoad, atomicStore, MemoryOrder;
 import core.sync.mutex : Mutex;
 
+import std.typecons : scoped;
+
 //! @brief Runs a given operation in a background thread.
 //! At most one operation may run at a time; if a task is already running,
 //! runTask() returns false and does nothing.
@@ -45,7 +47,7 @@ struct BackgroundSlot
 
     private bool _exitFlag = false;
     private Ctx _ctx;
-    private Mutex _mutex;
+    private typeof(scoped!Mutex()) _mutex;
     private Thread _thread;
     private shared bool _threadDone = true; // true = no active thread
 
@@ -57,7 +59,7 @@ struct BackgroundSlot
 
     this(typeof(null))
     {
-        _mutex = new Mutex();
+        _mutex = scoped!Mutex();
     }
 
     @disable this(this);
@@ -65,7 +67,7 @@ struct BackgroundSlot
     ~this()
     {
         Thread threadToJoin;
-        synchronized (_mutex)
+        synchronized (cast(Mutex)_mutex)
         {
             _exitFlag = true;
             _ctx.setCancelled(true);
@@ -75,14 +77,12 @@ struct BackgroundSlot
 
         if (threadToJoin)
             threadToJoin.join();
-
-        destroy(_mutex);
     }
 
     /// Run a task. Returns false if the slot is busy or shutdown is in progress.
     bool runTask(TaskDelegate dg)
     {
-        synchronized (_mutex)
+        synchronized (cast(Mutex)_mutex)
         {
             if (_exitFlag)
                 return false;
@@ -128,7 +128,7 @@ struct BackgroundSlot
 
     bool busy() @property
     {
-        synchronized (_mutex)
+        synchronized (cast(Mutex)_mutex)
             return isRunning_();
     }
 }

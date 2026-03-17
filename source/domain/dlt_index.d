@@ -44,6 +44,7 @@ alias Message = DecodedMessage!wchar;
 struct DltIndex
 {
     private alias Scoped(T) = typeof(scoped!T(string.init, bool.init));
+    private alias ScopedMutex = typeof(scoped!Mutex());
 
     private Scoped!DltSourceFile _source; // file with source data
     private OffsetIndex _offsetIndex; // indecies of messages in the source file
@@ -64,7 +65,9 @@ struct DltIndex
 
     private Operation _currentOperation = Operation.None;
     private BackgroundSlot _backgroundSlot;
-    private Mutex _mutex; // mutex for building indexes
+    private ScopedMutex _mutex; // mutex for building indexes
+
+    @disable this(this); // copy constructor is disabled
 
     this(string path)
     {
@@ -77,19 +80,19 @@ struct DltIndex
 
         _backgroundSlot = BackgroundSlot(null);
 
-        _mutex = new Mutex();
+        _mutex = scoped!Mutex();
 
         runBuildOffsetIndex();
     }
 
     ~this()
     {
-        destroy(_mutex);
+        // Mutex is now scoped and managed automatically
     }
 
     Operation currentOperation()
     {
-        synchronized (_mutex)
+        synchronized (cast(Mutex)_mutex)
         {
             return _backgroundSlot.busy() ? _currentOperation : Operation.None;
         }
@@ -133,7 +136,7 @@ struct DltIndex
 
     void enableFilter(bool enable)
     {
-        synchronized (_mutex)
+        synchronized (cast(Mutex)_mutex)
         {
             //if (_filterIndex.isReady)
             _viewIsFiltered = enable;
@@ -145,7 +148,7 @@ struct DltIndex
     //! @return true if the build process was completed successfully, false otherwise
     private bool buildOffsetIndex(BackgroundSlot.Ctx* ctx)
     {
-        synchronized (_mutex)
+        synchronized (cast(Mutex)_mutex)
         {
             _currentOperation = Operation.BuildOffsetIndex;
 
@@ -177,14 +180,14 @@ struct DltIndex
                 tempIndex[n++].offset = msgStart;
             }
 
-            synchronized (_mutex)
+            synchronized (cast(Mutex)_mutex)
             {
                 _offsetIndex.append(tempIndex[0 .. n]); // only populated slice
                 ctx.progress = cast(float)(range.offset) / range.overallLength;
             }
         }
 
-        synchronized (_mutex)
+        synchronized (cast(Mutex)_mutex)
         {
             _offsetIndex.isReady = true;
             ctx.progress = 1.0f;
@@ -198,7 +201,7 @@ struct DltIndex
     //! @return true if the build process was completed successfully, false otherwise
     private bool buildFilterIndex(BackgroundSlot.Ctx* ctx, Filter filter, Anchors anchors)
     {
-        synchronized (_mutex)
+        synchronized (cast(Mutex)_mutex)
         {
             _currentOperation = Operation.BuildFilterIndex;
 
@@ -241,14 +244,14 @@ struct DltIndex
                 ++messageIndex;
             }
 
-            synchronized (_mutex)
+            synchronized (cast(Mutex)_mutex)
             {
                 _filterIndex.append(tempIndex[0 .. n]); // only matched entries
                 ctx.progress = cast(float)(range.offset) / range.overallLength;
             }
         }
 
-        synchronized (_mutex)
+        synchronized (cast(Mutex)_mutex)
         {
             _filterIndex.isReady = true;
             ctx.progress = 1.0f;
@@ -262,7 +265,7 @@ struct DltIndex
     //! @return true if the build process was completed successfully, false otherwise
     private bool buildSearchIndex(BackgroundSlot.Ctx* ctx, Filter filter, Anchors anchors)
     {
-        synchronized (_mutex)
+        synchronized (cast(Mutex)_mutex)
         {
             _currentOperation = Operation.BuildSearchIndex;
 
@@ -310,7 +313,7 @@ struct DltIndex
                 }
             }
 
-            synchronized (_mutex)
+            synchronized (cast(Mutex)_mutex)
             {
                 _searchIndex.append(tempIndex[0 .. tempLen]);
                 ctx.progress = cast(float) batchEnd / indexLen;
@@ -319,7 +322,7 @@ struct DltIndex
             pos = batchEnd;
         }
 
-        synchronized (_mutex)
+        synchronized (cast(Mutex)_mutex)
         {
             _searchIndex.isReady = true;
             ctx.progress = 1.0f;
@@ -334,7 +337,7 @@ struct DltIndex
 
     size_t mainViewItemsCount() nothrow @nogc
     {
-        auto lock = LockGuard(_mutex);
+        auto lock = LockGuard(cast(Mutex)_mutex);
         return _viewIsFiltered ? _filterIndex.length : _offsetIndex.length;
     }
 
@@ -343,7 +346,7 @@ struct DltIndex
         OffsetIndexItem fileOffset;
 
         {
-            auto lock = LockGuard(_mutex);
+            auto lock = LockGuard(cast(Mutex)_mutex);
 
             if (_viewIsFiltered)
             {
@@ -375,7 +378,7 @@ struct DltIndex
 
     void enableMainViewFilter(bool enable)
     {
-        synchronized (_mutex)
+        synchronized (cast(Mutex)_mutex)
         {
             _viewIsFiltered = enable;
         }
@@ -383,7 +386,7 @@ struct DltIndex
 
     bool isMainViewFilterEnabled() const
     {
-        synchronized (_mutex)
+        synchronized (cast(Mutex)_mutex)
         {
             return _viewIsFiltered;
         }
@@ -393,7 +396,7 @@ struct DltIndex
 
     size_t searchViewItemsCount() nothrow @nogc
     {
-        auto lock = LockGuard(_mutex);
+        auto lock = LockGuard(cast(Mutex)_mutex);
         return _searchIndex.length;
     }
 
@@ -403,7 +406,7 @@ struct DltIndex
         uint32_t globalIndex;
 
         {
-            auto lock = LockGuard(_mutex);
+            auto lock = LockGuard(cast(Mutex)_mutex);
             if (index >= _searchIndex.length)
                 return false;
 
