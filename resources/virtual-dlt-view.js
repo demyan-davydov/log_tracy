@@ -1,4 +1,5 @@
 console.log("Loading virtual-dlt-view.js...");
+import { VirtualList } from "virtual-select.js";
 import { VirtualSelect } from "virtual-select.js";
 
 // select with virtual data source
@@ -7,13 +8,20 @@ export class VirtualDltTBody extends VirtualSelect {
 
     this(props) {
         super.this(props);
+        super.selectedItems = new Set();
     }
 
+    // View index (position in the current table) - mandatory for Shift-selection and Arrows
     indexOf(item) {
-        return item.index;
+        return item[2]; // idx_viewIndex is 2
     }
 
-    // overridable
+    // Stable global record index - identifier for the logic (Set)
+    keyOf(item) {
+        return item[3]; // idx_absolute_index is 3
+    }
+
+
     /*renderItem(item, isCurrent, isSelected) {
         return <tr state-current={isCurrent} state-checked={isSelected}>
             <td>{item.index}</td>
@@ -30,22 +38,35 @@ export class VirtualDltTBody extends VirtualSelect {
     }*/
 
     renderItem(item, isCurrent, isSelected) {
-        //console.log("--- renderItem called for item:", item);
+        if (isCurrent || isSelected) {
+            console.log("--- renderItem called for item:", item[3], "isCurrent:", isCurrent, "isSelected:", isSelected);
+        }
+
+        //
+        const currentKey = this.currentItem ? this.indexOf(this.currentItem) : null;
+        isCurrent = currentKey !== null && this.indexOf(item) === currentKey;
+        const selectedKey = this.selectedItems ? this.indexOf(this.selectedItems) : null;
+        isSelected = selectedKey !== null && this.indexOf(item) === selectedKey;
+
+        if (isCurrent || isSelected) {
+            console.log("--- [2] renderItem called for item:", item[3], "isCurrent:", isCurrent, "isSelected:", isSelected);
+        }
 
         // Array layout from D backend asSciterArray(index, DocumentItem):
         const idx_anchor = 0;
         const idx_filterMask = 1;
-        const idx_index = 2;
-        const idx_timestamp_seconds = 3;
-        const idx_timestamp_microseconds = 4;
-        const idx_rel_timestamp_10000 = 5;
-        const idx_ecuId = 6;
-        const idx_appId = 7;
-        const idx_ctxId = 8;
-        const idx_level = 9;
-        const idx_type = 10;
-        const idx_messageId = 11;
-        const idx_payload = 12;
+        const idx_viewIndex = 2;
+        const idx_absolute_index = 3;
+        const idx_timestamp_seconds = 4;
+        const idx_timestamp_microseconds = 5;
+        const idx_rel_timestamp_10000 = 6;
+        const idx_ecuId = 7;
+        const idx_appId = 8;
+        const idx_ctxId = 9;
+        const idx_level = 10;
+        const idx_type = 11;
+        const idx_messageId = 12;
+        const idx_payload = 13;
 
         const timestamp = function (seconds, microseconds) {
             seconds = Number(seconds);
@@ -93,9 +114,9 @@ export class VirtualDltTBody extends VirtualSelect {
             }
         }(item[idx_type]);
 
-        return <tr state-current={isCurrent} state-checked={isSelected}>
+        return <tr current={isCurrent} checked={isSelected}>
             <td has-anchor={item[idx_anchor]}></td>
-            <td>{item[idx_index]}</td>
+            <td>{item[idx_absolute_index]}</td>
             <td>{timestamp}</td>
             <td>{relTimestamp}</td>
             <td>{item[idx_ecuId]}</td>
@@ -117,7 +138,6 @@ export class VirtualDltTBody extends VirtualSelect {
 export class VirtualMainViewTBody extends VirtualDltTBody {
     this(props) {
         super.this(props);
-        console.log("VirtualMainViewTBody constructor");
     }
 
     itemAt(at) {
@@ -133,7 +153,6 @@ export class VirtualMainViewTBody extends VirtualDltTBody {
 export class VirtualSearchViewTBody extends VirtualDltTBody {
     this(props) {
         super.this(props);
-        console.log("VirtualSearchViewTBody constructor");
     }
 
     itemAt(at) {

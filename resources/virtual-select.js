@@ -21,8 +21,16 @@ export class VirtualList extends Element {
         return 0;
     }
 
+    // Returns the position of the item in the current view (linear index).
+    // Necessary for keyboard navigation and range selection (Shift).
     indexOf(item) { // virtual function, must be overriden
         return -1;
+    }
+
+    // Returns a stable unique identifier for the item.
+    // Used for tracking selection across data reloads or scrolling.
+    keyOf(item) { // virtual function, can be overriden
+        return item;
     }
 
     render() {

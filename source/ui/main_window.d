@@ -604,6 +604,7 @@ SciterValue asSciterArray(int index, ref const(DocumentItem) item)
     SciterValue array = SciterValue.makeArray(
         item.anchored, //
         item.filterMask, //
+        index,
         item.realIndex, //
         item.timestampSeconds, //
         item.timestampMicroseconds, //
