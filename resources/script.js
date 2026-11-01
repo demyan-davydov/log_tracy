@@ -22,6 +22,16 @@ function stopScroll(element) {
     element.scrollTo({ top: currentScroll, behavior: "instant" });
 }
 
+// Save UI state while the window and DOM are still fully alive.
+// Must not be done from native BEHAVIOR_DETACH: calling scripts during view teardown crashes Sciter.
+Window.this.on("closerequest", () => {
+    try {
+        Window.this.xcall("saveAppState", getAppState());
+    } catch (e) {
+        console.error("saveAppState failed:", e);
+    }
+});
+
 Window.this.on("close", (evt) => {
     console.log("Closing Window...");
 

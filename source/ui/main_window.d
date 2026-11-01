@@ -73,8 +73,11 @@ class MainWindow : SciterWindow
 
     override void handleDetached(HELEMENT he)
     {
+        // NOTE: do NOT call scripts here. BEHAVIOR_DETACH arrives while Sciter is
+        // tearing the view down (view::stop -> detach_all_behaviors); a SciterCall
+        // at this point touches already-detached handlers and crashes.
+        // Settings are saved from JS on "closerequest" via xcall("saveAppState").
         writeln("handleDetached");
-        saveSettings();
     }
 
     override bool handleEvent(HELEMENT he, BEHAVIOR_EVENT_PARAMS* params)
@@ -183,6 +186,20 @@ class MainWindow : SciterWindow
                 return result.toUTF8().idup;
             };
 
+            if (method == "saveAppState")
+            {
+                const json = getParamString(0);
+                writeln("saveAppState request: ", json);
+                try
+                {
+                    ui.app_settings.saveSettings(applyUiState(_settings, json));
+                }
+                catch (Exception e)
+                {
+                    writeln("Failed to save settings: ", e.msg);
+                }
+                return true;
+            }
             if (method == "getMainViewCount")
             {
                 const int count = cast(int) _workspace.current.mainView.itemsCount();
@@ -462,12 +479,16 @@ class MainWindow : SciterWindow
 
     AppSettings fetchSettingsFromUi() const
     {
-        AppSettings settings = _settings;
-
         const auto appState = callScript("getAppState");
         const auto json = appState.to!(const(wchar)[])().toUTF8();
         writeln("Fetching settings from UI, json: ", json);
+        return applyUiState(_settings, json);
+    }
 
+    /// Merges UI state JSON (produced by JS getAppState()) into a copy of settings.
+    static AppSettings applyUiState(const AppSettings base, const(char)[] json)
+    {
+        AppSettings settings = base;
         try
         {
             auto j = parseJSON(json);
