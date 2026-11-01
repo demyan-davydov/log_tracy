@@ -49,7 +49,10 @@ class MainWindow : SciterWindow
         import sciter.def;
 
         enum uint creationFlags =
-            SCITER_CREATE_WINDOW_FLAGS.SW_MAIN;
+            SCITER_CREATE_WINDOW_FLAGS.SW_MAIN
+            | SCITER_CREATE_WINDOW_FLAGS.SW_TITLEBAR
+            | SCITER_CREATE_WINDOW_FLAGS.SW_RESIZEABLE
+            | SCITER_CREATE_WINDOW_FLAGS.SW_CONTROLS;
 
         RECT frame;
         frame.left = settings.windowRect.left;
@@ -63,17 +66,15 @@ class MainWindow : SciterWindow
         _api.SciterSetOption(hwnd, SCITER_RT_OPTIONS.SCITER_EXTENDED_TOUCHPAD_SUPPORT, 0);
     }
 
-    override bool handleEvent(HELEMENT he, INITIALIZATION_PARAMS* params)
+    override void handleAttached(HELEMENT he)
     {
-        if (params.cmd == INITIALIZATION_EVENTS.BEHAVIOR_DETACH)
-        {
-            writeln("BEHAVIOR_DETACH");
-            saveSettings();
-            //detachEventHandler();
-            return true;
-        }
+        writeln("handleAttached");
+    }
 
-        return false;
+    override void handleDetached(HELEMENT he)
+    {
+        writeln("handleDetached");
+        saveSettings();
     }
 
     override bool handleEvent(HELEMENT he, BEHAVIOR_EVENT_PARAMS* params)
@@ -538,6 +539,7 @@ class MainWindow : SciterWindow
     // should be called in main() in sciterApplication().runIteration() cycle
     void onIdle()
     {
+        fixMacTitlebarBackground();
         processCurrentDocumentState();
     }
 

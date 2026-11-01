@@ -137,6 +137,7 @@ int main()
 		if (resources.length > 0)
 		{
 			win.loadFile(resources);
+			win.fixMacTitlebarBackground();
 		}
 		else
 		{

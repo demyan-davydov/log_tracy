@@ -114,7 +114,7 @@ export class VirtualDltTBody extends VirtualSelect {
             }
         }(item[idx_type]);
 
-        return <tr current={isCurrent} checked={isSelected}>
+        return <tr state-current={isCurrent} state-checked={isSelected}>
             <td has-anchor={item[idx_anchor]}></td>
             <td>{item[idx_absolute_index]}</td>
             <td>{timestamp}</td>

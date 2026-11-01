@@ -187,23 +187,23 @@
 }
 
 /* Selection styles */
-.log-table>tbody>tr[current="true"] {
+.log-table>tbody>tr[state-current="true"] {
     background-color: color(highlight-nf);
     color: color(highlight-text);
     font-weight: bold;
 }
 
-.log-table>tbody:focus>tr[current="true"] {
+.log-table>tbody:focus>tr[state-current="true"] {
     background-color: color(highlight-focus);
     color: color(highlight-text);
 }
 
-.log-table>tbody>tr[checked="true"] {
+.log-table>tbody>tr[state-checked="true"] {
     background-color: color(highlight-nf);
     color: color(highlight-text);
 }
 
-.log-table>tbody:focus>tr[checked="true"] {
+.log-table>tbody:focus>tr[state-checked="true"] {
     background-color: color(highlight-focus);
     color: color(highlight-text);
 }

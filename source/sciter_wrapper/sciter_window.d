@@ -24,6 +24,13 @@ import std.utf : toUTF16z, toUTFz;
     return toStringz(s);
 }*/
 
+version (OSX)
+{
+    private extern (C) void* objc_getClass(const(char)* name);
+    private extern (C) void* sel_registerName(const(char)* name);
+    private extern (C) void* objc_msgSend(void* self, void* op, ...);
+}
+
 class SciterWindow : SciterEventHandler
 {
     private HWINDOW _hwnd;
@@ -70,6 +77,13 @@ class SciterWindow : SciterEventHandler
     final HWINDOW hwnd()
     {
         return _hwnd;
+    }
+
+    final HINSTANCE getResourceInstance()
+    {
+        import sciter_wrapper.sciter_application : sciterApplication;
+
+        return sciterApplication().hinstance();
     }
 
     final void loadFile(string path)
@@ -141,6 +155,44 @@ class SciterWindow : SciterEventHandler
     final void close()
     {
         setState(SCITER_WINDOW_STATE.SCITER_WINDOW_STATE_CLOSED, 1);
+    }
+
+    /**
+     * macOS workaround for Sciter 6.0.5.x: the engine creates the NSWindow as
+     * non-opaque with a clear backgroundColor (new "window material" system).
+     * On recent macOS the standard titlebar draws the window background, so it
+     * becomes see-through and only the traffic-light buttons remain visible.
+     * Restore an opaque window with the system window background color.
+     * Cheap when nothing changed (single isOpaque check), so it is called from
+     * the idle loop: Sciter re-applies the clear background after the first show.
+     */
+    final void fixMacTitlebarBackground()
+    {
+        version (OSX)
+        {
+            alias Msg0 = extern (C) void* function(void*, void*);
+            alias MsgPtr = extern (C) void* function(void*, void*, void*);
+            alias MsgBool = extern (C) void function(void*, void*, byte);
+            alias MsgIsKind = extern (C) byte function(void*, void*, void*);
+
+            void* w = _hwnd;
+            if (!w)
+                return;
+            // HWINDOW may be an NSWindow* or an NSView* depending on Sciter version
+            if (!(cast(MsgIsKind)&objc_msgSend)(w, sel_registerName("isKindOfClass:"), objc_getClass("NSWindow")))
+                w = (cast(Msg0)&objc_msgSend)(w, sel_registerName("window"));
+            if (!w)
+                return;
+
+            // Sciter resets the window to non-opaque on first show; re-apply only when needed
+            alias MsgGetBool = extern (C) byte function(void*, void*);
+            if ((cast(MsgGetBool)&objc_msgSend)(w, sel_registerName("isOpaque")))
+                return;
+
+            auto bg = (cast(Msg0)&objc_msgSend)(objc_getClass("NSColor"), sel_registerName("windowBackgroundColor"));
+            (cast(MsgPtr)&objc_msgSend)(w, sel_registerName("setBackgroundColor:"), bg);
+            (cast(MsgBool)&objc_msgSend)(w, sel_registerName("setOpaque:"), 1);
+        }
     }
 
     final void activate(bool bringToFront = false)

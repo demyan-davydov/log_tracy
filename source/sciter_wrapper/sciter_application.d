@@ -28,7 +28,7 @@ private struct SciterApplication
         return _argv;
     }
 
-    auto hinstance() const nothrow @nogc @property
+    auto hinstance() nothrow @nogc @property
     {
         return _hinstance;
     }

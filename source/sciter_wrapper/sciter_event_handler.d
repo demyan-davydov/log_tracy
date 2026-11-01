@@ -63,7 +63,16 @@ class SciterEventHandler
             }
         case EVENT_GROUPS.HANDLE_INITIALIZATION:
             {
-                res = self.handleEvent(he, cast(INITIALIZATION_PARAMS*) prms);
+                auto params = cast(INITIALIZATION_PARAMS*) prms;
+                if (params.cmd == INITIALIZATION_EVENTS.BEHAVIOR_DETACH)
+                {
+                    self.handleDetached(he);
+                }
+                else if (params.cmd == INITIALIZATION_EVENTS.BEHAVIOR_ATTACH)
+                {
+                    self.handleAttached(he);
+                }
+                res = false;
                 break;
             }
         case EVENT_GROUPS.HANDLE_SOM:
@@ -126,6 +135,16 @@ class SciterEventHandler
                 res = self.handleEvent(he, cast(EXCHANGE_PARAMS*) prms);
                 break;
             }
+        case EVENT_GROUPS.HANDLE_ATTRIBUTE_CHANGE:
+            {
+                res = self.handleEvent(he, cast(ATTRIBUTE_CHANGE_PARAMS*) prms);
+                break;
+            }
+        case EVENT_GROUPS.HANDLE_STYLE_CHANGE:
+            {
+                res = self.handleEventStyleChange(he, cast(uint) prms);
+                break;
+            }
 
         default:
             break;
@@ -136,6 +155,14 @@ class SciterEventHandler
 
     // to override
 
+    protected void handleDetached(HELEMENT he)
+    {
+    }
+
+    protected void handleAttached(HELEMENT he)
+    {
+    }
+
     protected bool handleSubscription(HELEMENT he, UINT* event_groups)
     {
         // Subscribe to all events except HANDLE_EXCHANGE and HANDLE_GESTURE
@@ -144,11 +171,6 @@ class SciterEventHandler
             ~EVENT_GROUPS.HANDLE_EXCHANGE &
             ~EVENT_GROUPS.HANDLE_GESTURE;
         return true;
-    }
-
-    protected bool handleEvent(HELEMENT he, INITIALIZATION_PARAMS* params)
-    {
-        return false;
     }
 
     protected bool handleEvent(HELEMENT he, SOM_PARAMS* params)
@@ -203,6 +225,16 @@ class SciterEventHandler
     }
 
     protected bool handleEvent(HELEMENT he, EXCHANGE_PARAMS* params)
+    {
+        return false;
+    }
+
+    protected bool handleEvent(HELEMENT he, ATTRIBUTE_CHANGE_PARAMS* params)
+    {
+        return false;
+    }
+
+    protected bool handleEventStyleChange(HELEMENT he, uint style_change_kind) // HANDLE_STYLE_CHANGE
     {
         return false;
     }
