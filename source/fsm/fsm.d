@@ -85,15 +85,18 @@ public:
         m_started = false;
     }
 
-    bool isIn(TState)() const
+    /// Только для unittest'ов этого модуля: внешний код не должен зависеть
+    /// от того, какое состояние текущее, — он видит лишь выход автомата.
+    private bool isIn(TState)() const
     {
         enum id = staticIndexOf!(TState, TStates);
         static assert(id >= 0, TState.stringof ~ " is not a state of this Fsm");
         return m_currentStateId == id;
     }
 
-    /// Доступ к экземпляру состояния (например, для чтения его полей).
-    ref inout(TState) state(TState)() inout return
+    /// Только для unittest'ов этого модуля: чтение полей состояния.
+    /// Ссылка константная — состояния меняются только обработчиками событий.
+    private ref const(TState) state(TState)() const return
     {
         enum id = staticIndexOf!(TState, TStates);
         static assert(id >= 0, TState.stringof ~ " is not a state of this Fsm");
@@ -266,4 +269,5 @@ unittest
 
     static assert(!__traits(compiles, fsm.process(42)));      // никто не обрабатывает int
     static assert(!__traits(compiles, fsm.isIn!Context));     // не состояние
+    static assert(!__traits(compiles, fsm.state!Focused.keys = 0)); // состояние только для чтения
 }
