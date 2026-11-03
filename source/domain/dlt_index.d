@@ -273,6 +273,7 @@ struct DltIndex
 
         synchronized (cast(Mutex)_mutex)
         {
+            _viewIsFiltered = true; // the main view shows the filter index from now on
             _filterIndex.clear();
             _searchIndex.clear();
             _filterIndex.isReady = false;
@@ -431,12 +432,10 @@ struct DltIndex
 
             if (_viewIsFiltered)
             {
-                index = cast(size_t) _filterIndex[index];
-
-                const size_t count = _filterIndex.length;
-
-                if (index >= count)
+                if (index >= _filterIndex.length)
                     return false;
+
+                index = cast(size_t) _filterIndex[index]; // position in the view -> message index
             }
             else
             {

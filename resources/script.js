@@ -397,8 +397,8 @@ function applyFilters() {
         ctxId: $("#filter-ctx").value,
         payloadRegex: $("#filter-payload").value
     };
+    // The table reloads when the filter operation reports completion
     Window.this.xcall("applyFilter", JSON.stringify(config));
-    reloadLogTable();
 }
 
 // View status of every open document, kept up to date by onDocumentEvent for

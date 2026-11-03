@@ -606,3 +606,38 @@ unittest
     assert(!doc.mainView.isFilterEnabled, "reset filter shows the unfiltered view");
     assert(doc.mainView.itemsCount == messageCount, "all messages are visible");
 }
+
+@("DltDocument: applyViewFilter filters the main view")
+unittest
+{
+    import dlt_core.dlt_log_filter : quickFilter;
+    import std.file : remove;
+
+    enum messageCount = 2000;
+    auto path = writeTestDlt("dlt_document_view_filter.dlt", messageCount);
+    scope (exit)
+        remove(path);
+
+    auto doc = new DltDocument(path);
+    size_t finished;
+    doc.events.subscribe((const OperationFinished e) { ++finished; });
+    dispatchUntil(doc, () => finished == 1);
+
+    DocumentItem item;
+
+    doc.applyViewFilter(quickFilter!wchar("ECU2", "", "", ""));
+    dispatchUntil(doc, () => finished == 2);
+    assert(doc.mainView.ready && doc.mainView.isFilterEnabled, "a built filter is applied to the view");
+    assert(doc.mainView.itemsCount == 0, "no message has ECU2");
+    assert(!doc.mainView.fetchItem(0, item));
+
+    doc.applyViewFilter(quickFilter!wchar("ECU1", "", "", ""));
+    dispatchUntil(doc, () => finished == 3);
+    assert(doc.mainView.itemsCount == messageCount, "every message has ECU1");
+    assert(doc.mainView.fetchItem(messageCount - 1, item) && item.realIndex == messageCount - 1);
+    assert(!doc.mainView.fetchItem(messageCount, item), "position past the filtered view");
+
+    doc.mainView.resetFilter();
+    dispatchUntil(doc, () => finished == 4);
+    assert(!doc.mainView.isFilterEnabled && doc.mainView.itemsCount == messageCount);
+}

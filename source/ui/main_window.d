@@ -15,7 +15,7 @@ import dlt_core.search;
 import dlt_core.fibex;
 import dlt_core.dlt_filter_serialization;
 import dlt_core.dlt_filter_record;
-import dlt_core.dlt_log_filter : DltLogFilter;
+import dlt_core.dlt_log_filter : DltLogFilter, quickFilter;
 import domain.search_filter : SearchFilter;
 import dlt_core.log_filter : LogFilter;
 import dlt_core.log_item : LogItem;
@@ -446,18 +446,23 @@ class MainWindow : SciterWindow
         }
     }
 
+    /// Applies the quick filter of the main view:
+    /// {"ecuId", "appId", "ctxId", "payloadRegex"}, all fields empty resets it.
     private void onApplyFilter(string json)
     {
         try
         {
-            // @todo: implementation
-            return;
+            auto j = parseJSON(json);
+            string field(string key)
+            {
+                auto p = key in j;
+                return p && p.type == JSONType.string ? p.str : "";
+            }
 
-            //auto j = parseJSON(json);
-            //DlfLogFilter c = new DlfLogFilter();
-            //c.load(json);
-
-            //_workspace.current.applyFilter(c);
+            auto filter = quickFilter!wchar(field("ecuId"), field("appId"), field("ctxId"),
+                field("payloadRegex"));
+            writeln("Applying view filter: ", filter is null ? "none" : json);
+            _workspace.current.applyViewFilter(filter); // null resets the filter
         }
         catch (Exception e)
         {
