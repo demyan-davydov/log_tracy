@@ -1,11 +1,9 @@
 import { $, $$ } from "@sciter";
 import { VirtualDltTBody, VirtualMainViewTBody, VirtualSearchViewTBody } from "virtual-dlt-view.js";
-import { QueryBuilder } from "query-builder.js";
 
 globalThis.VirtualDltTBody = VirtualDltTBody;
 globalThis.VirtualMainViewTBody = VirtualMainViewTBody;
 globalThis.VirtualSearchViewTBody = VirtualSearchViewTBody;
-globalThis.QueryBuilder = QueryBuilder;
 
 let currentTheme = "light";
 // Main view state rendered last time: the table is reloaded when the active
@@ -16,7 +14,7 @@ let lastDocId = null;
 document.on("ready", function () {
     console.log("Starting DLT Explorer UI...");
     initApp();
-    initQueryBuilder();
+    initSearch();
 
     console.log(Window.this.frameType, Window.this.blurBehind)
 });
@@ -68,68 +66,28 @@ function initApp() {
     refreshTabs();
 }
 
-function initQueryBuilder() {
-    const builder = new QueryBuilder();
-    builder.initMRU(5); // Хранить 5 последних
-    $("#query-builder").append(builder);
+// Search panel: a text or regex query over the payload of the active document.
+// The search runs on Enter or the Search button, and again when a mode switch
+// changes, so the result always matches what the controls show.
+function initSearch() {
+    const runSearch = () => {
+        const query = $("#search-input").value || "";
+        const isRegex = $("#search-regex").state.checked;
+        const ignoreCase = $("#search-ignore-case").state.checked;
+        // Returns an error message (e.g. an invalid regex) or "" when started
+        const error = Window.this.xcall("startSearch", query, isRegex, ignoreCase);
+        $("#search-message").innerText = error ? `Search error: ${error}` : "";
+    };
 
-    // Listen for search event from query builder
-    // Using document.on because builder element (the reactor component) 
-    // might be replaced/re-rendered, causing "Element was deleted" if bound directly.
-    document.on("search", "#query-builder", (evt) => {
-        console.log("query-builder.js: search event detected via document");
-        const regexStr = evt.detail ? evt.detail.regex : builder.getCurrentRegex();
-        console.log("query-builder.js: searching for: ", regexStr);
-        Window.this.xcall("startSearch", regexStr);
-        updateHistoryUI();
-        $("#result-output").innerText = "Search started: /" + regexStr + "/";
-    });
-    document.on("click", "#btn-get-regex", () => {
-        const regexStr = builder.getCurrentRegex();
-        $("#result-output").innerText = "/" + regexStr + "/";
-
-        // Можно сразу проверить валидность
-        try {
-            new RegExp(regexStr);
-        } catch (e) {
-            $("#result-output").innerText += "\n[Error]: Invalid Regex Logic!";
+    document.on("keydown", "#search-input", (evt) => {
+        if (evt.code === "Enter") {
+            runSearch();
+            return true;
         }
     });
-
-    // 2. Сохранение в MRU (обычно происходит при нажатии Enter или кнопки Поиск)
-    function updateHistoryUI() {
-        const selectMru = $("#select-mru");
-        selectMru.innerHTML = ""; // Очистка
-        let elOption = document.createElement("option");
-        elOption.text = "History...";
-        selectMru.append(elOption);
-
-        const list = builder.getMRUList();
-        list.forEach((json, index) => {
-            // Генерируем краткое описание для UI (обрезаем JSON для красоты)
-            // В идеале: распарсить JSON и сделать human-readable строку "Error & (500 | 404)"
-            let label = `Query #${index + 1}`;
-            let elOption = document.createElement("option");
-            elOption.text = label;
-            elOption.value = json;
-            selectMru.append(elOption);
-        });
-    }
-
-    document.on("click", "#btn-save-mru", () => {
-        builder.saveCurrentToMRU();
-        updateHistoryUI();
-        $("#result-output").innerText = "Saved to History";
-    });
-
-    // 3. Загрузка из MRU
-    document.on("change", "#select-mru", (evt, select) => {
-        const json = select.value;
-        if (json) {
-            builder.loadCurrentFromJson(json);
-            // Сбрасываем селект обратно в дефолт
-            select.value = "";
-        }
+    document.on("click", "#btn-search", runSearch);
+    document.on("change", "#search-regex, #search-ignore-case", () => {
+        if ($("#search-input").value) runSearch();
     });
 }
 

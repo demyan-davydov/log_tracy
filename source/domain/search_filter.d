@@ -3,26 +3,23 @@ module domain.search_filter;
 import dlt_core.log_filter;
 import dlt_core.decoded_message;
 
+import std.regex : Regex, regex, matchFirst;
 import std.typecons : Nullable;
 
+//! Search over the message payload. A message matches if any rule matches.
 final class SearchFilter : LogFilter!wchar
 {
-    private enum CompareType
+    private static struct Rule
     {
-        CaseSensetive,
-        CaseInsensetive,
-        Regex,
-    }
-
-    private static struct Record
-    {
-        const(wchar)[] pattern;
-        CompareType compareType;
+        const(wchar)[] text; // plain text rule
+        Regex!wchar regex; // regex rule, compiled once when the rule is added
+        bool isRegex;
+        bool caseInsensitive;
     }
 
     alias Message = DecodedMessage!wchar;
 
-    private Record[] _rules;
+    private Rule[] _rules;
 
     this()
     {
@@ -30,68 +27,67 @@ final class SearchFilter : LogFilter!wchar
 
     this(const typeof(this) other) pure
     {
-        _rules = other._rules.dup();
+        import std.algorithm : map;
+        import std.array : array;
+
+        // Regex is not const-copyable: copy rule by rule
+        _rules = other._rules.map!(r => cast(Rule) r).array;
     }
 
-    private static bool matches(scope ref const(Record) record, scope ref const(Message) msg)
+    //! @brief Builds the filter for a search query typed by the user.
+    //! @param query - text to find in the payload, or a regular expression
+    //! @param isRegex - treat `query` as a regular expression
+    //! @param caseInsensitive - ignore letter case (both for text and regex)
+    //! @return null for an empty query, which means "no search"
+    //! @throws RegexException if `query` is not a valid regular expression
+    static SearchFilter fromQuery(const(char)[] query, bool isRegex, bool caseInsensitive)
     {
-        import std.regex;
-        import std.algorithm : canFind;
-        import std.string : CaseSensitive, indexOf;
+        if (query.length == 0)
+            return null;
 
-        final switch (record.compareType)
-        {
-        case SearchFilter.CompareType.CaseSensetive:
-            return msg.payloadText.indexOf(record.pattern, CaseSensitive.yes) != -1;
-        case SearchFilter.CompareType.CaseInsensetive:
-            return msg.payloadText.indexOf(record.pattern, CaseSensitive.no) != -1;
-        case SearchFilter.CompareType.Regex:
-            return !matchFirst(msg.payloadText, record.pattern).empty;
-        }
-
-        return false;
+        auto filter = new SearchFilter();
+        if (isRegex)
+            filter.addRegex(query, caseInsensitive);
+        else
+            filter.addText(query, caseInsensitive);
+        return filter;
     }
 
-    private void addRule(const(wchar)[] pattern, const CompareType ct)
-    {
-        _rules ~= Record(pattern, ct);
-    }
-
-    private void addRule(const(char)[] patternUtf8, const CompareType ct)
+    //! @brief Adds a rule matching payloads that contain `text`.
+    void addText(const(char)[] textUtf8, bool caseInsensitive)
     {
         import std.utf : toUTF16;
 
-        addRule(patternUtf8.toUTF16(), ct);
+        Rule rule;
+        rule.text = textUtf8.toUTF16();
+        rule.caseInsensitive = caseInsensitive;
+        _rules ~= rule;
     }
 
-    void addRegex(const(wchar)[] pattern)
+    //! @brief Adds a rule matching payloads with a match of `patternUtf8`.
+    //! The pattern is compiled here, on the calling thread, so an invalid one
+    //! is reported right away instead of failing the background search.
+    //! @throws RegexException if the pattern is invalid
+    void addRegex(const(char)[] patternUtf8, bool caseInsensitive)
     {
-        addRule(pattern, CompareType.Regex);
+        import std.utf : toUTF16;
+
+        Rule rule;
+        rule.regex = regex(patternUtf8.toUTF16(), caseInsensitive ? "i" : "");
+        rule.isRegex = true;
+        rule.caseInsensitive = caseInsensitive;
+        _rules ~= rule;
     }
 
-    void addRegex(const(char)[] patternUtf8)
+    private static bool matches(scope ref const(Rule) rule, scope ref const(Message) msg)
     {
-        addRule(patternUtf8, CompareType.Regex);
-    }
+        import std.string : CaseSensitive, indexOf;
 
-    void addCaseInsensetive(const(wchar)[] pattern)
-    {
-        addRule(pattern, CompareType.CaseInsensetive);
-    }
+        if (rule.isRegex)
+            return !matchFirst(msg.payloadText, rule.regex).empty;
 
-    void addCaseInsensetive(const(char)[] patternUtf8)
-    {
-        addRule(patternUtf8, CompareType.CaseInsensetive);
-    }
-
-    void addCaseSensetive(const(wchar)[] pattern)
-    {
-        addRule(pattern, CompareType.CaseSensetive);
-    }
-
-    void addCaseSensetive(const(char)[] patternUtf8)
-    {
-        addRule(patternUtf8, CompareType.CaseSensetive);
+        const cs = rule.caseInsensitive ? CaseSensitive.no : CaseSensitive.yes;
+        return msg.payloadText.indexOf(rule.text, cs) != -1;
     }
 
     // implement LogFilter
@@ -121,4 +117,68 @@ final class SearchFilter : LogFilter!wchar
     {
         return new SearchFilter(this);
     }
+}
+
+version (unittest)
+{
+    private DecodedMessage!wchar messageWithPayload(string payload)
+    {
+        DecodedMessage!wchar msg;
+        auto builder = msg.setupPayload("ECU1", "APP1", "CTX1");
+        builder.appendAscii(payload);
+        builder.storePayload();
+        return msg;
+    }
+}
+
+@("SearchFilter: an empty query means no search")
+unittest
+{
+    assert(SearchFilter.fromQuery("", false, false) is null);
+    assert(SearchFilter.fromQuery("", true, true) is null);
+}
+
+@("SearchFilter: text search, with and without case")
+unittest
+{
+    auto msg = messageWithPayload("Connection Timeout after 30s");
+
+    assert(SearchFilter.fromQuery("Timeout", false, false).matches(msg));
+    assert(!SearchFilter.fromQuery("timeout", false, false).matches(msg), "case-sensitive by default");
+    assert(SearchFilter.fromQuery("timeout", false, true).matches(msg));
+    assert(!SearchFilter.fromQuery("refused", false, true).matches(msg));
+
+    // Regex metacharacters are plain text in a text search
+    assert(!SearchFilter.fromQuery("Time.*", false, false).matches(msg));
+    assert(SearchFilter.fromQuery("30s", false, false).matches(msg));
+}
+
+@("SearchFilter: regex search, with and without case")
+unittest
+{
+    auto msg = messageWithPayload("Connection Timeout after 30s");
+
+    assert(SearchFilter.fromQuery(`Time\w+ after \d+s`, true, false).matches(msg));
+    assert(!SearchFilter.fromQuery(`^Timeout`, true, false).matches(msg), "anchors work");
+    assert(!SearchFilter.fromQuery(`timeout`, true, false).matches(msg), "case-sensitive by default");
+    assert(SearchFilter.fromQuery(`timeout`, true, true).matches(msg));
+    assert(SearchFilter.fromQuery(`refused|timeout`, true, true).matches(msg));
+}
+
+@("SearchFilter: an invalid regex is reported when the filter is built")
+unittest
+{
+    import std.exception : assertThrown;
+    import std.regex : RegexException;
+
+    assertThrown!RegexException(SearchFilter.fromQuery("(unclosed", true, false));
+    assert(SearchFilter.fromQuery("(unclosed", false, false) !is null, "fine as plain text");
+}
+
+@("SearchFilter: dup keeps the rules")
+unittest
+{
+    auto msg = messageWithPayload("disk error");
+    const filter = SearchFilter.fromQuery("ERROR", true, true);
+    assert(filter.dup().matches(msg));
 }

@@ -6,11 +6,9 @@
     <style src="style.css" />
     <style src="table.css" />
     <style src="tab-content.css" />
-    <style src="query-builder.css" />
     <style src="menu-bar.css" />
     <script type="module" src="script.js" />
     <script type="module" src="virtual-dlt-view.js" />
-    <script type="module" src="query-builder.js" />
 </head>
 
 <body>
@@ -57,8 +55,6 @@
             <button id="btn-open">Open File</button>
             <button id="btn-fibex">Load FIBEX</button>
             <button id="btn-dlf">Load Filter</button>
-            <htmlarea multiline="false" id="search-bar" class="filter-input" placeholder="Search logs..."></htmlarea>
-            <plaintext type="text/html" class="filter-input" spaces-per-tab="2"></plaintext>
             <button id="btn-theme">Toggle Theme</button>
             <button id="btn-settings">Settings</button>
         </div>
@@ -126,22 +122,13 @@
             </section>
 
             <section id="search-results-panel">
-                <div>
-                    <div class="toolbar" style="flow: horizontal; border-spacing: 10px;">
-                        <widget id="query-builder"></widget>
-                        <div class="controls" style="margin-top: 10px; flow: horizontal; border-spacing: 10px;">
-                            <button id="btn-get-regex">Get Regex</button>
-                            <button id="btn-save-mru">Search & Save</button>
-
-                            <select id="select-mru">
-                                <option>History...</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div id="result-output"
-                        style="margin-top:10px; font-family: monospace; background:#eee; padding:5px;">
-                    </div>
+                <div class="toolbar search-toolbar">
+                    <input type="text" id="search-input" placeholder="Search in payload (Enter)" />
+                    <label><input type="checkbox" id="search-regex" /> Regex</label>
+                    <label><input type="checkbox" id="search-ignore-case" /> Ignore case</label>
+                    <button id="btn-search">Search</button>
                 </div>
+                <div id="search-message"></div>
 
                 <header>Details / Search Results</header>
                 <div id="search-loading-container" class="loading-container" style="display:none;">

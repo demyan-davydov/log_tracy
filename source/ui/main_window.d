@@ -214,6 +214,15 @@ class MainWindow : SciterWindow
                 }
                 return result;
             };
+            auto getParamBool = (int index, bool defaultValue = false) {
+                bool result = defaultValue;
+                if (index < params.argc)
+                {
+                    SciterValueConstView valueView = SciterValueConstView(&params.argv[index]);
+                    valueView.tryGet(result);
+                }
+                return result;
+            };
             auto getParamString = (int index, string defaultValue = string.init) {
                 const(wchar)[] result = defaultValue.toUTF16();
                 if (index < params.argc)
@@ -357,9 +366,11 @@ class MainWindow : SciterWindow
             }
             if (method == "startSearch")
             {
-                string regex = getParamString(0);
-                writeln("startSearch request: ", regex);
-                onStartSearch(regex);
+                // startSearch(query, isRegex, caseInsensitive) -> error message, "" on success
+                const query = getParamString(0);
+                const isRegex = getParamBool(1);
+                const caseInsensitive = getParamBool(2);
+                resultView = onStartSearch(query, isRegex, caseInsensitive).toUTF16();
                 return true;
             }
             if (method == "switchTab")
@@ -470,21 +481,22 @@ class MainWindow : SciterWindow
         }
     }
 
-    private void onStartSearch(string regexStr)
+    /// Starts the search in the active document; an empty query clears it.
+    /// Returns: an error message for the UI, or "" if the search was started
+    private string onStartSearch(string query, bool isRegex, bool caseInsensitive)
     {
+        writeln("startSearch request: '", query, "' regex: ", isRegex, " ignore case: ", caseInsensitive);
         try
         {
-            writeln("Starting search with regex: ", regexStr);
-            auto filter = new SearchFilter();
-            //filter.addRegex(regexStr);
-            filter.addCaseInsensetive("THEW"); // for test
-            filter.addCaseSensetive("encryptPayload"); // for test
-
-            _workspace.current.applySearchFilter(filter);
+            // An invalid regex throws here, before any background work starts
+            auto filter = SearchFilter.fromQuery(query, isRegex, caseInsensitive);
+            _workspace.current.applySearchFilter(filter); // null clears the search
+            return "";
         }
         catch (Exception e)
         {
             writeln("Error starting search: ", e.msg);
+            return e.msg;
         }
     }
 
