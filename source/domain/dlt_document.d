@@ -169,9 +169,16 @@ class DltDocument : Document
         _anchors.importAnchors(anchors);
     }
 
-    void requestCancel()
+    override bool requestCancel()
     {
+        _pendingViewFilter = PendingRequest.init;
+        _pendingSearch = PendingRequest.init;
+
+        if (_running != Operation.BuildFilterIndex && _running != Operation.BuildSearchIndex)
+            return false;
+
         _index.cancelCurrentOperation();
+        return true;
     }
 
     /// Views
@@ -494,4 +501,63 @@ unittest
     assert(log.count("BuildSearchIndex started") == 2, "both searches must start");
     assert(log[$ - 1] == "BuildSearchIndex Completed");
     assert(doc.searchView.itemsCount == messageCount, "the result must be the latest search's");
+}
+
+@("DltDocument: requestCancel stops a running search")
+unittest
+{
+    import std.file : remove;
+
+    auto path = writeTestDlt("dlt_document_cancel.dlt", 200_000);
+    scope (exit)
+        remove(path);
+
+    auto doc = new DltDocument(path);
+    OperationFinished[] finished;
+    doc.events.subscribe((const OperationFinished e) { finished ~= e; });
+    dispatchUntil(doc, () => doc.mainView.ready);
+    finished = null;
+
+    doc.applySearchFilter(new ConstFilter(true));
+    assert(doc.requestCancel(), "a running search must be cancellable");
+
+    dispatchUntil(doc, () => finished.length > 0);
+
+    assert(finished.length == 1);
+    assert(finished[0].operation == Document.Operation.BuildSearchIndex);
+    assert(finished[0].result == OperationFinished.Result.Cancelled,
+        "search must stop at the next batch, not complete");
+    assert(doc.searchView.state == DocumentView.State.NotReady, "cancelled search leaves the view not ready");
+    assert(doc.mainView.ready, "main view is not affected");
+    assert(!doc.requestCancel(), "nothing left to cancel");
+}
+
+@("DltDocument: requestCancel drops pending requests but not the file load")
+unittest
+{
+    import std.file : remove;
+
+    enum messageCount = 2000;
+    auto path = writeTestDlt("dlt_document_cancel_pending.dlt", messageCount);
+    scope (exit)
+        remove(path);
+
+    auto doc = new DltDocument(path);
+    Document.Operation[] started;
+    OperationFinished[] finished;
+    doc.events.subscribe((const OperationStarted e) { started ~= e.operation; });
+    doc.events.subscribe((const OperationFinished e) { finished ~= e; });
+
+    doc.applySearchFilter(new ConstFilter(true)); // waits for BuildOffsetIndex
+    assert(!doc.requestCancel(), "loading the file is not cancellable");
+
+    dispatchUntil(doc, () => finished.length > 0);
+    // A pending search would start from the Finished handler; its Started
+    // is delivered by the next dispatch
+    doc.dispatchEvents();
+
+    assert(finished.length == 1 && finished[0].result == OperationFinished.Result.Completed,
+        "the load must complete");
+    assert(started == [Document.Operation.BuildOffsetIndex], "the pending search must be dropped");
+    assert(doc.mainView.ready && doc.mainView.itemsCount == messageCount);
 }

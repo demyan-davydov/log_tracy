@@ -348,6 +348,12 @@ class MainWindow : SciterWindow
                 resultView = JSONValue(docs).toString().toUTF16();
                 return true;
             }
+            if (method == "cancelOperation")
+            {
+                // Cancels the running filter/search of the active document
+                resultView = _workspace.current.requestCancel();
+                return true;
+            }
             if (method == "startSearch")
             {
                 string regex = getParamString(0);

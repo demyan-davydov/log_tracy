@@ -80,6 +80,12 @@ interface Document
     size_t[] exportAnchors() const pure;
 
     void importAnchors(const(size_t[]) anchors);
+
+    //! @brief Cancels the running filter or search and drops pending requests.
+    //! Loading the file (BuildOffsetIndex) is not cancelled.
+    //! The cancelled operation reports OperationFinished(Cancelled).
+    //! @return true if a running operation was asked to stop
+    bool requestCancel();
 }
 
 /// The view whose content an operation builds: search operations build the

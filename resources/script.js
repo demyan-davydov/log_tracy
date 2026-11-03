@@ -240,6 +240,10 @@ function setupEvents() {
 
     document.on("click", "#btn-settings", openSettingsAction);
 
+    document.on("click", "#btn-cancel-search", () => {
+        Window.this.xcall("cancelOperation");
+    });
+
     document.on("click", "#btn-fibex", () => {
         const fn = Window.this.selectFile({
             mode: "open",
@@ -499,12 +503,15 @@ function updateSearchViewMode() {
     const progress = Math.round(search.progress * 100);
 
     if (search.state !== "Ready") {
+        const building = search.state === "BuildingIndex";
         table.style.display = "none";
         loading.style.display = "flex";
         $("#search-view-progress").value = progress;
-        $("#search-view-status").innerText = search.state === "Error"
-            ? "Search failed"
-            : `Searching... ${progress}%`;
+        $("#search-view-status").innerText =
+            building ? `Searching... ${progress}%`
+            : search.state === "Error" ? "Search failed"
+            : "Search cancelled";
+        $("#btn-cancel-search").style.display = building ? "" : "none";
     } else {
         table.style.display = "block";
         loading.style.display = "none";

@@ -109,6 +109,11 @@ private class NullDocument : Document
     override void importAnchors(const(size_t[]) anchors)
     {
     }
+
+    override bool requestCancel()
+    {
+        return false;
+    }
 }
 
 __gshared NullDocumentView k_nullDocumentView = new NullDocumentView();
@@ -431,6 +436,11 @@ unittest
         void importAnchors(const(size_t[]) anchors)
         {
         }
+
+        bool requestCancel()
+        {
+            return false;
+        }
     }
 
     auto ws = new Workspace();
@@ -491,6 +501,7 @@ unittest
         bool setAnchor(size_t index, bool value) { return false; }
         size_t[] exportAnchors() const pure { return null; }
         void importAnchors(const(size_t[]) anchors) {}
+        bool requestCancel() { return false; }
     }
 
     auto ws = new Workspace();
@@ -544,6 +555,7 @@ unittest
         bool setAnchor(size_t index, bool value) { return false; }
         size_t[] exportAnchors() const pure { return null; }
         void importAnchors(const(size_t[]) anchors) {}
+        bool requestCancel() { return false; }
     }
 
     auto ws = new Workspace();
