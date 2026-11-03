@@ -122,11 +122,18 @@ class DltDocument : Document
     //! @brief Rebuilds the main view with `filter`. If an operation is running,
     //! the request waits for it; a running filter or search is cancelled
     //! first, since the new filter rebuilds both indexes anyway.
+    //! The search runs over the main view, so the running or completed search
+    //! is repeated after the filter. A search that was cancelled or failed is
+    //! not, and a newer search request waiting for its turn replaces it.
     override void applyViewFilter(LogFilter!wchar filter)
     {
         if (sourceLost)
             return;
         _pendingViewFilter = PendingRequest(filter, true);
+        const bool searchShown = _running == Operation.BuildSearchIndex
+            || _searchStatus.state == ViewStatus.State.Ready;
+        if (!_pendingSearch.requested && _searchFilter !is null && searchShown)
+            _pendingSearch = PendingRequest(_searchFilter, true);
         if (_running == Operation.BuildFilterIndex || _running == Operation.BuildSearchIndex)
             _index.cancelCurrentOperation();
         startPending();
@@ -719,15 +726,33 @@ version (unittest)
         return doc;
     }
 
-    /// Runs a filter/search request and waits for its completion
+    /// Runs a filter/search request and waits until the document is idle:
+    /// a filter may be followed by the search it repeats
     private void runAndWait(DltDocument doc, void delegate() request)
     {
-        bool done;
-        auto token = doc.events.subscribe((const OperationFinished e) { done = true; });
-        scope (exit)
-            doc.events.unsubscribe(token);
         request();
-        dispatchUntil(doc, () => done);
+        waitIdle(doc);
+    }
+
+    /// Waits until no operation runs or waits for its turn. The next request
+    /// starts from the Finished handler of the previous one, during the same
+    /// dispatch, so an idle slot after a dispatch means nothing is left.
+    private void waitIdle(DltDocument doc)
+    {
+        dispatchUntil(doc, () => doc._running == Document.Operation.None);
+    }
+
+    /// Operations started since recordStarted()
+    private final class StartedLog
+    {
+        Document.Operation[] operations;
+    }
+
+    private StartedLog recordStarted(DltDocument doc)
+    {
+        auto log = new StartedLog;
+        doc.events.subscribe((const OperationStarted e) { log.operations ~= e.operation; });
+        return log;
     }
 
     private size_t[] realIndexes(DocumentView view)
@@ -819,6 +844,97 @@ unittest
 
     assert(realIndexes(doc.mainView) == [8, 42]);
     assert(realIndexes(doc.searchView) == [8, 42], "the cleared search lists the anchors");
+}
+
+@("DltDocument: a new filter repeats the completed search over the filtered view")
+unittest
+{
+    import dlt_core.dlt_log_filter : quickFilter;
+    import std.file : remove;
+
+    enum messageCount = 2000;
+    string path;
+    auto doc = openLoaded("dlt_document_refilter_search.dlt", messageCount, path);
+    scope (exit)
+        remove(path);
+
+    runAndWait(doc, () => doc.applySearchFilter(new ConstFilter(true)));
+    assert(doc.searchView.itemsCount == messageCount);
+
+    auto started = recordStarted(doc);
+    runAndWait(doc, () => doc.applyViewFilter(quickFilter!wchar("ECU2", "", "", "")));
+    assert(started.operations == [Document.Operation.BuildFilterIndex, Document.Operation.BuildSearchIndex],
+        "the search must be repeated after the filter");
+    assert(doc.searchView.ready && doc.searchView.itemsCount == 0, "the search runs over the filtered view");
+
+    runAndWait(doc, () => doc.mainView.resetFilter());
+    assert(doc.searchView.ready && doc.searchView.itemsCount == messageCount,
+        "the search follows the reset of the filter as well");
+}
+
+@("DltDocument: a search running when the filter changes is repeated after the filter")
+unittest
+{
+    import std.algorithm : count;
+    import std.file : remove;
+
+    enum messageCount = 200_000;
+    string path;
+    auto doc = openLoaded("dlt_document_refilter_running.dlt", messageCount, path);
+    scope (exit)
+        remove(path);
+
+    auto started = recordStarted(doc);
+    doc.applySearchFilter(new ConstFilter(true)); // starts right away
+    runAndWait(doc, () => doc.mainView.resetFilter()); // cancels it
+
+    // Usually the first search is Cancelled; on a very fast run it completes
+    // first. Either way it is repeated after the filter.
+    assert(started.operations.count(Document.Operation.BuildSearchIndex) == 2, "the search must be repeated");
+    assert(started.operations[$ - 1] == Document.Operation.BuildSearchIndex);
+    assert(doc.searchView.ready && doc.searchView.itemsCount == messageCount);
+}
+
+@("DltDocument: a cancelled search is not repeated by a new filter")
+unittest
+{
+    import std.file : remove;
+
+    string path;
+    auto doc = openLoaded("dlt_document_refilter_cancelled.dlt", 200_000, path);
+    scope (exit)
+        remove(path);
+
+    doc.applySearchFilter(new ConstFilter(true));
+    assert(doc.requestCancel());
+    waitIdle(doc);
+    assert(doc.searchView.state == DocumentView.State.NotReady, "the search must be cancelled");
+
+    auto started = recordStarted(doc);
+    runAndWait(doc, () => doc.mainView.resetFilter());
+    assert(started.operations == [Document.Operation.BuildFilterIndex], "the user cancelled the search");
+}
+
+@("DltDocument: cancelling the filter drops the search it would repeat")
+unittest
+{
+    import dlt_core.dlt_log_filter : quickFilter;
+    import std.file : remove;
+
+    string path;
+    auto doc = openLoaded("dlt_document_refilter_cancel_filter.dlt", 200_000, path);
+    scope (exit)
+        remove(path);
+
+    runAndWait(doc, () => doc.applySearchFilter(new ConstFilter(false)));
+    assert(doc.searchView.ready);
+
+    auto started = recordStarted(doc);
+    doc.applyViewFilter(quickFilter!wchar("ECU1", "", "", ""));
+    assert(doc.requestCancel(), "a running filter must be cancellable");
+    waitIdle(doc);
+    assert(started.operations == [Document.Operation.BuildFilterIndex],
+        "there is nothing to search in until the view is filtered");
 }
 
 @("DltDocument anchors: can't be changed while an operation runs")
