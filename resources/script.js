@@ -11,6 +11,11 @@ let currentTheme = "light";
 // shownDataVersion is null while the view isn't the table.
 let shownDocId = null;
 let shownDataVersion = null;
+// State of the table of each document when another one was shown:
+//   docId -> { dataVersion, index, selection }, index is the first visible row,
+//   selection comes from VirtualDltTBody.saveSelection().
+// Restored only for the same content (dataVersion), otherwise the table starts over.
+const mainViewStates = new Map();
 
 document.on("ready", function () {
     console.log("Starting DLT Explorer UI...");
@@ -443,6 +448,9 @@ function refreshTabs() {
         applyTabStatus(container.lastElementChild, status);
     }
 
+    for (const docId of mainViewStates.keys())
+        if (!docStatus.has(docId)) mainViewStates.delete(docId); // closed
+
     updateViewMode();
     updateSearchViewMode();
 }
@@ -473,6 +481,22 @@ function percent(progress) {
     return Math.round(progress * 100);
 }
 
+// Remembers the scroll and the selection of the table of `docId`; call while
+// it still shows that document
+function saveMainViewState(docId, dataVersion) {
+    const list = getMainViewList();
+    const index = list?.vlist?.firstVisibleItemIndex;
+    if (typeof index === "number")
+        mainViewStates.set(docId, { dataVersion, index, selection: list.saveSelection() });
+}
+
+// Returns: the state to restore when the table shows `docId` again, null if
+// it wasn't shown before or its content has changed since
+function savedMainViewState(docId, dataVersion) {
+    const saved = mainViewStates.get(docId);
+    return saved && saved.dataVersion === dataVersion ? saved : null;
+}
+
 // Renders the main view of the active document as its machine shows it
 function updateViewMode() {
     const table = getMainViewTable();
@@ -481,6 +505,10 @@ function updateViewMode() {
     const lostView = $("#source-lost");
     const status = docStatus.get(activeDocId);
     const vm = status ? status.mainView : null;
+
+    // Leaving the table of another document: the rows on screen are still its own
+    if (shownDocId !== null && shownDocId !== activeDocId && shownDataVersion !== null)
+        saveMainViewState(shownDocId, shownDataVersion);
 
     const showOnly = (shown) => {
         for (const element of [table, loading, empty, lostView])
@@ -500,9 +528,14 @@ function updateViewMode() {
 
     if (vm.status === "ready") {
         showOnly(table);
-        if (activeDocId !== shownDocId || vm.dataVersion !== shownDataVersion) {
+        if (activeDocId !== shownDocId) {
             console.log("View update: doc", activeDocId, "content", vm.dataVersion);
-            reloadLogTable(activeDocId !== shownDocId);
+            const saved = savedMainViewState(activeDocId, vm.dataVersion);
+            getMainViewList().restoreSelection(saved ? saved.selection : null);
+            reloadLogTable(saved ? saved.index : "start");
+        } else if (vm.dataVersion !== shownDataVersion) {
+            console.log("View update: content", vm.dataVersion, "of doc", activeDocId);
+            reloadLogTable();
         }
         shownDocId = activeDocId;
         shownDataVersion = vm.dataVersion;
@@ -630,13 +663,17 @@ globalThis.onDocumentClosed = function (docId) {
     refreshTabs();
 };
 
-globalThis.reloadLogTable = function (forceReset = false) {
+// scrollTo: null keeps the scroll position, "start" scrolls to the top,
+// a number scrolls to that row
+globalThis.reloadLogTable = function (scrollTo = null) {
     const logList = getMainViewList();
     if (logList) {
-        console.log("Reloading log table", forceReset ? "(force reset)" : "");
-        if (forceReset) logList.scrollTo(0, 0);
+        console.log("Reloading log table", scrollTo !== null ? `(scroll to ${scrollTo})` : "");
+        if (scrollTo === "start") logList.scrollTo(0, 0);
         logList.componentUpdate();
         logList.refreshVisibleRows(); // the rows may show other messages now
+        // Posted after the navigation that render() may post when the number of items changes
+        if (typeof scrollTo === "number") logList.post(() => logList.vlist?.navigateTo(scrollTo));
 
         // Print DOM tree of the table after a short delay so vlist has time to render
         /*setTimeout(() => {

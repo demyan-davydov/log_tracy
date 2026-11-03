@@ -8,7 +8,20 @@ export class VirtualDltTBody extends VirtualSelect {
 
     this(props) {
         super.this(props);
-        super.selectedItems = new Set();
+        this.selectedKeys = new Set(); // keyOf() of the selected items
+    }
+
+    // The selection, to be restored by restoreSelection() while the list shows
+    // the same content: currentItem refers to a position in the view
+    saveSelection() {
+        return { currentItem: this.currentItem, selectedKeys: new Set(this.selectedKeys) };
+    }
+
+    // Restores a selection from saveSelection(); null clears the selection.
+    // Takes effect on the next render of the rows.
+    restoreSelection(selection) {
+        this.currentItem = selection ? selection.currentItem : null;
+        this.selectedKeys = new Set(selection ? selection.selectedKeys : []);
     }
 
     // View index (position in the current table) - mandatory for Shift-selection and Arrows
@@ -45,8 +58,7 @@ export class VirtualDltTBody extends VirtualSelect {
         //
         const currentKey = this.currentItem ? this.indexOf(this.currentItem) : null;
         isCurrent = currentKey !== null && this.indexOf(item) === currentKey;
-        const selectedKey = this.selectedItems ? this.indexOf(this.selectedItems) : null;
-        isSelected = selectedKey !== null && this.indexOf(item) === selectedKey;
+        isSelected = this.selectedKeys.has(this.keyOf(item));
 
         if (isCurrent || isSelected) {
             console.log("--- [2] renderItem called for item:", item[3], "isCurrent:", isCurrent, "isSelected:", isSelected);
