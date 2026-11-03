@@ -45,6 +45,9 @@ export class VirtualList extends Element {
         const totalItems = this.totalItems();
 
         if (this.vlist.itemsTotal != totalItems) { // number of items reduced, update scroll
+            // The rendered rows belong to the old data set: drop them before the
+            // navigation below requests the new ones, otherwise vlist keeps them
+            this.clear();
             if (firstVisibleIndex == 0) {
                 this.post(() => {
                     this.vlist?.navigate("start");
