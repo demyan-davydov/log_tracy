@@ -10,9 +10,6 @@ import domain.document;
 import domain.document_item;
 import domain.dlt_document;
 
-import dlt_core.indexer;
-import dlt_core.search;
-import dlt_core.fibex;
 import dlt_core.dlt_filter_serialization;
 import dlt_core.dlt_filter_record;
 import dlt_core.dlt_log_filter : DltLogFilter, quickFilter;
@@ -20,7 +17,6 @@ import domain.search_filter : SearchFilter;
 import ui.main_view_fsm;
 import ui.search_view_fsm;
 import dlt_core.log_filter : LogFilter;
-import dlt_core.log_item : LogItem;
 
 import sciter.types;
 import sciter.behavior;
@@ -830,39 +826,6 @@ class MainWindow : SciterWindow
         applyDocumentCommands();
         flushViews();
     }
-}
-
-SciterValue asSciterArray(int index, ref const(LogItem) item)
-{
-    /** 
-     size_t index;
-    ulong offset;
-    ushort length;
-    ulong timestamp;
-    string ecu;
-    string appId;
-    string ctxId;
-    LogLevel level;
-    MessageType type;
-    uint messageId;
-    string payload;
- */
-
-    SciterValue array = SciterValue.makeArray(
-        index, //
-        item.timestamp, //
-        item.ecu, //
-        item.appId, //
-        item.ctxId, //
-        item.messageId, //
-        cast(int) item.level, //
-        cast(int) item.type, //
-        item.payload //
-
-        
-
-    );
-    return array;
 }
 
 SciterValue asSciterArray(int index, ref const(DocumentItem) item)

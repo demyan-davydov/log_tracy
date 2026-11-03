@@ -1,6 +1,5 @@
 module dlt_core.dlt_filter_record;
 
-import dlt_core.log_item;
 import dlt_core.log_filter;
 import dlt_core.dlt_protocol;
 import dlt_core.decoded_message;
@@ -355,17 +354,6 @@ unittest
     builder.storePayload();
     msg.level = LogLevel.Info;
     msg.messageId = 0;
-
-    /*LogItem item;
-    item.index = 0;
-    item.ecuId = "Test ECU";
-    item.appId = "Test App";
-    item.ctxId = "Test Context";
-    //item.headerText = "Test Header";
-    item.payload = "Test Payload";
-    item.messageId = 0;
-    item.level = LogLevel.Info;
-    */
 
     assert(isMatched(msg, record));
 }

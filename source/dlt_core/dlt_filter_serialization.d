@@ -1,7 +1,6 @@
 module dlt_core.dlt_filter_serialization;
 
 import dlt_core.dlt_filter_record;
-import dlt_core.log_item;
 import dlt_core.dlt_protocol;
 import dxml.dom;
 import std.stdio : writeln;

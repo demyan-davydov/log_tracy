@@ -1,6 +1,5 @@
 import std.stdio;
 
-//import ui.my_main_window;
 import ui.main_window;
 import ui.app_settings;
 

@@ -4,8 +4,7 @@ import dlt_core.dlt_log_filter;
 import dlt_core.decoded_message;
 import dlt_core.log_filter;
 import dlt_core.dlt_source;
-import dlt_core.dlt_parser : parseDltItem, parseDltItemWithFibex;
-import dlt_core.fibex;
+import dlt_core.dlt_parser : parseDltItem;
 
 import domain.index.offset_index;
 import domain.index.filter_index;

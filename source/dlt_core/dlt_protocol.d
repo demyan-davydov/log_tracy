@@ -1,6 +1,5 @@
 module dlt_core.dlt_protocol;
 
-import dlt_core.log_item;
 import std.bitmanip;
 
 //! @brief DLT Message structure:

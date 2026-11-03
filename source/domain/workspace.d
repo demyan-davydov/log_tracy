@@ -5,7 +5,6 @@ import domain.document_id;
 import domain.document_item : DocumentItem;
 import domain.index.anchors;
 
-import dlt_core.log_item : LogItem;
 import dlt_core.log_filter : LogFilter;
 
 import event_bus.event_bus_interface : SignalConsumer, SubscriptionToken;
@@ -412,7 +411,6 @@ final class Workspace
 @("Workspace operations")
 unittest
 {
-    import dlt_core.log_item : LogItem;
 
     // Minimal implementation of Document for testing
     class MockDocument : Document

@@ -2,8 +2,6 @@ module domain.document;
 
 import dlt_core.dlt_source;
 import dlt_core.decoded_message;
-import dlt_core.fibex;
-import dlt_core.indexer;
 import dlt_core.log_filter : LogFilter;
 import dlt_core.dlt_protocol : LogLevel, MessageType;
 
