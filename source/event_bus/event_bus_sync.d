@@ -14,7 +14,6 @@ module event_bus.event_bus_sync;
 import event_bus.event_bus_helper;
 
 import core.sync.mutex : Mutex;
-import std.algorithm : remove, countUntil;
 
 public import event_bus.event_bus_interface;
 
@@ -42,26 +41,6 @@ public:
         _helper = EventBusHelper(new Mutex());
     }
 
-    // ── Subscription ────────────────────────────────────────────────────
-
-    /**
-     * Subscribe with a typed delegate: void delegate(const EventType).
-     * The event type is inferred from the delegate signature.
-     */
-    SubscriptionToken subscribe(EventType)(void delegate(const EventType) cb)
-    {
-        void delegate(const(void)*) raw = (const(void)* p) {
-            cb(*cast(const EventType*) p);
-        };
-        return _helper.subscribe(typeid(EventType), raw);
-    }
-
-    /// ditto — accepts a function pointer as well
-    SubscriptionToken subscribe(EventType)(void function(const EventType) cb)
-    {
-        return subscribe!EventType((const EventType e) { cb(e); });
-    }
-
     override SubscriptionToken subscribeRaw(TypeInfo ti,
         void delegate(const(void)*) cb)
     {
@@ -78,27 +57,15 @@ public:
         _helper.unsubscribeAll();
     }
 
-    // ── Publishing ──────────────────────────────────────────────────────
-
     /**
-     * Publish an event synchronously.
-     * All subscribers for EventType are called before this returns.
+     * Dispatch an event synchronously.
+     * All subscribers are called before this returns.
      * Subscriber exceptions are thrown as a Throwable chain (head.next…).
      */
-    void publish(EventType)(auto ref const EventType event)
+    override void publishRaw(EventOps ops, scope const(void)* data)
     {
         Throwable head, tail;
-        _helper.callRegisteredCallbacks(typeid(EventType),
-            cast(const(void)*)&event,
-            head, tail);
-        if (head !is null)
-            throw head;
-    }
-
-    override void publishRaw(TypeInfo ti, const(void)* data)
-    {
-        Throwable head, tail;
-        _helper.callRegisteredCallbacks(ti, data, head, tail);
+        _helper.callRegisteredCallbacks(ops.ti, data, head, tail);
         if (head !is null)
             throw head;
     }

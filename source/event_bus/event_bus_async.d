@@ -1,18 +1,18 @@
 /**
  * Asynchronous Event Bus implementation in D.
  *
- * Thread-safe. publish() queues events; dispatch() processes them on the
- * calling thread.
+ * Thread-safe. publish() queues a copy of the event; dispatch() processes
+ * the queue on the calling thread.
  *
  * Extra feature: overridable messages.
- * If `isOverridable!T` is true, then publish(T) checks whether the back of
- * the dispatch queue already holds an event of the same type. If so, it
+ * If `isOverridableEvent!T` is true, then publish(T) checks whether the back
+ * of the dispatch queue already holds an event of the same type. If so, it
  * replaces that entry instead of appending a new one. Events in the middle
  * of the queue are never touched — only the tail is checked.
  *
  * Usage:
  *   // opt-in for a specific message type:
- *   template isOverridable(T : Progress) { enum isOverridable = true; }
+ *   struct Progress { enum isOverridable = true; float value; }
  */
 module event_bus.event_bus_async;
 
@@ -22,66 +22,29 @@ import core.sync.mutex : Mutex;
 
 public import event_bus.event_bus_interface;
 
-// ─── isOverridable detection ─────────────────────────────────────────────
+// ─── Queued event: owns a copy of the published value ────────────────────
 
-/**
- * Helper to detect whether an event type opts-in to tail-override behaviour.
- *
- * To opt in, define a nested enum inside your event struct:
- *
- *   struct ProgressEvent {
- *       enum isOverridable = true;
- *       int value;
- *   }
- *
- * This works across module boundaries without any template specialisation.
- */
-private template _isOverridable(T)
+private final class EventItem
 {
-    static if (__traits(hasMember, T, "isOverridable"))
-        enum _isOverridable = T.isOverridable;
-    else
-        enum _isOverridable = false;
-}
+    EventOps ops;
+    void[] data; // void[] (not ubyte[]) so the GC scans pointers inside the event
 
-// ─── Type-erased event queue item ─────────────────────────────────────────
-
-package final class EventItem
-{
-    TypeInfo ti;
-    // Raw heap buffer holding a copy of the event value.
-    ubyte[] data;
-    // Type-aware destructor: called when the item is discarded.
-    void function(void[]) destructor;
-
-    static EventItem make(EventType)(auto ref const EventType event)
+    this(EventOps ops, scope const(void)* src)
     {
-        import std.conv : emplace;
-
-        auto item = new EventItem();
-        item.ti = typeid(EventType);
-
-        // Allocate aligned storage large enough for EventType.
-        // We use `new ubyte[N]` which gives GC-managed memory.
-        enum sz = EventType.sizeof;
-        auto buf = new ubyte[sz];
-        // emplace copy-constructs EventType into the raw buffer.
-        emplace(cast(EventType*) buf.ptr, cast(EventType) event);
-        item.data = buf;
-
-        item.destructor = (void[] d) { destroy(*cast(EventType*) d.ptr); };
-        return item;
+        this.ops = ops;
+        data = new void[ops.size];
+        ops.copy(src, data);
     }
 
-    ~this()
+    /// Destroys the stored event. Called explicitly: a GC finalizer must not
+    /// touch `data`, which may already have been collected.
+    void dispose()
     {
-        if (destructor !is null && data.ptr !is null)
-            destructor(cast(void[]) data);
-    }
-
-    const(void)* ptr() const
-    {
-        return data.ptr;
+        if (data !is null)
+        {
+            ops.dispose(data);
+            data = null;
+        }
     }
 }
 
@@ -89,7 +52,7 @@ package final class EventItem
 
 /**
  * Asynchronous event bus.
- * publish() enqueues; dispatch() dequeues and fires callbacks.
+ * publish() enqueues a copy; dispatch() dequeues and fires callbacks.
  */
 final class EventBusAsync : SignalConsumer, SignalProducer
 {
@@ -108,19 +71,6 @@ public:
     }
 
     // ── Subscription ────────────────────────────────────────────────────
-
-    SubscriptionToken subscribe(EventType)(void delegate(const EventType) cb)
-    {
-        void delegate(const(void)*) raw = (const(void)* p) {
-            cb(*cast(const EventType*) p);
-        };
-        return _helper.subscribe(typeid(EventType), raw);
-    }
-
-    SubscriptionToken subscribe(EventType)(void function(const EventType) cb)
-    {
-        return subscribe!EventType((const EventType e) { cb(e); });
-    }
 
     override SubscriptionToken subscribeRaw(TypeInfo ti,
         void delegate(const(void)*) cb)
@@ -141,49 +91,36 @@ public:
     // ── Publishing ──────────────────────────────────────────────────────
 
     /**
-     * Enqueue an event.
+     * Enqueue a copy of the event.
      *
-     * If the event type defines `enum isOverridable = true;` as a member,
-     * and the back of the dispatch queue holds an event of the same type,
-     * the tail item is replaced rather than a new one appended.
-     * Only the tail is inspected — events in the middle are never removed.
+     * If `ops.overridable` is set and the back of the dispatch queue holds an
+     * event of the same type, the tail item is replaced rather than a new one
+     * appended. Only the tail is inspected — events in the middle are never
+     * removed.
      */
-    void publish(EventType)(auto ref const EventType event)
+    override void publishRaw(EventOps ops, scope const(void)* data)
     {
-        auto item = EventItem.make!EventType(event);
+        auto item = new EventItem(ops, data); // copy outside the lock
 
-        _queueMutex.lock();
-        scope (exit)
-            _queueMutex.unlock();
-
-        static if (_isOverridable!EventType)
+        EventItem replaced;
         {
-            if (_queue.length > 0 &&
-                _queue[$ - 1].ti is typeid(EventType))
+            _queueMutex.lock();
+            scope (exit)
+                _queueMutex.unlock();
+
+            if (ops.overridable && _queue.length > 0 && _queue[$ - 1].ops.ti is ops.ti)
             {
-                // Replace the tail item.
-                destroy(_queue[$ - 1]);
+                replaced = _queue[$ - 1];
                 _queue[$ - 1] = item;
-                return;
+            }
+            else
+            {
+                _queue ~= item;
             }
         }
 
-        _queue ~= item;
-    }
-
-    override void publishRaw(TypeInfo ti, const(void)* data)
-    {
-        // Raw publish — no overridable support (type not known statically).
-        // Callers must use the typed publish() overload for proper ownership.
-        auto item = new EventItem();
-        item.ti = ti;
-        item.data = cast(ubyte[])(cast(void*) data)[0 .. 0]; // zero-length sentinel
-        item.destructor = null;
-
-        _queueMutex.lock();
-        scope (exit)
-            _queueMutex.unlock();
-        _queue ~= item;
+        if (replaced !is null)
+            replaced.dispose();
     }
 
     // ── Dispatching ─────────────────────────────────────────────────────
@@ -209,7 +146,11 @@ public:
         Throwable head, tail;
 
         foreach (item; snapshot)
-            _helper.callRegisteredCallbacks(item.ti, item.ptr, head, tail);
+        {
+            scope (exit)
+                item.dispose();
+            _helper.callRegisteredCallbacks(item.ops.ti, item.data.ptr, head, tail);
+        }
 
         if (head !is null)
             throw head;
@@ -217,7 +158,7 @@ public:
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// EventBusAsync Tests (mirroring C++ tests)
+// EventBusAsync Tests
 // ═══════════════════════════════════════════════════════════════════════════
 
 version (unittest)
@@ -519,4 +460,62 @@ unittest  // OverridableMultipleRunsReset
     bus.dispatch();
 
     assert(calls == 2 && last == 30);
+}
+
+unittest  // PublishRawMustCopyEvent
+{
+    writeln("[Async] publishRaw must snapshot the event at publish time");
+
+    // Async contract: the event is delivered later, in dispatch(), so the bus
+    // must own a copy instead of keeping the caller's pointer.
+    static struct RawEvent
+    {
+        int value;
+    }
+
+    auto bus = new EventBusAsync();
+    int received = -1;
+
+    bus.subscribe((const RawEvent e) { received = e.value; });
+
+    auto event = RawEvent(1);
+    bus.publishRaw(eventOps!RawEvent, &event);
+    event.value = 2; // caller reuses its storage before dispatch
+    bus.dispatch();
+
+    assert(received == 1,
+        "publishRaw delivered value " ~ received.to!string
+            ~ " instead of the published 1: the event was not copied");
+}
+
+unittest  // CopyAndDestroyThroughInterfaces
+{
+    writeln("[Async] typed wrappers via interfaces copy and destroy correctly");
+
+    // Counts live instances: copy constructor and destructor must be paired.
+    static int live;
+    static struct Tracked
+    {
+        int value;
+        this(int v) { value = v; ++live; }
+        this(ref return scope const Tracked rhs) { value = rhs.value; ++live; }
+        ~this() { if (value) --live; }
+    }
+
+    auto bus = new EventBusAsync();
+    SignalConsumer consumer = bus;
+    SignalProducer producer = bus;
+    int received = -1;
+
+    consumer.subscribe((const Tracked e) { received = e.value; });
+    {
+        auto e = Tracked(7);
+        producer.publish(e);
+        assert(live == 2, "queued event must be copy-constructed, live = " ~ live.to!string);
+    }
+    assert(live == 1, "queue must hold its own copy, live = " ~ live.to!string);
+
+    bus.dispatch();
+    assert(received == 7);
+    assert(live == 0, "dispatched event must be destroyed, live = " ~ live.to!string);
 }
