@@ -419,7 +419,9 @@ function refreshTabs() {
             <span class="tab-close">×</span>
         </div>;
         container.append(tab);
-        applyTabStatus(tab, status);
+        // `tab` is a JSX node, not an element: apply the status to the element
+        // that append() created from it
+        applyTabStatus(container.lastElementChild, status);
     }
 
     updateViewMode();
