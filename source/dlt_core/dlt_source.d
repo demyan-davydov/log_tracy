@@ -142,6 +142,10 @@ body
 // It is valid only for the lifetime of the DltSource object
 struct DltSourceRange
 {
+    /// Every pop() consumes at least this many bytes, so a source of N bytes
+    /// holds at most N / minMessageLength messages.
+    enum size_t minMessageLength = StorageHeader.sizeof;
+
     private const(ubyte)* _dataBegin;
     private const(ubyte)* _dataEnd;
     private const(ubyte)[] _rest; // slice for not readed part of mmFile content

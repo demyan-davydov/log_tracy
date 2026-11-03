@@ -23,14 +23,16 @@ struct IndexArray
     {
     }
 
-    void append(Type offset) pure @nogc
+    //! @return false if capacity is exhausted
+    bool append(Type offset) pure @nogc
     {
-        _data.append(offset);
+        return _data.append(offset);
     }
 
-    void append(const(Type)[] slice) pure @nogc
+    //! @return false if the slice doesn't fit
+    bool append(const(Type)[] slice) pure @nogc
     {
-        _data.append(slice);
+        return _data.append(slice);
     }
 
     Type opIndex(size_t i) const pure @nogc

@@ -54,18 +54,24 @@ struct MmapArray(T)
     }
 
     //! Append element to array.
-    void append(T v) pure @nogc
+    //! @return false (array unchanged) if capacity is exhausted
+    bool append(T v) pure @nogc
     {
-        assert(_length < _capacity);
+        if (_length >= _capacity)
+            return false;
         _data[_length++] = v;
+        return true;
     }
 
     //! Append slice of elements to array.
-    void append(const(T)[] slice) pure @nogc
+    //! @return false (array unchanged) if the slice doesn't fit
+    bool append(const(T)[] slice) pure @nogc
     {
-        assert(_length + slice.length <= _capacity);
+        if (slice.length > _capacity - _length)
+            return false;
         _data[_length .. _length + slice.length] = slice;
         _length += slice.length;
+        return true;
     }
 
     //! Get element at index.
@@ -98,4 +104,15 @@ struct MmapArray(T)
     {
         return [0, _length];
     }
+}
+
+@("MmapArray: append reports overflow instead of writing past capacity")
+unittest
+{
+    auto a = MmapArray!int(3);
+    assert(a.append(1));
+    assert(a.append([2, 3]));
+    assert(!a.append(4), "single append past capacity must fail");
+    assert(!a.append([4]), "slice append past capacity must fail");
+    assert(a.length == 3 && a[2] == 3, "failed appends must not change the array");
 }

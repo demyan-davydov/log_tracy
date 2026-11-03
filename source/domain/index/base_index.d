@@ -13,14 +13,16 @@ struct BaseIndex(T)
         _data = MmapArray!Type(capacity);
     }
 
-    void append(Type value) pure @nogc
+    //! @return false if capacity is exhausted
+    bool append(Type value) pure @nogc
     {
-        _data.append(value);
+        return _data.append(value);
     }
 
-    void append(const(Type)[] slice) pure @nogc
+    //! @return false if the slice doesn't fit
+    bool append(const(Type)[] slice) pure @nogc
     {
-        _data.append(slice);
+        return _data.append(slice);
     }
 
     Type opIndex(size_t i) const pure nothrow @nogc

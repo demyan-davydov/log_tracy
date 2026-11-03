@@ -100,7 +100,9 @@ struct DltIndex
 
         _source = scoped!DltSourceFile(path);
 
-        const size_t capacity = _source.overallLength / 40 + 10_000;
+        // Upper bound of the message count: indexes are never full. Anonymous
+        // mmap commits pages lazily, so unused capacity costs address space only.
+        const size_t capacity = _source.overallLength / DltSourceRange.minMessageLength + 1;
         _offsetIndex = OffsetIndex(capacity);
         _filterIndex = FilterIndex(capacity);
         _searchIndex = SearchIndex(capacity);
@@ -157,15 +159,19 @@ struct DltIndex
         // Published before the thread starts, so it precedes any progress event
         _events.publish(OperationStarted(op));
 
-        auto finished = OperationFinished(op, OperationFinished.Result.Completed);
+        // Stays Failed unless work returns normally: a worker killed by an
+        // Error must not report success.
+        auto finished = OperationFinished(op, OperationFinished.Result.Failed,
+            "operation terminated unexpectedly");
         auto events = _events;
 
         const bool started = _backgroundSlot.runTask((BackgroundSlot.Ctx* ctx) {
             auto progress = ProgressReporter(events, op, ctx);
             try
             {
-                if (!work(progress))
-                    finished.result = OperationFinished.Result.Cancelled;
+                finished.result = work(progress)
+                    ? OperationFinished.Result.Completed : OperationFinished.Result.Cancelled;
+                finished.error = null;
             }
             catch (Exception e)
             {
@@ -229,7 +235,8 @@ struct DltIndex
 
             synchronized (cast(Mutex)_mutex)
             {
-                _offsetIndex.append(tempIndex[0 .. n]); // only populated slice
+                if (!_offsetIndex.append(tempIndex[0 .. n])) // only populated slice
+                    throw new Exception("offset index overflow");
                 progress.report(cast(float)(range.offset) / range.overallLength);
             }
         }
@@ -292,7 +299,8 @@ struct DltIndex
 
             synchronized (cast(Mutex)_mutex)
             {
-                _filterIndex.append(tempIndex[0 .. n]); // only matched entries
+                if (!_filterIndex.append(tempIndex[0 .. n])) // only matched entries
+                    throw new Exception("filter index overflow");
                 progress.report(cast(float)(range.offset) / range.overallLength);
             }
         }
@@ -360,7 +368,8 @@ struct DltIndex
 
             synchronized (cast(Mutex)_mutex)
             {
-                _searchIndex.append(tempIndex[0 .. tempLen]);
+                if (!_searchIndex.append(tempIndex[0 .. tempLen]))
+                    throw new Exception("search index overflow");
                 progress.report(cast(float) batchEnd / indexLen);
             }
 
