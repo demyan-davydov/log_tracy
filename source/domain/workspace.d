@@ -49,6 +49,11 @@ private class NullDocumentView : DocumentView
         return 1.0f;
     }
 
+    override Document.Operation operation()
+    {
+        return Document.Operation.None;
+    }
+
     override void enableFilter(bool enable)
     {
     }

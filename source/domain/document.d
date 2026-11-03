@@ -31,6 +31,10 @@ interface DocumentView
 
     float progress(); // return 1.0 if ready
 
+    /// Operation that brought the view to its current state: the running one
+    /// while BuildingIndex, the last one afterwards (None if there was none).
+    Document.Operation operation();
+
     void enableFilter(bool enable);
 
     bool isFilterEnabled() const;

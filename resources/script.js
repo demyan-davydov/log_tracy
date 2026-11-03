@@ -244,6 +244,18 @@ function setupEvents() {
         Window.this.xcall("cancelOperation");
     });
 
+    // Loading the file can't be stopped half way: cancelling it closes the
+    // document. A running filter is cancelled instead.
+    document.on("click", "#btn-cancel-load", () => {
+        const status = docStatus.get(activeDocId);
+        if (!status) return;
+        const op = status.main.operation;
+        if (op === "BuildOffsetIndex" || op === "None")
+            closeTab(activeDocId);
+        else
+            Window.this.xcall("cancelOperation");
+    });
+
     document.on("click", "#btn-fibex", () => {
         const fn = Window.this.selectFile({
             mode: "open",
@@ -389,9 +401,10 @@ function applyFilters() {
 
 // View status of every open document, kept up to date by onDocumentEvent for
 // all documents, not only the active one:
-//   docId -> { main: { state, progress }, search: { state, progress } }
+//   docId -> { main: { state, progress, operation }, search: { state, progress, operation } }
 // state is a DocumentView.State name ("NotReady", "Ready", "BuildingIndex", "Error"),
-// progress is 0..1. Snapshot comes from getWorkspaceInfo in refreshTabs().
+// progress is 0..1, operation is the Document.Operation name that brought the view
+// to this state ("None" if none). Snapshot comes from getWorkspaceInfo in refreshTabs().
 const docStatus = new Map();
 let activeDocId = null;
 
@@ -469,16 +482,23 @@ function updateViewMode() {
 
     empty.style.display = "none";
 
-    const isReady = status.main.state === "Ready";
-    const progress = Math.round(status.main.progress * 100);
+    const main = status.main;
+    const isReady = main.state === "Ready";
+    const progress = Math.round(main.progress * 100);
 
     if (!isReady) {
+        // NotReady with no operation yet: the load is about to start
+        const loadingFile = main.operation === "BuildOffsetIndex" || main.operation === "None";
+        const building = main.state === "BuildingIndex" || main.operation === "None";
         table.style.display = "none";
         loading.style.display = "flex";
         $("#doc-load-progress").value = progress;
-        $("#doc-load-status").innerText = status.main.state === "Error"
-            ? "Failed to load DLT file"
-            : `Loading DLT file... ${progress}%`;
+        $("#doc-load-status").innerText =
+            main.state === "Error" ? (loadingFile ? "Failed to load DLT file" : "Filter failed")
+            : !building ? (loadingFile ? "Loading cancelled" : "Filter cancelled")
+            : loadingFile ? `Loading DLT file... ${progress}%`
+            : `Filtering... ${progress}%`;
+        $("#btn-cancel-load").style.display = building ? "" : "none";
     } else {
         table.style.display = "block"; // clear inline style to let it act as a table
         loading.style.display = "none";
@@ -525,13 +545,13 @@ function updateSearchViewMode() {
 }
 
 // Native: a document operation changed the status of one of its views.
-// view: "main" | "search"; state and progress as in docStatus.
+// view: "main" | "search"; state, progress and operation as in docStatus.
 // Arrives for every document; only the active one is rendered in the views.
-globalThis.onDocumentEvent = function (docId, view, state, progress) {
+globalThis.onDocumentEvent = function (docId, view, state, progress, operation) {
     const status = docStatus.get(docId);
     if (!status) return; // tab not rendered yet: refreshTabs() will take the snapshot
 
-    status[view] = { state, progress };
+    status[view] = { state, progress, operation };
 
     const tab = findTab(docId);
     if (tab) applyTabStatus(tab, status);

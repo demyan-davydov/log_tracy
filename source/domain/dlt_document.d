@@ -205,6 +205,11 @@ class DltDocument : Document
             return this.outer._mainStatus.progress;
         }
 
+        override Operation operation()
+        {
+            return this.outer._mainStatus.operation;
+        }
+
         override void enableFilter(bool enable)
         {
             this.outer._index.enableFilter(enable);
@@ -246,6 +251,11 @@ class DltDocument : Document
         override float progress()
         {
             return this.outer._searchStatus.progress;
+        }
+
+        override Operation operation()
+        {
+            return this.outer._searchStatus.operation;
         }
 
         override void enableFilter(bool enable)

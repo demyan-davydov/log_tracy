@@ -65,7 +65,7 @@ class MainWindow : SciterWindow
     }
 
     /// Forwards document operation events to JS as the resulting view status:
-    /// onDocumentEvent(docId, view, state, progress), view is "main" or "search".
+    /// onDocumentEvent(docId, view, state, progress, operation), view is "main" or "search".
     /// The document updates its views before external subscribers are called,
     /// so the status read here already reflects the event.
     private void subscribeToDocumentEvents()
@@ -91,15 +91,16 @@ class MainWindow : SciterWindow
         auto doc = _workspace.doc(docId);
         auto view = search ? doc.searchView : doc.mainView;
         callScript("onDocumentEvent", docId.toInt(), (search ? "search"w : "main"w),
-            view.state.to!string.toUTF16(), view.progress);
+            view.state.to!string.toUTF16(), view.progress, view.operation.to!string.toUTF16());
     }
 
-    /// {"state": "<DocumentView.State>", "progress": 0..1}
+    /// {"state": "<DocumentView.State>", "progress": 0..1, "operation": "<Document.Operation>"}
     private static JSONValue viewStatusJson(DocumentView view)
     {
         return JSONValue([
             "state": JSONValue(view.state.to!string),
-            "progress": JSONValue(view.progress)
+            "progress": JSONValue(view.progress),
+            "operation": JSONValue(view.operation.to!string)
         ]);
     }
 

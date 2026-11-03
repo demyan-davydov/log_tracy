@@ -1,6 +1,6 @@
 module domain.view_status;
 
-import domain.document : DocumentView, OperationStarted, OperationProgress, OperationFinished;
+import domain.document : Document, DocumentView, OperationStarted, OperationProgress, OperationFinished;
 
 //! @brief Stored state of one document view, driven by the operation events
 //! that affect this view. Updated on the UI thread only (from dispatchEvents),
@@ -12,6 +12,9 @@ struct ViewStatus
     State state = State.Ready;
     float progress = 1.0f; // 0..1, 1 when not building
     string error; // set in State.Error
+    /// Operation that brought the view to its current state: the running one
+    /// while BuildingIndex, the last one afterwards (None if there was none).
+    Document.Operation operation = Document.Operation.None;
 
     this(State initial)
     {
@@ -21,6 +24,7 @@ struct ViewStatus
 
     void on(in OperationStarted e)
     {
+        operation = e.operation;
         state = State.BuildingIndex;
         progress = 0.0f;
         error = null;
@@ -60,14 +64,18 @@ unittest
     auto status = ViewStatus(ViewStatus.State.NotReady);
     assert(status.state == ViewStatus.State.NotReady && status.progress == 0.0f);
 
+    assert(status.operation == Document.Operation.None);
+
     status.on(OperationStarted(op));
     assert(status.state == ViewStatus.State.BuildingIndex && status.progress == 0.0f);
+    assert(status.operation == op);
 
     status.on(OperationProgress(op, 0.25f));
     assert(status.progress == 0.25f);
 
     status.on(OperationFinished(op, OperationFinished.Result.Completed));
     assert(status.state == ViewStatus.State.Ready && status.progress == 1.0f);
+    assert(status.operation == op, "the finished operation is kept");
 
     // Late progress after completion must not reopen the view
     status.on(OperationProgress(op, 0.5f));
