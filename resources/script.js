@@ -8,7 +8,9 @@ globalThis.VirtualSearchViewTBody = VirtualSearchViewTBody;
 globalThis.QueryBuilder = QueryBuilder;
 
 let currentTheme = "light";
-let lastProgress = -1;
+// Main view state rendered last time: the table is reloaded when the active
+// document changes or its main view becomes Ready (load/filter finished)
+let lastMainState = null;
 let lastDocId = null;
 
 document.on("ready", function () {
@@ -476,7 +478,7 @@ function updateViewMode() {
         loading.style.display = "none";
         empty.style.display = "flex";
         lastDocId = null;
-        lastProgress = -1;
+        lastMainState = null;
         return;
     }
 
@@ -503,12 +505,14 @@ function updateViewMode() {
         table.style.display = "block"; // clear inline style to let it act as a table
         loading.style.display = "none";
 
-        if (activeDocId !== lastDocId || (lastProgress !== 100 && lastProgress !== -1)) {
+        // Decided by the state transition, not by progress: the last progress
+        // event already reports 100% while the view is still BuildingIndex
+        if (activeDocId !== lastDocId || lastMainState !== "Ready") {
             console.log("View update: doc transition or ready state, docId: ", activeDocId);
             reloadLogTable(activeDocId !== lastDocId);
         }
     }
-    lastProgress = isReady ? 100 : progress;
+    lastMainState = main.state;
     lastDocId = activeDocId;
 }
 
