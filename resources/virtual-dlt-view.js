@@ -128,13 +128,18 @@ export class VirtualDltTBody extends VirtualSelect {
         </tr>
     }
 
-    // Re-renders the on-screen rows of message `msgIndex` (DocumentItem.realIndex)
-    // with fresh data from the backend. For in-place changes, such as an anchor,
-    // that keep the number of rows: render() doesn't update existing rows then.
-    refreshRowsOf(msgIndex) {
-        for (const cell of this.$$(`td.anchor[msg-index="${msgIndex}"]`)) {
-            const row = cell.parentElement;
-            const item = this.itemAt(Number(row.getAttribute("view-index")));
+    // Re-renders the rows currently on screen with fresh data from the backend.
+    // render() doesn't update existing rows when the number of items is
+    // unchanged (Sciter ignores the returned rows), so after any change of the
+    // data (a new search or filter result, an anchor) call this after
+    // componentUpdate(). When the number of items changes, render() clears the
+    // rows itself and there is nothing left to refresh here.
+    refreshVisibleRows() {
+        const total = this.totalItems();
+        for (const row of this.children) {
+            const viewIndex = Number(row.getAttribute("view-index"));
+            if (!(viewIndex < total)) continue; // no view-index, or past the end
+            const item = this.itemAt(viewIndex);
             if (item) row.patch(this.renderItem(item, false, false));
         }
     }

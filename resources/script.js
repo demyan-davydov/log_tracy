@@ -209,7 +209,7 @@ function setupEvents() {
             for (const list of [getMainViewList(), getSearchViewList()]) {
                 if (!list) continue;
                 list.componentUpdate(); // the view may gain or lose the row
-                list.refreshRowsOf(index); // rows kept on screen show the new anchor
+                list.refreshVisibleRows(); // rows kept on screen show the new anchor
             }
         }
         return true; // don't change the row selection
@@ -517,6 +517,7 @@ function updateSearchViewMode() {
         const searchList = getSearchViewList();
         if (searchList) {
             searchList.componentUpdate();
+            searchList.refreshVisibleRows(); // the rows may show other results now
         }
     }
 }
@@ -556,6 +557,7 @@ globalThis.reloadLogTable = function (forceReset = false) {
         console.log("Reloading log table", forceReset ? "(force reset)" : "");
         if (forceReset) logList.scrollTo(0, 0);
         logList.componentUpdate();
+        logList.refreshVisibleRows(); // the rows may show other messages now
 
         // Print DOM tree of the table after a short delay so vlist has time to render
         /*setTimeout(() => {
