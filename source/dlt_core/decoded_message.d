@@ -54,6 +54,7 @@ struct DecodedMessage(Char) if (isSomeChar!Char)
         return _payloadText;
     }
 
+    //! Copies an ECU/application/context ID, without its padding (see removeIdPadding)
     private Char[] allocAndCopyAscii(const(char)[] source) pure nothrow @nogc
     in
     {
@@ -63,7 +64,7 @@ struct DecodedMessage(Char) if (isSomeChar!Char)
     {
         Char[] allocatorTail = _allocator.tail;
 
-        source = removeTrailedZeros(source);
+        source = removeIdPadding(source);
         const auto newBuf = copyUtf8to(source, allocatorTail);
         const auto len = allocatorTail.length - newBuf.length;
         _allocator.spend(len);
@@ -450,18 +451,23 @@ private Target[] copyAsMuchAsPossible(Source, Target)(const(Source)[] src, Targe
     return dst[length .. $];
 }
 
-private const(Char)[] removeTrailedZeros(Char)(const(Char)[] src) pure nothrow @nogc
+//! Removes the padding of a fixed-size (char[4]) DLT ID.
+//! The DLT spec pads short IDs with '\0', but some loggers pad them with
+//! spaces (e.g. ECU "CU7 "). Both are dropped, so the ID compares equal to
+//! what the user types ("CU7") and looks the same in every view. Only the tail
+//! is trimmed: characters inside the ID are kept.
+private const(Char)[] removeIdPadding(Char)(const(Char)[] src) pure nothrow @nogc
 {
-    size_t zeroes = 0;
+    size_t padding = 0;
     foreach_reverse (c; src)
     {
-        if (c == 0)
-            ++zeroes;
+        if (c == 0 || c == ' ')
+            ++padding;
         else
             break;
     }
 
-    return src[0 .. src.length - zeroes];
+    return src[0 .. src.length - padding];
 }
 
 // @todo: it is naive implementation, we can do it better for Utf
@@ -695,6 +701,16 @@ unittest
 
     auto result = msg.allocAndCopyAscii("ABCD\0\0");
     assert(result == "ABCD");
+}
+
+@("DecodedMessage: IDs padded with spaces are trimmed")
+unittest
+{
+    DecodedMessage!char msg;
+    msg.setupPayload("CU7 ", "APP ", "C\0\0\0");
+    assert(msg.ecuId == "CU7");
+    assert(msg.appId == "APP");
+    assert(msg.ctxId == "C");
 }
 
 @("DecodedMessage: allocAndCopy replaces non-printable")
@@ -1256,14 +1272,21 @@ unittest
 }
 
 // Helper function tests
-@("removeTrailedZeros: basic functionality")
+@("removeIdPadding: drops trailing zeros and spaces")
 unittest
 {
-    assert(removeTrailedZeros("ABCD\0\0") == "ABCD");
-    assert(removeTrailedZeros("ABCD") == "ABCD");
-    assert(removeTrailedZeros("\0\0\0") == "");
-    assert(removeTrailedZeros("") == "");
-    assert(removeTrailedZeros("A\0B\0\0") == "A\0B"); // Only trailing zeros
+    assert(removeIdPadding("ABCD\0\0") == "ABCD");
+    assert(removeIdPadding("ABCD") == "ABCD");
+    assert(removeIdPadding("\0\0\0") == "");
+    assert(removeIdPadding("") == "");
+    assert(removeIdPadding("A\0B\0\0") == "A\0B"); // Only trailing zeros
+
+    // Space padding used by some loggers instead of '\0'
+    assert(removeIdPadding("CU7 ") == "CU7");
+    assert(removeIdPadding("AB  ") == "AB");
+    assert(removeIdPadding("AB \0") == "AB", "mixed padding");
+    assert(removeIdPadding("    ") == "");
+    assert(removeIdPadding("A B ") == "A B", "inner spaces are part of the ID");
 }
 
 @("replaceNonPrintable: char array")

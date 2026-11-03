@@ -288,14 +288,14 @@ version (unittest)
 {
     import dlt_core.dlt_source : buildDltMessage;
 
-    private string writeTestDlt(string name, size_t messageCount)
+    private string writeTestDlt(string name, size_t messageCount, const(char)[4] ecuId = "ECU1")
     {
         import std.file : write, tempDir;
         import std.path : buildPath;
 
         ubyte[] data;
         foreach (i; 0 .. messageCount)
-            data ~= buildDltMessage("ECU1", cast(uint) i, 0, 0, cast(ubyte) i, [0xAA, 0xBB]);
+            data ~= buildDltMessage(ecuId, cast(uint) i, 0, 0, cast(ubyte) i, [0xAA, 0xBB]);
 
         auto path = buildPath(tempDir(), name);
         write(path, data);
@@ -640,4 +640,30 @@ unittest
     doc.mainView.resetFilter();
     dispatchUntil(doc, () => finished == 4);
     assert(!doc.mainView.isFilterEnabled && doc.mainView.itemsCount == messageCount);
+}
+
+@("DltDocument: an ECU ID padded with spaces is found by its trimmed value")
+unittest
+{
+    import dlt_core.dlt_log_filter : quickFilter;
+    import std.file : remove;
+
+    enum messageCount = 100;
+    // Real logs pad short IDs with a space instead of '\0', e.g. "CU7 "
+    auto path = writeTestDlt("dlt_document_ecu_padding.dlt", messageCount, "CU7 ");
+    scope (exit)
+        remove(path);
+
+    auto doc = new DltDocument(path);
+    size_t finished;
+    doc.events.subscribe((const OperationFinished e) { ++finished; });
+    dispatchUntil(doc, () => finished == 1);
+
+    DocumentItem item;
+    assert(doc.mainView.fetchItem(0, item));
+    assert(item._decodedMessage.ecuId == "CU7"w, "the padding must not be part of the ID");
+
+    doc.applyViewFilter(quickFilter!wchar("CU7", "", "", ""));
+    dispatchUntil(doc, () => finished == 2);
+    assert(doc.mainView.itemsCount == messageCount, "typing the visible ID must find the messages");
 }
