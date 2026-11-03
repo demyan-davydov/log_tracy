@@ -38,6 +38,20 @@ class DltDocument : Document
     private ViewStatus _searchStatus; // Ready: empty search result until a search runs
     private DltIndex _index;
 
+    //! A filter request waiting for the background slot. Only the latest
+    //! request of each kind is kept; `filter` may be null (reset).
+    private struct PendingRequest
+    {
+        LogFilter!wchar filter;
+        bool requested;
+    }
+
+    private PendingRequest _pendingViewFilter;
+    private PendingRequest _pendingSearch;
+    // Operation started and not yet finished, as seen from the UI thread:
+    // cleared when its OperationFinished is dispatched (the slot is idle by then).
+    private Operation _running = Operation.None;
+
     this() @disable;
 
     this(string path)
@@ -49,7 +63,12 @@ class DltDocument : Document
         {
             _events.subscribe((const E e) { statusOf(e.operation).on(e); });
         }
-        _index = DltIndex(path, _events);
+        _events.subscribe((const OperationFinished e) {
+            _running = Operation.None;
+            startPending();
+        });
+        _index = DltIndex(path, _events); // starts BuildOffsetIndex
+        _running = Operation.BuildOffsetIndex;
         _sourcePath = path;
         _mainView = new MainDocumentView();
         _searchView = new SearchDocumentView();
@@ -85,19 +104,53 @@ class DltDocument : Document
         return _sourcePath;
     }*/
 
+    //! @brief Rebuilds the main view with `filter`. If an operation is running,
+    //! the request waits for it; a running filter or search is cancelled
+    //! first, since the new filter rebuilds both indexes anyway.
     override void applyViewFilter(LogFilter!wchar filter)
     {
-        if (_index.runBuildFilterIndex(filter, _anchors))
-        {
-            _viewFilter = filter;
-        }
+        _pendingViewFilter = PendingRequest(filter, true);
+        if (_running == Operation.BuildFilterIndex || _running == Operation.BuildSearchIndex)
+            _index.cancelCurrentOperation();
+        startPending();
     }
 
+    //! @brief Rebuilds the search view with `filter`. If an operation is
+    //! running, the request waits for it; a running search is cancelled first.
     override void applySearchFilter(LogFilter!wchar filter)
     {
-        if (_index.runBuildSearchIndex(filter, _anchors))
+        _pendingSearch = PendingRequest(filter, true);
+        if (_running == Operation.BuildSearchIndex)
+            _index.cancelCurrentOperation();
+        startPending();
+    }
+
+    //! @brief Starts the next pending request if the slot is free: the view
+    //! filter first, since the search runs over the (filtered) main view.
+    private void startPending()
+    {
+        if (_running != Operation.None)
+            return;
+
+        if (_pendingViewFilter.requested)
         {
-            _searchFilter = filter;
+            auto filter = _pendingViewFilter.filter;
+            _pendingViewFilter = PendingRequest.init;
+            if (_index.runBuildFilterIndex(filter, _anchors))
+            {
+                _viewFilter = filter;
+                _running = Operation.BuildFilterIndex;
+            }
+        }
+        else if (_pendingSearch.requested)
+        {
+            auto filter = _pendingSearch.filter;
+            _pendingSearch = PendingRequest.init;
+            if (_index.runBuildSearchIndex(filter, _anchors))
+            {
+                _searchFilter = filter;
+                _running = Operation.BuildSearchIndex;
+            }
         }
     }
 
@@ -232,6 +285,39 @@ version (unittest)
         return path;
     }
 
+    /// Test filter that accepts all or no messages
+    private final class ConstFilter : LogFilter!wchar
+    {
+        import std.typecons : Nullable;
+
+        private bool _result;
+
+        this(bool result) pure
+        {
+            _result = result;
+        }
+
+        bool matches(scope ref const(DecodedMessage!wchar) item) const
+        {
+            return _result;
+        }
+
+        Nullable!uint matchIndex(scope ref const(DecodedMessage!wchar) item) const
+        {
+            return _result ? Nullable!uint(0) : Nullable!uint.init;
+        }
+
+        immutable(LogFilter!wchar) idup() const pure
+        {
+            return cast(immutable) new ConstFilter(_result);
+        }
+
+        LogFilter!wchar dup() const pure
+        {
+            return new ConstFilter(_result);
+        }
+    }
+
     /// Pumps document events like MainWindow.onIdle() until `done` or timeout
     private void dispatchUntil(Document doc, scope bool delegate() done)
     {
@@ -337,4 +423,75 @@ unittest
     assert(doc.searchView.state == DocumentView.State.BuildingIndex);
     assert(doc.searchView.progress == 0.3f);
     assert(doc.mainView.ready && doc.mainView.progress == 1.0f, "main view must not change");
+}
+
+@("DltDocument: a search requested while loading waits for the load, latest request wins")
+unittest
+{
+    import std.file : remove;
+
+    enum messageCount = 2000;
+    auto path = writeTestDlt("dlt_document_deferred.dlt", messageCount);
+    scope (exit)
+        remove(path);
+
+    auto doc = new DltDocument(path);
+    string[] log;
+    doc.events.subscribe((const OperationStarted e) {
+        import std.conv : to;
+        log ~= e.operation.to!string ~ " started";
+    });
+    doc.events.subscribe((const OperationFinished e) {
+        import std.conv : to;
+        log ~= e.operation.to!string ~ " " ~ e.result.to!string;
+    });
+
+    // Both arrive while BuildOffsetIndex runs: neither is lost, only the latest runs
+    doc.applySearchFilter(new ConstFilter(false));
+    doc.applySearchFilter(new ConstFilter(true));
+
+    dispatchUntil(doc, () => log.length > 0 && log[$ - 1] == "BuildSearchIndex Completed");
+
+    assert(log == [
+        "BuildOffsetIndex started", "BuildOffsetIndex Completed",
+        "BuildSearchIndex started", "BuildSearchIndex Completed"
+    ], "unexpected operations order");
+    assert(doc.searchView.ready);
+    assert(doc.searchView.itemsCount == messageCount, "the latest (match-all) search must have run");
+}
+
+@("DltDocument: a new search cancels the running one and replaces it")
+unittest
+{
+    import std.algorithm : count;
+    import std.file : remove;
+
+    enum messageCount = 200_000;
+    auto path = writeTestDlt("dlt_document_restart.dlt", messageCount);
+    scope (exit)
+        remove(path);
+
+    auto doc = new DltDocument(path);
+    string[] log;
+    doc.events.subscribe((const OperationStarted e) {
+        import std.conv : to;
+        log ~= e.operation.to!string ~ " started";
+    });
+    doc.events.subscribe((const OperationFinished e) {
+        import std.conv : to;
+        log ~= e.operation.to!string ~ " " ~ e.result.to!string;
+    });
+    dispatchUntil(doc, () => doc.mainView.ready);
+
+    doc.applySearchFilter(new ConstFilter(false)); // starts right away
+    doc.applySearchFilter(new ConstFilter(true)); // cancels it and waits for its Finished
+
+    dispatchUntil(doc, () => log.length > 0 && log[$ - 1] == "BuildSearchIndex Completed"
+            && log.count("BuildSearchIndex started") == 2);
+
+    // Usually the first search is Cancelled; on a very fast run it may complete first.
+    // Either way both run, in order, and the result is the latest request's.
+    assert(log.count("BuildSearchIndex started") == 2, "both searches must start");
+    assert(log[$ - 1] == "BuildSearchIndex Completed");
+    assert(doc.searchView.itemsCount == messageCount, "the result must be the latest search's");
 }
