@@ -66,6 +66,16 @@ struct BackgroundSlot
 
     ~this()
     {
+        shutdown();
+    }
+
+    /// Cancels the running task, waits for it and rejects new ones.
+    /// Idempotent; the destructor calls it as well.
+    void shutdown()
+    {
+        if (_mutex is null) // default-initialized slot: nothing was ever started
+            return;
+
         Thread threadToJoin;
         synchronized (cast(Mutex)_mutex)
         {

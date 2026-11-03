@@ -155,6 +155,11 @@ int main()
 
 		writeln("Event loop stopped");
 
+		// Cancel and join indexing threads: they are not daemon threads, so the
+		// runtime would otherwise wait for them to finish after main() returns.
+		win.closeAllDocuments();
+		writeln("Documents closed");
+
 		//win.detachEventHandler();
 		//win.destroy(); // call d'tor
 	}

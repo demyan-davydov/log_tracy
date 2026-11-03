@@ -579,6 +579,13 @@ class MainWindow : SciterWindow
         }
     }
 
+    /// Closes all documents, stopping their background operations.
+    /// Call after the event loop has stopped.
+    void closeAllDocuments()
+    {
+        _workspace.closeAll();
+    }
+
     // should be called in main() in sciterApplication().runIteration() cycle
     void onIdle()
     {

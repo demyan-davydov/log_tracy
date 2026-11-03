@@ -174,6 +174,22 @@ final class Workspace
         _current = 0;
     }
 
+    //! @brief Stops forwarding and destroys all documents, cancelling and
+    //! joining their background operations. Call on application exit:
+    //! a running indexing thread would otherwise keep the process alive.
+    void closeAll()
+    {
+        auto records = _documents;
+        _documents = null;
+        _current = 0;
+
+        foreach (ref record; records)
+        {
+            stopForwarding(record);
+            destroy(record.document);
+        }
+    }
+
     private SubscriptionToken[] startForwarding(Document document, DocumentId docId)
     {
         SubscriptionToken[] tokens;
@@ -510,3 +526,33 @@ unittest
     assert(startedIds == [id1, id2], "events of a removed document must not be forwarded");
 }
 
+@("Workspace.closeAll destroys documents and stops forwarding")
+unittest
+{
+    static int destroyed;
+
+    class ClosableDocument : Document
+    {
+        ~this() { ++destroyed; }
+
+        SignalConsumer events() { return k_nullEvents; }
+        void dispatchEvents() {}
+        DocumentView mainView() { return k_nullDocumentView; }
+        DocumentView searchView() { return k_nullDocumentView; }
+        void applyViewFilter(LogFilter!wchar filter) {}
+        void applySearchFilter(LogFilter!wchar filter) {}
+        bool setAnchor(size_t index, bool value) { return false; }
+        size_t[] exportAnchors() const pure { return null; }
+        void importAnchors(const(size_t[]) anchors) {}
+    }
+
+    auto ws = new Workspace();
+    ws.addDocument(new ClosableDocument(), "doc1");
+    ws.addDocument(new ClosableDocument(), "doc2");
+
+    ws.closeAll();
+
+    assert(destroyed == 2, "every document must be destroyed");
+    assert(ws.length == 0);
+    assert(ws.current is k_nullDocument);
+}

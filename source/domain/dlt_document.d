@@ -291,3 +291,19 @@ unittest
     assert(readyOnFinish, "main view must be ready when OperationFinished is delivered");
     assert(countOnFinish == messageCount);
 }
+
+@("DltDocument: destroy while indexing cancels and joins the worker")
+unittest
+{
+    import std.file : remove;
+    import core.time : MonoTime, seconds;
+
+    auto path = writeTestDlt("dlt_document_destroy.dlt", 200_000);
+    scope (exit)
+        remove(path);
+
+    auto doc = new DltDocument(path);
+    const start = MonoTime.currTime;
+    destroy(doc); // must cancel the running BuildOffsetIndex, not wait for it or crash
+    assert(MonoTime.currTime - start < 1.seconds, "destroy must not wait for indexing to complete");
+}

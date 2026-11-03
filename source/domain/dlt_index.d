@@ -115,7 +115,10 @@ struct DltIndex
 
     ~this()
     {
-        // Mutex is now scoped and managed automatically
+        // Fields are destroyed in reverse declaration order, so _mutex and
+        // _source would go before _backgroundSlot joins the worker that uses
+        // them. Stop the worker explicitly first.
+        _backgroundSlot.shutdown();
     }
 
     Operation currentOperation()
