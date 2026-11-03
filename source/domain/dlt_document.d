@@ -101,11 +101,6 @@ class DltDocument : Document
         }
     }
 
-    Operation currentOperation()
-    {
-        return _index.currentOperation();
-    }
-
     bool setAnchor(size_t index, bool value)
     {
         return _anchors.set(index, value);

@@ -67,7 +67,6 @@ struct DltIndex
 
     enum progressStep = 0.01f; // minimal progress change worth an event
 
-    private Operation _currentOperation = Operation.None; // valid while _backgroundSlot is busy
     private BackgroundSlot _backgroundSlot;
     private ScopedMutex _mutex; // mutex for building indexes
     private SignalProducer _events; // operation events, published from the worker thread
@@ -121,27 +120,9 @@ struct DltIndex
         _backgroundSlot.shutdown();
     }
 
-    Operation currentOperation()
-    {
-        synchronized (cast(Mutex)_mutex)
-        {
-            return _backgroundSlot.busy() ? _currentOperation : Operation.None;
-        }
-    }
-
-    bool busy()
-    {
-        return currentOperation() != Operation.None;
-    }
-
     void cancelCurrentOperation()
     {
         _backgroundSlot.cancel();
-    }
-
-    float currentOperationProgress() const @nogc
-    {
-        return _backgroundSlot.progress();
     }
 
     bool runBuildOffsetIndex()
@@ -168,40 +149,37 @@ struct DltIndex
     //! @return false if another operation is running
     private bool runOperation(Operation op, Work work)
     {
-        synchronized (cast(Mutex)_mutex)
-        {
-            if (_backgroundSlot.busy())
-                return false;
+        // Called from the UI thread only, so the slot can't become busy
+        // between this check and runTask() below.
+        if (_backgroundSlot.busy())
+            return false;
 
-            // Set before the thread starts: state() must never see a running
-            // slot together with a stale operation.
-            _currentOperation = op;
-            _events.publish(OperationStarted(op));
+        // Published before the thread starts, so it precedes any progress event
+        _events.publish(OperationStarted(op));
 
-            auto finished = OperationFinished(op, OperationFinished.Result.Completed);
-            auto events = _events;
+        auto finished = OperationFinished(op, OperationFinished.Result.Completed);
+        auto events = _events;
 
-            const bool started = _backgroundSlot.runTask((BackgroundSlot.Ctx* ctx) {
-                auto progress = ProgressReporter(events, op, ctx);
-                try
-                {
-                    if (!work(progress))
-                        finished.result = OperationFinished.Result.Cancelled;
-                }
-                catch (Exception e)
-                {
-                    finished.result = OperationFinished.Result.Failed;
-                    finished.error = e.msg;
-                }
-            }, () { events.publish(finished); });
-
-            if (!started) // slot is shutting down
+        const bool started = _backgroundSlot.runTask((BackgroundSlot.Ctx* ctx) {
+            auto progress = ProgressReporter(events, op, ctx);
+            try
             {
-                _events.publish(OperationFinished(op, OperationFinished.Result.Cancelled));
-                return false;
+                if (!work(progress))
+                    finished.result = OperationFinished.Result.Cancelled;
             }
-            return true;
+            catch (Exception e)
+            {
+                finished.result = OperationFinished.Result.Failed;
+                finished.error = e.msg;
+            }
+        }, () { events.publish(finished); });
+
+        if (!started) // slot is shutting down
+        {
+            _events.publish(OperationFinished(op, OperationFinished.Result.Cancelled));
+            return false;
         }
+        return true;
     }
 
     void enableFilter(bool enable)
@@ -441,14 +419,6 @@ struct DltIndex
         item.anchored = false;
         item.selected = false;
         return true;
-    }
-
-    void enableMainViewFilter(bool enable)
-    {
-        synchronized (cast(Mutex)_mutex)
-        {
-            _viewIsFiltered = enable;
-        }
     }
 
     bool isMainViewFilterEnabled() const
