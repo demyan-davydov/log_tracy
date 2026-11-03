@@ -58,7 +58,9 @@ public:
         m_context = context;
     }
 
-    ref inout(TContext) context() inout return
+    /// Только для unittest'ов этого модуля: контекст — внутренняя память
+    /// автомата; наружу он действует через объекты, переданные в контексте.
+    private ref const(TContext) context() const return
     {
         return m_context;
     }
