@@ -14,7 +14,9 @@ import domain.index.index_builders;
 import domain.index.anchors;
 import domain.background_slot;
 import domain.document_item;
-import domain.document : Document;
+import domain.document : Document, OperationStarted, OperationProgress, OperationFinished;
+
+import event_bus.event_bus_interface : SignalProducer;
 
 import utils.lock_guard;
 
@@ -63,14 +65,40 @@ struct DltIndex
 
     alias Operation = Document.Operation;
 
-    private Operation _currentOperation = Operation.None;
+    enum progressStep = 0.01f; // minimal progress change worth an event
+
+    private Operation _currentOperation = Operation.None; // valid while _backgroundSlot is busy
     private BackgroundSlot _backgroundSlot;
     private ScopedMutex _mutex; // mutex for building indexes
+    private SignalProducer _events; // operation events, published from the worker thread
+
+    //! @brief Publishes throttled progress of the running operation
+    private struct ProgressReporter
+    {
+        SignalProducer events;
+        Operation operation;
+        BackgroundSlot.Ctx* ctx;
+        float lastPublished = -1;
+
+        void report(float value)
+        {
+            ctx.progress = value;
+            if (value >= 1.0f || value - lastPublished >= progressStep)
+            {
+                events.publish(OperationProgress(operation, value));
+                lastPublished = value;
+            }
+        }
+    }
+
+    private alias Work = bool delegate(ref ProgressReporter progress);
 
     @disable this(this); // copy constructor is disabled
 
-    this(string path)
+    this(string path, SignalProducer events)
     {
+        _events = events;
+
         _source = scoped!DltSourceFile(path);
 
         const size_t capacity = _source.overallLength / 40 + 10_000;
@@ -115,23 +143,62 @@ struct DltIndex
 
     bool runBuildOffsetIndex()
     {
-        return _backgroundSlot.runTask((BackgroundSlot.Ctx* ctx) {
-            buildOffsetIndex(ctx);
-        });
+        return runOperation(Operation.BuildOffsetIndex,
+            (ref ProgressReporter progress) => buildOffsetIndex(progress));
     }
 
     bool runBuildFilterIndex(Filter filter, Anchors anchors)
     {
-        return _backgroundSlot.runTask((BackgroundSlot.Ctx* ctx) {
-            buildFilterIndex(ctx, filter, anchors);
-        });
+        return runOperation(Operation.BuildFilterIndex,
+            (ref ProgressReporter progress) => buildFilterIndex(progress, filter, anchors));
     }
 
     bool runBuildSearchIndex(Filter filter, Anchors anchors)
     {
-        return _backgroundSlot.runTask((BackgroundSlot.Ctx* ctx) {
-            buildSearchIndex(ctx, filter, anchors);
-        });
+        return runOperation(Operation.BuildSearchIndex,
+            (ref ProgressReporter progress) => buildSearchIndex(progress, filter, anchors));
+    }
+
+    //! @brief Starts `work` in the background slot and reports its lifecycle:
+    //! OperationStarted (before the thread starts), OperationProgress*,
+    //! OperationFinished (after the slot is idle, so state() is already updated).
+    //! @return false if another operation is running
+    private bool runOperation(Operation op, Work work)
+    {
+        synchronized (cast(Mutex)_mutex)
+        {
+            if (_backgroundSlot.busy())
+                return false;
+
+            // Set before the thread starts: state() must never see a running
+            // slot together with a stale operation.
+            _currentOperation = op;
+            _events.publish(OperationStarted(op));
+
+            auto finished = OperationFinished(op, OperationFinished.Result.Completed);
+            auto events = _events;
+
+            const bool started = _backgroundSlot.runTask((BackgroundSlot.Ctx* ctx) {
+                auto progress = ProgressReporter(events, op, ctx);
+                try
+                {
+                    if (!work(progress))
+                        finished.result = OperationFinished.Result.Cancelled;
+                }
+                catch (Exception e)
+                {
+                    finished.result = OperationFinished.Result.Failed;
+                    finished.error = e.msg;
+                }
+            }, () { events.publish(finished); });
+
+            if (!started) // slot is shutting down
+            {
+                _events.publish(OperationFinished(op, OperationFinished.Result.Cancelled));
+                return false;
+            }
+            return true;
+        }
     }
 
     void enableFilter(bool enable)
@@ -144,14 +211,13 @@ struct DltIndex
     }
 
     //! @brief build file index, also rebuild filter and search indexes
-    //! @param cancelFlag - flag to cancel the build process
+    //! @param progress - progress reporter, also gives access to the cancel flag
     //! @return true if the build process was completed successfully, false otherwise
-    private bool buildOffsetIndex(BackgroundSlot.Ctx* ctx)
+    private bool buildOffsetIndex(ref ProgressReporter progress)
     {
+        auto ctx = progress.ctx;
         synchronized (cast(Mutex)_mutex)
         {
-            _currentOperation = Operation.BuildOffsetIndex;
-
             _offsetIndex.clear();
             _filterIndex.clear();
             _searchIndex.clear();
@@ -183,28 +249,27 @@ struct DltIndex
             synchronized (cast(Mutex)_mutex)
             {
                 _offsetIndex.append(tempIndex[0 .. n]); // only populated slice
-                ctx.progress = cast(float)(range.offset) / range.overallLength;
+                progress.report(cast(float)(range.offset) / range.overallLength);
             }
         }
 
         synchronized (cast(Mutex)_mutex)
         {
             _offsetIndex.isReady = true;
-            ctx.progress = 1.0f;
+            progress.report(1.0f);
         }
 
         return true;
     }
 
     //! @brief build filter index, also rebuild search index
-    //! @param cancelFlag - flag to cancel the build process
+    //! @param progress - progress reporter, also gives access to the cancel flag
     //! @return true if the build process was completed successfully, false otherwise
-    private bool buildFilterIndex(BackgroundSlot.Ctx* ctx, Filter filter, Anchors anchors)
+    private bool buildFilterIndex(ref ProgressReporter progress, Filter filter, Anchors anchors)
     {
+        auto ctx = progress.ctx;
         synchronized (cast(Mutex)_mutex)
         {
-            _currentOperation = Operation.BuildFilterIndex;
-
             _filterIndex.clear();
             _searchIndex.clear();
             _filterIndex.isReady = false;
@@ -247,28 +312,27 @@ struct DltIndex
             synchronized (cast(Mutex)_mutex)
             {
                 _filterIndex.append(tempIndex[0 .. n]); // only matched entries
-                ctx.progress = cast(float)(range.offset) / range.overallLength;
+                progress.report(cast(float)(range.offset) / range.overallLength);
             }
         }
 
         synchronized (cast(Mutex)_mutex)
         {
             _filterIndex.isReady = true;
-            ctx.progress = 1.0f;
+            progress.report(1.0f);
         }
 
         return true;
     }
 
     //! @brief build search index
-    //! @param cancelFlag - flag to cancel the build process
+    //! @param progress - progress reporter, also gives access to the cancel flag
     //! @return true if the build process was completed successfully, false otherwise
-    private bool buildSearchIndex(BackgroundSlot.Ctx* ctx, Filter filter, Anchors anchors)
+    private bool buildSearchIndex(ref ProgressReporter progress, Filter filter, Anchors anchors)
     {
+        auto ctx = progress.ctx;
         synchronized (cast(Mutex)_mutex)
         {
-            _currentOperation = Operation.BuildSearchIndex;
-
             _searchIndex.clear();
             _searchIndex.isReady = false;
         }
@@ -316,7 +380,7 @@ struct DltIndex
             synchronized (cast(Mutex)_mutex)
             {
                 _searchIndex.append(tempIndex[0 .. tempLen]);
-                ctx.progress = cast(float) batchEnd / indexLen;
+                progress.report(cast(float) batchEnd / indexLen);
             }
 
             pos = batchEnd;
@@ -325,7 +389,7 @@ struct DltIndex
         synchronized (cast(Mutex)_mutex)
         {
             _searchIndex.isReady = true;
-            ctx.progress = 1.0f;
+            progress.report(1.0f);
         }
 
         return true;

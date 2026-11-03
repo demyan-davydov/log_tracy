@@ -217,7 +217,7 @@ version (unittest)
     import std.typecons : scoped;
 
     /// Build a minimal valid DLT message (StorageHeader + StandardHeader + payload)
-    private ubyte[] buildDltMessage(
+    ubyte[] buildDltMessage(
         const(char)[4] ecuId = "ECU1",
         uint seconds = 1000,
         uint microseconds = 500,

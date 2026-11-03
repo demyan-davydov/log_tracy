@@ -11,6 +11,8 @@ import domain.document_id;
 import domain.document_item;
 import domain.index.anchors;
 
+import event_bus.event_bus_interface : SignalConsumer;
+
 interface DocumentView
 {
     enum State
@@ -53,20 +55,11 @@ interface Document
         BuildSearchIndex,
     }
 
-    struct OperationInfo
-    {
-        enum Status
-        {
-            Start,
-            Progress,
-            Finished,
-            Cancelled,
-        }
+    /// Subscription point for OperationStarted / OperationProgress / OperationFinished.
+    SignalConsumer events();
 
-        Operation operation;
-        Status status;
-        float progress = 0;
-    }
+    /// Delivers queued events to subscribers. Must be called from the UI thread.
+    void dispatchEvents();
 
     DocumentView mainView();
 
@@ -87,8 +80,35 @@ interface Document
     size_t[] exportAnchors() const pure;
 
     void importAnchors(const(size_t[]) anchors);
+}
 
-    //alias OperationCb = void delegate(DocumentId, Operation);
+// ─── Document events ───────────────────────────────────────────────────────
+// Published from the indexing thread, delivered on the UI thread by
+// Document.dispatchEvents(). Order per operation: Started, Progress*, Finished.
 
-    //void subscribeForOperation(OperationCb);
+struct OperationStarted
+{
+    Document.Operation operation;
+}
+
+struct OperationProgress
+{
+    enum isOverridable = true; // only the latest progress matters
+
+    Document.Operation operation;
+    float progress = 0; // 0..1
+}
+
+struct OperationFinished
+{
+    enum Result
+    {
+        Completed,
+        Cancelled,
+        Failed,
+    }
+
+    Document.Operation operation;
+    Result result;
+    string error; // set when result == Failed
 }

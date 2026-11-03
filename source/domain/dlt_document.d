@@ -14,6 +14,9 @@ import domain.dlt_index;
 
 import utils.lock_guard;
 
+import event_bus.event_bus_async : EventBusAsync;
+import event_bus.event_bus_interface : SignalConsumer;
+
 import std.parallelism : Task, TaskPool;
 import std.typecons : scoped, Unique, Proxy;
 
@@ -28,16 +31,28 @@ class DltDocument : Document
 
     private string _sourcePath;
 
+    private EventBusAsync _events; // must outlive _index: its worker publishes here
     private DltIndex _index;
 
     this() @disable;
 
     this(string path)
     {
-        _index = DltIndex(path);
+        _events = new EventBusAsync();
+        _index = DltIndex(path, _events);
         _sourcePath = path;
         _mainView = new MainDocumentView();
         _searchView = new SearchDocumentView();
+    }
+
+    override SignalConsumer events()
+    {
+        return _events;
+    }
+
+    override void dispatchEvents()
+    {
+        _events.dispatch();
     }
 
     override DocumentView mainView()
@@ -191,4 +206,88 @@ class DltDocument : Document
             this.outer.applySearchFilter(null);
         }
     }
+}
+
+// =============================================================================
+// Unit tests
+// =============================================================================
+
+version (unittest)
+{
+    import dlt_core.dlt_source : buildDltMessage;
+
+    private string writeTestDlt(string name, size_t messageCount)
+    {
+        import std.file : write, tempDir;
+        import std.path : buildPath;
+
+        ubyte[] data;
+        foreach (i; 0 .. messageCount)
+            data ~= buildDltMessage("ECU1", cast(uint) i, 0, 0, cast(ubyte) i, [0xAA, 0xBB]);
+
+        auto path = buildPath(tempDir(), name);
+        write(path, data);
+        return path;
+    }
+
+    /// Pumps document events like MainWindow.onIdle() until `done` or timeout
+    private void dispatchUntil(Document doc, scope bool delegate() done)
+    {
+        import core.thread : Thread;
+        import core.time : msecs, MonoTime;
+
+        const deadline = MonoTime.currTime + 3000.msecs;
+        while (!done() && MonoTime.currTime < deadline)
+        {
+            doc.dispatchEvents();
+            Thread.sleep(1.msecs);
+        }
+    }
+}
+
+@("DltDocument: opening reports Started, Progress, Finished in order")
+unittest
+{
+    import std.file : remove;
+
+    enum messageCount = 2000;
+    auto path = writeTestDlt("dlt_document_events.dlt", messageCount);
+    scope (exit)
+        remove(path);
+
+    auto doc = new DltDocument(path);
+
+    string[] log;
+    float lastProgress = -1;
+    OperationFinished finished;
+    bool readyOnFinish;
+    size_t countOnFinish;
+
+    // Subscribing after construction is fine: nothing is delivered before dispatchEvents()
+    doc.events.subscribe((const OperationStarted e) {
+        assert(e.operation == Document.Operation.BuildOffsetIndex);
+        log ~= "started";
+    });
+    doc.events.subscribe((const OperationProgress e) {
+        assert(e.progress >= lastProgress, "progress must not go backwards");
+        lastProgress = e.progress;
+        if (log.length == 0 || log[$ - 1] != "progress")
+            log ~= "progress";
+    });
+    doc.events.subscribe((const OperationFinished e) {
+        finished = e;
+        // Finished is published after the slot is idle: views are already updated
+        readyOnFinish = doc.mainView.ready;
+        countOnFinish = doc.mainView.itemsCount;
+        log ~= "finished";
+    });
+
+    dispatchUntil(doc, () => log.length > 0 && log[$ - 1] == "finished");
+
+    assert(log == ["started", "progress", "finished"], "unexpected event order");
+    assert(finished.operation == Document.Operation.BuildOffsetIndex);
+    assert(finished.result == OperationFinished.Result.Completed);
+    assert(lastProgress == 1.0f, "last progress event must report completion");
+    assert(readyOnFinish, "main view must be ready when OperationFinished is delivered");
+    assert(countOnFinish == messageCount);
 }

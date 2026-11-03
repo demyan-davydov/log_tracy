@@ -8,6 +8,9 @@ import domain.index.anchors;
 import dlt_core.log_item : LogItem;
 import dlt_core.log_filter : LogFilter;
 
+import event_bus.event_bus_interface : SignalConsumer;
+import event_bus.event_bus_sync : EventBusSync;
+
 import std.algorithm : countUntil, remove;
 import std.array : insertInPlace;
 
@@ -55,6 +58,15 @@ private class NullDocumentView : DocumentView
 
 private class NullDocument : Document
 {
+    override SignalConsumer events()
+    {
+        return k_nullEvents; // never publishes
+    }
+
+    override void dispatchEvents()
+    {
+    }
+
     override DocumentView mainView()
     {
         return k_nullDocumentView;
@@ -90,6 +102,12 @@ private class NullDocument : Document
 
 __gshared NullDocumentView k_nullDocumentView = new NullDocumentView();
 __gshared NullDocument k_nullDocument = new NullDocument();
+__gshared EventBusSync k_nullEvents;
+
+shared static this()
+{
+    k_nullEvents = new EventBusSync(); // owns a Mutex: cannot be built at compile time
+}
 
 private struct DocumentRecord
 {
@@ -190,6 +208,31 @@ final class Workspace
         return false;
     }
 
+    //! @brief Delivers queued events of all documents to their subscribers.
+    //! Must be called from the UI thread. Every document is dispatched even if
+    //! a subscriber throws; exceptions are chained via Throwable.next.
+    void dispatchEvents()
+    {
+        Throwable head, tail;
+        foreach (record; _documents.dup) // subscribers may add/remove documents
+        {
+            try
+                record.document.dispatchEvents();
+            catch (Exception e)
+            {
+                if (head is null)
+                    head = e;
+                else
+                    tail.next = e;
+                tail = e;
+                while (tail.next !is null)
+                    tail = tail.next;
+            }
+        }
+        if (head !is null)
+            throw head;
+    }
+
     //! @brief Checks if there is a current document
     //! @return True if there is a current document, false otherwise
     bool hasCurrent() const pure nothrow @nogc @property
@@ -285,6 +328,15 @@ unittest
         this(string n)
         {
             name = n;
+        }
+
+        SignalConsumer events()
+        {
+            return k_nullEvents;
+        }
+
+        void dispatchEvents()
+        {
         }
 
         DocumentView mainView()

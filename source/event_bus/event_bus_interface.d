@@ -68,7 +68,8 @@ EventOps eventOps(T)()
 
 interface SignalConsumer
 {
-    SubscriptionToken subscribeRaw(TypeInfo ti, void delegate(const(void)*) cb);
+    protected SubscriptionToken subscribeRaw(TypeInfo ti, void delegate(const(void)*) cb);
+    
     bool unsubscribe(SubscriptionToken token);
 
     /**
@@ -97,7 +98,7 @@ interface SignalProducer
      * Publish a type-erased event. `data` is only valid for the duration of
      * the call: an implementation that defers delivery must copy it via `ops`.
      */
-    void publishRaw(EventOps ops, scope const(void)* data);
+    protected void publishRaw(EventOps ops, scope const(void)* data);
 
     final void publish(EventType)(auto ref const EventType event)
     {

@@ -562,9 +562,12 @@ class MainWindow : SciterWindow
 
     void processCurrentDocumentState()
     {
-        if (_workspace.current !is null)
+        try
+            _workspace.dispatchEvents();
+        catch (Exception e)
         {
-            //_workspace.current.processState();
+            for (Throwable t = e; t !is null; t = t.next)
+                writeln("Document event handler failed: ", t.msg);
         }
     }
 }

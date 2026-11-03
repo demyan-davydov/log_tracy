@@ -76,11 +76,13 @@ struct BackgroundSlot
         }
 
         if (threadToJoin)
-            threadToJoin.join();
+            threadToJoin.join(false); // task exceptions are the task's responsibility
     }
 
     /// Run a task. Returns false if the slot is busy or shutdown is in progress.
-    bool runTask(TaskDelegate dg)
+    /// `onFinished`, if given, runs on the worker thread after the slot has
+    /// become idle (busy == false), so it may safely report completion.
+    bool runTask(TaskDelegate dg, void delegate() onFinished = null)
     {
         synchronized (cast(Mutex)_mutex)
         {
@@ -93,7 +95,7 @@ struct BackgroundSlot
             // Previous thread finished — join and release it
             if (_thread !is null)
             {
-                _thread.join();
+                _thread.join(false);
                 _thread = null;
             }
 
@@ -106,9 +108,14 @@ struct BackgroundSlot
             auto doneFlagPtr = &_threadDone;
 
             _thread = new Thread(() {
+                scope (exit)
+                {
+                    ctxPtr.setProgress(1.0f);
+                    atomicStore!(MemoryOrder.rel)(*doneFlagPtr, true);
+                    if (onFinished !is null)
+                        onFinished();
+                }
                 dgCopy(ctxPtr);
-                ctxPtr.setProgress(1.0f);
-                atomicStore!(MemoryOrder.rel)(*doneFlagPtr, true);
             });
             _thread.isDaemon = false;
             _thread.start();
@@ -331,4 +338,22 @@ unittest
 
     assert(atomicLoad!(MemoryOrder.acq)(cancelSeen),
         "task must have received the cancel signal from the destructor");
+}
+
+/// onFinished runs after the slot is idle, even if the task throws
+@("BackgroundSlot: onFinished runs after slot becomes idle")
+unittest
+{
+    auto slot = BackgroundSlot(null);
+    shared bool finished = false;
+    shared bool busyInCallback = true;
+
+    slot.runTask((BackgroundSlot.Ctx* ctx) { throw new Exception("task failed"); }, () {
+        atomicStore!(MemoryOrder.rel)(busyInCallback, slot.busy);
+        atomicStore!(MemoryOrder.rel)(finished, true);
+    });
+
+    waitUntil(() => atomicLoad!(MemoryOrder.acq)(finished));
+    assert(atomicLoad!(MemoryOrder.acq)(finished), "onFinished must run");
+    assert(!atomicLoad!(MemoryOrder.acq)(busyInCallback), "slot must be idle in onFinished");
 }
