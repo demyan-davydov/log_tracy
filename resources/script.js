@@ -383,6 +383,27 @@ function applyFilters() {
     reloadLogTable();
 }
 
+// View status of every open document, kept up to date by onDocumentEvent for
+// all documents, not only the active one:
+//   docId -> { main: { state, progress }, search: { state, progress } }
+// state is a DocumentView.State name ("NotReady", "Ready", "BuildingIndex", "Error"),
+// progress is 0..1. Snapshot comes from getWorkspaceInfo in refreshTabs().
+const docStatus = new Map();
+let activeDocId = null;
+
+function findTab(docId) {
+    return $(`#tabs-container > .tab[id="${docId}"]`);
+}
+
+// Exposes the status on the tab element for CSS:
+//   state / progress (main view), search-state / search-progress; progress is 0..100
+function applyTabStatus(tab, status) {
+    tab.setAttribute("state", status.main.state);
+    tab.setAttribute("progress", String(Math.round(status.main.progress * 100)));
+    tab.setAttribute("search-state", status.search.state);
+    tab.setAttribute("search-progress", String(Math.round(status.search.progress * 100)));
+}
+
 function refreshTabs() {
     const info = Window.this.xcall("getWorkspaceInfo");
     if (!info) return;
@@ -392,13 +413,21 @@ function refreshTabs() {
     const addBtn = $("#btn-add-tab");
     container.content(addBtn);
 
+    docStatus.clear();
+    activeDocId = null;
+
     for (let i = 0; i < docs.length; i++) {
         const doc = docs[i];
+        const status = { main: doc.main, search: doc.search };
+        docStatus.set(doc.id, status);
+        if (doc.active) activeDocId = doc.id;
+
         const tab = <div class={doc.active ? "tab active" : "tab"} id={doc.id} draggable="true" data-index={i}>
             <span class="tab-name">{doc.name}</span>
             <span class="tab-close">×</span>
         </div>;
         container.append(tab);
+        applyTabStatus(tab, status);
     }
 
     updateViewMode();
@@ -420,17 +449,12 @@ function closeTab(docId) {
 }
 
 function updateViewMode() {
-    const info = Window.this.xcall("getWorkspaceInfo");
-    if (!info) return;
-    const docs = JSON.parse(info);
-    const activeDoc = docs.find(d => d.active);
-    const currentDocId = activeDoc ? activeDoc.id : null;
-
     const table = getMainViewTable();
     const loading = getLoadingContainer();
     const empty = $("#empty-placeholder");
+    const status = docStatus.get(activeDocId);
 
-    if (docs.length === 0) {
+    if (!status) {
         table.style.display = "none";
         loading.style.display = "none";
         empty.style.display = "flex";
@@ -441,26 +465,27 @@ function updateViewMode() {
 
     empty.style.display = "none";
 
-    const isReady = Window.this.xcall("isDocReady");
-    const progress01 = Window.this.xcall("getDocProgress");
-    const progress = Math.round(progress01 * 100);
+    const isReady = status.main.state === "Ready";
+    const progress = Math.round(status.main.progress * 100);
 
     if (!isReady) {
         table.style.display = "none";
         loading.style.display = "flex";
         $("#doc-load-progress").value = progress;
-        $("#doc-load-status").innerText = `Loading DLT file... ${progress}%`;
+        $("#doc-load-status").innerText = status.main.state === "Error"
+            ? "Failed to load DLT file"
+            : `Loading DLT file... ${progress}%`;
     } else {
         table.style.display = "block"; // clear inline style to let it act as a table
         loading.style.display = "none";
 
-        if (currentDocId !== lastDocId || (lastProgress !== 100 && lastProgress !== -1)) {
-            console.log("View update: doc transition or ready state, docId: ", currentDocId);
-            reloadLogTable(currentDocId !== lastDocId);
+        if (activeDocId !== lastDocId || (lastProgress !== 100 && lastProgress !== -1)) {
+            console.log("View update: doc transition or ready state, docId: ", activeDocId);
+            reloadLogTable(activeDocId !== lastDocId);
         }
     }
     lastProgress = isReady ? 100 : progress;
-    lastDocId = currentDocId;
+    lastDocId = activeDocId;
 }
 
 function updateSearchViewMode() {
@@ -468,15 +493,18 @@ function updateSearchViewMode() {
     if (!table) return;
 
     const loading = $("#search-loading-container");
-    const isReady = Window.this.xcall("isSearchReady");
-    const progress01 = Window.this.xcall("getSearchProgress");
-    const progress = Math.round(progress01 * 100);
+    const status = docStatus.get(activeDocId);
+    // No document: an empty search result, same as a document before any search
+    const search = status ? status.search : { state: "Ready", progress: 1 };
+    const progress = Math.round(search.progress * 100);
 
-    if (!isReady) {
+    if (search.state !== "Ready") {
         table.style.display = "none";
         loading.style.display = "flex";
         $("#search-view-progress").value = progress;
-        $("#search-view-status").innerText = `Searching... ${progress}%`;
+        $("#search-view-status").innerText = search.state === "Error"
+            ? "Search failed"
+            : `Searching... ${progress}%`;
     } else {
         table.style.display = "block";
         loading.style.display = "none";
@@ -489,15 +517,24 @@ function updateSearchViewMode() {
     }
 }
 
-// Native: document operation lifecycle (no polling).
-// kind: "started" | "progress" | "finished"; result is set for "finished":
-// "Completed" | "Cancelled" | "Failed". The views show the active document only,
-// so the event is a trigger to re-read its state.
-globalThis.onDocumentEvent = function (docId, kind, operation, progress, result) {
-    if (kind !== "progress")
-        console.log("Native: onDocumentEvent", docId, kind, operation, result);
+// Native: a document operation changed the status of one of its views.
+// view: "main" | "search"; state and progress as in docStatus.
+// Arrives for every document; only the active one is rendered in the views.
+globalThis.onDocumentEvent = function (docId, view, state, progress) {
+    const status = docStatus.get(docId);
+    if (!status) return; // tab not rendered yet: refreshTabs() will take the snapshot
 
-    if (operation === "BuildSearchIndex")
+    status[view] = { state, progress };
+
+    const tab = findTab(docId);
+    if (tab) applyTabStatus(tab, status);
+
+    if (state !== "BuildingIndex")
+        console.log("Native: onDocumentEvent", docId, view, state);
+
+    if (docId !== activeDocId) return;
+
+    if (view === "search")
         updateSearchViewMode();
     else
         updateViewMode();

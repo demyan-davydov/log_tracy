@@ -64,28 +64,43 @@ class MainWindow : SciterWindow
         subscribeToDocumentEvents();
     }
 
-    /// Forwards document operation events to JS: onDocumentEvent(docId, kind, operation, progress, result)
+    /// Forwards document operation events to JS as the resulting view status:
+    /// onDocumentEvent(docId, view, state, progress), view is "main" or "search".
+    /// The document updates its views before external subscribers are called,
+    /// so the status read here already reflects the event.
     private void subscribeToDocumentEvents()
     {
         auto events = _workspace.events;
         events.subscribe((const DocumentEvent!OperationStarted e) {
-            notifyDocumentEvent(e.docId, "started", e.event.operation, 0.0f, "");
+            writeln("Operation ", e.event.operation, " started, doc ", e.docId.toInt());
+            notifyViewStatus(e.docId, e.event.operation);
         });
         events.subscribe((const DocumentEvent!OperationProgress e) {
-            notifyDocumentEvent(e.docId, "progress", e.event.operation, e.event.progress, "");
+            notifyViewStatus(e.docId, e.event.operation);
         });
         events.subscribe((const DocumentEvent!OperationFinished e) {
-            if (e.event.result == OperationFinished.Result.Failed)
-                writeln("Operation ", e.event.operation, " failed: ", e.event.error);
-            notifyDocumentEvent(e.docId, "finished", e.event.operation, 1.0f, e.event.result.to!string);
+            writeln("Operation ", e.event.operation, " ", e.event.result, ", doc ", e.docId.toInt(),
+                e.event.error.length ? ": " ~ e.event.error : "");
+            notifyViewStatus(e.docId, e.event.operation);
         });
     }
 
-    private void notifyDocumentEvent(DocumentId docId, string kind, Document.Operation operation,
-        float progress, string result)
+    private void notifyViewStatus(DocumentId docId, Document.Operation operation)
     {
-        callScript("onDocumentEvent", docId.toInt(), kind.toUTF16(), operation.to!string.toUTF16(),
-            progress, result.toUTF16());
+        const bool search = isSearchOperation(operation);
+        auto doc = _workspace.doc(docId);
+        auto view = search ? doc.searchView : doc.mainView;
+        callScript("onDocumentEvent", docId.toInt(), (search ? "search"w : "main"w),
+            view.state.to!string.toUTF16(), view.progress);
+    }
+
+    /// {"state": "<DocumentView.State>", "progress": 0..1}
+    private static JSONValue viewStatusJson(DocumentView view)
+    {
+        return JSONValue([
+            "state": JSONValue(view.state.to!string),
+            "progress": JSONValue(view.progress)
+        ]);
     }
 
     override void handleAttached(HELEMENT he)
@@ -324,31 +339,13 @@ class MainWindow : SciterWindow
                         "id": JSONValue(item.docId.toInt()),
                         "name": JSONValue(item.sourcePath.baseName),
                         "path": JSONValue(item.sourcePath),
-                        "active": JSONValue(item.docId == _workspace.currentId)
+                        "active": JSONValue(item.docId == _workspace.currentId),
+                        "main": viewStatusJson(_workspace.doc(item.docId).mainView),
+                        "search": viewStatusJson(_workspace.doc(item.docId).searchView)
                     ];
                     docs ~= d;
                 }
                 resultView = JSONValue(docs).toString().toUTF16();
-                return true;
-            }
-            if (method == "getDocProgress")
-            {
-                resultView = _workspace.current.mainView.progress();
-                return true;
-            }
-            if (method == "isDocReady")
-            {
-                resultView = _workspace.current.mainView.ready();
-                return true;
-            }
-            if (method == "getSearchProgress")
-            {
-                resultView = _workspace.current.searchView.progress();
-                return true;
-            }
-            if (method == "isSearchReady")
-            {
-                resultView = _workspace.current.searchView.ready();
                 return true;
             }
             if (method == "startSearch")

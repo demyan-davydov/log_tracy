@@ -82,6 +82,13 @@ interface Document
     void importAnchors(const(size_t[]) anchors);
 }
 
+/// The view whose content an operation builds: search operations build the
+/// search view, all others the main view.
+bool isSearchOperation(Document.Operation operation) pure nothrow @nogc @safe
+{
+    return operation == Document.Operation.BuildSearchIndex;
+}
+
 // ─── Document events ───────────────────────────────────────────────────────
 // Published from the indexing thread, delivered on the UI thread by
 // Document.dispatchEvents(). Order per operation: Started, Progress*, Finished.

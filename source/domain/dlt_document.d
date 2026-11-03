@@ -11,6 +11,7 @@ import dlt_core.log_filter;
 
 import domain.index.anchors;
 import domain.dlt_index;
+import domain.view_status;
 
 import utils.lock_guard;
 
@@ -19,6 +20,7 @@ import event_bus.event_bus_interface : SignalConsumer;
 
 import std.parallelism : Task, TaskPool;
 import std.typecons : scoped, Unique, Proxy;
+import std.meta : AliasSeq;
 
 class DltDocument : Document
 {
@@ -32,6 +34,8 @@ class DltDocument : Document
     private string _sourcePath;
 
     private EventBusAsync _events; // must outlive _index: its worker publishes here
+    private ViewStatus _mainStatus = ViewStatus(ViewStatus.State.NotReady); // offset index not built yet
+    private ViewStatus _searchStatus; // Ready: empty search result until a search runs
     private DltIndex _index;
 
     this() @disable;
@@ -39,10 +43,21 @@ class DltDocument : Document
     this(string path)
     {
         _events = new EventBusAsync();
+        // Subscribed before anyone else: views are updated before external
+        // subscribers see the event, so they can read the new state right away.
+        static foreach (E; AliasSeq!(OperationStarted, OperationProgress, OperationFinished))
+        {
+            _events.subscribe((const E e) { statusOf(e.operation).on(e); });
+        }
         _index = DltIndex(path, _events);
         _sourcePath = path;
         _mainView = new MainDocumentView();
         _searchView = new SearchDocumentView();
+    }
+
+    private ref ViewStatus statusOf(Operation operation) return
+    {
+        return isSearchOperation(operation) ? _searchStatus : _mainStatus;
     }
 
     override SignalConsumer events()
@@ -127,16 +142,12 @@ class DltDocument : Document
 
         override DocumentView.State state()
         {
-            const auto op = this.outer.currentOperation();
-            // Main view is ready if it's not building initial index or applying main filter
-            if (op == Operation.BuildOffsetIndex || op == Operation.BuildFilterIndex)
-                return DocumentView.State.BuildingIndex;
-            return DocumentView.State.Ready;
+            return this.outer._mainStatus.state;
         }
 
         override float progress()
         {
-            return this.outer._index.currentOperationProgress();
+            return this.outer._mainStatus.progress;
         }
 
         override void enableFilter(bool enable)
@@ -174,16 +185,12 @@ class DltDocument : Document
 
         override DocumentView.State state()
         {
-            const auto op = this.outer.currentOperation();
-            // Search view is only building when BuildSearchIndex is active
-            if (op == Operation.BuildSearchIndex)
-                return DocumentView.State.BuildingIndex;
-            return DocumentView.State.Ready;
+            return this.outer._searchStatus.state;
         }
 
         override float progress()
         {
-            return this.outer._index.currentOperationProgress();
+            return this.outer._searchStatus.progress;
         }
 
         override void enableFilter(bool enable)
@@ -306,4 +313,33 @@ unittest
     const start = MonoTime.currTime;
     destroy(doc); // must cancel the running BuildOffsetIndex, not wait for it or crash
     assert(MonoTime.currTime - start < 1.seconds, "destroy must not wait for indexing to complete");
+}
+
+@("DltDocument: each view has its own state and progress")
+unittest
+{
+    import std.file : remove;
+
+    auto path = writeTestDlt("dlt_document_views.dlt", 500);
+    scope (exit)
+        remove(path);
+
+    auto doc = new DltDocument(path);
+    assert(doc.mainView.state == DocumentView.State.NotReady, "nothing delivered yet");
+    assert(doc.searchView.ready, "search view starts Ready with an empty result");
+
+    bool loaded;
+    doc.events.subscribe((const OperationFinished e) { loaded = true; });
+    dispatchUntil(doc, () => loaded);
+    assert(doc.mainView.ready && doc.mainView.progress == 1.0f);
+
+    // A search operation moves only the search view
+    enum search = Document.Operation.BuildSearchIndex;
+    doc._events.publish(OperationStarted(search));
+    doc._events.publish(OperationProgress(search, 0.3f));
+    doc.dispatchEvents();
+
+    assert(doc.searchView.state == DocumentView.State.BuildingIndex);
+    assert(doc.searchView.progress == 0.3f);
+    assert(doc.mainView.ready && doc.mainView.progress == 1.0f, "main view must not change");
 }
