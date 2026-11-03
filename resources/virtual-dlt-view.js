@@ -8,13 +8,15 @@ export class VirtualDltTBody extends VirtualSelect {
 
     this(props) {
         super.this(props);
-        this.selectedKeys = new Set(); // keyOf() of the selected items
+        // keyOf() of the selected items. Not called for the tbody bound by CSS
+        // `prototype:`, so selectedKeys may be undefined: guard every use
+        this.selectedKeys = new Set();
     }
 
     // The selection, to be restored by restoreSelection() while the list shows
     // the same content: currentItem refers to a position in the view
     saveSelection() {
-        return { currentItem: this.currentItem, selectedKeys: new Set(this.selectedKeys) };
+        return { currentItem: this.currentItem, selectedKeys: new Set(this.selectedKeys ?? []) };
     }
 
     // Restores a selection from saveSelection(); null clears the selection.
@@ -58,7 +60,7 @@ export class VirtualDltTBody extends VirtualSelect {
         //
         const currentKey = this.currentItem ? this.indexOf(this.currentItem) : null;
         isCurrent = currentKey !== null && this.indexOf(item) === currentKey;
-        isSelected = this.selectedKeys.has(this.keyOf(item));
+        isSelected = this.selectedKeys?.has(this.keyOf(item)) ?? false;
 
         if (isCurrent || isSelected) {
             console.log("--- [2] renderItem called for item:", item[3], "isCurrent:", isCurrent, "isSelected:", isSelected);
