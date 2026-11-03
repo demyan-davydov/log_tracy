@@ -6,10 +6,11 @@ globalThis.VirtualMainViewTBody = VirtualMainViewTBody;
 globalThis.VirtualSearchViewTBody = VirtualSearchViewTBody;
 
 let currentTheme = "light";
-// Main view state rendered last time: the table is reloaded when the active
-// document changes or its main view becomes Ready (load/filter finished)
-let lastMainState = null;
-let lastDocId = null;
+// Main view rendered last time: the table is reloaded when another document is
+// shown or the content of the shown one changes (dataVersion of the ready view).
+// shownDataVersion is null while the view isn't the table.
+let shownDocId = null;
+let shownDataVersion = null;
 
 document.on("ready", function () {
     console.log("Starting DLT Explorer UI...");
@@ -231,8 +232,7 @@ function setupEvents() {
             return;
         }
         const refreshStart = Date.now();
-        refreshTabs();
-        reloadLogTable(true);
+        refreshTabs(); // the reopened document starts loading: the table reloads when it is ready
         console.log(`Retry: xcall ${retryTime} ms, views refresh ${Date.now() - refreshStart} ms`);
     });
 
@@ -240,16 +240,10 @@ function setupEvents() {
         Window.this.xcall("cancelOperation");
     });
 
-    // Loading the file can't be stopped half way: cancelling it closes the
-    // document. A running filter is cancelled instead.
+    // What Cancel means (stop the filter, close a loading document) is decided
+    // by the main view machine of the document
     document.on("click", "#btn-cancel-load", () => {
-        const status = docStatus.get(activeDocId);
-        if (!status) return;
-        const op = status.main.operation;
-        if (op === "BuildOffsetIndex" || op === "None")
-            closeTab(activeDocId);
-        else
-            Window.this.xcall("cancelOperation");
+        if (activeDocId !== null) Window.this.xcall("cancelMainView", activeDocId);
     });
 
     document.on("click", "#btn-fibex", () => {
@@ -395,12 +389,15 @@ function applyFilters() {
     Window.this.xcall("applyFilter", JSON.stringify(config));
 }
 
-// View status of every open document, kept up to date by onDocumentEvent for
-// all documents, not only the active one:
-//   docId -> { main: { state, progress, operation }, search: { state, progress, operation } }
-// state is a DocumentView.State name ("NotReady", "Ready", "BuildingIndex", "Error"),
-// progress is 0..1, operation is the Document.Operation name that brought the view
-// to this state ("None" if none). Snapshot comes from getWorkspaceInfo in refreshTabs().
+// Status of every open document, kept up to date for all documents, not only
+// the active one:
+//   docId -> { mainView, search: { state, progress, operation }, lost, path }
+// mainView is the view shown by the main view machine (onMainViewChanged):
+//   { status, canCancel, <fields of the view> }, see source/ui/main_view_fsm.d
+// search (onDocumentEvent): state is a DocumentView.State name ("NotReady",
+// "Ready", "BuildingIndex", "Error"), progress is 0..1, operation is the
+// Document.Operation name that brought the view to this state ("None" if none).
+// Snapshot comes from getWorkspaceInfo in refreshTabs().
 const docStatus = new Map();
 let activeDocId = null;
 
@@ -409,10 +406,10 @@ function findTab(docId) {
 }
 
 // Exposes the status on the tab element for CSS:
-//   state / progress (main view), search-state / search-progress; progress is 0..100
+//   main-status (status of the main view), search-state / search-progress
+//   (progress is 0..100), lost
 function applyTabStatus(tab, status) {
-    tab.setAttribute("state", status.main.state);
-    tab.setAttribute("progress", String(Math.round(status.main.progress * 100)));
+    tab.setAttribute("main-status", status.mainView ? status.mainView.status : "");
     tab.setAttribute("search-state", status.search.state);
     tab.setAttribute("search-progress", String(Math.round(status.search.progress * 100)));
     tab.setAttribute("lost", status.lost ? "true" : "false");
@@ -432,7 +429,7 @@ function refreshTabs() {
 
     for (let i = 0; i < docs.length; i++) {
         const doc = docs[i];
-        const status = { main: doc.main, search: doc.search, lost: doc.lost, path: doc.path };
+        const status = { mainView: doc.mainView, search: doc.search, lost: doc.lost, path: doc.path };
         docStatus.set(doc.id, status);
         if (doc.active) activeDocId = doc.id;
 
@@ -454,8 +451,7 @@ function switchTab(docId) {
     const id = parseInt(docId);
     console.log("Requesting switch to doc (int):", id);
     Window.this.xcall("switchTab", id);
-    refreshTabs();
-    reloadLogTable(true);
+    refreshTabs(); // reloads the table of the other document if it is ready
 }
 
 function closeTab(docId) {
@@ -464,67 +460,70 @@ function closeTab(docId) {
     refreshTabs();
 }
 
+// Texts of the main view statuses other than the table and the lost file
+const mainViewTexts = {
+    loadingFile: (vm) => `Loading DLT file... ${percent(vm.progress)}%`,
+    loadFailed: () => "Failed to load DLT file",
+    filtering: (vm) => `Filtering... ${percent(vm.progress)}%`,
+    filterCancelled: () => "Filter cancelled",
+    filterFailed: () => "Filter failed",
+};
+
+function percent(progress) {
+    return Math.round(progress * 100);
+}
+
+// Renders the main view of the active document as its machine shows it
 function updateViewMode() {
     const table = getMainViewTable();
     const loading = getLoadingContainer();
     const empty = $("#empty-placeholder");
-    const status = docStatus.get(activeDocId);
-
-    if (!status) {
-        table.style.display = "none";
-        loading.style.display = "none";
-        empty.style.display = "flex";
-        lastDocId = null;
-        lastMainState = null;
-        return;
-    }
-
-    empty.style.display = "none";
-
-    // The file can't be read any more: block the views of this document
     const lostView = $("#source-lost");
-    if (status.lost) {
-        table.style.display = "none";
-        loading.style.display = "none";
-        lostView.style.display = "flex";
-        $("#source-lost-path").innerText = status.path || "";
-        lastMainState = "Lost"; // a reopened document reloads the table when ready
-        lastDocId = activeDocId;
+    const status = docStatus.get(activeDocId);
+    const vm = status ? status.mainView : null;
+
+    const showOnly = (shown) => {
+        for (const element of [table, loading, empty, lostView])
+            element.style.display = element !== shown ? "none"
+                : element === table ? "block" // clear inline style to let it act as a table
+                : "flex";
+    };
+
+    if (!vm) {
+        showOnly(empty);
+        shownDocId = null;
+        shownDataVersion = null;
         return;
     }
-    lostView.style.display = "none";
-    $("#source-lost-error").innerText = "";
 
-    const main = status.main;
-    const isReady = main.state === "Ready";
-    const progress = Math.round(main.progress * 100);
+    if (vm.status !== "sourceLost") $("#source-lost-error").innerText = "";
 
-    if (!isReady) {
-        // NotReady with no operation yet: the load is about to start
-        const loadingFile = main.operation === "BuildOffsetIndex" || main.operation === "None";
-        const building = main.state === "BuildingIndex" || main.operation === "None";
-        table.style.display = "none";
-        loading.style.display = "flex";
-        $("#doc-load-progress").value = progress;
-        $("#doc-load-status").innerText =
-            main.state === "Error" ? (loadingFile ? "Failed to load DLT file" : "Filter failed")
-            : !building ? (loadingFile ? "Loading cancelled" : "Filter cancelled")
-            : loadingFile ? `Loading DLT file... ${progress}%`
-            : `Filtering... ${progress}%`;
-        $("#btn-cancel-load").style.display = building ? "" : "none";
-    } else {
-        table.style.display = "block"; // clear inline style to let it act as a table
-        loading.style.display = "none";
-
-        // Decided by the state transition, not by progress: the last progress
-        // event already reports 100% while the view is still BuildingIndex
-        if (activeDocId !== lastDocId || lastMainState !== "Ready") {
-            console.log("View update: doc transition or ready state, docId: ", activeDocId);
-            reloadLogTable(activeDocId !== lastDocId);
+    if (vm.status === "ready") {
+        showOnly(table);
+        if (activeDocId !== shownDocId || vm.dataVersion !== shownDataVersion) {
+            console.log("View update: doc", activeDocId, "content", vm.dataVersion);
+            reloadLogTable(activeDocId !== shownDocId);
         }
+        shownDocId = activeDocId;
+        shownDataVersion = vm.dataVersion;
+        return;
     }
-    lastMainState = main.state;
-    lastDocId = activeDocId;
+
+    if (vm.status === "sourceLost") {
+        showOnly(lostView);
+        $("#source-lost-path").innerText = status.path || "";
+    } else {
+        showOnly(loading);
+        const progress = $("#doc-load-progress");
+        const hasProgress = vm.progress !== undefined;
+        progress.style.display = hasProgress ? "" : "none";
+        if (hasProgress) progress.value = percent(vm.progress);
+        const text = mainViewTexts[vm.status];
+        $("#doc-load-status").innerText = text ? text(vm) : vm.status;
+        $("#btn-cancel-load").style.display = vm.canCancel ? "" : "none";
+    }
+    shownDocId = activeDocId;
+    shownDataVersion = null; // the next table is reloaded, whatever its dataVersion
 }
 
 function updateSearchViewMode() {
@@ -580,14 +579,12 @@ globalThis.onSourceLost = function (docId) {
     const tab = findTab(docId);
     if (tab) applyTabStatus(tab, status);
 
-    if (docId === activeDocId) {
-        updateViewMode();
-        updateSearchViewMode();
-    }
+    // The main view comes from its machine, see onMainViewChanged
+    if (docId === activeDocId) updateSearchViewMode();
 };
 
-// Native: a document operation changed the status of one of its views.
-// view: "main" | "search"; state, progress and operation as in docStatus.
+// Native: a search operation changed the status of the search view.
+// view is always "search"; state, progress and operation as in docStatus.
 // Arrives for every document; only the active one is rendered in the views.
 globalThis.onDocumentEvent = function (docId, view, state, progress, operation) {
     const status = docStatus.get(docId);
@@ -601,18 +598,36 @@ globalThis.onDocumentEvent = function (docId, view, state, progress, operation) 
     if (state !== "BuildingIndex")
         console.log("Native: onDocumentEvent", docId, view, state);
 
-    if (docId !== activeDocId) return;
+    if (docId === activeDocId) updateSearchViewMode();
+};
 
-    if (view === "search")
-        updateSearchViewMode();
-    else
-        updateViewMode();
+// Native: the main view of a document shows something else now.
+// json: { status, canCancel, <fields of the view> }, see source/ui/main_view_fsm.d
+// Arrives for every document; only the active one is rendered.
+globalThis.onMainViewChanged = function (docId, json) {
+    const status = docStatus.get(docId);
+    if (!status) return; // tab not rendered yet: refreshTabs() will take the snapshot
+
+    status.mainView = JSON.parse(json);
+    if (status.mainView.status !== "loadingFile" && status.mainView.status !== "filtering")
+        console.log("Native: onMainViewChanged", docId, json);
+
+    const tab = findTab(docId);
+    if (tab) applyTabStatus(tab, status);
+
+    if (docId === activeDocId) updateViewMode();
 };
 
 globalThis.onDocumentAdded = function (docId) {
     console.log("Native: onDocumentAdded (int)", docId);
+    refreshTabs(); // the table reloads when the file is loaded
+};
+
+// Native: the document was closed on request of its main view (e.g. Cancel
+// while the file was loading)
+globalThis.onDocumentClosed = function (docId) {
+    console.log("Native: onDocumentClosed", docId);
     refreshTabs();
-    reloadLogTable();
 };
 
 globalThis.reloadLogTable = function (forceReset = false) {

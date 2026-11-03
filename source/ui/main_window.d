@@ -17,6 +17,7 @@ import dlt_core.dlt_filter_serialization;
 import dlt_core.dlt_filter_record;
 import dlt_core.dlt_log_filter : DltLogFilter, quickFilter;
 import domain.search_filter : SearchFilter;
+import ui.main_view_fsm;
 import dlt_core.log_filter : LogFilter;
 import dlt_core.log_item : LogItem;
 
@@ -32,10 +33,53 @@ import std.stdio;
 import std.json;
 import std.conv : to;
 
+/// UI side of one document: the machine of its main view and the view it shows.
+/// Lives as long as its document; a reopened document gets a new one.
+private final class DocumentUi : MainViewSink, MainViewCommands
+{
+    private Workspace _workspace;
+    private DocumentId _docId;
+    private MainViewFsm _mainView;
+
+    MainViewModel mainViewShown; // the latest view shown by the machine
+    bool mainViewChanged; // shown since it was last sent to JS
+    bool closeRequested; // the machine asked to close the document
+
+    this(Workspace workspace, DocumentId docId)
+    {
+        _workspace = workspace;
+        _docId = docId;
+        _mainView = makeMainViewFsm(this, this);
+        _mainView.start();
+    }
+
+    void process(E)(in E e)
+    {
+        _mainView.process(e);
+    }
+
+    void show(in MainViewModel vm)
+    {
+        mainViewShown = vm;
+        mainViewChanged = true;
+    }
+
+    bool cancelOperation()
+    {
+        return _workspace.doc(_docId).requestCancel();
+    }
+
+    void closeDocument()
+    {
+        closeRequested = true; // done by MainWindow.applyDocumentCommands()
+    }
+}
+
 class MainWindow : SciterWindow
 {
     private AppSettings _settings;
     private Workspace _workspace;
+    private DocumentUi[DocumentId] _documentUis;
 
     this(AppSettings settings)
     {
@@ -64,8 +108,9 @@ class MainWindow : SciterWindow
         subscribeToDocumentEvents();
     }
 
-    /// Forwards document operation events to JS as the resulting view status:
-    /// onDocumentEvent(docId, view, state, progress, operation), view is "main" or "search".
+    /// Feeds document events to the machines of the documents; their views reach
+    /// JS from onIdle(), see flushMainViews(). The search view status still goes
+    /// to JS directly: onDocumentEvent(docId, "search", state, progress, operation).
     /// The document updates its views before external subscribers are called,
     /// so the status read here already reflects the event.
     private void subscribeToDocumentEvents()
@@ -73,29 +118,98 @@ class MainWindow : SciterWindow
         auto events = _workspace.events;
         events.subscribe((const DocumentEvent!OperationStarted e) {
             writeln("Operation ", e.event.operation, " started, doc ", e.docId.toInt());
-            notifyViewStatus(e.docId, e.event.operation);
+            processDocumentEvent(e.docId, e.event);
+            notifySearchViewStatus(e.docId, e.event.operation);
         });
         events.subscribe((const DocumentEvent!OperationProgress e) {
-            notifyViewStatus(e.docId, e.event.operation);
+            processDocumentEvent(e.docId, e.event);
+            notifySearchViewStatus(e.docId, e.event.operation);
         });
         events.subscribe((const DocumentEvent!SourceLost e) {
             writeln("Source lost, doc ", e.docId.toInt(), ": ", _workspace.displayName(e.docId));
+            processDocumentEvent(e.docId, e.event);
             callScript("onSourceLost", e.docId.toInt());
         });
         events.subscribe((const DocumentEvent!OperationFinished e) {
             writeln("Operation ", e.event.operation, " ", e.event.result, ", doc ", e.docId.toInt(),
                 e.event.error.length ? ": " ~ e.event.error : "");
-            notifyViewStatus(e.docId, e.event.operation);
+            processDocumentEvent(e.docId, e.event);
+            notifySearchViewStatus(e.docId, e.event.operation);
         });
     }
 
-    private void notifyViewStatus(DocumentId docId, Document.Operation operation)
+    private void processDocumentEvent(E)(DocumentId docId, in E e)
     {
-        const bool search = isSearchOperation(operation);
-        auto doc = _workspace.doc(docId);
-        auto view = search ? doc.searchView : doc.mainView;
-        callScript("onDocumentEvent", docId.toInt(), (search ? "search"w : "main"w),
+        if (auto ui = _documentUis.get(docId, null))
+            ui.process(e);
+    }
+
+    private void notifySearchViewStatus(DocumentId docId, Document.Operation operation)
+    {
+        if (!isSearchOperation(operation))
+            return;
+        auto view = _workspace.doc(docId).searchView;
+        callScript("onDocumentEvent", docId.toInt(), "search"w,
             view.state.to!string.toUTF16(), view.progress, view.operation.to!string.toUTF16());
+    }
+
+    /// Sends the main views changed since the last call to JS:
+    /// onMainViewChanged(docId, json), json is ui.main_view_fsm.toJson
+    private void flushMainViews()
+    {
+        foreach (docId, ui; _documentUis)
+        {
+            if (!ui.mainViewChanged)
+                continue;
+            ui.mainViewChanged = false;
+            callScript("onMainViewChanged", docId.toInt(), toJson(ui.mainViewShown).toString().toUTF16());
+        }
+    }
+
+    /// Carries out what the machines asked for. Not called from their handlers:
+    /// a document must not be destroyed while its events are being dispatched.
+    private void applyDocumentCommands()
+    {
+        DocumentId[] toClose;
+        foreach (docId, ui; _documentUis)
+            if (ui.closeRequested)
+                toClose ~= docId;
+
+        foreach (docId; toClose)
+        {
+            writeln("Closing document ", docId.toInt(), " on request of its view");
+            closeDocument(docId);
+            callScript("onDocumentClosed", docId.toInt());
+        }
+    }
+
+    private void addDocumentUi(DocumentId docId)
+    {
+        _documentUis[docId] = new DocumentUi(_workspace, docId);
+    }
+
+    private void closeDocument(DocumentId docId)
+    {
+        _documentUis.remove(docId);
+        auto doc = _workspace.removeDocument(docId);
+        if (doc !is null)
+            doc.destroy();
+    }
+
+    /// Returns: the id of the open document `id`, invalid if there is none
+    private DocumentId findDocumentId(int id)
+    {
+        foreach (item; _workspace.documents)
+            if (item.docId.toInt() == id)
+                return item.docId;
+        return DocumentId.init;
+    }
+
+    /// The view shown by the main view machine of the document, see ui.main_view_fsm.toJson
+    private JSONValue mainViewJson(DocumentId docId)
+    {
+        auto ui = _documentUis.get(docId, null);
+        return ui is null ? JSONValue(null) : toJson(ui.mainViewShown);
     }
 
     /// {"state": "<DocumentView.State>", "progress": 0..1, "operation": "<Document.Operation>"}
@@ -355,7 +469,7 @@ class MainWindow : SciterWindow
                         "path": JSONValue(item.sourcePath),
                         "active": JSONValue(item.docId == _workspace.currentId),
                         "lost": JSONValue(_workspace.doc(item.docId).sourceLost),
-                        "main": viewStatusJson(_workspace.doc(item.docId).mainView),
+                        "mainView": mainViewJson(item.docId),
                         "search": viewStatusJson(_workspace.doc(item.docId).searchView)
                     ];
                     docs ~= d;
@@ -369,6 +483,17 @@ class MainWindow : SciterWindow
                 // operation is running or at the anchor limit (nothing changes then)
                 const index = getParamInt(0);
                 resultView = index >= 0 && _workspace.current.setAnchor(cast(size_t) index, getParamBool(1));
+                return true;
+            }
+            if (method == "cancelMainView")
+            {
+                // cancelMainView(docId): Cancel pressed in the main view of the
+                // document; its machine decides what it means
+                if (auto ui = _documentUis.get(findDocumentId(getParamInt(0)), null))
+                {
+                    ui.process(CancelPressed());
+                    applyDocumentCommands();
+                }
                 return true;
             }
             if (method == "cancelOperation")
@@ -410,16 +535,9 @@ class MainWindow : SciterWindow
             }
             if (method == "closeTab")
             {
-                int id = getParamInt(0);
-                foreach (item; _workspace.documents)
-                {
-                    if (item.docId.toInt() == id)
-                    {
-                        auto doc = _workspace.removeDocument(item.docId);
-                        doc.destroy();
-                        break;
-                    }
-                }
+                const docId = findDocumentId(getParamInt(0));
+                if (docId.isValid)
+                    closeDocument(docId);
                 return true;
             }
             if (method == "reorderTab")
@@ -473,6 +591,7 @@ class MainWindow : SciterWindow
 
             const destroyStart = MonoTime.currTime;
             auto old = _workspace.replaceDocument(docId, fresh);
+            addDocumentUi(docId); // the new document starts with a new machine
             if (old !is null)
                 old.destroy();
             const destroyTime = MonoTime.currTime - destroyStart;
@@ -496,6 +615,7 @@ class MainWindow : SciterWindow
             writeln("Creating new document: ", path);
             auto newDoc = new DltDocument(path);
             auto docId = _workspace.addDocument(newDoc, path);
+            addDocumentUi(docId);
             _workspace.setCurrent(docId);
             callScript("onDocumentAdded", docId.toInt());
             return docId;
@@ -668,6 +788,7 @@ class MainWindow : SciterWindow
     /// Call after the event loop has stopped.
     void closeAllDocuments()
     {
+        _documentUis = null;
         _workspace.closeAll();
     }
 
@@ -687,6 +808,8 @@ class MainWindow : SciterWindow
             for (Throwable t = e; t !is null; t = t.next)
                 writeln("Document event handler failed: ", t.msg);
         }
+        applyDocumentCommands();
+        flushMainViews();
     }
 }
 
