@@ -18,6 +18,7 @@ import dlt_core.dlt_filter_record;
 import dlt_core.dlt_log_filter : DltLogFilter, quickFilter;
 import domain.search_filter : SearchFilter;
 import ui.main_view_fsm;
+import ui.search_view_fsm;
 import dlt_core.log_filter : LogFilter;
 import dlt_core.log_item : LogItem;
 
@@ -33,16 +34,19 @@ import std.stdio;
 import std.json;
 import std.conv : to;
 
-/// UI side of one document: the machine of its main view and the view it shows.
-/// Lives as long as its document; a reopened document gets a new one.
-private final class DocumentUi : MainViewSink, MainViewCommands
+/// UI side of one document: the machines of its main and search views and the
+/// views they show. Lives as long as its document; a reopened document gets a new one.
+private final class DocumentUi : MainViewSink, MainViewCommands, SearchViewSink, SearchViewCommands
 {
     private Workspace _workspace;
     private DocumentId _docId;
     private MainViewFsm _mainView;
+    private SearchViewFsm _searchView;
 
     MainViewModel mainViewShown; // the latest view shown by the machine
     bool mainViewChanged; // shown since it was last sent to JS
+    SearchViewModel searchViewShown; // likewise for the search view
+    bool searchViewChanged;
     bool closeRequested; // the machine asked to close the document
 
     this(Workspace workspace, DocumentId docId)
@@ -50,12 +54,26 @@ private final class DocumentUi : MainViewSink, MainViewCommands
         _workspace = workspace;
         _docId = docId;
         _mainView = makeMainViewFsm(this, this);
+        _searchView = makeSearchViewFsm(this, this);
         _mainView.start();
+        _searchView.start();
     }
 
+    /// Feeds an event of the document to both machines
     void process(E)(in E e)
     {
         _mainView.process(e);
+        _searchView.process(e);
+    }
+
+    void pressMainCancel()
+    {
+        _mainView.process(CancelPressed());
+    }
+
+    void pressSearchCancel()
+    {
+        _searchView.process(SearchCancelPressed());
     }
 
     void show(in MainViewModel vm)
@@ -64,7 +82,20 @@ private final class DocumentUi : MainViewSink, MainViewCommands
         mainViewChanged = true;
     }
 
+    void show(in SearchViewModel vm)
+    {
+        searchViewShown = vm;
+        searchViewChanged = true;
+    }
+
+    // Only one operation runs at a time, and each machine handles Cancel only
+    // while its own operation runs: requestCancel() stops just that one
     bool cancelOperation()
+    {
+        return _workspace.doc(_docId).requestCancel();
+    }
+
+    bool cancelSearch()
     {
         return _workspace.doc(_docId).requestCancel();
     }
@@ -108,33 +139,26 @@ class MainWindow : SciterWindow
         subscribeToDocumentEvents();
     }
 
-    /// Feeds document events to the machines of the documents; their views reach
-    /// JS from onIdle(), see flushMainViews(). The search view status still goes
-    /// to JS directly: onDocumentEvent(docId, "search", state, progress, operation).
-    /// The document updates its views before external subscribers are called,
-    /// so the status read here already reflects the event.
+    /// Feeds document events to the machines of the documents; their views
+    /// reach JS from onIdle(), see flushViews()
     private void subscribeToDocumentEvents()
     {
         auto events = _workspace.events;
         events.subscribe((const DocumentEvent!OperationStarted e) {
             writeln("Operation ", e.event.operation, " started, doc ", e.docId.toInt());
             processDocumentEvent(e.docId, e.event);
-            notifySearchViewStatus(e.docId, e.event.operation);
         });
         events.subscribe((const DocumentEvent!OperationProgress e) {
             processDocumentEvent(e.docId, e.event);
-            notifySearchViewStatus(e.docId, e.event.operation);
         });
         events.subscribe((const DocumentEvent!SourceLost e) {
             writeln("Source lost, doc ", e.docId.toInt(), ": ", _workspace.displayName(e.docId));
             processDocumentEvent(e.docId, e.event);
-            callScript("onSourceLost", e.docId.toInt());
         });
         events.subscribe((const DocumentEvent!OperationFinished e) {
             writeln("Operation ", e.event.operation, " ", e.event.result, ", doc ", e.docId.toInt(),
                 e.event.error.length ? ": " ~ e.event.error : "");
             processDocumentEvent(e.docId, e.event);
-            notifySearchViewStatus(e.docId, e.event.operation);
         });
     }
 
@@ -144,25 +168,23 @@ class MainWindow : SciterWindow
             ui.process(e);
     }
 
-    private void notifySearchViewStatus(DocumentId docId, Document.Operation operation)
-    {
-        if (!isSearchOperation(operation))
-            return;
-        auto view = _workspace.doc(docId).searchView;
-        callScript("onDocumentEvent", docId.toInt(), "search"w,
-            view.state.to!string.toUTF16(), view.progress, view.operation.to!string.toUTF16());
-    }
-
-    /// Sends the main views changed since the last call to JS:
-    /// onMainViewChanged(docId, json), json is ui.main_view_fsm.toJson
-    private void flushMainViews()
+    /// Sends the views changed since the last call to JS:
+    /// onMainViewChanged(docId, json) and onSearchViewChanged(docId, json),
+    /// json is toJson of ui.main_view_fsm and ui.search_view_fsm
+    private void flushViews()
     {
         foreach (docId, ui; _documentUis)
         {
-            if (!ui.mainViewChanged)
-                continue;
-            ui.mainViewChanged = false;
-            callScript("onMainViewChanged", docId.toInt(), toJson(ui.mainViewShown).toString().toUTF16());
+            if (ui.mainViewChanged)
+            {
+                ui.mainViewChanged = false;
+                callScript("onMainViewChanged", docId.toInt(), toJson(ui.mainViewShown).toString().toUTF16());
+            }
+            if (ui.searchViewChanged)
+            {
+                ui.searchViewChanged = false;
+                callScript("onSearchViewChanged", docId.toInt(), toJson(ui.searchViewShown).toString().toUTF16());
+            }
         }
     }
 
@@ -212,14 +234,11 @@ class MainWindow : SciterWindow
         return ui is null ? JSONValue(null) : toJson(ui.mainViewShown);
     }
 
-    /// {"state": "<DocumentView.State>", "progress": 0..1, "operation": "<Document.Operation>"}
-    private static JSONValue viewStatusJson(DocumentView view)
+    /// The view shown by the search view machine of the document, see ui.search_view_fsm.toJson
+    private JSONValue searchViewJson(DocumentId docId)
     {
-        return JSONValue([
-            "state": JSONValue(view.state.to!string),
-            "progress": JSONValue(view.progress),
-            "operation": JSONValue(view.operation.to!string)
-        ]);
+        auto ui = _documentUis.get(docId, null);
+        return ui is null ? JSONValue(null) : toJson(ui.searchViewShown);
     }
 
     override void handleAttached(HELEMENT he)
@@ -468,9 +487,8 @@ class MainWindow : SciterWindow
                         "name": JSONValue(item.sourcePath.baseName),
                         "path": JSONValue(item.sourcePath),
                         "active": JSONValue(item.docId == _workspace.currentId),
-                        "lost": JSONValue(_workspace.doc(item.docId).sourceLost),
                         "mainView": mainViewJson(item.docId),
-                        "search": viewStatusJson(_workspace.doc(item.docId).searchView)
+                        "searchView": searchViewJson(item.docId)
                     ];
                     docs ~= d;
                 }
@@ -491,15 +509,16 @@ class MainWindow : SciterWindow
                 // document; its machine decides what it means
                 if (auto ui = _documentUis.get(findDocumentId(getParamInt(0)), null))
                 {
-                    ui.process(CancelPressed());
+                    ui.pressMainCancel();
                     applyDocumentCommands();
                 }
                 return true;
             }
-            if (method == "cancelOperation")
+            if (method == "cancelSearchView")
             {
-                // Cancels the running filter/search of the active document
-                resultView = _workspace.current.requestCancel();
+                // cancelSearchView(docId): Cancel pressed in the search view of the document
+                if (auto ui = _documentUis.get(findDocumentId(getParamInt(0)), null))
+                    ui.pressSearchCancel();
                 return true;
             }
             if (method == "startSearch")
@@ -809,7 +828,7 @@ class MainWindow : SciterWindow
                 writeln("Document event handler failed: ", t.msg);
         }
         applyDocumentCommands();
-        flushMainViews();
+        flushViews();
     }
 }
 

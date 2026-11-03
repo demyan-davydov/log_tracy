@@ -242,7 +242,7 @@ function setupEvents() {
     });
 
     document.on("click", "#btn-cancel-search", () => {
-        Window.this.xcall("cancelOperation");
+        if (activeDocId !== null) Window.this.xcall("cancelSearchView", activeDocId);
     });
 
     // What Cancel means (stop the filter, close a loading document) is decided
@@ -396,12 +396,10 @@ function applyFilters() {
 
 // Status of every open document, kept up to date for all documents, not only
 // the active one:
-//   docId -> { mainView, search: { state, progress, operation }, lost, path }
-// mainView is the view shown by the main view machine (onMainViewChanged):
-//   { status, canCancel, <fields of the view> }, see source/ui/main_view_fsm.d
-// search (onDocumentEvent): state is a DocumentView.State name ("NotReady",
-// "Ready", "BuildingIndex", "Error"), progress is 0..1, operation is the
-// Document.Operation name that brought the view to this state ("None" if none).
+//   docId -> { mainView, searchView, path }
+// mainView and searchView are the views shown by the machines of the document
+// (onMainViewChanged, onSearchViewChanged): { status, canCancel, <fields of the
+// view> }, see source/ui/main_view_fsm.d and source/ui/search_view_fsm.d.
 // Snapshot comes from getWorkspaceInfo in refreshTabs().
 const docStatus = new Map();
 let activeDocId = null;
@@ -410,14 +408,10 @@ function findTab(docId) {
     return $(`#tabs-container > .tab[id="${docId}"]`);
 }
 
-// Exposes the status on the tab element for CSS:
-//   main-status (status of the main view), search-state / search-progress
-//   (progress is 0..100), lost
+// Exposes the status on the tab element for CSS: main-status, search-status
 function applyTabStatus(tab, status) {
     tab.setAttribute("main-status", status.mainView ? status.mainView.status : "");
-    tab.setAttribute("search-state", status.search.state);
-    tab.setAttribute("search-progress", String(Math.round(status.search.progress * 100)));
-    tab.setAttribute("lost", status.lost ? "true" : "false");
+    tab.setAttribute("search-status", status.searchView ? status.searchView.status : "");
 }
 
 function refreshTabs() {
@@ -434,7 +428,7 @@ function refreshTabs() {
 
     for (let i = 0; i < docs.length; i++) {
         const doc = docs[i];
-        const status = { mainView: doc.mainView, search: doc.search, lost: doc.lost, path: doc.path };
+        const status = { mainView: doc.mainView, searchView: doc.searchView, path: doc.path };
         docStatus.set(doc.id, status);
         if (doc.active) activeDocId = doc.id;
 
@@ -559,77 +553,72 @@ function updateViewMode() {
     shownDataVersion = null; // the next table is reloaded, whatever its dataVersion
 }
 
+// Texts of the search view statuses other than the results
+const searchViewTexts = {
+    waitingForView: () => "Waiting for the log view...",
+    searching: (vm) => `Searching... ${percent(vm.progress)}%`,
+    searchCancelled: () => "Search cancelled",
+    searchFailed: () => "Search failed",
+    sourceLost: () => "The file is no longer available",
+};
+
+// Search results rendered last time, as shownDocId / shownDataVersion for the
+// main view: the list reloads when another document or content is shown
+let shownSearchDocId = null;
+let shownSearchDataVersion = null;
+
+// Renders the search view of the active document as its machine shows it.
+// No document: an empty result, same as a document before any search.
 function updateSearchViewMode() {
     const table = getSearchViewTable();
     if (!table) return;
 
     const loading = $("#search-loading-container");
     const status = docStatus.get(activeDocId);
-    if (status?.lost) {
-        table.style.display = "none";
-        loading.style.display = "flex";
-        $("#search-view-progress").style.display = "none";
-        $("#search-view-status").innerText = "The file is no longer available";
-        $("#btn-cancel-search").style.display = "none";
-        return;
-    }
-    $("#search-view-progress").style.display = "";
-    // No document: an empty search result, same as a document before any search
-    const search = status ? status.search : { state: "Ready", progress: 1 };
-    const progress = Math.round(search.progress * 100);
+    const vm = status ? status.searchView : { status: "ready", canCancel: false, dataVersion: null };
 
-    if (search.state !== "Ready") {
-        const building = search.state === "BuildingIndex";
-        table.style.display = "none";
-        loading.style.display = "flex";
-        $("#search-view-progress").value = progress;
-        $("#search-view-status").innerText =
-            building ? `Searching... ${progress}%`
-            : search.state === "Error" ? "Search failed"
-            : "Search cancelled";
-        $("#btn-cancel-search").style.display = building ? "" : "none";
-    } else {
+    if (vm.status === "ready") {
         table.style.display = "block";
         loading.style.display = "none";
-
-        // Reload search list if it's ready
-        const searchList = getSearchViewList();
-        if (searchList) {
-            searchList.componentUpdate();
-            searchList.refreshVisibleRows(); // the rows may show other results now
+        if (activeDocId !== shownSearchDocId || vm.dataVersion !== shownSearchDataVersion) {
+            const searchList = getSearchViewList();
+            if (searchList) {
+                searchList.componentUpdate();
+                searchList.refreshVisibleRows(); // the rows may show other results now
+            }
         }
+        shownSearchDocId = activeDocId;
+        shownSearchDataVersion = vm.dataVersion;
+        return;
     }
+
+    table.style.display = "none";
+    loading.style.display = "flex";
+    const progress = $("#search-view-progress");
+    const hasProgress = vm.progress !== undefined;
+    progress.style.display = hasProgress ? "" : "none";
+    if (hasProgress) progress.value = percent(vm.progress);
+    const text = searchViewTexts[vm.status];
+    $("#search-view-status").innerText = text ? text(vm) : vm.status;
+    $("#btn-cancel-search").style.display = vm.canCancel ? "" : "none";
+
+    shownSearchDocId = activeDocId;
+    shownSearchDataVersion = null; // the next result is reloaded, whatever its dataVersion
 }
 
-// Native: the file of a document can't be read any more (its disk was removed).
-// The document stays open but unusable until it is reopened (Retry) or closed.
-globalThis.onSourceLost = function (docId) {
-    console.log("Native: onSourceLost", docId);
-    const status = docStatus.get(docId);
-    if (!status) return;
-    status.lost = true;
-
-    const tab = findTab(docId);
-    if (tab) applyTabStatus(tab, status);
-
-    // The main view comes from its machine, see onMainViewChanged
-    if (docId === activeDocId) updateSearchViewMode();
-};
-
-// Native: a search operation changed the status of the search view.
-// view is always "search"; state, progress and operation as in docStatus.
-// Arrives for every document; only the active one is rendered in the views.
-globalThis.onDocumentEvent = function (docId, view, state, progress, operation) {
+// Native: the search view of a document shows something else now.
+// json: { status, canCancel, <fields of the view> }, see source/ui/search_view_fsm.d
+// Arrives for every document; only the active one is rendered.
+globalThis.onSearchViewChanged = function (docId, json) {
     const status = docStatus.get(docId);
     if (!status) return; // tab not rendered yet: refreshTabs() will take the snapshot
 
-    status[view] = { state, progress, operation };
+    status.searchView = JSON.parse(json);
+    if (status.searchView.status !== "searching")
+        console.log("Native: onSearchViewChanged", docId, json);
 
     const tab = findTab(docId);
     if (tab) applyTabStatus(tab, status);
-
-    if (state !== "BuildingIndex")
-        console.log("Native: onDocumentEvent", docId, view, state);
 
     if (docId === activeDocId) updateSearchViewMode();
 };
