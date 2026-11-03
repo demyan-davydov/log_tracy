@@ -200,6 +200,21 @@ function setupEvents() {
 
     document.on("click", "#btn-settings", openSettingsAction);
 
+    // Anchor column: toggles the anchor of the message in both views. Ignored by
+    // the backend while an operation runs or at the anchor limit.
+    document.on("click", "table.log-table td.anchor", (evt, cell) => {
+        const index = Number(cell.getAttribute("msg-index"));
+        const anchored = cell.getAttribute("has-anchor") === "true";
+        if (Window.this.xcall("setAnchor", index, !anchored)) {
+            for (const list of [getMainViewList(), getSearchViewList()]) {
+                if (!list) continue;
+                list.componentUpdate(); // the view may gain or lose the row
+                list.refreshRowsOf(index); // rows kept on screen show the new anchor
+            }
+        }
+        return true; // don't change the row selection
+    });
+
     document.on("click", "#btn-cancel-search", () => {
         Window.this.xcall("cancelOperation");
     });

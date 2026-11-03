@@ -114,8 +114,8 @@ export class VirtualDltTBody extends VirtualSelect {
             }
         }(item[idx_type]);
 
-        return <tr state-current={isCurrent} state-checked={isSelected}>
-            <td has-anchor={item[idx_anchor]}></td>
+        return <tr state-current={isCurrent} state-checked={isSelected} view-index={item[idx_viewIndex]}>
+            <td class="anchor" has-anchor={item[idx_anchor] ? "true" : "false"} msg-index={item[idx_absolute_index]}></td>
             <td>{item[idx_absolute_index]}</td>
             <td>{timestamp}</td>
             <td>{relTimestamp}</td>
@@ -126,6 +126,17 @@ export class VirtualDltTBody extends VirtualSelect {
             <td class={logLevel}>{logLevel}</td>
             <td selectable>{item[idx_payload]}</td>
         </tr>
+    }
+
+    // Re-renders the on-screen rows of message `msgIndex` (DocumentItem.realIndex)
+    // with fresh data from the backend. For in-place changes, such as an anchor,
+    // that keep the number of rows: render() doesn't update existing rows then.
+    refreshRowsOf(msgIndex) {
+        for (const cell of this.$$(`td.anchor[msg-index="${msgIndex}"]`)) {
+            const row = cell.parentElement;
+            const item = this.itemAt(Number(row.getAttribute("view-index")));
+            if (item) row.patch(this.renderItem(item, false, false));
+        }
     }
 
     renderList(items) // overridable

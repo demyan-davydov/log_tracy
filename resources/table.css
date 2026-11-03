@@ -96,7 +96,18 @@
 .log-table>tbody>tr>td:first-child {
     font-family: 'Courier New', Courier, monospace;
     font-size: 80%;
-    text-align: right;
+    text-align: center;
+    cursor: pointer;
+}
+
+/* Anchor column: the mark of an anchored message, a faint one on hover */
+.log-table>tbody>tr>td.anchor[has-anchor="true"]:before {
+    content: "⚓";
+}
+
+.log-table>tbody>tr>td.anchor[has-anchor="false"]:hover:before {
+    content: "⚓";
+    opacity: 0.3;
 }
 
 .log-table>tbody>tr>td:nth-child(2) {

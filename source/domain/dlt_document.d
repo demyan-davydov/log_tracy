@@ -136,7 +136,7 @@ class DltDocument : Document
         {
             auto filter = _pendingViewFilter.filter;
             _pendingViewFilter = PendingRequest.init;
-            if (_index.runBuildFilterIndex(filter, _anchors))
+            if (_index.runBuildFilterIndex(filter, Anchors(_anchors))) // snapshot for the worker
             {
                 _viewFilter = filter;
                 _running = Operation.BuildFilterIndex;
@@ -146,7 +146,7 @@ class DltDocument : Document
         {
             auto filter = _pendingSearch.filter;
             _pendingSearch = PendingRequest.init;
-            if (_index.runBuildSearchIndex(filter, _anchors))
+            if (_index.runBuildSearchIndex(filter, Anchors(_anchors))) // snapshot for the worker
             {
                 _searchFilter = filter;
                 _running = Operation.BuildSearchIndex;
@@ -154,9 +154,24 @@ class DltDocument : Document
         }
     }
 
-    bool setAnchor(size_t index, bool value)
+    //! @brief Sets or clears the anchor of a message. An anchored message is
+    //! always listed in the main view and in the search results; the views are
+    //! updated in place.
+    //! @param index - message index in the file (DocumentItem.realIndex)
+    //! @return false (nothing changed) while an operation is running, since the
+    //! operation works on a snapshot of the anchors and is building the indexes;
+    //! also when the anchor limit is reached or index is out of range
+    override bool setAnchor(size_t index, bool value)
     {
-        return _anchors.set(index, value);
+        if (_running != Operation.None || index >= _index.messageCount)
+            return false;
+        if (_anchors.has(index) == value)
+            return true;
+        if (!_anchors.set(index, value)) // anchor limit
+            return false;
+
+        _index.updateAnchor(index, value, _viewFilter, _searchFilter);
+        return true;
     }
 
     size_t[] exportAnchors() const pure
@@ -192,7 +207,10 @@ class DltDocument : Document
 
         override bool fetchItem(size_t index, scope ref DocumentItem item)
         {
-            return this.outer._index.fetchMainViewItem(index, item);
+            if (!this.outer._index.fetchMainViewItem(index, item))
+                return false;
+            item.anchored = this.outer._anchors.has(item.realIndex);
+            return true;
         }
 
         override DocumentView.State state()
@@ -240,7 +258,10 @@ class DltDocument : Document
 
         override bool fetchItem(size_t index, scope ref DocumentItem item)
         {
-            return this.outer._index.fetchSearchViewItem(index, item);
+            if (!this.outer._index.fetchSearchViewItem(index, item))
+                return false;
+            item.anchored = this.outer._anchors.has(item.realIndex);
+            return true;
         }
 
         override DocumentView.State state()
@@ -666,4 +687,160 @@ unittest
     doc.applyViewFilter(quickFilter!wchar("CU7", "", "", ""));
     dispatchUntil(doc, () => finished == 2);
     assert(doc.mainView.itemsCount == messageCount, "typing the visible ID must find the messages");
+}
+
+version (unittest)
+{
+    /// Opens a test document and waits until it is loaded
+    private DltDocument openLoaded(string name, size_t messageCount, out string path)
+    {
+        path = writeTestDlt(name, messageCount);
+        auto doc = new DltDocument(path);
+        dispatchUntil(doc, () => doc.mainView.ready);
+        return doc;
+    }
+
+    /// Runs a filter/search request and waits for its completion
+    private void runAndWait(DltDocument doc, void delegate() request)
+    {
+        bool done;
+        auto token = doc.events.subscribe((const OperationFinished e) { done = true; });
+        scope (exit)
+            doc.events.unsubscribe(token);
+        request();
+        dispatchUntil(doc, () => done);
+    }
+
+    private size_t[] realIndexes(DocumentView view)
+    {
+        size_t[] result;
+        DocumentItem item;
+        foreach (i; 0 .. view.itemsCount)
+        {
+            assert(view.fetchItem(i, item));
+            result ~= item.realIndex;
+        }
+        return result;
+    }
+}
+
+@("DltDocument anchors: listed in the empty search view and marked in rows")
+unittest
+{
+    import std.file : remove;
+
+    string path;
+    auto doc = openLoaded("dlt_document_anchors.dlt", 100, path);
+    scope (exit)
+        remove(path);
+
+    assert(doc.searchView.itemsCount == 0);
+    assert(doc.setAnchor(10, true) && doc.setAnchor(5, true));
+    assert(realIndexes(doc.searchView) == [5, 10], "anchors are listed in order without a search");
+
+    DocumentItem item;
+    assert(doc.searchView.fetchItem(0, item) && item.anchored);
+    assert(doc.mainView.fetchItem(5, item) && item.anchored);
+    assert(doc.mainView.fetchItem(6, item) && !item.anchored);
+
+    assert(doc.setAnchor(5, false));
+    assert(realIndexes(doc.searchView) == [10]);
+    assert(doc.mainView.fetchItem(5, item) && !item.anchored);
+}
+
+@("DltDocument anchors: an anchored message is shown despite the filter and the search")
+unittest
+{
+    import dlt_core.dlt_log_filter : quickFilter;
+    import std.file : remove;
+
+    enum messageCount = 100;
+    string path;
+    auto doc = openLoaded("dlt_document_anchors_filter.dlt", messageCount, path);
+    scope (exit)
+        remove(path);
+
+    // The view filter hides every message (they all have ECU1)
+    runAndWait(doc, () => doc.applyViewFilter(quickFilter!wchar("ECU2", "", "", "")));
+    assert(doc.mainView.itemsCount == 0);
+
+    assert(doc.setAnchor(7, true));
+    assert(realIndexes(doc.mainView) == [7], "anchored message is in the filtered view");
+    assert(realIndexes(doc.searchView) == [7]);
+
+    // A search that matches nothing still lists the anchor
+    runAndWait(doc, () => doc.applySearchFilter(new ConstFilter(false)));
+    assert(realIndexes(doc.searchView) == [7]);
+
+    // Without the anchor the message matches neither the filter nor the search
+    assert(doc.setAnchor(7, false));
+    assert(doc.mainView.itemsCount == 0 && doc.searchView.itemsCount == 0);
+
+    // A message that matches by itself stays when its anchor is removed
+    runAndWait(doc, () => doc.mainView.resetFilter());
+    runAndWait(doc, () => doc.applySearchFilter(new ConstFilter(true)));
+    assert(doc.setAnchor(3, true) && doc.setAnchor(3, false));
+    assert(doc.searchView.itemsCount == messageCount);
+    assert(doc.mainView.itemsCount == messageCount);
+}
+
+@("DltDocument anchors: a new filter keeps the anchors in both views")
+unittest
+{
+    import dlt_core.dlt_log_filter : quickFilter;
+    import std.file : remove;
+
+    string path;
+    auto doc = openLoaded("dlt_document_anchors_refilter.dlt", 100, path);
+    scope (exit)
+        remove(path);
+
+    assert(doc.setAnchor(42, true) && doc.setAnchor(8, true));
+    runAndWait(doc, () => doc.applyViewFilter(quickFilter!wchar("ECU2", "", "", "")));
+
+    assert(realIndexes(doc.mainView) == [8, 42]);
+    assert(realIndexes(doc.searchView) == [8, 42], "the cleared search lists the anchors");
+}
+
+@("DltDocument anchors: can't be changed while an operation runs")
+unittest
+{
+    import std.file : remove;
+
+    auto path = writeTestDlt("dlt_document_anchors_busy.dlt", 200_000);
+    scope (exit)
+        remove(path);
+
+    auto doc = new DltDocument(path);
+    assert(!doc.setAnchor(1, true), "not while the file loads");
+    dispatchUntil(doc, () => doc.mainView.ready);
+
+    bool searched;
+    doc.events.subscribe((const OperationFinished e) { searched = true; });
+    doc.applySearchFilter(new ConstFilter(true));
+    assert(!doc.setAnchor(1, true), "not while searching");
+    assert(doc.exportAnchors.length == 0, "a refused change leaves the anchors as they were");
+
+    dispatchUntil(doc, () => searched);
+    assert(doc.setAnchor(1, true), "allowed again once the search is done");
+}
+
+@("DltDocument anchors: the limit is enforced silently")
+unittest
+{
+    import domain.index.anchors : Anchors;
+    import std.file : remove;
+
+    string path;
+    auto doc = openLoaded("dlt_document_anchors_limit.dlt", 100, path);
+    scope (exit)
+        remove(path);
+
+    foreach (i; 0 .. Anchors.MaxAnchors)
+        assert(doc.setAnchor(i, true));
+    assert(!doc.setAnchor(50, true), "over the limit");
+    assert(doc.searchView.itemsCount == Anchors.MaxAnchors);
+
+    assert(!doc.setAnchor(1000, true), "out of range");
+    assert(doc.setAnchor(0, false) && doc.setAnchor(50, true), "room again after removing one");
 }

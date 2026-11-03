@@ -358,6 +358,14 @@ class MainWindow : SciterWindow
                 resultView = JSONValue(docs).toString().toUTF16();
                 return true;
             }
+            if (method == "setAnchor")
+            {
+                // setAnchor(messageIndex, value) -> true if changed; false while an
+                // operation is running or at the anchor limit (nothing changes then)
+                const index = getParamInt(0);
+                resultView = index >= 0 && _workspace.current.setAnchor(cast(size_t) index, getParamBool(1));
+                return true;
+            }
             if (method == "cancelOperation")
             {
                 // Cancels the running filter/search of the active document

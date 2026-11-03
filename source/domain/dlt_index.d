@@ -188,6 +188,75 @@ struct DltIndex
         return true;
     }
 
+    //! @brief Puts the anchored messages into the cleared search index, in order.
+    //! Must be called under _mutex.
+    private void appendAnchorsToSearch(ref const(Anchors) anchors)
+    {
+        import std.algorithm : map, sort;
+        import std.array : array;
+
+        auto sorted = anchors.exportAnchors.map!(i => cast(SearchIndex.Type) i).array;
+        sort(sorted);
+        if (!_searchIndex.append(sorted))
+            throw new Exception("search index overflow");
+    }
+
+    //! @return the number of messages in the file (the offset index)
+    size_t messageCount() nothrow @nogc
+    {
+        auto lock = LockGuard(cast(Mutex)_mutex);
+        return _offsetIndex.length;
+    }
+
+    //! @brief Updates the filter and search indexes in place after an anchor
+    //! change, without rebuilding them. An anchored message is listed in both;
+    //! an un-anchored one stays only where it matches by itself.
+    //! Must be called from the UI thread while no operation is running.
+    //! @param viewFilter - filter of the main view, used if the view is filtered
+    //! @param searchFilter - current search, null if there is none
+    void updateAnchor(size_t msgIndex, bool anchored, const(Filter) viewFilter, const(Filter) searchFilter)
+    {
+        assert(!_backgroundSlot.busy(), "indexes are being built");
+
+        const value = cast(SearchIndex.Type) msgIndex;
+        if (anchored)
+        {
+            synchronized (cast(Mutex)_mutex)
+            {
+                if (_viewIsFiltered)
+                    _filterIndex.insertSorted(value);
+                _searchIndex.insertSorted(value);
+            }
+            return;
+        }
+
+        // The search runs over the main view: a message hidden by the view filter
+        // is not a search result either
+        const bool inView = !_viewIsFiltered
+            || (viewFilter !is null && messageMatches(viewFilter, msgIndex));
+        const bool inSearch = inView && searchFilter !is null && messageMatches(searchFilter, msgIndex);
+
+        synchronized (cast(Mutex)_mutex)
+        {
+            if (!inView)
+                _filterIndex.removeSorted(value);
+            if (!inSearch)
+                _searchIndex.removeSorted(value);
+        }
+    }
+
+    private bool messageMatches(const(Filter) filter, size_t msgIndex)
+    {
+        OffsetIndexItem fileOffset;
+        {
+            auto lock = LockGuard(cast(Mutex)_mutex);
+            fileOffset = _offsetIndex[msgIndex];
+        }
+        Message msg;
+        parseDltItem!wchar(msg, _source.getMessage(fileOffset.offset), _source.hasStorageHeader);
+        return filter.matches(msg);
+    }
+
     void enableFilter(bool enable)
     {
         synchronized (cast(Mutex)_mutex)
@@ -264,6 +333,7 @@ struct DltIndex
                 _viewIsFiltered = false;
                 _filterIndex.clear();
                 _searchIndex.clear(); // was built over the filtered view
+                appendAnchorsToSearch(anchors);
                 _filterIndex.isReady = false;
                 _searchIndex.isReady = false;
                 progress.report(1.0f);
@@ -276,6 +346,7 @@ struct DltIndex
             _viewIsFiltered = true; // the main view shows the filter index from now on
             _filterIndex.clear();
             _searchIndex.clear();
+            appendAnchorsToSearch(anchors); // anchors are in the filtered view too
             _filterIndex.isReady = false;
             _searchIndex.isReady = false;
         }
@@ -332,7 +403,7 @@ struct DltIndex
 
     //! @brief build search index
     //! @param progress - progress reporter, also gives access to the cancel flag
-    //! @param filter - null resets the search: the search view becomes empty
+    //! @param filter - null resets the search: the search view shows the anchors only
     //! @return true if the build process was completed successfully, false otherwise
     private bool buildSearchIndex(ref ProgressReporter progress, Filter filter, Anchors anchors)
     {
@@ -342,7 +413,8 @@ struct DltIndex
             synchronized (cast(Mutex)_mutex)
             {
                 _searchIndex.clear();
-                _searchIndex.isReady = true; // an empty result is a valid result
+                appendAnchorsToSearch(anchors); // anchored messages are always listed
+                _searchIndex.isReady = true;
                 progress.report(1.0f);
             }
             return true;
