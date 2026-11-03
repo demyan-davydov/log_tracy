@@ -4,10 +4,6 @@ import sciter_wrapper.sciter_window;
 import sciter_wrapper.sciter_value;
 import ui.app_settings;
 
-//import ui.workspace;
-//import ui.dlt_document;
-//import ui.document_id;
-
 import domain.workspace;
 import domain.document_id;
 import domain.document;
