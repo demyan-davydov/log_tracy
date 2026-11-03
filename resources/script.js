@@ -15,6 +15,8 @@ document.on("ready", function () {
     console.log("Starting DLT Explorer UI...");
     initApp();
     initQueryBuilder();
+
+    console.log(Window.this.frameType, Window.this.blurBehind)
 });
 
 function stopScroll(element) {
