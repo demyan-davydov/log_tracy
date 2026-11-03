@@ -1,7 +1,7 @@
 module dlt_core.dlt_source;
 
 import std.stdio;
-import std.mmfile;
+import utils.mapped_file : MappedFile;
 import utils.mmap_array;
 import dlt_core.dlt_protocol;
 
@@ -13,12 +13,15 @@ interface DltSource
     DltSourceRange range() const pure nothrow @nogc @property;
     size_t overallLength() const pure nothrow @nogc @property;
     bool hasStorageHeader() const pure nothrow @nogc @property;
+    //! true once the file can't be read any more (e.g. its disk was removed);
+    //! its content reads as zeros from then on
+    bool lost() const nothrow @nogc @property;
     const(ubyte)[] getMessage(size_t offset) const pure @nogc nothrow;
 }
 
 final class DltSourceFile : DltSource
 {
-    private MmFile _mmFile;
+    private MappedFile _file;
     private const(ubyte)* _dataBegin;
     private const(ubyte)* _dataEnd;
     private const bool _hasStorageHeader;
@@ -29,15 +32,15 @@ final class DltSourceFile : DltSource
 
     this(string filePath, bool containsStorageHeader = true)
     {
-        _mmFile = new MmFile(filePath, MmFile.Mode.read, 0, null);
-        _dataBegin = cast(const(ubyte)*) _mmFile[0 .. 0].ptr;
-        _dataEnd = _dataBegin + _mmFile.length;
+        _file = MappedFile(filePath);
+        _dataBegin = _file.data.ptr;
+        _dataEnd = _dataBegin + _file.data.length;
         _hasStorageHeader = containsStorageHeader;
     }
 
     ~this()
     {
-        destroy(_mmFile); // call d'tor of mmFile to unmap file
+        _file.close();
     }
 
     DltSourceRange range() const pure nothrow @nogc @property
@@ -50,6 +53,11 @@ final class DltSourceFile : DltSource
     size_t overallLength() const pure nothrow @nogc @property
     {
         return _dataEnd - _dataBegin;
+    }
+
+    override bool lost() const nothrow @nogc @property
+    {
+        return _file.lost;
     }
 
     //! @returns true if the source file contains storage header
@@ -506,3 +514,4 @@ unittest
     assert(stdHdr.useExtendedHeader());
     assert(stdHdr.messageCounter == 5);
 }
+

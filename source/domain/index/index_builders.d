@@ -226,6 +226,11 @@ version (unittest)
             return _hasStorageHeader;
         }
 
+        override bool lost() const nothrow @nogc @property
+        {
+            return false; // in-memory data can't be lost
+        }
+
         override const(ubyte)[] getMessage(size_t offset) const pure @nogc nothrow
         {
             if (offset >= _data.length)

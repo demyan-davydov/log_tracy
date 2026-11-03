@@ -25,7 +25,7 @@ struct DocumentEvent(E)
 }
 
 /// Document events that Workspace forwards as DocumentEvent!E
-alias ForwardedDocumentEvents = AliasSeq!(OperationStarted, OperationProgress, OperationFinished);
+alias ForwardedDocumentEvents = AliasSeq!(OperationStarted, OperationProgress, OperationFinished, SourceLost);
 
 private class NullDocumentView : DocumentView
 {
@@ -116,6 +116,11 @@ private class NullDocument : Document
     }
 
     override bool requestCancel()
+    {
+        return false;
+    }
+
+    override bool sourceLost()
     {
         return false;
     }
@@ -259,6 +264,23 @@ final class Workspace
             return document;
         }
         return null;
+    }
+
+    //! @brief Puts `document` in place of the document `docId`, keeping its id,
+    //! position and path: the tab stays and shows the new document. Used to
+    //! reopen a document whose file was lost.
+    //! @return the replaced document (the caller destroys it), null if not found
+    Document replaceDocument(DocumentId docId, Document document)
+    {
+        ptrdiff_t idx = findIndexById(docId);
+        if (idx == -1)
+            return null;
+
+        auto old = _documents[idx].document;
+        stopForwarding(_documents[idx]);
+        _documents[idx].document = document;
+        _documents[idx].subscriptions = startForwarding(document, docId);
+        return old;
     }
 
     //! @brief Moves document before another document
@@ -446,6 +468,11 @@ unittest
         {
             return false;
         }
+
+        bool sourceLost()
+        {
+            return false;
+        }
     }
 
     auto ws = new Workspace();
@@ -507,6 +534,7 @@ unittest
         size_t[] exportAnchors() const pure { return null; }
         void importAnchors(const(size_t[]) anchors) {}
         bool requestCancel() { return false; }
+        bool sourceLost() { return false; }
     }
 
     auto ws = new Workspace();
@@ -561,6 +589,7 @@ unittest
         size_t[] exportAnchors() const pure { return null; }
         void importAnchors(const(size_t[]) anchors) {}
         bool requestCancel() { return false; }
+        bool sourceLost() { return false; }
     }
 
     auto ws = new Workspace();
@@ -572,4 +601,48 @@ unittest
     assert(destroyed == 2, "every document must be destroyed");
     assert(ws.length == 0);
     assert(ws.current is k_nullDocument);
+}
+
+@("Workspace.replaceDocument keeps the id and forwards the new document only")
+unittest
+{
+    import event_bus.event_bus_async : EventBusAsync;
+
+    class EventSourceDocument : Document
+    {
+        EventBusAsync bus;
+        this() { bus = new EventBusAsync(); }
+
+        SignalConsumer events() { return bus; }
+        void dispatchEvents() { bus.dispatch(); }
+        DocumentView mainView() { return k_nullDocumentView; }
+        DocumentView searchView() { return k_nullDocumentView; }
+        void applyViewFilter(LogFilter!wchar filter) {}
+        void applySearchFilter(LogFilter!wchar filter) {}
+        bool setAnchor(size_t index, bool value) { return false; }
+        size_t[] exportAnchors() const pure { return null; }
+        void importAnchors(const(size_t[]) anchors) {}
+        bool requestCancel() { return false; }
+        bool sourceLost() { return false; }
+    }
+
+    auto ws = new Workspace();
+    auto oldDoc = new EventSourceDocument();
+    auto newDoc = new EventSourceDocument();
+    const id = ws.addDocument(oldDoc, "file.dlt");
+
+    DocumentId[] lost;
+    ws.events.subscribe((const DocumentEvent!SourceLost e) { lost ~= e.docId; });
+
+    assert(ws.replaceDocument(id, newDoc) is oldDoc);
+    assert(ws.doc(id) is newDoc && ws.length == 1);
+    assert(ws.displayName(id) == "file.dlt", "the path is kept");
+
+    oldDoc.bus.publish(SourceLost());
+    oldDoc.dispatchEvents();
+    assert(lost.length == 0, "the replaced document is no longer forwarded");
+
+    newDoc.bus.publish(SourceLost());
+    ws.dispatchEvents();
+    assert(lost == [id], "the new document is forwarded under the same id");
 }

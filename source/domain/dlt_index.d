@@ -201,6 +201,22 @@ struct DltIndex
             throw new Exception("search index overflow");
     }
 
+    //! @return true once the file can't be read any more (e.g. its disk was
+    //! removed). Nothing read from it can be trusted from then on.
+    bool sourceLost() nothrow @nogc
+    {
+        return _source.lost;
+    }
+
+    //! @throws Exception if the file is lost: fails the running operation
+    private void enforceSourceAvailable()
+    {
+        if (_source.lost)
+            throw new Exception(sourceLostMessage);
+    }
+
+    enum sourceLostMessage = "the file is no longer available";
+
     //! @return the number of messages in the file (the offset index)
     size_t messageCount() nothrow @nogc
     {
@@ -288,6 +304,7 @@ struct DltIndex
         {
             if (ctx.cancelled)
                 return false;
+            enforceSourceAvailable();
 
             OffsetIndex.Type[bunchSize] tempIndex;
             size_t n = 0; // items written into tempIndex this batch
@@ -310,6 +327,7 @@ struct DltIndex
             }
         }
 
+        enforceSourceAvailable(); // the last batch may have read zeros
         synchronized (cast(Mutex)_mutex)
         {
             _offsetIndex.isReady = true;
@@ -366,6 +384,7 @@ struct DltIndex
             {
                 return false;
             }
+            enforceSourceAvailable();
 
             FilterIndex.Type[bunchSize] tempIndex;
             size_t n = 0; // items written into tempIndex this batch
@@ -392,6 +411,7 @@ struct DltIndex
             }
         }
 
+        enforceSourceAvailable(); // the last batch may have read zeros
         synchronized (cast(Mutex)_mutex)
         {
             _filterIndex.isReady = true;
@@ -446,6 +466,7 @@ struct DltIndex
                 _searchIndex.clear();
                 return false;
             }
+            enforceSourceAvailable();
 
             size_t batchEnd = pos + bunchSize;
             if (batchEnd > indexLen)
@@ -476,6 +497,7 @@ struct DltIndex
             pos = batchEnd;
         }
 
+        enforceSourceAvailable(); // the last batch may have read zeros
         synchronized (cast(Mutex)_mutex)
         {
             _searchIndex.isReady = true;
@@ -520,6 +542,8 @@ struct DltIndex
 
         const auto msgBytes = _source.getMessage(fileOffset.offset);
         parseDltItem!wchar(item._decodedMessage, msgBytes, _source.hasStorageHeader);
+        if (_source.lost)
+            return false; // the message was read as zeros
         item.realIndex = index;
         item.filterMask = fileOffset.filterMask;
         item.searchMask = 0;
@@ -560,6 +584,8 @@ struct DltIndex
 
         const auto msgBytes = _source.getMessage(fileOffset.offset);
         parseDltItem!wchar(item._decodedMessage, msgBytes, _source.hasStorageHeader);
+        if (_source.lost)
+            return false; // the message was read as zeros
         item.realIndex = globalIndex;
         item.filterMask = fileOffset.filterMask;
         item.searchMask = 0;

@@ -4,6 +4,37 @@
     height: *;
 }
 
+/* Shown instead of the views of a document whose file can't be read any more */
+.source-lost {
+    size: *;
+    background: var(--bg-main);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}
+
+.source-lost-title {
+    font-weight: bold;
+    margin-bottom: 8px;
+}
+
+#source-lost-error {
+    color: red;
+    margin-top: 4px;
+}
+
+#source-lost-error:empty {
+    display: none;
+}
+
+.source-lost-actions {
+    flow: horizontal;
+    border-spacing: 8px;
+    margin-top: 12px;
+}
+
 .loading-container {
     size: *;
     background: var(--bg-main);

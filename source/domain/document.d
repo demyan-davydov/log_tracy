@@ -90,6 +90,11 @@ interface Document
     //! The cancelled operation reports OperationFinished(Cancelled).
     //! @return true if a running operation was asked to stop
     bool requestCancel();
+
+    //! @return true once the file can't be read any more (its disk was removed,
+    //! a read failed). The document is unusable then: its views are empty and
+    //! requests are ignored. Reported once by the SourceLost event.
+    bool sourceLost();
 }
 
 /// The view whose content an operation builds: search operations build the
@@ -114,6 +119,12 @@ struct OperationProgress
 
     Document.Operation operation;
     float progress = 0; // 0..1
+}
+
+//! The file of the document can't be read any more (its disk was removed, a
+//! read failed). Published once; the document stays unusable afterwards.
+struct SourceLost
+{
 }
 
 struct OperationFinished

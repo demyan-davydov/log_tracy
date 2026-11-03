@@ -101,6 +101,15 @@
                         <div id="doc-load-status">Loading DLT file...</div>
                         <button id="btn-cancel-load">Cancel</button>
                     </div>
+                    <div id="source-lost" class="source-lost" style="display:none;">
+                        <div class="source-lost-title">The file is no longer available</div>
+                        <div id="source-lost-path"></div>
+                        <div id="source-lost-error"></div>
+                        <div class="source-lost-actions">
+                            <button id="btn-lost-retry">Retry</button>
+                            <button id="btn-lost-close">Close</button>
+                        </div>
+                    </div>
                     <table class="log-table main-view" fixed-layout="true">
                         <thead>
                             <tr>

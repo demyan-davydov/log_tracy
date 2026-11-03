@@ -215,6 +215,27 @@ function setupEvents() {
         return true; // don't change the row selection
     });
 
+    document.on("click", "#btn-lost-close", () => {
+        if (activeDocId !== null) closeTab(activeDocId);
+    });
+
+    document.on("click", "#btn-lost-retry", () => {
+        if (activeDocId === null) return;
+        // Reopens the file in the same tab; fails while the disk is still missing
+        const retryStart = Date.now();
+        const error = Window.this.xcall("retryDocument", activeDocId);
+        const retryTime = Date.now() - retryStart;
+        if (error) {
+            console.log(`Retry failed after ${retryTime} ms: ${error}`);
+            $("#source-lost-error").innerText = `Still unavailable: ${error}`;
+            return;
+        }
+        const refreshStart = Date.now();
+        refreshTabs();
+        reloadLogTable(true);
+        console.log(`Retry: xcall ${retryTime} ms, views refresh ${Date.now() - refreshStart} ms`);
+    });
+
     document.on("click", "#btn-cancel-search", () => {
         Window.this.xcall("cancelOperation");
     });
@@ -394,6 +415,7 @@ function applyTabStatus(tab, status) {
     tab.setAttribute("progress", String(Math.round(status.main.progress * 100)));
     tab.setAttribute("search-state", status.search.state);
     tab.setAttribute("search-progress", String(Math.round(status.search.progress * 100)));
+    tab.setAttribute("lost", status.lost ? "true" : "false");
 }
 
 function refreshTabs() {
@@ -410,7 +432,7 @@ function refreshTabs() {
 
     for (let i = 0; i < docs.length; i++) {
         const doc = docs[i];
-        const status = { main: doc.main, search: doc.search };
+        const status = { main: doc.main, search: doc.search, lost: doc.lost, path: doc.path };
         docStatus.set(doc.id, status);
         if (doc.active) activeDocId = doc.id;
 
@@ -459,6 +481,20 @@ function updateViewMode() {
 
     empty.style.display = "none";
 
+    // The file can't be read any more: block the views of this document
+    const lostView = $("#source-lost");
+    if (status.lost) {
+        table.style.display = "none";
+        loading.style.display = "none";
+        lostView.style.display = "flex";
+        $("#source-lost-path").innerText = status.path || "";
+        lastMainState = "Lost"; // a reopened document reloads the table when ready
+        lastDocId = activeDocId;
+        return;
+    }
+    lostView.style.display = "none";
+    $("#source-lost-error").innerText = "";
+
     const main = status.main;
     const isReady = main.state === "Ready";
     const progress = Math.round(main.progress * 100);
@@ -497,6 +533,15 @@ function updateSearchViewMode() {
 
     const loading = $("#search-loading-container");
     const status = docStatus.get(activeDocId);
+    if (status?.lost) {
+        table.style.display = "none";
+        loading.style.display = "flex";
+        $("#search-view-progress").style.display = "none";
+        $("#search-view-status").innerText = "The file is no longer available";
+        $("#btn-cancel-search").style.display = "none";
+        return;
+    }
+    $("#search-view-progress").style.display = "";
     // No document: an empty search result, same as a document before any search
     const search = status ? status.search : { state: "Ready", progress: 1 };
     const progress = Math.round(search.progress * 100);
@@ -523,6 +568,23 @@ function updateSearchViewMode() {
         }
     }
 }
+
+// Native: the file of a document can't be read any more (its disk was removed).
+// The document stays open but unusable until it is reopened (Retry) or closed.
+globalThis.onSourceLost = function (docId) {
+    console.log("Native: onSourceLost", docId);
+    const status = docStatus.get(docId);
+    if (!status) return;
+    status.lost = true;
+
+    const tab = findTab(docId);
+    if (tab) applyTabStatus(tab, status);
+
+    if (docId === activeDocId) {
+        updateViewMode();
+        updateSearchViewMode();
+    }
+};
 
 // Native: a document operation changed the status of one of its views.
 // view: "main" | "search"; state, progress and operation as in docStatus.

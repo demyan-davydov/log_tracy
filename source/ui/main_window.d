@@ -78,6 +78,10 @@ class MainWindow : SciterWindow
         events.subscribe((const DocumentEvent!OperationProgress e) {
             notifyViewStatus(e.docId, e.event.operation);
         });
+        events.subscribe((const DocumentEvent!SourceLost e) {
+            writeln("Source lost, doc ", e.docId.toInt(), ": ", _workspace.displayName(e.docId));
+            callScript("onSourceLost", e.docId.toInt());
+        });
         events.subscribe((const DocumentEvent!OperationFinished e) {
             writeln("Operation ", e.event.operation, " ", e.event.result, ", doc ", e.docId.toInt(),
                 e.event.error.length ? ": " ~ e.event.error : "");
@@ -350,6 +354,7 @@ class MainWindow : SciterWindow
                         "name": JSONValue(item.sourcePath.baseName),
                         "path": JSONValue(item.sourcePath),
                         "active": JSONValue(item.docId == _workspace.currentId),
+                        "lost": JSONValue(_workspace.doc(item.docId).sourceLost),
                         "main": viewStatusJson(_workspace.doc(item.docId).mainView),
                         "search": viewStatusJson(_workspace.doc(item.docId).searchView)
                     ];
@@ -397,6 +402,12 @@ class MainWindow : SciterWindow
                 }
                 return true;
             }
+            if (method == "retryDocument")
+            {
+                // retryDocument(docId) -> error message, "" if the file was reopened
+                resultView = onRetryDocument(getParamInt(0)).toUTF16();
+                return true;
+            }
             if (method == "closeTab")
             {
                 int id = getParamInt(0);
@@ -430,6 +441,51 @@ class MainWindow : SciterWindow
         }
 
         return false;
+    }
+
+    /// Reopens the file of a document whose source was lost, in the same tab.
+    /// Returns: an error message for the UI (e.g. the disk is still missing),
+    /// or "" if the document was replaced by a freshly opened one
+    private string onRetryDocument(int id)
+    {
+        DocumentId docId;
+        string path;
+        foreach (item; _workspace.documents)
+        {
+            if (item.docId.toInt() == id)
+            {
+                docId = item.docId;
+                path = item.sourcePath;
+            }
+        }
+        if (!docId.isValid)
+            return "the document is not open";
+
+        try
+        {
+            import core.time : MonoTime;
+
+            // Timings: both steps run on the UI thread and may block on a disk
+            // that has just been reconnected or removed
+            const openStart = MonoTime.currTime;
+            auto fresh = new DltDocument(path);
+            const openTime = MonoTime.currTime - openStart;
+
+            const destroyStart = MonoTime.currTime;
+            auto old = _workspace.replaceDocument(docId, fresh);
+            if (old !is null)
+                old.destroy();
+            const destroyTime = MonoTime.currTime - destroyStart;
+
+            writeln("Reopened document ", id, ": ", path, " (open: ", openTime,
+                ", destroy old: ", destroyTime, ")");
+            return "";
+        }
+        catch (Exception e)
+        {
+            writeln("Retry failed for ", path, ": ", e.msg);
+            return e.msg;
+        }
     }
 
     private DocumentId onFileSelected(string path)

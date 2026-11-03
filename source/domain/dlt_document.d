@@ -51,6 +51,7 @@ class DltDocument : Document
     // Operation started and not yet finished, as seen from the UI thread:
     // cleared when its OperationFinished is dispatched (the slot is idle by then).
     private Operation _running = Operation.None;
+    private bool _sourceLost; // SourceLost was published
 
     this() @disable;
 
@@ -86,7 +87,21 @@ class DltDocument : Document
 
     override void dispatchEvents()
     {
+        // A failed read is only flagged by the fault handler; report it once,
+        // from here, on the UI thread
+        if (!_sourceLost && _index.sourceLost)
+        {
+            _sourceLost = true;
+            _pendingViewFilter = PendingRequest.init;
+            _pendingSearch = PendingRequest.init;
+            _events.publish(SourceLost());
+        }
         _events.dispatch();
+    }
+
+    override bool sourceLost()
+    {
+        return _sourceLost || _index.sourceLost;
     }
 
     override DocumentView mainView()
@@ -109,6 +124,8 @@ class DltDocument : Document
     //! first, since the new filter rebuilds both indexes anyway.
     override void applyViewFilter(LogFilter!wchar filter)
     {
+        if (sourceLost)
+            return;
         _pendingViewFilter = PendingRequest(filter, true);
         if (_running == Operation.BuildFilterIndex || _running == Operation.BuildSearchIndex)
             _index.cancelCurrentOperation();
@@ -119,6 +136,8 @@ class DltDocument : Document
     //! running, the request waits for it; a running search is cancelled first.
     override void applySearchFilter(LogFilter!wchar filter)
     {
+        if (sourceLost)
+            return;
         _pendingSearch = PendingRequest(filter, true);
         if (_running == Operation.BuildSearchIndex)
             _index.cancelCurrentOperation();
@@ -163,7 +182,7 @@ class DltDocument : Document
     //! also when the anchor limit is reached or index is out of range
     override bool setAnchor(size_t index, bool value)
     {
-        if (_running != Operation.None || index >= _index.messageCount)
+        if (_running != Operation.None || sourceLost || index >= _index.messageCount)
             return false;
         if (_anchors.has(index) == value)
             return true;
@@ -843,6 +862,83 @@ unittest
 
     assert(!doc.setAnchor(1000, true), "out of range");
     assert(doc.setAnchor(0, false) && doc.setAnchor(50, true), "room again after removing one");
+}
+
+version (Posix)
+{
+    /// Simulates a removed disk: pages of a mapped file past its new end
+    /// raise the same fault as a lost medium
+    private void truncateFile(string path)
+    {
+        import core.sys.posix.unistd : truncate;
+        import std.string : toStringz;
+
+        assert(truncate(path.toStringz, 0) == 0);
+    }
+
+    @("DltDocument: a lost file is reported once and the document stops working")
+    unittest
+    {
+        import std.file : remove;
+
+        string path;
+        auto doc = openLoaded("dlt_document_lost.dlt", 2000, path);
+        scope (exit)
+            remove(path);
+
+        size_t lostEvents, started;
+        doc.events.subscribe((const SourceLost e) { ++lostEvents; });
+        doc.events.subscribe((const OperationStarted e) { ++started; });
+
+        DocumentItem item;
+        assert(doc.mainView.fetchItem(1000, item), "readable before the loss");
+
+        truncateFile(path);
+        assert(!doc.mainView.fetchItem(1000, item), "a message read as zeros is not returned");
+        assert(doc.sourceLost);
+
+        doc.dispatchEvents();
+        doc.dispatchEvents();
+        assert(lostEvents == 1, "reported once");
+
+        doc.applySearchFilter(new ConstFilter(true));
+        doc.dispatchEvents();
+        assert(started == 0, "requests are ignored");
+        assert(!doc.setAnchor(5, true));
+    }
+
+    @("DltDocument: losing the file while loading fails the load")
+    unittest
+    {
+        import std.file : remove;
+
+        auto path = writeTestDlt("dlt_document_lost_loading.dlt", 500_000);
+        scope (exit)
+            remove(path);
+
+        auto doc = new DltDocument(path);
+        bool truncated, lost;
+        OperationFinished finished;
+        bool done;
+        // Truncated from the first progress report: the load is surely still running
+        doc.events.subscribe((const OperationProgress e) {
+            if (!truncated)
+            {
+                truncateFile(path);
+                truncated = true;
+            }
+        });
+        doc.events.subscribe((const SourceLost e) { lost = true; });
+        doc.events.subscribe((const OperationFinished e) { finished = e; done = true; });
+
+        dispatchUntil(doc, () => done && lost);
+
+        assert(truncated);
+        assert(finished.result == OperationFinished.Result.Failed, "the load can't complete");
+        assert(finished.error == DltIndex.sourceLostMessage);
+        assert(lost, "SourceLost is published");
+        assert(doc.mainView.state == DocumentView.State.Error);
+    }
 }
 
 @("DltDocument: opening a missing file throws instead of crashing")
