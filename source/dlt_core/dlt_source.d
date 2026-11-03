@@ -66,18 +66,18 @@ final class DltSourceFile : DltSource
         return _hasStorageHeader;
     }
 
-    //! @returns slice of original buffer starting from DLT header pattern (DLT\01) 
-    //! or empty slice reffered to bufferEnd
-    //! @note The result slice will have at least StorageHeader.sizeof bytes, 
-    //! otherwise the empty slice is returned
+    //! @returns the message starting at `offset`, or an empty slice if there is
+    //! no message there
+    //! @note `offset` must be the start of a message (as stored in the indexes).
+    //! The header is checked in place, not searched for: a missing header means
+    //! the data is gone (a lost file reads as zeros), and searching would scan
+    //! the whole rest of the file.
     const(ubyte)[] getMessage(size_t offset) const pure @nogc nothrow
     {
         const(ubyte)[] buffer = _dataBegin[offset .. overallLength];
 
-        if (hasStorageHeader)
-        {
-            buffer = findNextStorageHeader(buffer);
-        }
+        if (hasStorageHeader && !startsWithStorageHeader(buffer))
+            return buffer[0 .. 0];
 
         const(ubyte)[] result = buffer[0 .. 0];
 
@@ -96,6 +96,12 @@ final class DltSourceFile : DltSource
 
         return result;
     }
+}
+
+//! @returns true if `buffer` starts with a complete storage header
+private bool startsWithStorageHeader(const(ubyte)[] buffer) pure @nogc nothrow
+{
+    return buffer.length >= StorageHeader.sizeof && buffer[0 .. DLT_PATTERN.length] == DLT_PATTERN[];
 }
 
 //! @returns slice of original buffer starting from DLT header pattern (DLT\01) 
@@ -193,11 +199,29 @@ struct DltSourceRange
         return _rest.length;
     }
 
+    /// The most bytes pop() scans for the next storage header in one call
+    enum size_t maxHeaderScan = 1024 * 1024;
+
+    //! @returns the next message, or an empty slice if none was found within
+    //! maxHeaderScan bytes. The skipped bytes are consumed, so a long run without
+    //! headers (garbage, or zeros after the file was lost) is passed over several
+    //! calls: callers get control back to check for cancellation in between.
+    //! Keep calling while hasNext.
     const(ubyte)[] pop() pure @nogc nothrow
     {
         if (_hasStorageHeader)
         {
-            _rest = findNextStorageHeader(_rest);
+            const window = _rest.length <= maxHeaderScan ? _rest : _rest[0 .. maxHeaderScan];
+            const found = findNextStorageHeader(window);
+            if (found.length == 0)
+            {
+                if (window.length == _rest.length)
+                    _rest = _rest[$ .. $]; // no header until the end
+                else // keep the tail: a header may start there and cross the window end
+                    _rest = _rest[window.length - (StorageHeader.sizeof - 1) .. $];
+                return _rest[0 .. 0];
+            }
+            _rest = _rest[found.ptr - _rest.ptr .. $];
         }
 
         const(ubyte)[] result = _rest[0 .. 0];
@@ -515,3 +539,67 @@ unittest
     assert(stdHdr.messageCounter == 5);
 }
 
+@("DltSourceRange.pop: scans for a header at most maxHeaderScan bytes per call")
+unittest
+{
+    enum scan = DltSourceRange.maxHeaderScan;
+    auto msg = buildDltMessage("ECU1", 1, 0, 0, 1, [0x42]);
+
+    auto garbage = new ubyte[](3 * scan + 123);
+    garbage[] = 0xFF;
+    auto path = writeTempDlt(garbage ~ msg, "test_pop_bounded_scan.dlt");
+    scope (exit)
+        remove(path);
+
+    auto source = scoped!DltSourceFile(path);
+    auto range = source.range();
+
+    size_t emptyPops;
+    const(ubyte)[] result;
+    while (range.hasNext)
+    {
+        const before = range.offset;
+        result = range.pop();
+        if (result.length)
+            break;
+        assert(range.offset - before <= scan, "one call scans at most maxHeaderScan bytes");
+        ++emptyPops;
+    }
+
+    assert(emptyPops == 3, "the garbage is skipped over several calls");
+    assert(result == msg, "the message after the garbage is found");
+    assert(range.offset - result.length == garbage.length, "message start is known");
+}
+
+@("DltSourceRange.pop: finds a header crossing the end of the scan window")
+unittest
+{
+    enum scan = DltSourceRange.maxHeaderScan;
+    auto msg = buildDltMessage("ECU1", 1, 0, 0, 1, [0x42]);
+
+    auto garbage = new ubyte[](scan - 5); // the header starts 5 bytes before the window end
+    garbage[] = 0xFF;
+    auto path = writeTempDlt(garbage ~ msg, "test_pop_window_edge.dlt");
+    scope (exit)
+        remove(path);
+
+    auto source = scoped!DltSourceFile(path);
+    auto range = source.range();
+
+    assert(range.pop().length == 0, "not complete within the first window");
+    assert(range.pop() == msg, "found by the next call");
+}
+
+@("DltSourceFile.getMessage: checks the header at the offset instead of searching")
+unittest
+{
+    auto msg = buildDltMessage("ECU1", 1, 0, 0, 1, [0x42]);
+    ubyte[] garbage = [0xFF, 0xFE, 0xFD];
+    auto path = writeTempDlt(garbage ~ msg, "test_get_message.dlt");
+    scope (exit)
+        remove(path);
+
+    auto source = scoped!DltSourceFile(path);
+    assert(source.getMessage(garbage.length) == msg, "a message at its offset");
+    assert(source.getMessage(0).length == 0, "garbage at the offset: no message");
+}

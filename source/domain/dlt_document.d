@@ -941,6 +941,30 @@ version (Posix)
     }
 }
 
+@("DltDocument: messages after garbage are indexed at their own offset")
+unittest
+{
+    import dlt_core.dlt_source : buildDltMessage;
+    import std.file : remove, tempDir, write;
+    import std.path : buildPath;
+
+    auto first = buildDltMessage("ECU1", 1, 0, 0, 1, [0x01]);
+    auto second = buildDltMessage("ECU2", 2, 0, 0, 2, [0x02]);
+    ubyte[] garbage = [0xFF, 0xFE, 0xFD, 0xFC, 0xFB, 0xFA, 0xF9];
+    auto path = buildPath(tempDir(), "dlt_document_garbage.dlt");
+    write(path, first ~ garbage ~ second);
+    scope (exit)
+        remove(path);
+
+    auto doc = new DltDocument(path);
+    dispatchUntil(doc, () => doc.mainView.ready);
+    assert(doc.mainView.itemsCount == 2);
+
+    DocumentItem item;
+    assert(doc.mainView.fetchItem(1, item), "the offset points at the message, not the garbage");
+    assert(item._decodedMessage.ecuId == "ECU2"w);
+}
+
 @("DltDocument: opening a missing file throws instead of crashing")
 unittest
 {

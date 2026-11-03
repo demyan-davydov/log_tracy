@@ -311,10 +311,12 @@ struct DltIndex
 
             while (n < bunchSize && range.hasNext)
             {
-                const size_t msgStart = range.offset; // offset BEFORE pop
                 const auto msg = range.pop();
                 if (msg.length == 0)
                     break;
+                // Start of the message itself: pop() skips garbage before it,
+                // and getMessage() expects the offset of a header
+                const size_t msgStart = range.offset - msg.length;
 
                 tempIndex[n++].offset = msgStart;
             }
