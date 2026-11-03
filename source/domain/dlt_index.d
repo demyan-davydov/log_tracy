@@ -252,10 +252,25 @@ struct DltIndex
 
     //! @brief build filter index, also rebuild search index
     //! @param progress - progress reporter, also gives access to the cancel flag
+    //! @param filter - null resets the filter: the main view shows all messages
     //! @return true if the build process was completed successfully, false otherwise
     private bool buildFilterIndex(ref ProgressReporter progress, Filter filter, Anchors anchors)
     {
         auto ctx = progress.ctx;
+        if (filter is null)
+        {
+            synchronized (cast(Mutex)_mutex)
+            {
+                _viewIsFiltered = false;
+                _filterIndex.clear();
+                _searchIndex.clear(); // was built over the filtered view
+                _filterIndex.isReady = false;
+                _searchIndex.isReady = false;
+                progress.report(1.0f);
+            }
+            return true;
+        }
+
         synchronized (cast(Mutex)_mutex)
         {
             _filterIndex.clear();
@@ -316,10 +331,22 @@ struct DltIndex
 
     //! @brief build search index
     //! @param progress - progress reporter, also gives access to the cancel flag
+    //! @param filter - null resets the search: the search view becomes empty
     //! @return true if the build process was completed successfully, false otherwise
     private bool buildSearchIndex(ref ProgressReporter progress, Filter filter, Anchors anchors)
     {
         auto ctx = progress.ctx;
+        if (filter is null)
+        {
+            synchronized (cast(Mutex)_mutex)
+            {
+                _searchIndex.clear();
+                _searchIndex.isReady = true; // an empty result is a valid result
+                progress.report(1.0f);
+            }
+            return true;
+        }
+
         synchronized (cast(Mutex)_mutex)
         {
             _searchIndex.clear();

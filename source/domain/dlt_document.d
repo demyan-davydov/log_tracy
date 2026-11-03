@@ -571,3 +571,38 @@ unittest
     assert(started == [Document.Operation.BuildOffsetIndex], "the pending search must be dropped");
     assert(doc.mainView.ready && doc.mainView.itemsCount == messageCount);
 }
+
+@("DltDocument: resetFilter (null filter) clears the result instead of crashing")
+unittest
+{
+    import std.file : remove;
+
+    enum messageCount = 2000;
+    auto path = writeTestDlt("dlt_document_reset.dlt", messageCount);
+    scope (exit)
+        remove(path);
+
+    auto doc = new DltDocument(path);
+    OperationFinished[] finished;
+    doc.events.subscribe((const OperationFinished e) { finished ~= e; });
+    dispatchUntil(doc, () => finished.length == 1); // file loaded
+
+    doc.applySearchFilter(new ConstFilter(true));
+    dispatchUntil(doc, () => finished.length == 2);
+    assert(doc.searchView.itemsCount == messageCount);
+
+    // Before the fix the worker called matches() on a null filter and crashed
+    doc.searchView.resetFilter();
+    dispatchUntil(doc, () => finished.length == 3);
+    assert(finished[2].operation == Document.Operation.BuildSearchIndex);
+    assert(finished[2].result == OperationFinished.Result.Completed);
+    assert(doc.searchView.ready && doc.searchView.itemsCount == 0, "search result must be empty");
+
+    doc.mainView.resetFilter();
+    dispatchUntil(doc, () => finished.length == 4);
+    assert(finished[3].operation == Document.Operation.BuildFilterIndex);
+    assert(finished[3].result == OperationFinished.Result.Completed);
+    assert(doc.mainView.ready);
+    assert(!doc.mainView.isFilterEnabled, "reset filter shows the unfiltered view");
+    assert(doc.mainView.itemsCount == messageCount, "all messages are visible");
+}
