@@ -1,271 +1,208 @@
 module ui.main_menu_loader;
 
 import ui.main_window;
-import std.string : toStringz, fromStringz;
-import std.utf : toUTF16;
 import std.json;
 import std.stdio;
-
-// OS-specific external declarations
-version (OSX)
-{
-    extern (C) void* objc_getClass(const char* name);
-    extern (C) void* sel_registerName(const char* name);
-    extern (C) void* objc_msgSend(void* self, void* op, ...);
-
-    // Helpers
-    extern (C) void* objc_msgSend_id(void* self, void* op) @trusted;
-    alias msgSend_ptr = extern (C) void* function(void*, void*) @trusted;
-    alias msgSend_ptr_ptr = extern (C) void* function(void*, void*, void*) @trusted;
-    extern (C) bool class_addMethod(void* cls, void* name, void* imp, const char* types);
-    extern (C) void* objc_allocateClassPair(void* superclass, const char* name, size_t extraBytes);
-    extern (C) void objc_registerClassPair(void* cls);
-
-    private void* makeNSString(string str)
-    {
-        auto cls_NSString = objc_getClass("NSString");
-        auto sel_alloc = sel_registerName("alloc");
-        auto sel_initWithUTF8String = sel_registerName("initWithUTF8String:");
-        alias msgSend_str = extern (C) void* function(void*, void*, const char*) @trusted;
-        return (cast(msgSend_str)&objc_msgSend)((cast(msgSend_ptr)&objc_msgSend)(cls_NSString, sel_alloc), sel_initWithUTF8String, toStringz(
-                str));
-    }
-
-    private extern (C) void menuItemClicked(void* self, void* _cmd, void* sender)
-    {
-        auto sel_representedObject = sel_registerName("representedObject");
-        void* nsStrId = (cast(msgSend_ptr)&objc_msgSend)(sender, sel_representedObject);
-        if (nsStrId)
-        {
-            auto sel_UTF8String = sel_registerName("UTF8String");
-            alias msgSend_cStr = extern (C) const(char)* function(void*, void*) @trusted;
-            auto cStrId = (cast(msgSend_cStr)&objc_msgSend)(nsStrId, sel_UTF8String);
-            string id = fromStringz(cStrId).idup;
-            alias msgSend_long = extern (C) long function(void*, void*) @trusted;
-            long tag = (cast(msgSend_long)&objc_msgSend)(sender, sel_registerName("tag"));
-            MainWindow win = cast(MainWindow)(cast(void*) tag);
-
-            if (win)
-            {
-                writeln("Native Menu: Clicked ", id, ", delegating to JS onMenuCommand via callScript");
-                import std.utf : toUTF16;
-
-                win.callScript("onMenuCommand", id.toUTF16());
-            }
-            else
-            {
-                writeln("Native Menu Error: win is null for clicked item ", id);
-            }
-        }
-        else
-        {
-            writeln("Native Menu Error: nsStrId is null");
-        }
-    }
-}
 
 void loadAppMenu(MainWindow window)
 {
     version (OSX)
     {
         writeln("Native Menu: Loading menu.json for OSX...");
-        string menuJson = import("menu.json");
-        setupMainMenuOSX(window, menuJson);
+        setupMainMenuOSX(window, import("menu.json"));
         writeln("Native Menu: OSX menu setup completed.");
     }
 }
 
-version (OSX)
+version (OSX):
+
+import std.string : toStringz, fromStringz;
+import std.utf : toUTF16;
+import std.uni : toLower;
+
+extern (C) void* objc_getClass(const char* name);
+extern (C) void* sel_registerName(const char* name);
+extern (C) void* objc_msgSend(void* self, void* op, ...);
+extern (C) bool class_addMethod(void* cls, void* name, void* imp, const char* types);
+extern (C) void* objc_allocateClassPair(void* superclass, const char* name, size_t extraBytes);
+extern (C) void objc_registerClassPair(void* cls);
+
+/// Calls objc_msgSend through an exact prototype derived from the argument types.
+private R msg(R = void*, Args...)(void* obj, const(char)* sel, Args args)
 {
-    private void setupMainMenuOSX(MainWindow window, string menuJson)
+    alias Fn = extern (C) R function(void*, void*, Args) @trusted;
+    return (cast(Fn)&objc_msgSend)(obj, sel_registerName(sel), args);
+}
+
+private void* cls(const(char)* name)
+{
+    return objc_getClass(name);
+}
+
+private void* alloc(const(char)* className)
+{
+    return msg(cls(className), "alloc");
+}
+
+private void* make(const(char)* className)
+{
+    return msg(alloc(className), "init");
+}
+
+private void* makeNSString(string str)
+{
+    return msg(alloc("NSString"), "initWithUTF8String:", toStringz(str));
+}
+
+private string getStr(JSONValue obj, string key)
+{
+    auto p = key in obj;
+    return p ? p.str : "";
+}
+
+private extern (C) void menuItemClicked(void* self, void* _cmd, void* sender)
+{
+    void* nsStrId = msg(sender, "representedObject");
+    if (!nsStrId)
     {
-        auto j = parseJSON(menuJson);
+        writeln("Native Menu Error: nsStrId is null");
+        return;
+    }
 
-        auto sel_alloc = sel_registerName("alloc");
-        auto sel_init = sel_registerName("init");
-        auto sel_addItem = sel_registerName("addItem:");
-        auto sel_setSubmenu = sel_registerName("setSubmenu:");
-        auto sel_setMainMenu = sel_registerName("setMainMenu:");
-        auto sel_initWithTitle = sel_registerName("initWithTitle:");
-        auto sel_initWithTitleActionKey = sel_registerName(
-            "initWithTitle:action:keyEquivalent:");
+    string id = fromStringz(msg!(const(char)*)(nsStrId, "UTF8String")).idup;
+    auto win = cast(MainWindow)(cast(void*) msg!long(sender, "tag"));
+    if (!win)
+    {
+        writeln("Native Menu Error: win is null for clicked item ", id);
+        return;
+    }
 
-        auto cls_NSMenu = objc_getClass("NSMenu");
-        auto cls_NSMenuItem = objc_getClass("NSMenuItem");
-        auto cls_NSApplication = objc_getClass("NSApplication");
-        auto app = (cast(msgSend_ptr)&objc_msgSend)(cls_NSApplication, sel_registerName(
-                "sharedApplication"));
+    writeln("Native Menu: Clicked ", id, ", delegating to JS onMenuCommand via callScript");
+    win.callScript("onMenuCommand", id.toUTF16());
+}
 
-        alias msgSend_ptr_long = extern (C) void* function(void*, void*, long) @trusted;
-        (cast(msgSend_ptr_long)&objc_msgSend)(app, sel_registerName("setActivationPolicy:"), 0L); // NSApplicationActivationPolicyRegular
+private void* makeItem(JSONValue sub, MainWindow window)
+{
+    string id = getStr(sub, "id");
 
-        // Re-adding custom event handlers using AppDelegate
-        auto clsDelegate = objc_getClass("AppDelegate");
+    string keyEq;
+    if (auto acc = "accelerator" in sub)
+    {
+        keyEq = getStr(*acc, "mac");
+        if (keyEq.length > 0)
+            keyEq = keyEq[$ - 1 .. $].toLower();
+    }
+
+    const(char)* action = "menuItemClicked:";
+    if (id == "app.quit")
+        action = "terminate:";
+    else if (id == "window.minimize")
+        action = "performMiniaturize:";
+
+    auto item = msg(alloc("NSMenuItem"), "initWithTitle:action:keyEquivalent:",
+        makeNSString(getStr(sub, "label")), sel_registerName(action), makeNSString(keyEq));
+    msg!void(item, "setRepresentedObject:", makeNSString(id));
+    // Pass window pointer using the tag
+    msg!void(item, "setTag:", cast(long)(cast(void*) window));
+    return item;
+}
+
+private void registerDelegateClass()
+{
+    auto clsDelegate = cls("AppDelegate");
+    bool created = false;
+    if (!clsDelegate)
+    {
+        clsDelegate = objc_allocateClassPair(cls("NSObject"), "AppDelegate", 0);
         if (!clsDelegate)
+            return;
+        created = true;
+    }
+    class_addMethod(clsDelegate, sel_registerName("menuItemClicked:"), cast(void*)&menuItemClicked, "v@:@");
+    if (created)
+        objc_registerClassPair(clsDelegate);
+}
+
+private void setupMainMenuOSX(MainWindow window, string menuJson)
+{
+    auto app = msg(cls("NSApplication"), "sharedApplication");
+    msg!void(app, "setActivationPolicy:", 0L); // NSApplicationActivationPolicyRegular
+
+    registerDelegateClass();
+    msg!void(app, "setDelegate:", make("AppDelegate"));
+
+    // Critical for menus in non-bundled apps:
+    msg!void(app, "finishLaunching");
+
+    auto menubar = msg(app, "mainMenu");
+    bool createdMenubar = menubar is null;
+    if (createdMenubar)
+    {
+        menubar = make("NSMenu");
+    }
+    else
+    {
+        // Remove everything except the App Menu (index 0)
+        for (long i = msg!long(menubar, "numberOfItems") - 1; i > 0; i--)
+            msg!void(menubar, "removeItemAtIndex:", i);
+    }
+
+    foreach (menuObj; parseJSON(menuJson).array)
+    {
+        // Existing app menu: our items are inserted at the top, before the system ones
+        bool patchAppMenu = getStr(menuObj, "id") == "menu.app" && !createdMenubar;
+
+        void* menu = null;
+        if (patchAppMenu)
         {
-            clsDelegate = objc_allocateClassPair(objc_getClass("NSObject"), "AppDelegate", 0);
-            if (clsDelegate)
-            {
-                class_addMethod(clsDelegate, sel_registerName("menuItemClicked:"), cast(void*)&menuItemClicked, "v@:@");
-                objc_registerClassPair(clsDelegate);
-            }
+            if (auto appItem = msg(menubar, "itemAtIndex:", 0L))
+                menu = msg(appItem, "submenu");
         }
-        else
+        if (!menu)
         {
-            class_addMethod(clsDelegate, sel_registerName("menuItemClicked:"), cast(void*)&menuItemClicked, "v@:@");
+            patchAppMenu = false;
+            auto menuItem = make("NSMenuItem");
+            msg!void(menubar, "addItem:", menuItem);
+            menu = msg(alloc("NSMenu"), "initWithTitle:", makeNSString(getStr(menuObj, "label")));
+            msg!void(menuItem, "setSubmenu:", menu);
         }
 
-        auto delegateObj = (cast(msgSend_ptr)&objc_msgSend)(
-            (cast(msgSend_ptr)&objc_msgSend)(clsDelegate, sel_alloc), sel_init);
+        auto submenu = "submenu" in menuObj;
+        if (!submenu)
+            continue;
 
-        (cast(msgSend_ptr_ptr)&objc_msgSend)(app, sel_registerName("setDelegate:"), delegateObj);
-
-        // Critical for menus in non-bundled apps:
-        (cast(msgSend_ptr)&objc_msgSend)(app, sel_registerName("finishLaunching"));
-
-        auto sel_mainMenu = sel_registerName("mainMenu");
-        auto menubar = (cast(msgSend_ptr)&objc_msgSend)(app, sel_mainMenu);
-        bool createdMenubar = false;
-
-        if (!menubar) {
-            menubar = (cast(msgSend_ptr)&objc_msgSend)(
-                (cast(msgSend_ptr)&objc_msgSend)(cls_NSMenu, sel_alloc), sel_init);
-            createdMenubar = true;
-        } else {
-            // Remove everything except the App Menu (index 0)
-            alias msgSend_numberOfItems = extern (C) long function(void*, void*) @trusted;
-            alias msgSend_removeItemAtIndex = extern (C) void function(void*, void*, long) @trusted;
-            long count = (cast(msgSend_numberOfItems)&objc_msgSend)(menubar, sel_registerName("numberOfItems"));
-            for (long i = count - 1; i > 0; i--) {
-                (cast(msgSend_removeItemAtIndex)&objc_msgSend)(menubar, sel_registerName("removeItemAtIndex:"), i);
-            }
-        }
-
-        alias msgSend_initItem = extern (C) void* function(void*, void*, void*, void*, void*) @trusted;
-        alias msgSend_initMenu = extern (C) void* function(void*, void*, void*) @trusted;
-        alias msgSend_itemAtIndex = extern (C) void* function(void*, void*, long) @trusted;
-        alias msgSend_insertItem = extern (C) void function(void*, void*, void*, long) @trusted;
-
-        foreach (menuObj; j.array)
+        long insertIdx = 0;
+        void put(void* item)
         {
-            string menuId = "id" in menuObj ? menuObj["id"].str : "";
-            
-            void* menuItem = null;
-            void* menu = null;
-
-            if (menuId == "menu.app" && !createdMenubar) {
-                // Get the existing App menu
-                menuItem = (cast(msgSend_itemAtIndex)&objc_msgSend)(menubar, sel_registerName("itemAtIndex:"), 0);
-                if (menuItem) {
-                    menu = (cast(msgSend_ptr)&objc_msgSend)(menuItem, sel_registerName("submenu"));
-                }
-            }
-
-            if (!menuItem || !menu) {
-                menuItem = (cast(msgSend_ptr)&objc_msgSend)(
-                    (cast(msgSend_ptr)&objc_msgSend)(cls_NSMenuItem, sel_alloc), sel_init);
-                (cast(msgSend_ptr_ptr)&objc_msgSend)(menubar, sel_addItem, menuItem);
-
-                string label = "label" in menuObj ? menuObj["label"].str : "";
-                menu = (cast(msgSend_initMenu)&objc_msgSend)((cast(msgSend_ptr)&objc_msgSend)(cls_NSMenu, sel_alloc), sel_initWithTitle, makeNSString(
-                        label));
-                (cast(msgSend_ptr_ptr)&objc_msgSend)(menuItem, sel_setSubmenu, menu);
-            }
-
-            if ("submenu" in menuObj)
-            {
-                long insertIdx = 0;
-                
-                if (menuId == "menu.app" && !createdMenubar) {
-                    auto masterItemSep = (cast(msgSend_ptr)&objc_msgSend)(cls_NSMenuItem, sel_registerName(
-                            "separatorItem"));
-                    (cast(msgSend_insertItem)&objc_msgSend)(menu, sel_registerName("insertItem:atIndex:"), masterItemSep, 0);
-                }
-                foreach (subItem; menuObj["submenu"].array)
-                {
-                    if ("type" in subItem && subItem["type"].str == "separator")
-                    {
-                        auto itemSep = (cast(msgSend_ptr)&objc_msgSend)(cls_NSMenuItem, sel_registerName(
-                                "separatorItem"));
-                        if (menuId == "menu.app" && !createdMenubar) {
-                            (cast(msgSend_insertItem)&objc_msgSend)(menu, sel_registerName("insertItem:atIndex:"), itemSep, insertIdx++);
-                        } else {
-                            (cast(msgSend_ptr_ptr)&objc_msgSend)(menu, sel_addItem, itemSep);
-                        }
-                    }
-                    else
-                    {
-                        string idStr = "id" in subItem ? subItem["id"].str : "";
-                        string itemLabel = "label" in subItem ? subItem["label"].str : "";
-                        string keyEq = "";
-
-                        if ("accelerator" in subItem)
-                        {
-                            auto acc = subItem["accelerator"];
-                            if ("mac" in acc)
-                            {
-                                keyEq = acc["mac"].str;
-                                if (keyEq.length > 0)
-                                {
-                                    import std.uni : toLower;
-
-                                    keyEq = keyEq[$ - 1 .. $].toLower();
-                                }
-                            }
-                        }
-
-                        void* action = sel_registerName("menuItemClicked:");
-                        if (idStr == "app.quit")
-                            action = sel_registerName("terminate:");
-                        else if (idStr == "window.minimize")
-                            action = sel_registerName("performMiniaturize:");
-
-                        auto item = (cast(msgSend_initItem)&objc_msgSend)(
-                            (cast(msgSend_ptr)&objc_msgSend)(cls_NSMenuItem, sel_alloc),
-                            sel_initWithTitleActionKey,
-                            makeNSString(itemLabel),
-                            action,
-                            makeNSString(keyEq)
-                        );
-
-                        (cast(msgSend_ptr_ptr)&objc_msgSend)(item, sel_registerName(
-                                "setRepresentedObject:"), makeNSString(idStr));
-
-                        // Pass window pointer using the tag
-                        alias msgSend_ptr_long2 = extern (C) void* function(void*, void*, long) @trusted;
-                        (cast(msgSend_ptr_long2)&objc_msgSend)(item, sel_registerName("setTag:"), cast(
-                                long)(cast(void*) window));
-
-                        // Skip default quit item if using existing app menu
-                        if (menuId == "menu.app" && !createdMenubar && idStr == "app.quit") {
-                            continue;
-                        }
-
-                        if (menuId == "menu.app" && !createdMenubar) {
-                            (cast(msgSend_insertItem)&objc_msgSend)(menu, sel_registerName("insertItem:atIndex:"), item, insertIdx++);
-                        } else {
-                            (cast(msgSend_ptr_ptr)&objc_msgSend)(menu, sel_addItem, item);
-                        }
-                    }
-                }
-            }
+            if (patchAppMenu)
+                msg!void(menu, "insertItem:atIndex:", item, insertIdx++);
+            else
+                msg!void(menu, "addItem:", item);
         }
 
-        if (createdMenubar) {
-            (cast(msgSend_ptr_ptr)&objc_msgSend)(app, sel_setMainMenu, menubar);
-        }
+        if (patchAppMenu)
+            msg!void(menu, "insertItem:atIndex:", msg(cls("NSMenuItem"), "separatorItem"), 0L);
 
-        alias msgSend_ptr_bool = extern (C) void* function(void*, void*, bool) @trusted;
-        (cast(msgSend_ptr_bool)&objc_msgSend)(app, sel_registerName("activateIgnoringOtherApps:"), true);
-
-        // Also ensure the window itself is key and front
-        if (window && window.hwnd())
+        foreach (sub; submenu.array)
         {
-            auto hwnd = cast(void*) window.hwnd();
-            alias msgSend_ptr_ptr_ptr = extern (C) void* function(void*, void*, void*) @trusted;
-            (cast(msgSend_ptr_ptr_ptr)&objc_msgSend)(hwnd, sel_registerName("makeKeyAndOrderFront:"), cast(
-                    void*) null);
-            (cast(msgSend_ptr)&objc_msgSend)(hwnd, sel_registerName("orderFrontRegardless"));
+            if (getStr(sub, "type") == "separator")
+                put(msg(cls("NSMenuItem"), "separatorItem"));
+            // Skip our quit item when the existing app menu already has one
+            else if (!(patchAppMenu && getStr(sub, "id") == "app.quit"))
+                put(makeItem(sub, window));
         }
+    }
+
+    if (createdMenubar)
+        msg!void(app, "setMainMenu:", menubar);
+
+    msg!void(app, "activateIgnoringOtherApps:", true);
+
+    // Also ensure the window itself is key and front
+    if (window && window.hwnd())
+    {
+        auto hwnd = cast(void*) window.hwnd();
+        msg!void(hwnd, "makeKeyAndOrderFront:", cast(void*) null);
+        msg!void(hwnd, "orderFrontRegardless");
     }
 }
