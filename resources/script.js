@@ -64,7 +64,6 @@ function initApp() {
     restoreSettings();
     setupEvents();
     refreshTabs();
-    pollLoadingProgress();
 }
 
 function initQueryBuilder() {
@@ -403,6 +402,7 @@ function refreshTabs() {
     }
 
     updateViewMode();
+    updateSearchViewMode();
 }
 
 function switchTab(docId) {
@@ -489,12 +489,19 @@ function updateSearchViewMode() {
     }
 }
 
-function pollLoadingProgress() {
-    setInterval(() => {
-        updateViewMode();
+// Native: document operation lifecycle (no polling).
+// kind: "started" | "progress" | "finished"; result is set for "finished":
+// "Completed" | "Cancelled" | "Failed". The views show the active document only,
+// so the event is a trigger to re-read its state.
+globalThis.onDocumentEvent = function (docId, kind, operation, progress, result) {
+    if (kind !== "progress")
+        console.log("Native: onDocumentEvent", docId, kind, operation, result);
+
+    if (operation === "BuildSearchIndex")
         updateSearchViewMode();
-    }, 500);
-}
+    else
+        updateViewMode();
+};
 
 globalThis.onDocumentAdded = function (docId) {
     console.log("Native: onDocumentAdded (int)", docId);

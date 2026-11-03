@@ -8,13 +8,24 @@ import domain.index.anchors;
 import dlt_core.log_item : LogItem;
 import dlt_core.log_filter : LogFilter;
 
-import event_bus.event_bus_interface : SignalConsumer;
+import event_bus.event_bus_interface : SignalConsumer, SubscriptionToken;
 import event_bus.event_bus_sync : EventBusSync;
 
 import std.algorithm : countUntil, remove;
+import std.meta : AliasSeq;
 import std.array : insertInPlace;
 
 //! Workspace is a collection of documents
+
+/// Document event forwarded by Workspace, tagged with its source document
+struct DocumentEvent(E)
+{
+    DocumentId docId;
+    E event;
+}
+
+/// Document events that Workspace forwards as DocumentEvent!E
+alias ForwardedDocumentEvents = AliasSeq!(OperationStarted, OperationProgress, OperationFinished);
 
 private class NullDocumentView : DocumentView
 {
@@ -124,6 +135,7 @@ private struct DocumentRecord
 
     DocumentId docId;
     Document document;
+    SubscriptionToken[] subscriptions; // forwarding subscriptions on document.events
     string sourcePath;
     string filterPath;
     string fibexPath;
@@ -134,20 +146,51 @@ final class Workspace
     private DocumentRecord[] _documents;
     private size_t _current; // currently displayed document
     private DocumentIdGenerator _idGenerator;
+    private EventBusSync _events; // already on the UI thread: documents dispatch there
 
     this()
     {
+        _events = new EventBusSync();
     }
 
     ~this()
     {
-        clear();
+        // GC finalizer: documents may already be finalized, so don't touch them
+        _documents = null;
+    }
+
+    //! @brief Subscription point for DocumentEvent!E, E in ForwardedDocumentEvents.
+    //! Delivered on the UI thread from dispatchEvents().
+    SignalConsumer events()
+    {
+        return _events;
     }
 
     void clear()
     {
+        foreach (ref record; _documents)
+            stopForwarding(record);
         _documents.length = 0;
         _current = 0;
+    }
+
+    private SubscriptionToken[] startForwarding(Document document, DocumentId docId)
+    {
+        SubscriptionToken[] tokens;
+        static foreach (E; ForwardedDocumentEvents)
+        {
+            tokens ~= document.events.subscribe((const E e) {
+                _events.publish(DocumentEvent!E(docId, e));
+            });
+        }
+        return tokens;
+    }
+
+    private void stopForwarding(ref DocumentRecord record)
+    {
+        foreach (token; record.subscriptions)
+            record.document.events.unsubscribe(token);
+        record.subscriptions = null;
     }
 
     // returns -1 if not found
@@ -172,6 +215,7 @@ final class Workspace
         auto item = DocumentRecord(_idGenerator.popId(), sourcePath);
         item.document = document;
         item.sourcePath = sourcePath;
+        item.subscriptions = startForwarding(document, item.docId);
         _documents ~= item;
         return item.docId;
     }
@@ -182,6 +226,7 @@ final class Workspace
         if (idx != -1)
         {
             auto document = _documents[idx].document;
+            stopForwarding(_documents[idx]);
             _documents = _documents.remove(idx);
             if (_current >= _documents.length && _current > 0)
                 _current = _documents.length - 1;
@@ -409,3 +454,59 @@ unittest
     assert(ws.current is k_nullDocument);
     assert(!ws.currentId.isValid);
 }
+
+@("Workspace forwards document events tagged with DocumentId")
+unittest
+{
+    import event_bus.event_bus_async : EventBusAsync;
+
+    // Document whose events are published by the test itself
+    class EventSourceDocument : Document
+    {
+        EventBusAsync bus;
+        this() { bus = new EventBusAsync(); }
+
+        SignalConsumer events() { return bus; }
+        void dispatchEvents() { bus.dispatch(); }
+        DocumentView mainView() { return k_nullDocumentView; }
+        DocumentView searchView() { return k_nullDocumentView; }
+        void applyViewFilter(LogFilter!wchar filter) {}
+        void applySearchFilter(LogFilter!wchar filter) {}
+        bool setAnchor(size_t index, bool value) { return false; }
+        size_t[] exportAnchors() const pure { return null; }
+        void importAnchors(const(size_t[]) anchors) {}
+    }
+
+    auto ws = new Workspace();
+    auto doc1 = new EventSourceDocument();
+    auto doc2 = new EventSourceDocument();
+    const id1 = ws.addDocument(doc1, "doc1");
+    const id2 = ws.addDocument(doc2, "doc2");
+
+    DocumentId[] startedIds;
+    float progress = -1;
+    DocumentId finishedId;
+    ws.events.subscribe((const DocumentEvent!OperationStarted e) { startedIds ~= e.docId; });
+    ws.events.subscribe((const DocumentEvent!OperationProgress e) { progress = e.event.progress; });
+    ws.events.subscribe((const DocumentEvent!OperationFinished e) { finishedId = e.docId; });
+
+    doc1.bus.publish(OperationStarted(Document.Operation.BuildOffsetIndex));
+    doc2.bus.publish(OperationStarted(Document.Operation.BuildOffsetIndex));
+    doc2.bus.publish(OperationProgress(Document.Operation.BuildOffsetIndex, 0.5f));
+    doc2.bus.publish(OperationFinished(Document.Operation.BuildOffsetIndex));
+
+    assert(startedIds.length == 0, "nothing is delivered before dispatchEvents()");
+    ws.dispatchEvents();
+
+    assert(startedIds == [id1, id2]);
+    assert(progress == 0.5f);
+    assert(finishedId == id2);
+
+    // A removed document is no longer forwarded
+    ws.removeDocument(id1);
+    doc1.bus.publish(OperationStarted(Document.Operation.BuildSearchIndex));
+    doc1.dispatchEvents();
+    ws.dispatchEvents();
+    assert(startedIds == [id1, id2], "events of a removed document must not be forwarded");
+}
+

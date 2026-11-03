@@ -60,6 +60,32 @@ class MainWindow : SciterWindow
 
         // Disable extended touchpad support on Mac to prevent gesture-related crashes
         _api.SciterSetOption(hwnd, SCITER_RT_OPTIONS.SCITER_EXTENDED_TOUCHPAD_SUPPORT, 0);
+
+        subscribeToDocumentEvents();
+    }
+
+    /// Forwards document operation events to JS: onDocumentEvent(docId, kind, operation, progress, result)
+    private void subscribeToDocumentEvents()
+    {
+        auto events = _workspace.events;
+        events.subscribe((const DocumentEvent!OperationStarted e) {
+            notifyDocumentEvent(e.docId, "started", e.event.operation, 0.0f, "");
+        });
+        events.subscribe((const DocumentEvent!OperationProgress e) {
+            notifyDocumentEvent(e.docId, "progress", e.event.operation, e.event.progress, "");
+        });
+        events.subscribe((const DocumentEvent!OperationFinished e) {
+            if (e.event.result == OperationFinished.Result.Failed)
+                writeln("Operation ", e.event.operation, " failed: ", e.event.error);
+            notifyDocumentEvent(e.docId, "finished", e.event.operation, 1.0f, e.event.result.to!string);
+        });
+    }
+
+    private void notifyDocumentEvent(DocumentId docId, string kind, Document.Operation operation,
+        float progress, string result)
+    {
+        callScript("onDocumentEvent", docId.toInt(), kind.toUTF16(), operation.to!string.toUTF16(),
+            progress, result.toUTF16());
     }
 
     override void handleAttached(HELEMENT he)
