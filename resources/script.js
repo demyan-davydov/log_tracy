@@ -216,6 +216,20 @@ function openFileAction() {
     }
 }
 
+// Called from the native (macOS) menu: see source/ui/main_menu_loader.d
+globalThis.onMenuCommand = function (id) {
+    switch (id) {
+        case "app.settings":
+            openSettingsAction();
+            break;
+        case "file.open":
+            openFileAction();
+            break;
+        default:
+            console.warn("Unhandled menu command:", id);
+    }
+};
+
 function setupEvents() {
     document.on("click", "#btn-open, #btn-add-tab", (evt) => {
         openFileAction();
