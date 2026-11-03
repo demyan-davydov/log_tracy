@@ -50,6 +50,9 @@ struct BackgroundSlot
     private typeof(scoped!Mutex()) _mutex;
     private Thread _thread;
     private shared bool _threadDone = true; // true = no active thread
+    // false for a default-initialized slot, e.g. a field destroyed because its
+    // owner's constructor threw before constructing it: _mutex doesn't exist then
+    private bool _constructed = false;
 
     // Must be called under the mutex only
     private bool isRunning_() const nothrow @nogc
@@ -60,6 +63,7 @@ struct BackgroundSlot
     this(typeof(null))
     {
         _mutex = scoped!Mutex();
+        _constructed = true;
     }
 
     @disable this(this);
@@ -73,7 +77,9 @@ struct BackgroundSlot
     /// Idempotent; the destructor calls it as well.
     void shutdown()
     {
-        if (_mutex is null) // default-initialized slot: nothing was ever started
+        // Never constructed: nothing was started, and the mutex doesn't exist
+        // (_mutex is stored inline, so it can't be checked for null)
+        if (!_constructed)
             return;
 
         Thread threadToJoin;
@@ -366,4 +372,14 @@ unittest
     waitUntil(() => atomicLoad!(MemoryOrder.acq)(finished));
     assert(atomicLoad!(MemoryOrder.acq)(finished), "onFinished must run");
     assert(!atomicLoad!(MemoryOrder.acq)(busyInCallback), "slot must be idle in onFinished");
+}
+
+/// A slot that was never constructed (a field of an owner whose constructor
+/// threw) can be destroyed: there is nothing to stop
+@("BackgroundSlot: destroying a default-initialized slot is a no-op")
+unittest
+{
+    auto slot = BackgroundSlot.init; // as a field before its constructor ran
+    slot.shutdown();
+    destroy(slot);
 }

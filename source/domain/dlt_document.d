@@ -844,3 +844,13 @@ unittest
     assert(!doc.setAnchor(1000, true), "out of range");
     assert(doc.setAnchor(0, false) && doc.setAnchor(50, true), "room again after removing one");
 }
+
+@("DltDocument: opening a missing file throws instead of crashing")
+unittest
+{
+    import std.exception : assertThrown;
+
+    // The constructor fails before the background slot is constructed; the
+    // field destructors run on the unconstructed slot and must cope with it
+    assertThrown(new DltDocument("/nonexistent/dlt_document_missing.dlt"));
+}
