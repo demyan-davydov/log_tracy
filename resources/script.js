@@ -196,15 +196,7 @@ globalThis.onMenuCommand = function (id) {
 };
 
 function setupEvents() {
-    document.on("click", "#btn-open, #btn-add-tab", (evt) => {
-        openFileAction();
-    });
-
-    document.on("click", "#btn-theme", () => {
-        setTheme(currentTheme === "light" ? "dark" : "light");
-    });
-
-    document.on("click", "#btn-settings", openSettingsAction);
+    document.on("click", "#btn-add-tab", openFileAction);
 
     // Anchor column: toggles the anchor of the message in both views. Ignored by
     // the backend while an operation runs or at the anchor limit.
@@ -304,6 +296,9 @@ function setupEvents() {
     });
 
     document.on("mousedown", ".tab", function (evt, tab) {
+        // Only the left button activates and drags: the right (2) and middle
+        // (4) bits are the same in DOM and in Sciter (PROP_/MIDDLE_MOUSE_BUTTON)
+        if (evt.buttons & 6) return;
         if (evt.target.classList.contains("tab-close")) return;
         if (tabDrag) return; // the previous drop is still settling
         const docId = parseInt(tab.id);
@@ -383,8 +378,8 @@ function refreshTabs() {
     const sameTabs = tabs.length === docs.length
         && tabs.every((tab, i) => parseInt(tab.id) === docs[i].id);
     if (!sameTabs) {
-        container.innerHTML = "";
-        container.append(<button id="btn-add-tab">+</button>);
+        // The + button is kept: it animates between its two looks
+        for (const tab of tabs) tab.remove();
         for (const doc of docs)
             container.append(<div class="tab" id={doc.id}>
                 <span class="tab-sep"></span>
@@ -393,6 +388,7 @@ function refreshTabs() {
             </div>);
         tabs = [...$$("#tabs-container > .tab")];
     }
+    updateAddTabButton(docs.length === 0);
     docs.forEach((doc, i) => {
         const tab = tabs[i];
         if (doc.active) tab.classList.add("active");
@@ -406,6 +402,19 @@ function refreshTabs() {
 
     updateViewMode();
     updateSearchViewMode();
+}
+
+// The + button: "+ Open File" while no document is open, a small round "+"
+// in the corner of the tab strip otherwise (the label then is its tooltip)
+function updateAddTabButton(wide) {
+    const button = $("#btn-add-tab");
+    if (wide) {
+        button.classList.add("wide");
+        button.removeAttribute("title");
+    } else {
+        button.classList.remove("wide");
+        button.setAttribute("title", "Open File (⌘O)");
+    }
 }
 
 function switchTab(docId) {

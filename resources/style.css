@@ -201,19 +201,41 @@ body > header {
     transition: transform cubic-out 150ms;
 }
 
+/* "+ Open File" while no document is open (.wide), a round "+" otherwise;
+   the "+" keeps its place, the label is clipped as the button narrows */
 #btn-add-tab {
+    flow: horizontal;
     width: 26dip;
     height: 26dip;
     margin: 2dip 4dip 0 0;
     padding: 0;
-    line-height: 24dip;
-    text-align: center;
-    font-size: 18dip;
+    overflow-x: hidden;
+    white-space: nowrap;
     color: var(--tab-text);
     background: transparent;
     border: none;
     border-radius: 13dip;
     cursor: default;
+    transition: width cubic-out 180ms, background-color linear 120ms;
+}
+
+#btn-add-tab.wide {
+    width: 104dip;
+    color: var(--text-main);
+    background: var(--bg-tab-hover);
+}
+
+#btn-add-tab > .add-tab-plus {
+    width: 26dip;
+    min-width: 26dip;
+    line-height: 24dip;
+    text-align: center;
+    font-size: 18dip;
+}
+
+#btn-add-tab > .add-tab-label {
+    line-height: 26dip;
+    padding-right: 12dip;
 }
 
 /* The full name of a cut tab name is not shown while a tab is held, see
@@ -244,6 +266,10 @@ body > header {
 #btn-add-tab:hover {
     color: var(--text-main);
     background: var(--bg-tab-hover);
+}
+
+#btn-add-tab.wide:hover {
+    background: var(--tab-close-hover); /* a step darker than its resting look */
 }
 
 frameset {
@@ -297,11 +323,22 @@ frameset {
 }
 
 .filter-actions {
+    flow: horizontal;
+    border-spacing: 8px;
     margin-top: 20px;
-    text-align: right;
+    padding-left: *; /* buttons on the right */
 }
 
-#btn-clear-filters {
+/* A further section of the sidebar, below the filters */
+#sidebar header.sidebar-section {
+    margin-top: 24px;
+}
+
+#sidebar header + .filter-actions {
+    margin-top: 0;
+}
+
+#sidebar .filter-actions button {
     padding: 6px 12px;
     background: var(--btn-default-bg);
     border: 1px solid var(--border-color);
@@ -310,7 +347,7 @@ frameset {
     color: var(--text-main);
 }
 
-#btn-clear-filters:hover {
+#sidebar .filter-actions button:hover {
     background: var(--btn-default-hover);
 }
 
