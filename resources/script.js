@@ -1,5 +1,5 @@
 import { $, $$ } from "@sciter";
-import { VirtualDltTBody, VirtualMainViewTBody, VirtualSearchViewTBody } from "virtual-dlt-view.js";
+import { VirtualDltTBody, VirtualMainViewTBody, VirtualSearchViewTBody, setColumns, renderHeader } from "virtual-dlt-view.js";
 
 globalThis.VirtualDltTBody = VirtualDltTBody;
 globalThis.VirtualMainViewTBody = VirtualMainViewTBody;
@@ -502,6 +502,7 @@ function refreshTabs() {
         if (doc.active) activeDocId = doc.id;
     }
     for (const doc of [...docs].reverse()) rememberRecentFile(doc.path);
+    applyColumns();
 
     // Same documents in the same order (e.g. another tab was activated): the
     // elements are kept, so a tab being pressed or dragged stays in the DOM
@@ -541,6 +542,23 @@ function refreshTabs() {
     updateSearchViewMode();
     showSearchDraft();
     updateSearchPending();
+}
+
+// The columns of the log tables follow the format of the active document.
+// The tables are rebuilt only when they change: switching between documents of
+// the same format keeps them as they are.
+let appliedColumns = null; // JSON of the columns the tables show
+function applyColumns() {
+    const json = Window.this.xcall("getColumns");
+    if (!json || json === "[]" || json === appliedColumns) return; // none, or unchanged
+    appliedColumns = json;
+    setColumns(JSON.parse(json));
+    for (const table of $$("table.log-table")) {
+        table.$("thead").content(renderHeader());
+        const list = table.$("tbody");
+        list.componentUpdate?.();
+        list.refreshVisibleRows?.(); // rows on screen get the new cells
+    }
 }
 
 // The + button: "+ Open File" while no document is open, a small round "+"

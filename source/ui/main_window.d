@@ -8,6 +8,8 @@ import domain.workspace;
 import domain.document_id;
 import domain.document;
 import domain.document_item;
+import log_core.log_format : ColumnInfo, ColumnKind;
+import log_core.log_message : TimeKind;
 import domain.log_document;
 
 import dlt_core.dlt_filter_serialization;
@@ -391,7 +393,7 @@ class MainWindow : SciterWindow
                 const int index = getParamInt(0);
                 DocumentItem docItem;
                 const auto res = _workspace.current.mainView.fetchItem(index, docItem);
-                resultView.set(asSciterArray(index, docItem));
+                resultView.set(asSciterRow(index, docItem, _workspace.current.columns));
 
                 return true;
             }
@@ -407,7 +409,7 @@ class MainWindow : SciterWindow
                 const int index = getParamInt(0);
                 DocumentItem docItem;
                 const auto res = _workspace.current.searchView.fetchItem(index, docItem);
-                resultView.set(asSciterArray(index, docItem));
+                resultView.set(asSciterRow(index, docItem, _workspace.current.columns));
 
                 return true;
             }
@@ -471,6 +473,12 @@ class MainWindow : SciterWindow
                         writeln("Error loading DLF: ", e.msg);
                     }
                 }
+                return true;
+            }
+            if (method == "getColumns")
+            {
+                // Columns of the active document, [] if there is none
+                resultView = columnsJson(_workspace.current.columns).toUTF16();
                 return true;
             }
             if (method == "getWorkspaceInfo")
@@ -834,28 +842,76 @@ class MainWindow : SciterWindow
     }
 }
 
-SciterValue asSciterArray(int index, ref const(DocumentItem) item)
+//! @brief A row of the log table: anchored, filterMask, view index, message
+//! index, then a cell per column (see virtual-dlt-view.js)
+SciterValue asSciterRow(int index, ref const(DocumentItem) item, const(ColumnInfo)[] columns)
 {
-    import dlt_core.dlt_fields;
+    enum fixedCells = 4;
+    const msg = &item.message();
 
-    // Row layout of the table (virtual-dlt-view.js): anchored, filterMask,
-    // index, realIndex, seconds, microseconds, timestamp(rel), ecuId, appId,
-    // ctxId, level, type, messageId, payload
-    // TODO: DLT fields only; rows will follow the column schema of the format
-    SciterValue array = SciterValue.makeArray(
-        item.anchored,
-        item.filterMask,
-        index,
-        item.realIndex,
-        item.message.timestampSeconds,
-        item.message.timestampMicroseconds,
-        item.message.relativeTimestamp_10000,
-        item.message.ecuId,
-        item.message.appId,
-        item.message.ctxId,
-        cast(int) item.message.level,
-        cast(int) item.message.type,
-        item.message.messageId,
-        item.message.payloadText);
-    return array;
+    SciterValue row = SciterValue.makeArrayWithSize(fixedCells + columns.length);
+    auto cells = AsArrayView(row);
+    cells.opIndex(0, item.anchored);
+    cells.opIndex(1, item.filterMask);
+    cells.opIndex(2, index);
+    cells.opIndex(3, cast(double) item.realIndex);
+
+    foreach (i, ref column; columns)
+    {
+        const cell = fixedCells + i;
+        final switch (column.kind)
+        {
+        case ColumnKind.Time:
+            // Microseconds: exact in a double (a script number) for 285 years
+            if (msg.timeKind == TimeKind.None)
+            {
+                SciterValue none = SciterValue.makeNull();
+                cells.opIndex(cell, none);
+            }
+            else
+                cells.opIndex(cell, cast(double)(msg.timeNs / 1000));
+            break;
+        case ColumnKind.Level:
+            cells.opIndex(cell, cast(int) msg.level);
+            break;
+        case ColumnKind.Payload:
+            cells.opIndex(cell, msg.payloadText);
+            break;
+        case ColumnKind.Text:
+            cells.opIndex(cell, msg.text(column.field));
+            break;
+        case ColumnKind.Integer:
+        case ColumnKind.Hex:
+        case ColumnKind.Duration:
+        case ColumnKind.Enum:
+            cells.opIndex(cell, cast(double) msg.number(column.field));
+            break;
+        }
+    }
+    return row;
+}
+
+//! @brief The columns as JSON for the script (see virtual-dlt-view.js)
+string columnsJson(const(ColumnInfo)[] columns)
+{
+    import std.conv : to;
+
+    JSONValue[] result;
+    foreach (ref column; columns)
+    {
+        JSONValue c = [
+            "id": JSONValue(column.id),
+            "title": JSONValue(column.title),
+            "kind": JSONValue(column.kind.to!string),
+            "width": JSONValue(column.width),
+        ];
+        if (column.kind == ColumnKind.Time)
+            c["timeKind"] = JSONValue(column.timeKind.to!string);
+        if (column.kind == ColumnKind.Duration)
+            c["unitsPerSecond"] = JSONValue(column.unitsPerSecond);
+        if (column.kind == ColumnKind.Enum)
+            c["labels"] = JSONValue(column.labels);
+        result ~= c;
+    }
+    return JSONValue(result).toString();
 }

@@ -5,6 +5,7 @@ import log_core.log_filter : LogFilter;
 import dlt_core.dlt_protocol : LogLevel, MessageType;
 
 import domain.document_id;
+import log_core.log_format : ColumnInfo;
 import domain.document_item;
 import domain.index.anchors;
 
@@ -65,6 +66,9 @@ interface Document
     DocumentView mainView();
 
     DocumentView searchView();
+
+    //! Columns of the log table, as declared by the format of the document
+    const(ColumnInfo)[] columns();
 
     //string sourcePath() const nothrow @nogc;
 

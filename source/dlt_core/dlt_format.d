@@ -4,7 +4,8 @@ import dlt_core.dlt_protocol;
 import dlt_core.dlt_parser : parseDltItem;
 
 import log_core.log_format;
-import log_core.log_message : LogMessage;
+import log_core.log_message : LogMessage, TimeKind;
+import dlt_core.dlt_fields : DltField;
 
 import std.algorithm.comparison : max, min;
 
@@ -32,6 +33,24 @@ final class DltFormat : LogFormat
     override string name() const pure nothrow @nogc
     {
         return "DLT";
+    }
+
+    private static immutable ColumnInfo[] _columns = [
+        ColumnInfo("time", "Time", ColumnKind.Time, -1, 120, TimeKind.Absolute),
+        ColumnInfo("timestamp", "Timestamp", ColumnKind.Duration, DltField.Timestamp, 150,
+            TimeKind.None, 10_000),
+        ColumnInfo("ecu", "EcuId", ColumnKind.Text, DltField.EcuId, 60),
+        ColumnInfo("app", "AppId", ColumnKind.Text, DltField.AppId, 60),
+        ColumnInfo("ctx", "CtxId", ColumnKind.Text, DltField.CtxId, 60),
+        ColumnInfo("type", "Type", ColumnKind.Enum, DltField.Type, 60,
+            TimeKind.None, 0, ["LOG", "APP", "NW", "CTRL"]),
+        ColumnInfo("level", "Level", ColumnKind.Level, -1, 60),
+        ColumnInfo("payload", "Payload", ColumnKind.Payload),
+    ];
+
+    override const(ColumnInfo)[] columns() const pure nothrow @nogc
+    {
+        return _columns;
     }
 
     override size_t minRecordLength() const pure nothrow @nogc

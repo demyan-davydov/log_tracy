@@ -12,7 +12,7 @@ import domain.index.anchors;
 import domain.log_index;
 import domain.format_registry : detectFormat;
 import log_core.byte_source;
-import log_core.log_format : LogFormat;
+import log_core.log_format : LogFormat, ColumnInfo;
 import domain.view_status;
 
 import utils.lock_guard;
@@ -127,6 +127,11 @@ class LogDocument : Document
     override DocumentView searchView()
     {
         return _searchView;
+    }
+
+    override const(ColumnInfo)[] columns()
+    {
+        return _index.format.columns;
     }
 
     /*override string sourcePath() const

@@ -2,6 +2,67 @@ console.log("Loading virtual-dlt-view.js...");
 import { VirtualList } from "virtual-select.js";
 import { VirtualSelect } from "virtual-select.js";
 
+// Columns of the active document, from Window.xcall("getColumns"):
+// [{ id, title, kind, width, timeKind?, unitsPerSecond?, labels? }]
+let columns = [];
+
+// Sets the columns the rows are rendered with; the table header is rebuilt by
+// the caller (see renderHeader)
+export function setColumns(newColumns) {
+    columns = newColumns;
+}
+
+// The header row of a log table for the current columns
+export function renderHeader() {
+    return <tr>
+        <th width="20px">⚓</th>
+        <th width="80px">Index</th>
+        {columns.map(c => <th width={c.width ? `${c.width}px` : "*"}>{c.title}</th>)}
+    </tr>;
+}
+
+const pad = (value, digits) => String(value).padStart(digits, "0");
+
+// Time cell: microseconds since the epoch (or since boot), null if none
+function formatTime(us, timeKind) {
+    if (us === null || us === undefined) return "-";
+    const seconds = Math.floor(us / 1e6);
+    const fraction = pad(us - seconds * 1e6, 6);
+    if (timeKind === "SinceBoot") return `${seconds}.${fraction}`;
+    if (us === 0) return "-"; // no time recorded
+    const date = new Date(seconds * 1000);
+    const day = `${pad(date.getMonth() + 1, 2)}/${pad(date.getDate(), 2)}`;
+    const time = `${pad(date.getHours(), 2)}:${pad(date.getMinutes(), 2)}:${pad(date.getSeconds(), 2)}`;
+    if (timeKind === "AbsoluteNoYear") return `${day} ${time}.${fraction}`;
+    return `${date.getFullYear()}/${day} ${time}.${fraction}`;
+}
+
+// Duration cell: a number in 1/unitsPerSecond of a second
+function formatDuration(units, unitsPerSecond) {
+    units = Number(units);
+    if (units === 0) return "-";
+    const digits = Math.round(Math.log10(unitsPerSecond));
+    return `${Math.floor(units / unitsPerSecond)}.${pad(units % unitsPerSecond, digits)}`;
+}
+
+const levelNames = ["", "Fatal", "Error", "Warn", "Info", "Debug", "Verbose"];
+
+function renderCell(column, value) {
+    switch (column.kind) {
+        case "Time": return <td class="aux">{formatTime(value, column.timeKind)}</td>;
+        case "Level": {
+            const level = levelNames[value] ?? "unknown";
+            return <td class={level}>{level}</td>;
+        }
+        case "Payload": return <td selectable>{value}</td>;
+        case "Integer": return <td class="aux">{String(value)}</td>;
+        case "Hex": return <td class="aux">{Number(value).toString(16).toUpperCase()}</td>;
+        case "Duration": return <td class="aux">{formatDuration(value, column.unitsPerSecond)}</td>;
+        case "Enum": return <td class="aux">{column.labels?.[value] ?? "unknown"}</td>;
+        default: return <td class="aux">{value}</td>; // Text
+    }
+}
+
 // select with virtual data source
 export class VirtualDltTBody extends VirtualSelect {
     //list; // array of items
@@ -37,108 +98,22 @@ export class VirtualDltTBody extends VirtualSelect {
     }
 
 
-    /*renderItem(item, isCurrent, isSelected) {
-        return <tr state-current={isCurrent} state-checked={isSelected}>
-            <td>{item.index}</td>
-            <td>{item.offset}</td>
-            <td>{item.timestamp}</td>
-            <td>{item.ecu}</td>
-            <td>{item.appId}</td>
-            <td>{item.ctxId}</td>
-            <td>{item.length}</td>
-            <td>{item.type}</td>
-            <td class={`level-${item.level.toLowerCase()}`}>{item.level}</td>
-            <td>{item.payload}</td>
-        </tr>
-    }*/
-
     renderItem(item, isCurrent, isSelected) {
-        if (isCurrent || isSelected) {
-            console.log("--- renderItem called for item:", item[3], "isCurrent:", isCurrent, "isSelected:", isSelected);
-        }
-
-        //
         const currentKey = this.currentItem ? this.indexOf(this.currentItem) : null;
         isCurrent = currentKey !== null && this.indexOf(item) === currentKey;
         isSelected = this.selectedKeys?.has(this.keyOf(item)) ?? false;
 
-        if (isCurrent || isSelected) {
-            console.log("--- [2] renderItem called for item:", item[3], "isCurrent:", isCurrent, "isSelected:", isSelected);
-        }
-
-        // Array layout from D backend asSciterArray(index, DocumentItem):
+        // Row layout from D backend asSciterRow(): the fixed cells, then a
+        // cell per column of the document (see setColumns)
         const idx_anchor = 0;
-        const idx_filterMask = 1;
         const idx_viewIndex = 2;
         const idx_absolute_index = 3;
-        const idx_timestamp_seconds = 4;
-        const idx_timestamp_microseconds = 5;
-        const idx_rel_timestamp_10000 = 6;
-        const idx_ecuId = 7;
-        const idx_appId = 8;
-        const idx_ctxId = 9;
-        const idx_level = 10;
-        const idx_type = 11;
-        const idx_messageId = 12;
-        const idx_payload = 13;
-
-        const timestamp = function (seconds, microseconds) {
-            seconds = Number(seconds);
-            microseconds = Number(microseconds);
-            if (seconds === 0 && microseconds === 0) return "-";
-            const date = new Date(seconds * 1000);
-            const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const day = String(date.getDate()).padStart(2, '0');
-            const hour = String(date.getHours()).padStart(2, '0');
-            const minute = String(date.getMinutes()).padStart(2, '0');
-            const second = String(date.getSeconds()).padStart(2, '0');
-            const us = String(microseconds).padStart(3, '0');
-            return `${year}/${month}/${day} ${hour}:${minute}:${second}.${us}`;
-        }(item[idx_timestamp_seconds], item[idx_timestamp_microseconds]);
-
-        const relTimestamp = function (timeUnits) {
-            timeUnits = Number(timeUnits);
-            if (timeUnits === 0) return "-";
-            // DLT relative time is basically in 0.1ms units
-            const second = Math.floor(timeUnits / 10000);
-            const fraction = String(timeUnits % 10000).padStart(4, '0');
-            return `${second}.${fraction}`;
-        }(item[idx_rel_timestamp_10000]);
-
-        const logLevel = function (levelAsInt) {
-            switch (levelAsInt) {
-                case 0x1: return "Fatal";
-                case 0x2: return "Error";
-                case 0x3: return "Warn";
-                case 0x4: return "Info";
-                case 0x5: return "Debug";
-                case 0x6: return "Verbose";
-                default: return "unknown";
-            }
-        }(item[idx_level]);
-
-        const messageType = function (typeAsInt) {
-            switch (typeAsInt) {
-                case 0x0: return "LOG";
-                case 0x1: return "APP";
-                case 0x2: return "NW";
-                case 0x3: return "CTRL";
-                default: return "unknown";
-            }
-        }(item[idx_type]);
+        const idx_firstColumn = 4;
 
         return <tr state-current={isCurrent} state-checked={isSelected} view-index={item[idx_viewIndex]}>
             <td class="anchor" has-anchor={item[idx_anchor] ? "true" : "false"} msg-index={item[idx_absolute_index]}></td>
-            <td>{item[idx_absolute_index]}</td>
-            <td>{timestamp}</td>
-            <td>{relTimestamp}</td>
-            <td>{item[idx_ecuId]}</td>
-            <td>{item[idx_appId]}</td>
-            <td>{item[idx_ctxId]}</td>
-            <td>{messageType}</td>
-            <td class={logLevel}>{logLevel}</td>
-            <td selectable>{item[idx_payload]}</td>
+            <td class="aux">{item[idx_absolute_index]}</td>
+            {columns.map((column, i) => renderCell(column, item[idx_firstColumn + i]))}
         </tr>
     }
 

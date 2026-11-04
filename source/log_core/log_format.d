@@ -1,6 +1,38 @@
 module log_core.log_format;
 
-import log_core.log_message : LogMessage;
+import log_core.log_message : LogMessage, TimeKind;
+
+//! What a column of the log table shows and how
+enum ColumnKind : ubyte
+{
+    Time, // core time: microseconds (since the epoch or boot, see timeKind)
+    Level, // core level
+    Payload, // core payload, always the last column
+    Text, // text of a field
+    Integer, // number of a field
+    Hex, // number of a field, shown in hex
+    Duration, // number of a field, in 1/unitsPerSecond of a second
+    Enum, // number of a field, shown as labels[number]
+}
+
+//! A column of the log table, as declared by a format
+struct ColumnInfo
+{
+    string id; // stable, e.g. to remember the width of the column
+    string title;
+    ColumnKind kind;
+    int field = -1; // LogMessage field for the field kinds
+    ushort width; // initial width in px; 0: the rest of the table
+    TimeKind timeKind; // Time: how the time is shown
+    long unitsPerSecond; // Duration
+    string[] labels; // Enum
+
+    //! @returns true if the column shows a field, not the core
+    bool isField() const pure nothrow @nogc @safe
+    {
+        return kind >= ColumnKind.Text;
+    }
+}
 
 //! Result of LogFormat.scanRecords()
 struct ScanResult
@@ -18,6 +50,9 @@ interface LogFormat
 {
     //! Name shown to the user, e.g. "DLT"
     string name() const pure nothrow @nogc;
+
+    //! Columns of the log table, in the order shown; Payload is the last one
+    const(ColumnInfo)[] columns() const pure nothrow @nogc;
 
     //! Fewest bytes a record takes: data.length / minRecordLength bounds the
     //! number of records
