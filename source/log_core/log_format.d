@@ -54,10 +54,6 @@ interface LogFormat
     //! Columns of the log table, in the order shown; Payload is the last one
     const(ColumnInfo)[] columns() const pure nothrow @nogc;
 
-    //! Fewest bytes a record takes: data.length / minRecordLength bounds the
-    //! number of records
-    size_t minRecordLength() const pure nothrow @nogc;
-
     //! @brief Finds records in data[from .. $] and writes their offsets.
     //! Stops when `offsets` is full, at the end of the data, or after skipping
     //! a long run of bytes that are not records, so the caller gets control

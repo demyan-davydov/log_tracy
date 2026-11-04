@@ -40,11 +40,6 @@ abstract class TextFormat : LogFormat
     //! @brief Decodes the text of a record: its lines without the last line break
     protected abstract bool decodeText(ref LogMessage!wchar msg, const(char)[] text) const nothrow @nogc;
 
-    override size_t minRecordLength() const pure nothrow @nogc
-    {
-        return 1;
-    }
-
     override ScanResult scanRecords(const(ubyte)[] data, size_t from, size_t[] offsets, bool final_) const nothrow @nogc
     {
         size_t pos = from == 0 ? bomLength(data) : from;

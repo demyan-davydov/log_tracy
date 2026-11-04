@@ -53,11 +53,6 @@ final class DltFormat : LogFormat
         return _columns;
     }
 
-    override size_t minRecordLength() const pure nothrow @nogc
-    {
-        return storageHeaderSize + StandardHeader.sizeof;
-    }
-
     private size_t storageHeaderSize() const pure nothrow @nogc
     {
         return _hasStorageHeader ? StorageHeader.sizeof : 0;

@@ -98,15 +98,6 @@ struct LogIndex
         _source = source;
         _format = format;
 
-        // Upper bound of the message count: indexes are never full. Anonymous
-        // mmap commits pages lazily, so unused capacity costs address space only.
-        const size_t capacity = _source.data.length / _format.minRecordLength + 1;
-        _offsetIndex = OffsetIndex(capacity);
-        _filterIndex = FilterIndex(capacity);
-        _searchIndex = SearchIndex(capacity);
-        if (!_offsetIndex.isAllocated || !_filterIndex.isAllocated || !_searchIndex.isAllocated)
-            throw new Exception("not enough address space for the indexes of this file");
-
         _backgroundSlot = BackgroundSlot(null);
 
         _mutex = scoped!Mutex();
@@ -206,7 +197,7 @@ struct LogIndex
         auto sorted = anchors.exportAnchors.map!(i => cast(SearchIndex.Type) i).array;
         sort(sorted);
         if (!_searchIndex.append(sorted))
-            throw new Exception("search index overflow");
+            throw new Exception("the search index can't grow: too many records or not enough memory");
     }
 
     //! @return true once the file can't be read any more (e.g. its disk was
@@ -336,7 +327,7 @@ struct LogIndex
             synchronized (cast(Mutex)_mutex)
             {
                 if (!_offsetIndex.append(tempIndex[0 .. found.count]))
-                    throw new Exception("offset index overflow");
+                    throw new Exception("the offset index can't grow: too many records or not enough memory");
                 progress.report(cast(float) pos / data.length);
             }
         }
@@ -417,7 +408,7 @@ struct LogIndex
             synchronized (cast(Mutex)_mutex)
             {
                 if (!_filterIndex.append(tempIndex[0 .. n])) // only matched entries
-                    throw new Exception("filter index overflow");
+                    throw new Exception("the filter index can't grow: too many records or not enough memory");
                 progress.report(cast(float) batchEnd / indexLen);
             }
 
@@ -500,7 +491,7 @@ struct LogIndex
             synchronized (cast(Mutex)_mutex)
             {
                 if (!_searchIndex.append(tempIndex[0 .. tempLen]))
-                    throw new Exception("search index overflow");
+                    throw new Exception("the search index can't grow: too many records or not enough memory");
                 progress.report(cast(float) batchEnd / indexLen);
             }
 
@@ -605,4 +596,34 @@ struct LogIndex
     /// 
     /// Views
     ///
+}
+
+@("LogIndex: the indexes take memory as they fill, not for the whole file")
+unittest
+{
+    import core.thread : Thread;
+    import core.time : msecs, MonoTime;
+    import event_bus.event_bus_async : EventBusAsync;
+    import formats.plain_text : PlainTextFormat;
+    import std.array : replicate;
+    import std.file : remove, tempDir, write;
+    import std.path : buildPath;
+
+    // 16 MB of text in 1600 lines: a reserve for a record per byte would be
+    // 16M entries per index
+    const path = buildPath(tempDir(), "log_index_memory.log");
+    write(path, ("x".replicate(10 * 1024 - 1) ~ "\n").replicate(1600));
+    scope (exit)
+        remove(path);
+
+    auto events = new EventBusAsync();
+    auto index = LogIndex(new FileSource(path), new PlainTextFormat(), events);
+    const deadline = MonoTime.currTime + 10_000.msecs;
+    while (index.messageCount < 1600 && MonoTime.currTime < deadline)
+        Thread.sleep(1.msecs);
+    assert(index.messageCount == 1600);
+
+    const used = index._offsetIndex.reservedBytes + index._filterIndex.reservedBytes
+        + index._searchIndex.reservedBytes;
+    assert(used < 4 * 1024 * 1024, "indexes reserve memory for the whole file");
 }

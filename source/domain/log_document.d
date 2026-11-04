@@ -1121,35 +1121,6 @@ unittest
     assert(doc.format.columns is doc.columns);
 }
 
-@("LogDocument: a source too large for the indexes throws instead of crashing")
-unittest
-{
-    import std.exception : assertThrown;
-    import formats.plain_text : PlainTextFormat;
-
-    // Claims 1 PB; never read: the constructor fails before indexing starts
-    static final class HugeSource : ByteSource
-    {
-        static immutable ubyte[1] content;
-
-        const(ubyte)[] data() const pure nothrow @nogc
-        {
-            return (cast(const(ubyte)*) content.ptr)[0 .. 1UL << 50];
-        }
-
-        bool lost() const nothrow @nogc
-        {
-            return false;
-        }
-
-        void close() nothrow @nogc
-        {
-        }
-    }
-
-    assertThrown(new LogDocument("huge.log", new HugeSource(), new PlainTextFormat()));
-}
-
 @("LogDocument: opening a missing file throws instead of crashing")
 unittest
 {
