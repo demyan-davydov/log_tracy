@@ -5,6 +5,7 @@ import {
     closeNewTab, documentOpened, documentsCounted, showsPlaceholder,
     shownDocument, fileFailed, failureReason
 } from "new-tab.js";
+import { lastUsedText } from "recent-time.js";
 
 globalThis.VirtualDltTBody = VirtualDltTBody;
 globalThis.VirtualMainViewTBody = VirtualMainViewTBody;
@@ -188,8 +189,9 @@ function restoreSettings() {
     }
 }
 
-// Recent files shown by the placeholder, the newest first:
-// [{path, exists, format: {shortName, name} if the file was opened before}].
+// Recent files shown by the placeholder, the newest first: [{path, exists,
+// opened, format: {shortName, name} if the file was opened before,
+// lastUsed: ms since the Unix epoch if known}].
 // The backend keeps the list: it adds a file once it is opened and saves the
 // list at once. Files not found stay listed (a removed drive may come back).
 function getRecentFiles() {
@@ -225,7 +227,8 @@ function renderPlaceholder() {
         <div class="recent-files-header">Recent files</div>
     </div>);
     const list = placeholder.$(".recent-files");
-    for (const { path, exists, format } of recentFiles) {
+    const now = Date.now();
+    for (const { path, exists, opened, format, lastUsed } of recentFiles) {
         const { dir, name } = splitPath(path);
         // The badge of the format the file opens in; an empty one keeps the names aligned
         const badge = format
@@ -242,15 +245,19 @@ function renderPlaceholder() {
         </div>;
         list.append(item);
         const added = list.lastElementChild;
+        // Right of the name: an open file is only switched to; the others show
+        // when they were worked with last, if that is known
+        if (opened)
+            added.$(".recent-file-head").append(<div class="recent-file-when opened">Opened</div>);
+        else if (lastUsed)
+            added.$(".recent-file-head").append(<div class="recent-file-when">{lastUsedText(lastUsed, now)}</div>);
+        // Under the path: why the file can't be opened
         const failed = openFailure && openFailure.path === path;
         if (failed || !exists) {
             added.classList.add(failed ? "failed" : "missing");
-            added.$(".recent-file-head").append(<div class="recent-file-note">
-                {failed ? "Failed to open" : "File not found"}
-            </div>);
+            const note = failed ? `Failed to open: ${failureReason(openFailure.error)}` : "File not found";
+            added.$(".recent-file-text").append(<div class="recent-file-note">{note}</div>);
         }
-        if (failed)
-            added.$(".recent-file-text").append(<div class="recent-file-error">{failureReason(openFailure.error)}</div>);
     }
 }
 
@@ -758,6 +765,7 @@ function switchTab(docId) {
 function closeTab(docId) {
     const id = parseInt(docId);
     Window.this.xcall("closeTab", id);
+    shownPlaceholder = null; // the recent files show when the file was used, not "Opened"
     refreshTabs();
 }
 
@@ -1154,6 +1162,7 @@ globalThis.onDocumentOpened = function (docId) {
 // while the file was loading)
 globalThis.onDocumentClosed = function (docId) {
     console.log("Native: onDocumentClosed", docId);
+    shownPlaceholder = null; // the recent files show when the file was used, not "Opened"
     refreshTabs();
 };
 

@@ -183,31 +183,36 @@ header {
     text-overflow: ellipsis;
 }
 
-/* A file not found stays listed, grayed, with a note; so does a file that
-   failed to open, with the reason under it */
-.recent-file.missing .recent-file-name {
-    color: var(--text-label);
-}
-
-.recent-file-note {
+/* When the file was worked with last, or "Opened" for an open one */
+.recent-file-when {
     margin-left: 8dip;
     font-size: 0.85em;
     white-space: nowrap;
     color: var(--text-label);
 }
 
-.recent-file.failed .recent-file-note,
-.recent-file-error {
-    color: var(--log-error);
+.recent-file-when.opened {
+    font-weight: 600;
 }
 
-.recent-file-error {
+/* A file not found stays listed, grayed, with a note under its path; so does
+   a file that failed to open, with the reason */
+.recent-file.missing .recent-file-name {
+    color: var(--text-label);
+}
+
+.recent-file-note {
     width: *;
     margin-top: 2dip;
     font-size: 0.85em;
     overflow-x: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
+    color: var(--text-label);
+}
+
+.recent-file.failed .recent-file-note {
+    color: var(--log-error);
 }
 
 /* Folders have separators: path-ellipsis cuts them in the middle */

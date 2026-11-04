@@ -49,20 +49,38 @@ struct RecentFile
 {
     string path;
     FormatChoice format; /// the format it was opened with last time; unset if never opened
+    long lastUsed; /// when it was worked with last: ms since the Unix epoch (UTC); 0 if unknown
+}
+
+/// Now, as RecentFile.lastUsed counts it: UTC, so a change of the time zone or
+/// of daylight saving time doesn't move the times already saved
+long nowMs()
+{
+    import std.datetime.systime : Clock, unixTimeToStdTime;
+
+    enum hnsecsPerMs = 10_000;
+    return (Clock.currStdTime - unixTimeToStdTime(0)) / hnsecsPerMs;
 }
 
 /// Returns the recent files list with `file` on top, without duplicates
 /// (paths are compared normalized, ignoring case where the OS does) and
-/// no longer than recentFilesMax. Without a format the file keeps the one
-/// it had in the list (e.g. it failed to open this time).
+/// no longer than recentFilesMax. Without a format or a time the file keeps
+/// the one it had in the list (e.g. it failed to open this time).
 RecentFile[] withRecentFile(const RecentFile[] list, RecentFile file)
 {
     RecentFile[] result = list.dup;
     if (file.path.length)
     {
         file.path = recentFilePath(file.path);
-        if (!file.format.isSet)
-            file.format = savedFormat(list, file.path);
+        foreach (saved; list)
+        {
+            if (filenameCmp(saved.path, file.path) != 0)
+                continue;
+            if (!file.format.isSet)
+                file.format = saved.format;
+            if (file.lastUsed == 0)
+                file.lastUsed = saved.lastUsed;
+        }
         result = [file] ~ result.filter!(f => filenameCmp(f.path, file.path) != 0).array;
     }
     return result[0 .. min(result.length, recentFilesMax)];
@@ -72,6 +90,35 @@ RecentFile[] withRecentFile(const RecentFile[] list, RecentFile file)
 RecentFile[] withRecentFile(const RecentFile[] list, string path)
 {
     return withRecentFile(list, RecentFile(path));
+}
+
+/// Returns the recent list with the files in `paths` (e.g. the open ones)
+/// used at `now`: on top, in the order they had in the list, with that time
+RecentFile[] withFilesUsed(const RecentFile[] list, const string[] paths, long now)
+{
+    const normalized = paths.map!(p => recentFilePath(p)).array;
+    const isUsed = (const RecentFile f) => normalized.canFind!(p => filenameCmp(p, f.path) == 0);
+
+    RecentFile[] used;
+    foreach (file; list.filter!(f => isUsed(f)))
+        used ~= RecentFile(file.path, file.format, now);
+    foreach (path; normalized) // open, but pushed out of the list
+        if (!used.canFind!(f => filenameCmp(f.path, path) == 0))
+            used ~= RecentFile(path, FormatChoice.init, now);
+
+    RecentFile[] result = used ~ list.dup.filter!(f => !isUsed(f)).array;
+    return result[0 .. min(result.length, recentFilesMax)];
+}
+
+/// Returns the recent list with the files in `paths` used at `now`, in place:
+/// the order doesn't change, files not in the list aren't added
+RecentFile[] withFilesStamped(const RecentFile[] list, const string[] paths, long now)
+{
+    RecentFile[] result = list.dup;
+    foreach (ref file; result)
+        if (paths.canFind!(p => filenameCmp(recentFilePath(p), file.path) == 0))
+            file.lastUsed = now;
+    return result;
 }
 
 /// Returns: the format `path` was opened with last time, unset if it isn't in the list
@@ -84,15 +131,20 @@ FormatChoice savedFormat(const RecentFile[] list, string path)
     return FormatChoice.init;
 }
 
-/// The recent list for the placeholder, the newest first:
-/// [{"path", "exists", "format": {"shortName", "name"} if known}]
-string recentFilesJson(const RecentFile[] list)
+/// The recent list for the placeholder, the newest first: [{"path", "exists",
+/// "opened" (one of `openPaths`), "format": {"shortName", "name"} if known,
+/// "lastUsed" (ms since the Unix epoch) if known}]
+string recentFilesJson(const RecentFile[] list, const string[] openPaths = null)
 {
+    const opened = openPaths.map!recentFilePath.array;
     JSONValue[] items;
     foreach (file; list)
     {
         JSONValue item = ["path": file.path];
         item.object["exists"] = JSONValue(exists(file.path));
+        item.object["opened"] = JSONValue(opened.canFind!(p => filenameCmp(p, file.path) == 0));
+        if (file.lastUsed > 0)
+            item.object["lastUsed"] = JSONValue(file.lastUsed);
         const info = file.format.isSet ? formatInfo(file.format.id) : FormatInfo.init;
         if (info.id.length)
             item.object["format"] = JSONValue(["shortName": info.shortName, "name": info.name]);
@@ -194,6 +246,8 @@ static JSONValue toJSON(in AppSettings settings)
             fv.object["format"] = JSONValue(f.format.id);
             fv.object["variant"] = JSONValue(f.format.variant);
         }
+        if (f.lastUsed > 0)
+            fv.object["lastUsed"] = JSONValue(f.lastUsed);
         recentArray ~= fv;
     }
     j.object["recentFiles"] = JSONValue(recentArray);
@@ -217,6 +271,15 @@ private FormatChoice formatOf(const JSONValue entry)
         return FormatChoice(id.str, cast(int) variant.integer);
     }
     return FormatChoice(id.str);
+}
+
+/// The time saved in a recent file entry: {"lastUsed": ms}; 0 if there is none
+private long lastUsedOf(const JSONValue entry)
+{
+    const lastUsed = "lastUsed" in entry;
+    if (lastUsed is null || lastUsed.type != JSONType.integer || lastUsed.integer <= 0)
+        return 0;
+    return lastUsed.integer;
 }
 
 static AppSettings loadSettings(string path = defaultSettingsPath())
@@ -285,7 +348,7 @@ static AppSettings loadSettings(string path = defaultSettingsPath())
                         const filePath = "path" in val;
                         if (filePath !is null && filePath.type == JSONType.string)
                             settings.recentFiles = withRecentFile(settings.recentFiles,
-                                RecentFile(filePath.str, formatOf(val)));
+                                RecentFile(filePath.str, formatOf(val), lastUsedOf(val)));
                     }
                 }
             }
@@ -500,4 +563,70 @@ unittest
     assert(j[0]["format"]["name"].str == logcatFormatInfo.name);
     assert("format" !in j[1], "no format saved: no badge");
     assert("format" !in j[2], "a format this build doesn't know: no badge");
+}
+
+/// The time a file was used survives a save and a load; a broken one is unknown
+unittest
+{
+    const path = buildPath(tempDir(), "dlt_explorer_settings_last_used_test.json");
+    scope (exit) if (exists(path)) remove(path);
+
+    AppSettings settings;
+    settings.recentFiles = [RecentFile("/a.dlt", FormatChoice("dlt"), 1_762_250_000_123), RecentFile("/b.dlt")];
+    saveSettings(settings, path);
+    assert(loadSettings(path).recentFiles == settings.recentFiles);
+
+    std.file.write(path, `{"recentFiles": [{"path": "/a.dlt", "lastUsed": "x"}, {"path": "/b.dlt", "lastUsed": -5}]}`);
+    assert(loadSettings(path).recentFiles == [RecentFile("/a.dlt"), RecentFile("/b.dlt")]);
+}
+
+/// A file that failed to open keeps the time it was used last
+unittest
+{
+    auto list = withRecentFile([RecentFile("/b.log"), RecentFile("/a.log", FormatChoice.init, 100)], "/a.log");
+    assert(list[0] == RecentFile("/a.log", FormatChoice.init, 100));
+    list = withRecentFile(list, RecentFile("/a.log", FormatChoice.init, 200));
+    assert(list[0].lastUsed == 200);
+}
+
+/// Closing the window marks the open files used now: they come on top in the
+/// order they had in the list (the tabs have an order of their own)
+unittest
+{
+    const logcat = FormatChoice("logcat");
+    auto list = [RecentFile("/b.log", FormatChoice.init, 300), RecentFile("/a.log", logcat, 200),
+        RecentFile("/c.log", FormatChoice.init, 100)];
+    auto used = withFilesUsed(list, ["/c.log", "/a.log"], 1000);
+    assert(used == [RecentFile("/a.log", logcat, 1000), RecentFile("/c.log", FormatChoice.init, 1000),
+        RecentFile("/b.log", FormatChoice.init, 300)]);
+    assert(withFilesUsed(list, [], 1000) == list);
+    assert(withFilesUsed(list, ["/d.log"], 1000)[0] == RecentFile("/d.log", FormatChoice.init, 1000),
+        "an open file the list lost (more tabs than its length) comes back");
+}
+
+/// Any save marks the open files used now, in place: the order of the list
+/// stays that of the files opened, failed and closed
+unittest
+{
+    auto list = [RecentFile("/b.log", FormatChoice.init, 300), RecentFile("/a.log", FormatChoice("dlt"), 200)];
+    assert(withFilesStamped(list, ["/a.log", "/d.log"], 1000)
+            == [RecentFile("/b.log", FormatChoice.init, 300), RecentFile("/a.log", FormatChoice("dlt"), 1000)]);
+}
+
+/// The placeholder gets the time a file was used and whether it is open
+unittest
+{
+    auto j = parseJSON(recentFilesJson([RecentFile("/a.log", FormatChoice.init, 1_762_250_000_123),
+            RecentFile("/b.log")], ["/b.log"]));
+    assert(j[0]["lastUsed"].integer == 1_762_250_000_123);
+    assert(!j[0]["opened"].boolean);
+    assert("lastUsed" !in j[1], "unknown: no time");
+    assert(j[1]["opened"].boolean);
+}
+
+/// Now is counted from the Unix epoch in ms
+unittest
+{
+    assert(nowMs() > 1_762_000_000_000); // after Nov 2025
+    assert(nowMs() < 4_102_444_800_000); // before 2100
 }
