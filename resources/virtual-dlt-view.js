@@ -59,12 +59,13 @@ function renderCell(column, value) {
     switch (column.kind) {
         case "Time": return <td class="aux">{formatTime(value, column.timeKind)}</td>;
         case "Level": {
+            if (!value) return <td class="aux"></td>; // LogLevel.None: the record has no level
             const level = levelNames[value] ?? "unknown";
             return <td class={`level-${level.toLowerCase()}`}>{level}</td>;
         }
         case "Payload": return <td selectable>{value}</td>;
         case "Integer": return <td class="aux">{String(value)}</td>;
-        case "Hex": return <td class="aux">{Number(value).toString(16).toUpperCase()}</td>;
+        case "Hex": return <td class="aux">{value}</td>; // formatted by the backend: all 64 bits
         case "Duration": return <td class="aux">{formatDuration(value, column.unitsPerSecond)}</td>;
         case "Enum": return <td class="aux">{column.labels?.[value] ?? "unknown"}</td>;
         default: return <td class="aux">{value}</td>; // Text
@@ -97,16 +98,20 @@ export class VirtualDltTBody extends VirtualSelect {
 
     // View index (position in the current table) - mandatory for Shift-selection and Arrows
     indexOf(item) {
-        return item[2]; // idx_viewIndex is 2
+        return item?.[2]; // idx_viewIndex is 2; null: no such row
     }
 
     // Stable global record index - identifier for the logic (Set)
     keyOf(item) {
-        return item[3]; // idx_absolute_index is 3
+        return item?.[3]; // idx_absolute_index is 3
     }
 
 
     renderItem(item, isCurrent, isSelected) {
+        // No such row (any more): the backend returns null, e.g. the view just
+        // changed. An empty row keeps the rows in place until the next render.
+        if (!item) return <tr />;
+
         const currentKey = this.currentItem ? this.indexOf(this.currentItem) : null;
         isCurrent = currentKey !== null && this.indexOf(item) === currentKey;
         isSelected = this.selectedKeys?.has(this.keyOf(item)) ?? false;

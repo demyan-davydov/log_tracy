@@ -393,9 +393,12 @@ class MainWindow : SciterWindow
             if (method == "getMainViewItem")
             {
                 const int index = getParamInt(0);
+                // null if there is no such row (any more): the view changed, the file is lost
                 DocumentItem docItem;
-                const auto res = _workspace.current.mainView.fetchItem(index, docItem);
-                resultView.set(asSciterRow(index, docItem, _workspace.current.columns));
+                if (_workspace.current.mainView.fetchItem(index, docItem))
+                    resultView.set(asSciterRow(index, docItem, _workspace.current.columns));
+                else
+                    resultView.set(SciterValue.makeNull());
 
                 return true;
             }
@@ -409,9 +412,11 @@ class MainWindow : SciterWindow
             if (method == "getSearchViewItem")
             {
                 const int index = getParamInt(0);
-                DocumentItem docItem;
-                const auto res = _workspace.current.searchView.fetchItem(index, docItem);
-                resultView.set(asSciterRow(index, docItem, _workspace.current.columns));
+                DocumentItem docItem; // null if there is no such row, as above
+                if (_workspace.current.searchView.fetchItem(index, docItem))
+                    resultView.set(asSciterRow(index, docItem, _workspace.current.columns));
+                else
+                    resultView.set(SciterValue.makeNull());
 
                 return true;
             }
@@ -808,6 +813,25 @@ class MainWindow : SciterWindow
     }
 }
 
+//! @brief The text of a hex cell: all 64 bits, as typed into the quick filter
+//! (FieldFilter reads FFFFFFFFFFFFFFFF as -1). A script number would round
+//! values above 2^53 and show -1 as "-1".
+string hexCellText(long value) pure
+{
+    import std.format : format;
+
+    return format("%X", cast(ulong) value);
+}
+
+@("hexCellText: the 64 bits in upper case hex")
+unittest
+{
+    assert(hexCellText(0x1F) == "1F");
+    assert(hexCellText(0) == "0");
+    assert(hexCellText(-1) == "FFFFFFFFFFFFFFFF");
+    assert(hexCellText(0x1234_5678_9ABC_DEF1) == "123456789ABCDEF1", "no rounding above 2^53");
+}
+
 //! @brief A row of the log table: anchored, filterMask, view index, message
 //! index, then a cell per column (see virtual-dlt-view.js)
 SciterValue asSciterRow(int index, ref const(DocumentItem) item, const(ColumnInfo)[] columns)
@@ -852,8 +876,10 @@ SciterValue asSciterRow(int index, ref const(DocumentItem) item, const(ColumnInf
         case ColumnKind.Text:
             cells.opIndex(cell, msg.text(column.field));
             break;
-        case ColumnKind.Integer:
         case ColumnKind.Hex:
+            cells.opIndex(cell, hexCellText(msg.number(column.field)));
+            break;
+        case ColumnKind.Integer:
         case ColumnKind.Duration:
         case ColumnKind.Enum:
             cells.opIndex(cell, cast(double) msg.number(column.field));
