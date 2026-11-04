@@ -49,6 +49,32 @@ bool readNumber64(ref const(char)[] s, out ulong value) pure nothrow @nogc @safe
     return true;
 }
 
+//! Reads 1 to `maxDigits` (at most 16) hex digits, in any case
+//! @returns the number of digits read, 0 if there was none
+size_t readHex(ref const(char)[] s, size_t maxDigits, out ulong value) pure nothrow @nogc @safe
+{
+    size_t n = 0;
+    ulong result = 0;
+    while (n < s.length && n < maxDigits && n < 16)
+    {
+        const c = s[n];
+        uint digit;
+        if (c >= '0' && c <= '9')
+            digit = c - '0';
+        else if (c >= 'a' && c <= 'f')
+            digit = c - 'a' + 10;
+        else if (c >= 'A' && c <= 'F')
+            digit = c - 'A' + 10;
+        else
+            break;
+        result = result << 4 | digit;
+        ++n;
+    }
+    value = result;
+    s = s[n .. $];
+    return n;
+}
+
 //! Reads the character `c`
 bool readChar(ref const(char)[] s, char c) pure nothrow @nogc @safe
 {
@@ -397,4 +423,18 @@ unittest
         s = bad;
         assert(!readClfDateTime(s, t), bad);
     }
+}
+
+@("text parsing: hex numbers")
+unittest
+{
+    const(char)[] s = "18fef100#01";
+    ulong v;
+    assert(readHex(s, 8, v) == 8 && v == 0x18FEF100 && s == "#01");
+    s = "DEADBEEF";
+    assert(readHex(s, 2, v) == 2 && v == 0xDE && s == "ADBEEF", "at most maxDigits");
+    s = "#";
+    assert(readHex(s, 8, v) == 0 && s == "#");
+    s = "FFFFFFFFFFFFFFFF";
+    assert(readHex(s, 16, v) == 16 && v == ulong.max);
 }

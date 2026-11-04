@@ -3,10 +3,12 @@ module domain.format_registry;
 import log_core.log_format;
 import dlt_core.dlt_format : DltDetector;
 import formats.access_log : AccessLogDetector;
+import formats.candump : CandumpDetector;
 import formats.dmesg : DmesgDetector;
 import formats.logcat : LogcatDetector;
 import formats.plain_text : PlainTextDetector;
 import formats.syslog : SyslogDetector;
+import formats.vector_asc : AscDetector;
 
 import std.algorithm.comparison : min;
 
@@ -47,6 +49,8 @@ private const(FormatDetector)[] detectors()
     all ~= new DmesgDetector();
     all ~= new SyslogDetector();
     all ~= new AccessLogDetector();
+    all ~= new CandumpDetector();
+    all ~= new AscDetector();
     all ~= new PlainTextDetector();
     return all;
 }
@@ -120,4 +124,18 @@ unittest
 
     auto log = cast(const(ubyte)[]) (`127.0.0.1 - - [10/Oct/2026:13:55:36 -0700] "GET / HTTP/1.0" 200 2326` ~ "\n");
     assert(cast(AccessLogFormat) detectFormat("access.log", log) !is null);
+}
+
+@("detectFormat: CAN traces of candump and Vector ASC")
+unittest
+{
+    import formats.candump : CandumpFormat;
+    import formats.vector_asc : AscFormat;
+
+    auto candump = cast(const(ubyte)[]) "(1762179721.123456) can0 123#DEADBEEF\n(1762179721.2) can0 7FF#\n";
+    assert(cast(CandumpFormat) detectFormat("trace.log", candump) !is null);
+
+    auto asc = cast(const(ubyte)[]) ("date Tue Nov 3 02:22:01.123 pm 2026\nbase hex  timestamps absolute\n"
+            ~ "   0.000000 Start of measurement\n   0.001234 1  123  Rx   d 1 00\n");
+    assert(cast(AscFormat) detectFormat("trace.asc", asc) !is null);
 }
