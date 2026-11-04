@@ -65,6 +65,29 @@ bool readFraction(ref const(char)[] s, out uint nanoseconds) pure nothrow @nogc 
     return true;
 }
 
+//! Reads an English month abbreviation: "Jan" .. "Dec", in any case
+//! @returns the month, 1 to 12
+bool readMonthName(ref const(char)[] s, out uint month) pure nothrow @nogc @safe
+{
+    import std.ascii : toLower;
+
+    static immutable string[12] names = [
+        "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"
+    ];
+    if (s.length < 3)
+        return false;
+    foreach (i, name; names)
+    {
+        if (toLower(s[0]) == name[0] && toLower(s[1]) == name[1] && toLower(s[2]) == name[2])
+        {
+            month = cast(uint) i + 1;
+            s = s[3 .. $];
+            return true;
+        }
+    }
+    return false;
+}
+
 //! Reads "HH:MM:SS" and an optional ".fraction"
 //! @returns nanoseconds since midnight
 bool readTimeOfDay(ref const(char)[] s, out long nanoseconds) pure nothrow @nogc @safe
@@ -158,4 +181,18 @@ unittest
     assert(!isValidDate(2000, 0, 5));
     assert(!isValidDate(2000, 5, 0));
     assert(!isValidDate(2000, 0, 0));
+}
+
+@("text parsing: month names")
+unittest
+{
+    const(char)[] s = "Nov  3";
+    uint month;
+    assert(readMonthName(s, month) && month == 11 && s == "  3");
+    s = "jan";
+    assert(readMonthName(s, month) && month == 1, "any case");
+    s = "Foo";
+    assert(!readMonthName(s, month));
+    s = "No";
+    assert(!readMonthName(s, month), "too short");
 }

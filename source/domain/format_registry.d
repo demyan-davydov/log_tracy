@@ -2,6 +2,7 @@ module domain.format_registry;
 
 import log_core.log_format;
 import dlt_core.dlt_format : DltDetector;
+import formats.dmesg : DmesgDetector;
 import formats.logcat : LogcatDetector;
 import formats.plain_text : PlainTextDetector;
 
@@ -41,6 +42,7 @@ private const(FormatDetector)[] detectors()
     const(FormatDetector)[] all;
     all ~= new DltDetector();
     all ~= new LogcatDetector();
+    all ~= new DmesgDetector();
     all ~= new PlainTextDetector();
     return all;
 }
@@ -76,4 +78,13 @@ unittest
 
     assert(cast(DltFormat) detectFormat("capture.dlt", null) !is null);
     assert(cast(PlainTextFormat) detectFormat("notes.log", null) !is null);
+}
+
+@("detectFormat: a kernel log is dmesg, not logcat or text")
+unittest
+{
+    import formats.dmesg : DmesgFormat;
+
+    auto dmesg = cast(const(ubyte)[]) "[    0.000000] Linux version 6.1\n[    0.000002] BIOS-provided map\n";
+    assert(cast(DmesgFormat) detectFormat("dmesg.txt", dmesg) !is null);
 }
