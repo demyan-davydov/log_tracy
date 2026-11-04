@@ -1,4 +1,4 @@
-module sciter.request;
+module sciter.capi.request;
 
 alias HREQUEST = void*;
 

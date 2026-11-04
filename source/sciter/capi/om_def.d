@@ -1,8 +1,8 @@
-module sciter.om_def;
+module sciter.capi.om_def;
 
-import sciter.types;
-import sciter.value;
-import sciter.om;
+import sciter.capi.types;
+import sciter.capi.value;
+import sciter.capi.om;
 import std.stdint : int32_t, int64_t;
 
 /*

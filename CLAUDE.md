@@ -3,7 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 DLT Explorer: a desktop viewer for DLT and text logs (macOS, Linux, Windows), written in D with
-the Sciter UI framework through its own minimal binding (`source/sciter`, `source/sciter_wrapper`).
+the Sciter UI framework through its own minimal binding (`source/sciter`: the C API in `sciter/capi`, the D wrapper over it).
 The UI is vanilla HTML/CSS/JS in `resources/`, not Reactor style. Files can be ~1 GB: nothing
 loads a whole log into memory.
 

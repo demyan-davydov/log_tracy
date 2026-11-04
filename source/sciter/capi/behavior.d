@@ -1,9 +1,9 @@
-module sciter.behavior;
+module sciter.capi.behavior;
 
-import sciter.types;
-import sciter.value;
-import sciter.graphics;
-import sciter.om;
+import sciter.capi.types;
+import sciter.capi.value;
+import sciter.capi.graphics;
+import sciter.capi.om;
 
 align(8):
 

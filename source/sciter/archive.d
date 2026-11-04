@@ -1,11 +1,11 @@
-module sciter_wrapper.sciter_archive;
+module sciter.archive;
 
-import sciter.def;
-import sciter.types;
+import sciter.capi.def;
+import sciter.capi.types;
+import sciter.capi.api;
+import sciter.capi.dom;
+
 import sciter.api;
-import sciter.dom;
-
-import sciter_wrapper.sciter_api;
 
 // Sciter's compressed archive produced by sdk/bin/packfolder.exe
 struct Archive

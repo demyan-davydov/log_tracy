@@ -1,7 +1,7 @@
-module sciter.dom;
+module sciter.capi.dom;
 
-import sciter.types;
-import sciter.behavior : ElementEventProc;
+import sciter.capi.types;
+import sciter.capi.behavior : ElementEventProc;
 
 /** DOM element handle. */
 alias HELEMENT = void*;

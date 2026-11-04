@@ -4,11 +4,11 @@ import ui.main_window;
 import ui.app_settings;
 import ui.main_menu_loader : loadAppMenu;
 
-import sciter.def;
+import sciter.capi.def;
 
-import sciter_wrapper.sciter_api;
-import sciter_wrapper.sciter_application;
-import sciter_wrapper.sciter_debug_output;
+import sciter.api;
+import sciter.application;
+import sciter.debug_output;
 
 import std.file : getcwd, exists;
 import std.path : buildPath;

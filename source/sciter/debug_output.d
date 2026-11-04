@@ -1,9 +1,9 @@
-module sciter_wrapper.sciter_debug_output;
+module sciter.debug_output;
 
-import sciter.types;
-import sciter.def;
+import sciter.capi.types;
+import sciter.capi.def;
+import sciter.capi.api;
 import sciter.api;
-import sciter_wrapper.sciter_api;
 import std.stdio;
 
 // Allow to enable Sciter debug output

@@ -1,9 +1,9 @@
-module sciter.def;
+module sciter.capi.def;
 
 import core.stdc.stdint;
-import sciter.types;
-import sciter.request;
-import sciter.behavior;
+import sciter.capi.types;
+import sciter.capi.request;
+import sciter.capi.behavior;
 
 /** #SC_LOAD_DATA notification return codes */
 enum SC_LOAD_DATA_RETURN_CODES

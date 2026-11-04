@@ -1,7 +1,7 @@
-module sciter_wrapper.sciter_ulils;
+module sciter.utils;
 
-import sciter.types;
-import sciter.value;
+import sciter.capi.types;
+import sciter.capi.value;
 
 // value.hpp
 

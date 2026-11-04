@@ -1,4 +1,4 @@
-module sciter.key_codes;
+module sciter.capi.key_codes;
 
 enum SC_KB_CODES
 {

@@ -1,6 +1,6 @@
-module sciter.graphics;
+module sciter.capi.graphics;
 
-import sciter.types;
+import sciter.capi.types;
 
 alias HGFX = void*;
 alias HIMG = void*;

@@ -1,4 +1,4 @@
-module sciter.om;
+module sciter.capi.om;
 
 struct som_passport_t;
 

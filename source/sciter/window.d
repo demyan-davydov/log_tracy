@@ -1,13 +1,13 @@
-module sciter_wrapper.sciter_window;
+module sciter.window;
 
-import sciter_wrapper.sciter_api;
-import sciter_wrapper.sciter_value;
-import sciter_wrapper.sciter_event_handler;
+import sciter.api;
+import sciter.value;
+import sciter.event_handler;
 
-import sciter.api : SciterAPI_T;
-import sciter.types;
-import sciter.behavior;
-import sciter.def;
+import sciter.capi.api : SciterAPI_T;
+import sciter.capi.types;
+import sciter.capi.behavior;
+import sciter.capi.def;
 import std.stdio : writeln;
 import std.string : toStringz;
 import std.utf : toUTF16z, toUTFz;
@@ -81,7 +81,7 @@ class SciterWindow : SciterEventHandler
 
     final HINSTANCE getResourceInstance()
     {
-        import sciter_wrapper.sciter_application : sciterApplication;
+        import sciter.application : sciterApplication;
 
         return sciterApplication().hinstance();
     }

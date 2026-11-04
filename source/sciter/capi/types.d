@@ -1,4 +1,4 @@
-module sciter.types;
+module sciter.capi.types;
 
 // Sciter Types
 alias HSARCH = void*;

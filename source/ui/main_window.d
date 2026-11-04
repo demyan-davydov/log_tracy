@@ -1,7 +1,7 @@
 module ui.main_window;
 
-import sciter_wrapper.sciter_window;
-import sciter_wrapper.sciter_value;
+import sciter.window;
+import sciter.value;
 import ui.app_settings;
 
 import domain.workspace;
@@ -18,8 +18,8 @@ import ui.main_view_fsm;
 import ui.search_view_fsm;
 import log_core.log_filter : LogFilter;
 
-import sciter.types;
-import sciter.behavior;
+import sciter.capi.types;
+import sciter.capi.behavior;
 
 import std.path : baseName;
 import std.utf : toUTF8, toUTF16;
@@ -127,7 +127,7 @@ class MainWindow : SciterWindow
         _settings = settings;
         _workspace = new Workspace();
 
-        import sciter.def;
+        import sciter.capi.def;
 
         enum uint creationFlags =
             SCITER_CREATE_WINDOW_FLAGS.SW_MAIN

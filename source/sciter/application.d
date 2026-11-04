@@ -1,11 +1,11 @@
-module sciter_wrapper.sciter_application;
-
-import sciter_wrapper.sciter_api;
+module sciter.application;
 
 import sciter.api;
-import sciter.types;
-import sciter.behavior;
-import sciter.def;
+
+import sciter.capi.api;
+import sciter.capi.types;
+import sciter.capi.behavior;
+import sciter.capi.def;
 
 import std.algorithm : map;
 import std.utf : toUTF16z, toUTF16;

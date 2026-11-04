@@ -1,10 +1,10 @@
-module sciter_wrapper.sciter_event_handler;
+module sciter.event_handler;
 
-import sciter_wrapper.sciter_api;
+import sciter.api;
 
-import sciter.types;
-import sciter.behavior;
-import sciter.def;
+import sciter.capi.types;
+import sciter.capi.behavior;
+import sciter.capi.def;
 import std.stdio : writeln;
 
 class SciterEventHandler
@@ -35,7 +35,7 @@ class SciterEventHandler
 
     protected void detachEventHandler(HWINDOW hwnd)
     {
-        import sciter.dom : SCDOM_OK;
+        import sciter.capi.dom : SCDOM_OK;
 
         writeln("Window event handler detaching... ");
         const auto res = _api.SciterWindowDetachEventHandler(hwnd, &elementProc, cast(void*) this);

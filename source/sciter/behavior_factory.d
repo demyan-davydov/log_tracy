@@ -1,7 +1,7 @@
-module sciter_wrapper.sciter_behavior_factory;
+module sciter.behavior_factory;
 
 /*
-import sciter_wrapper.sciter_event_handler;
+import sciter.event_handler;
 
 // behavior is just named event_handler
 
