@@ -5,7 +5,7 @@ import std.stdio;
 import std.stdint;
 import std.traits : isSomeChar;
 
-import dlt_core.decoded_message;
+import log_core.log_message;
 
 //! @brief DLT Message structure:
 //! [ Storage Header ]        (16 bytes, always in file)
@@ -120,7 +120,7 @@ LogItemHeaders findHeaders(const(ubyte)[] data, bool hasStorageHeader = true) pu
     return headers;
 }
 
-bool parseDltItem(Char)(out DecodedMessage!Char msg, const(ubyte)[] data, bool hasStorageHeader = true) nothrow @nogc
+bool parseDltItem(Char)(out LogMessage!Char msg, const(ubyte)[] data, bool hasStorageHeader = true) nothrow @nogc
         if (isSomeChar!Char)
 {
     const LogItemHeaders headers = findHeaders(data, hasStorageHeader);
@@ -704,7 +704,7 @@ version (unittest)
 @("parseDltItem: truncated data returns false")
 unittest
 {
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     ubyte[] data = [0, 1, 2]; // too short
     assert(parseDltItem(msg, data) == false);
 }
@@ -725,7 +725,7 @@ unittest
 
     );
 
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     assert(parseDltItem(msg, data, false));
     assert(msg.ecuId == "");
     assert(msg.payloadText == "Legacy DLT Message");
@@ -747,7 +747,7 @@ unittest
 
     );
 
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     assert(parseDltItem(msg, data));
     assert(msg.ecuId == "ECU1");
     assert(msg.payloadText == "Legacy DLT Message");
@@ -769,7 +769,7 @@ unittest
 
     );
 
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     assert(parseDltItem(msg, data));
     writefln("msg: %s (%d) msgId: %x", msg.payloadText, msg.payloadText.length, msg.messageId);
     assert(msg.messageId == 0xDEAD);
@@ -789,7 +789,7 @@ unittest
         args,
     );
 
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     assert(parseDltItem(msg, data));
     assert(msg.payloadText == "true false");
 }
@@ -801,7 +801,7 @@ unittest
     auto data = buildDltMessage(true, true, 1,
         cast(ubyte) MessageType.Log, cast(ubyte) LogLevel.Error, 0, args);
 
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     assert(parseDltItem(msg, data));
     assert(msg.payloadText == "-42");
     assert(msg.level == LogLevel.Error);
@@ -814,7 +814,7 @@ unittest
     auto data = buildDltMessage(true, true, 1,
         cast(ubyte) MessageType.Log, cast(ubyte) LogLevel.Debug, 0, args);
 
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     assert(parseDltItem(msg, data));
     assert(msg.payloadText == "12345");
     assert(msg.level == LogLevel.Debug);
@@ -827,7 +827,7 @@ unittest
     auto data = buildDltMessage(true, true, 1,
         cast(ubyte) MessageType.Log, cast(ubyte) LogLevel.Info, 0, args);
 
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     assert(parseDltItem(msg, data));
     assert(msg.payloadText == "Hello DLT");
 }
@@ -842,7 +842,7 @@ unittest
     auto data = buildDltMessage(true, true, 3,
         cast(ubyte) MessageType.Log, cast(ubyte) LogLevel.Warn, 0, args);
 
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     assert(parseDltItem(msg, data));
     assert(msg.payloadText == "count 7 true");
     assert(msg.level == LogLevel.Warn);
@@ -856,7 +856,7 @@ unittest
         cast(ubyte) MessageType.Log, cast(ubyte) LogLevel.Info, 0, args,
         "MYEC", "MYAP", "MYCT");
 
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     assert(parseDltItem(msg, data));
     assert(msg.ecuId == "MYEC");
     assert(msg.appId == "MYAP");
@@ -871,7 +871,7 @@ unittest
         cast(ubyte) MessageType.Log, cast(ubyte) LogLevel.Info, 0, args,
         "ECU1", "APP1", "CTX1", 9999, 123);
 
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     assert(parseDltItem(msg, data));
     assert(msg.timestampSeconds == 9999);
     assert(msg.timestampMicroseconds == 123);
@@ -884,7 +884,7 @@ unittest
     auto data = buildDltMessage(true, true, 1,
         cast(ubyte) MessageType.AppTrace, 0, 0, args);
 
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     assert(parseDltItem(msg, data));
     assert(msg.type == MessageType.AppTrace);
 }
@@ -896,7 +896,7 @@ unittest
     auto data = buildDltMessage(true, true, 1,
         cast(ubyte) MessageType.Log, cast(ubyte) LogLevel.Info, 0, args);
 
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     assert(parseDltItem(msg, data));
     import std.string : startsWith;
 
@@ -911,7 +911,7 @@ unittest
     auto data = buildDltMessage(true, true, 3,
         cast(ubyte) MessageType.Log, cast(ubyte) LogLevel.Info, 0, args);
 
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     assert(parseDltItem(msg, data)); // must not crash
     // At least the one valid arg was decoded
     assert(msg.payloadText == "1");
@@ -971,7 +971,7 @@ unittest
         getSoftwareVersionPayload("MyApp v2.5.1"),
     );
 
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     assert(parseDltItem(msg, data));
     assert(msg.type == MessageType.Control);
     assert(msg.messageId == 0x13);
@@ -987,7 +987,7 @@ unittest
         cast(ubyte) ControlType.Response,
         getSoftwareVersionPayload(""),
     );
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     assert(parseDltItem(msg, data));
     assert(msg.messageId == 0x13);
     assert(msg.payloadText == "[get_software_version ok]");
@@ -999,7 +999,7 @@ unittest
     ubyte[] payload = [cast(ubyte) ServiceResponseStatus.Error];
     auto data = buildControlMsg(0x13, cast(ubyte) ControlType.Response, payload);
 
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     assert(parseDltItem(msg, data));
     assert(msg.messageId == 0x13);
 
@@ -1016,7 +1016,7 @@ unittest
         cast(ubyte) ControlType.Response,
         ctrlResponsePayload(ServiceResponseStatus.Ok),
     );
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     assert(parseDltItem(msg, data));
     assert(msg.messageId == 0x01);
 
@@ -1032,7 +1032,7 @@ unittest
     ubyte[] payload = [cast(ubyte) ServiceResponseStatus.Ok] ~ cast(ubyte[]) "hello";
     auto data = buildControlMsg(0xFF, cast(ubyte) ControlType.Response, payload);
 
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     assert(parseDltItem(msg, data));
     assert(msg.messageId == 0xFF);
 
@@ -1048,7 +1048,7 @@ unittest
     // Request: ctrlType = ControlType.Request, no status byte
     auto data = buildControlMsg(0x09, cast(ubyte) ControlType.Request, []);
 
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     assert(parseDltItem(msg, data));
     assert(msg.messageId == 0x09);
 
@@ -1080,7 +1080,7 @@ unittest
         414D453D 226B6972 6B73746F 6E65220A
     ";
 
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     assert(parseDltItem(msg, raw));
 
     // Metadata from storage/standard/extended headers
@@ -1092,7 +1092,7 @@ unittest
     assert(msg.messageId == 0x13);
 
     // Relative timestamp: 0x0012D390 = 1233808 × 0.1ms ≈ 123380.8ms → stored as-is
-    // (relativeTimestamp_10000 lives in DecodedMessage; we just check it parses):
+    // (relativeTimestamp_10000 lives in LogMessage; we just check it parses):
 
     import std.algorithm : startsWith, canFind;
 

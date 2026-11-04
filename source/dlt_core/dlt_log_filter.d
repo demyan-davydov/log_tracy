@@ -1,9 +1,9 @@
 module dlt_core.dlt_log_filter;
 
-import dlt_core.log_filter;
+import log_core.log_filter;
 import dlt_core.dlt_filter_record;
 import dlt_core.dlt_filter_serialization;
-import dlt_core.decoded_message;
+import log_core.log_message;
 
 import std.traits : isSomeChar;
 import std.algorithm.iteration : map;
@@ -53,7 +53,7 @@ final class DltLogFilter(CharType) : LogFilter!CharType if (isSomeChar!(CharType
         saveDlf!CharType(path, _records);
     }
 
-    override bool matches(scope ref const(DecodedMessage!CharType) item) const
+    override bool matches(scope ref const(LogMessage!CharType) item) const
     {
         foreach (const ref record; _records)
         {
@@ -64,7 +64,7 @@ final class DltLogFilter(CharType) : LogFilter!CharType if (isSomeChar!(CharType
         return false;
     }
 
-    override Nullable!uint matchIndex(scope ref const(DecodedMessage!CharType) item) const
+    override Nullable!uint matchIndex(scope ref const(LogMessage!CharType) item) const
     {
         uint idx = 0;
         foreach (const ref record; _records)
@@ -137,7 +137,7 @@ unittest
 
     assert(quickFilter!char("", "", "", "") is null);
 
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     auto builder = msg.setupPayload("ECU1", "APP1", "CTX1");
     builder.appendAscii("engine started");
     builder.storePayload();

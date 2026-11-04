@@ -1,15 +1,14 @@
 module domain.dlt_index;
 
 import dlt_core.dlt_log_filter;
-import dlt_core.decoded_message;
-import dlt_core.log_filter;
+import log_core.log_message;
+import log_core.log_filter;
 import dlt_core.dlt_source;
 import dlt_core.dlt_parser : parseDltItem;
 
 import domain.index.offset_index;
 import domain.index.filter_index;
 import domain.index.search_index;
-import domain.index.index_builders;
 import domain.index.anchors;
 import domain.background_slot;
 import domain.document_item;
@@ -31,7 +30,7 @@ import core.sync.mutex : Mutex;
 // todo: better naming
 
 alias Filter = LogFilter!wchar;
-alias Message = DecodedMessage!wchar;
+alias Message = LogMessage!wchar;
 
 //! @brief Holds DLT file data and its associated indexes.
 //! Responsible for:

@@ -1,8 +1,8 @@
 module domain.document;
 
 import dlt_core.dlt_source;
-import dlt_core.decoded_message;
-import dlt_core.log_filter : LogFilter;
+import log_core.log_message;
+import log_core.log_filter : LogFilter;
 import dlt_core.dlt_protocol : LogLevel, MessageType;
 
 import domain.document_id;

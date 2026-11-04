@@ -16,7 +16,7 @@ import dlt_core.dlt_log_filter : DltLogFilter, quickFilter;
 import domain.search_filter : SearchFilter;
 import ui.main_view_fsm;
 import ui.search_view_fsm;
-import dlt_core.log_filter : LogFilter;
+import log_core.log_filter : LogFilter;
 
 import sciter.types;
 import sciter.behavior;

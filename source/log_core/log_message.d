@@ -1,4 +1,4 @@
-module dlt_core.decoded_message;
+module log_core.log_message;
 
 import std.traits;
 import core.stdc.stdlib : malloc, free;
@@ -7,10 +7,10 @@ import std.algorithm : copy, min;
 import dlt_core.dlt_protocol : LogLevel, MessageType;
 
 /// Represents a decoded DLT log message
-struct DecodedMessage(Char) if (isSomeChar!Char)
+struct LogMessage(Char) if (isSomeChar!Char)
 {
-    @disable this(ref DecodedMessage);
-    @disable void opAssign(ref DecodedMessage);
+    @disable this(ref LogMessage);
+    @disable void opAssign(ref LogMessage);
 
     private LinearAllocator!Char _allocator;
 
@@ -214,7 +214,7 @@ private struct LinearAllocator(Char) if (isSomeChar!Char)
 
 private struct PayloadBuilder(Char) if (isSomeChar!Char)
 {
-    //private DecodedMessage!Char* _message;
+    //private LogMessage!Char* _message;
     private Char[]* _payloadText; // to save result
     private Char* _bufferBegin;
     private Char[] _tail;
@@ -678,45 +678,45 @@ unittest
     assert(buf.rest() == 128);
 }
 
-// ─── DecodedMessage Tests ──────────────────────────────────────────────────────
+// ─── LogMessage Tests ──────────────────────────────────────────────────────
 
-@("DecodedMessage: allocAndCopy basic string")
+@("LogMessage: allocAndCopy basic string")
 unittest
 {
     import std.stdio;
 
     writeln("allocAndCopy");
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     msg._allocator = LinearAllocator!char(1024);
 
     auto result = msg.allocAndCopyAscii("HELLO");
     assert(result == "HELLO");
 }
 
-@("DecodedMessage: allocAndCopy cuts trailing zeros")
+@("LogMessage: allocAndCopy cuts trailing zeros")
 unittest
 {
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     msg._allocator = LinearAllocator!char(1024);
 
     auto result = msg.allocAndCopyAscii("ABCD\0\0");
     assert(result == "ABCD");
 }
 
-@("DecodedMessage: IDs padded with spaces are trimmed")
+@("LogMessage: IDs padded with spaces are trimmed")
 unittest
 {
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     msg.setupPayload("CU7 ", "APP ", "C\0\0\0");
     assert(msg.ecuId == "CU7");
     assert(msg.appId == "APP");
     assert(msg.ctxId == "C");
 }
 
-@("DecodedMessage: allocAndCopy replaces non-printable")
+@("LogMessage: allocAndCopy replaces non-printable")
 unittest
 {
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     msg._allocator = LinearAllocator!char(1024);
 
     char[4] input = ['A', 1, 'B', 2]; // 1 and 2 are non-printable
@@ -725,10 +725,10 @@ unittest
     assert(result == "A?B?");
 }
 
-@("DecodedMessage: allocAndCopy replaces non-printable wchar")
+@("LogMessage: allocAndCopy replaces non-printable wchar")
 unittest
 {
-    DecodedMessage!wchar msg;
+    LogMessage!wchar msg;
     msg._allocator = LinearAllocator!wchar(1024);
 
     char[4] input = ['A', 1, 'B', 2]; // 1 and 2 are non-printable
@@ -737,20 +737,20 @@ unittest
     assert(result == "A?B?"w);
 }
 
-@("DecodedMessage: allocAndCopy empty string")
+@("LogMessage: allocAndCopy empty string")
 unittest
 {
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     msg._allocator = LinearAllocator!char(1024);
 
     auto result = msg.allocAndCopyAscii("");
     assert(result.length == 0);
 }
 
-@("DecodedMessage: allocAndCopy null-only string")
+@("LogMessage: allocAndCopy null-only string")
 unittest
 {
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     msg._allocator = LinearAllocator!char(1024);
 
     char[4] input = [0, 0, 0, 0];
@@ -758,20 +758,20 @@ unittest
     assert(result.length == 0);
 }
 
-@("DecodedMessage: allocAndCopy does not overflow buffer")
+@("LogMessage: allocAndCopy does not overflow buffer")
 unittest
 {
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     msg._allocator = LinearAllocator!char(4); // Very small buffer
 
     auto result = msg.allocAndCopyAscii("ABCDEFGH");
     assert(result.length <= 4);
 }
 
-@("DecodedMessage: setupPayload sets ecu/appId/ctxId")
+@("LogMessage: setupPayload sets ecu/appId/ctxId")
 unittest
 {
-    DecodedMessage!char msg;
+    LogMessage!char msg;
 
     auto builder = msg.setupPayload("ECU1", "APP1", "CTX1");
     assert(msg.ecuId == "ECU1");
@@ -779,10 +779,10 @@ unittest
     assert(msg.ctxId == "CTX1");
 }
 
-@("DecodedMessage: setupPayload cleans non-printable in IDs")
+@("LogMessage: setupPayload cleans non-printable in IDs")
 unittest
 {
-    DecodedMessage!char msg;
+    LogMessage!char msg;
 
     char[4] ecuId = ['E', 'C', 0, 0];
     char[4] appId = ['A', 1, 'P', 0];
@@ -794,10 +794,10 @@ unittest
     assert(msg.ctxId == "CTX1");
 }
 
-@("DecodedMessage: clear resets all fields")
+@("LogMessage: clear resets all fields")
 unittest
 {
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     msg._allocator = LinearAllocator!char(256);
 
     msg.timestampSeconds = 100;
@@ -823,10 +823,10 @@ unittest
     assert(msg._payloadText is null);
 }
 
-@("DecodedMessage: properties return correct values")
+@("LogMessage: properties return correct values")
 unittest
 {
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     msg._allocator = LinearAllocator!char(256);
 
     msg._ecuId = "ECU".dup;
@@ -845,7 +845,7 @@ unittest
 @("PayloadBuilder: appendAscii single string")
 unittest
 {
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     auto builder = msg.setupPayload("ECU1", "APP1", "CTX1");
     builder.appendAscii("hello");
     builder.storePayload();
@@ -856,7 +856,7 @@ unittest
 @("PayloadBuilder: appendAscii multiple strings with separators")
 unittest
 {
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     auto builder = msg.setupPayload("E", "A", "C");
     builder.appendAscii("foo");
     builder.appendAscii("bar");
@@ -869,7 +869,7 @@ unittest
 @("PayloadBuilder: appendBool true and false")
 unittest
 {
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     auto builder = msg.setupPayload("E", "A", "C");
     builder.appendBool(true);
     builder.appendBool(false);
@@ -881,7 +881,7 @@ unittest
 @("PayloadBuilder: appendUtf8 ASCII text")
 unittest
 {
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     auto builder = msg.setupPayload("E", "A", "C");
     builder.appendUtf8("hello utf8");
     builder.appendUtf8("привет");
@@ -893,7 +893,7 @@ unittest
 @("PayloadBuilder: appendUtf8 wide string")
 unittest
 {
-    DecodedMessage!wchar msg;
+    LogMessage!wchar msg;
     auto builder = msg.setupPayload("E", "A", "C");
     builder.appendUtf8("привет Андрей");
     builder.storePayload();
@@ -904,7 +904,7 @@ unittest
 @("PayloadBuilder: appendUtf8 dchar string")
 unittest
 {
-    DecodedMessage!dchar msg;
+    LogMessage!dchar msg;
     auto builder = msg.setupPayload("E", "A", "C");
     builder.appendUtf8("привет Андрей");
     builder.storePayload();
@@ -915,7 +915,7 @@ unittest
 @("PayloadBuilder: appendInt positive")
 unittest
 {
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     auto builder = msg.setupPayload("E", "A", "C");
     builder.append(12_345);
     builder.storePayload();
@@ -926,7 +926,7 @@ unittest
 @("PayloadBuilder: appendInt negative")
 unittest
 {
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     auto builder = msg.setupPayload("E", "A", "C");
     builder.append(-42);
     builder.storePayload();
@@ -937,7 +937,7 @@ unittest
 @("PayloadBuilder: appendInt zero")
 unittest
 {
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     auto builder = msg.setupPayload("E", "A", "C");
     builder.append(cast(int) 0);
     builder.storePayload();
@@ -948,7 +948,7 @@ unittest
 @("PayloadBuilder: appendUint")
 unittest
 {
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     auto builder = msg.setupPayload("E", "A", "C");
     builder.append(99_999);
     builder.storePayload();
@@ -959,7 +959,7 @@ unittest
 @("PayloadBuilder: appendUint zero")
 unittest
 {
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     auto builder = msg.setupPayload("E", "A", "C");
     builder.append(cast(uint) 0);
     builder.storePayload();
@@ -970,7 +970,7 @@ unittest
 @("PayloadBuilder: append float")
 unittest
 {
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     auto builder = msg.setupPayload("E", "A", "C");
     builder.append(cast(float) 0.1f);
     builder.storePayload();
@@ -981,7 +981,7 @@ unittest
 @("PayloadBuilder: append double")
 unittest
 {
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     auto builder = msg.setupPayload("E", "A", "C");
     builder.append(cast(double) 0.1);
     builder.storePayload();
@@ -992,7 +992,7 @@ unittest
 @("PayloadBuilder: append float for wchar")
 unittest
 {
-    DecodedMessage!wchar msg;
+    LogMessage!wchar msg;
     auto builder = msg.setupPayload("E", "A", "C");
     builder.append(cast(float) 0.1f);
     builder.storePayload();
@@ -1003,7 +1003,7 @@ unittest
 @("PayloadBuilder: mixed types with separators")
 unittest
 {
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     auto builder = msg.setupPayload("E", "A", "C");
     builder.appendAscii("count:");
     builder.append(42);
@@ -1016,7 +1016,7 @@ unittest
 @("PayloadBuilder: empty payload")
 unittest
 {
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     auto builder = msg.setupPayload("E", "A", "C");
     builder.storePayload();
 
@@ -1026,7 +1026,7 @@ unittest
 @("PayloadBuilder: appendAscii empty string")
 unittest
 {
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     auto builder = msg.setupPayload("E", "A", "C");
     builder.appendAscii("");
     builder.storePayload();
@@ -1037,10 +1037,10 @@ unittest
 
 // ─── Integration Tests ─────────────────────────────────────────────────────────
 
-@("DecodedMessage: full workflow - setup, build, read, clear")
+@("LogMessage: full workflow - setup, build, read, clear")
 unittest
 {
-    DecodedMessage!char msg;
+    LogMessage!char msg;
 
     msg.timestampSeconds = 1000;
     msg.level = LogLevel.Error;
@@ -1062,10 +1062,10 @@ unittest
     assert(msg.level == LogLevel.Info);
 }
 
-@("DecodedMessage: multiple setupPayload cycles reuse buffer")
+@("LogMessage: multiple setupPayload cycles reuse buffer")
 unittest
 {
-    DecodedMessage!char msg;
+    LogMessage!char msg;
 
     // First cycle
     {
@@ -1084,10 +1084,10 @@ unittest
     assert(msg.payloadText == "second message");
 }
 
-@("DecodedMessage: convertAndClean preserves printable ASCII range")
+@("LogMessage: convertAndClean preserves printable ASCII range")
 unittest
 {
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     msg._allocator = LinearAllocator!char(1024);
 
     // All printable ASCII chars (space to tilde)
@@ -1102,7 +1102,7 @@ unittest
 @("PayloadBuilder: large payload")
 unittest
 {
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     auto builder = msg.setupPayload("E", "A", "C");
 
     // Append many items
@@ -1154,21 +1154,21 @@ unittest
     assert(buf.rest() == 0);
 }
 
-// DecodedMessage.allocAndCopy additional tests
-@("DecodedMessage: allocAndCopy dchar")
+// LogMessage.allocAndCopy additional tests
+@("LogMessage: allocAndCopy dchar")
 unittest
 {
-    DecodedMessage!dchar msg;
+    LogMessage!dchar msg;
     msg._allocator = LinearAllocator!dchar(1024);
 
     auto result = msg.allocAndCopyAscii("HELLO");
     assert(result == "HELLO"d);
 }
 
-@("DecodedMessage: allocAndCopy embedded nulls")
+@("LogMessage: allocAndCopy embedded nulls")
 unittest
 {
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     msg._allocator = LinearAllocator!char(1024);
 
     char[6] input = ['A', 'B', '\0', 'C', 'D', '\0'];
@@ -1176,13 +1176,13 @@ unittest
     assert(result == "AB?CD"); // Embedded nulls should be replaced
 }
 
-@("DecodedMessage: allocAndCopy UTF-8 decoded to wchar")
+@("LogMessage: allocAndCopy UTF-8 decoded to wchar")
 unittest
 {
     // For char Char type, multi-byte UTF-8 bytes >127 are treated as non-printable
     // by std.ascii.isPrintable and replaced with '?'.
     // For wchar/dchar, copyUtf8to properly decodes them as Unicode codepoints.
-    DecodedMessage!wchar msgW;
+    LogMessage!wchar msgW;
     msgW._allocator = LinearAllocator!wchar(1024);
     auto resultW = msgW.allocAndCopyAscii("hello");
     assert(resultW == "hello"w);
@@ -1193,7 +1193,7 @@ unittest
 unittest
 {
     // 4 bytes = one group → "DEADBEEF " (trailing space after each group)
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     auto builder = msg.setupPayload("E", "A", "C");
     char[4] data = [
         cast(char) 0xDE, cast(char) 0xAD, cast(char) 0xBE, cast(char) 0xEF
@@ -1208,7 +1208,7 @@ unittest
 unittest
 {
     // 8 bytes = two groups → "DEADBEEF 01020304 "
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     auto builder = msg.setupPayload("E", "A", "C");
     char[8] data = [
         cast(char) 0xDE, cast(char) 0xAD, cast(char) 0xBE, cast(char) 0xEF,
@@ -1224,7 +1224,7 @@ unittest
 unittest
 {
     // 3 bytes = partial group → "010203 "
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     auto builder = msg.setupPayload("E", "A", "C");
     char[3] data = [1, 2, 3];
     builder.appendHex(data[]);
@@ -1236,7 +1236,7 @@ unittest
 @("PayloadBuilder: appendHex empty")
 unittest
 {
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     auto builder = msg.setupPayload("E", "A", "C");
     builder.appendHex([]);
     builder.storePayload();
@@ -1247,7 +1247,7 @@ unittest
 @("PayloadBuilder: destructor auto-store")
 unittest
 {
-    DecodedMessage!char msg;
+    LogMessage!char msg;
     msg._allocator = LinearAllocator!char(1024);
 
     {
@@ -1262,7 +1262,7 @@ unittest
 @("PayloadBuilder: appendUtf8 surrogate pairs in wchar")
 unittest
 {
-    DecodedMessage!wchar msg;
+    LogMessage!wchar msg;
     // U+1F600 😀 UTF-8: F0 9F 98 80  →  UTF-16 surrogate pair: D83D DE00
     auto builder = msg.setupPayload("E", "A", "C");
     builder.appendUtf8("\U0001F600");

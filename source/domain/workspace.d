@@ -5,7 +5,7 @@ import domain.document_id;
 import domain.document_item : DocumentItem;
 import domain.index.anchors;
 
-import dlt_core.log_filter : LogFilter;
+import log_core.log_filter : LogFilter;
 
 import event_bus.event_bus_interface : SignalConsumer, SubscriptionToken;
 import event_bus.event_bus_sync : EventBusSync;

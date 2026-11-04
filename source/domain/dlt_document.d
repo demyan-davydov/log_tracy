@@ -6,8 +6,8 @@ import domain.document_id;
 
 import dlt_core.dlt_source;
 import dlt_core.dlt_log_filter;
-import dlt_core.decoded_message;
-import dlt_core.log_filter;
+import log_core.log_message;
+import log_core.log_filter;
 
 import domain.index.anchors;
 import domain.dlt_index;
@@ -361,12 +361,12 @@ version (unittest)
             _result = result;
         }
 
-        bool matches(scope ref const(DecodedMessage!wchar) item) const
+        bool matches(scope ref const(LogMessage!wchar) item) const
         {
             return _result;
         }
 
-        Nullable!uint matchIndex(scope ref const(DecodedMessage!wchar) item) const
+        Nullable!uint matchIndex(scope ref const(LogMessage!wchar) item) const
         {
             return _result ? Nullable!uint(0) : Nullable!uint.init;
         }

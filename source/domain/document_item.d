@@ -1,7 +1,7 @@
 module domain.document_item;
 
 import dlt_core.dlt_protocol : LogLevel, MessageType;
-import dlt_core.decoded_message : DecodedMessage;
+import log_core.log_message : LogMessage;
 
 import std.stdint;
 
@@ -21,7 +21,7 @@ struct DocumentItem
     bool selected;
     // bool visible;
 
-    package DecodedMessage!Char _decodedMessage;
+    package LogMessage!Char _decodedMessage;
 
     //public alias _decodedMessage this;
 
@@ -70,7 +70,7 @@ struct DocumentItem
     {
         return _decodedMessage.type;
     }
-    /// payload text (alias for DecodedMessage.payloadText)
+    /// payload text (alias for LogMessage.payloadText)
     const(Char)[] payload() const pure nothrow @nogc @property
     {
         return _decodedMessage.payloadText;
