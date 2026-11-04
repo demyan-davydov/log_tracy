@@ -104,6 +104,8 @@ struct LogIndex
         _offsetIndex = OffsetIndex(capacity);
         _filterIndex = FilterIndex(capacity);
         _searchIndex = SearchIndex(capacity);
+        if (!_offsetIndex.isAllocated || !_filterIndex.isAllocated || !_searchIndex.isAllocated)
+            throw new Exception("not enough address space for the indexes of this file");
 
         _backgroundSlot = BackgroundSlot(null);
 

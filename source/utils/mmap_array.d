@@ -41,11 +41,17 @@ struct MmapArray(T)
         return true;
     }
 
-    //! @throws Exception if that much memory can't be mapped
-    this(size_t maxElements)
+    //! If that much memory can't be mapped, the array is empty and has no
+    //! capacity: check isAllocated()
+    this(size_t maxElements) nothrow @nogc
     {
-        if (!alloc(maxElements))
-            throw new Exception("not enough address space for an index of this file");
+        alloc(maxElements);
+    }
+
+    //! @returns false if the memory of the array couldn't be mapped
+    bool isAllocated() const pure nothrow @nogc
+    {
+        return _data !is null;
     }
 
     ~this() @nogc
@@ -172,11 +178,21 @@ unittest
     assert(a.insertAt(2, 9) && a[2] == 9, "insert at the end");
 }
 
-@("MmapArray: a capacity that can't be mapped throws instead of asserting")
+@("MmapArray: a capacity that can't be mapped leaves an empty array, without exceptions")
 unittest
 {
-    import std.exception : assertThrown;
+    import std.traits : hasFunctionAttributes;
 
-    assertThrown!Exception(MmapArray!ulong(1UL << 50)); // 8 PB: more than the address space
-    assertThrown!Exception(MmapArray!ulong(size_t.max / 4), "the size in bytes overflows");
+    assert(hasFunctionAttributes!(MmapArray!ulong.__ctor, "nothrow", "@nogc"),
+        "the constructor reports a failure without exceptions");
+
+    auto huge = MmapArray!ulong(1UL << 50); // 8 PB: more than the address space
+    assert(huge.capacity == 0 && huge.length == 0);
+    assert(!huge.append(1), "an empty array takes nothing");
+
+    auto overflow = MmapArray!ulong(size_t.max / 4); // the size in bytes overflows
+    assert(overflow.capacity == 0);
+
+    auto normal = MmapArray!ulong(16);
+    assert(normal.capacity == 16 && normal.append(1));
 }

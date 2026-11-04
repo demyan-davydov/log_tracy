@@ -8,9 +8,16 @@ struct BaseIndex(T)
     private MmapArray!Type _data;
     public bool isReady = false;
 
-    this(size_t capacity)
+    //! Check isAllocated(): the memory may not be available
+    this(size_t capacity) nothrow @nogc
     {
         _data = MmapArray!Type(capacity);
+    }
+
+    //! @returns false if the memory of the index couldn't be mapped
+    bool isAllocated() const pure nothrow @nogc
+    {
+        return _data.isAllocated;
     }
 
     //! @return false if capacity is exhausted
