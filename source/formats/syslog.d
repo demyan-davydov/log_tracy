@@ -24,6 +24,7 @@ enum SyslogField : ubyte
     Pid, // number
     MsgId, // text: RFC 5424
     Data, // text: the structured data of RFC 5424, as written
+    ProcId, // text: the PROCID of RFC 5424, not always a number
 }
 
 final class SyslogFormat : TextFormat
@@ -104,6 +105,8 @@ final class SyslogFormat : TextFormat
             msg.setText(SyslogField.App, line.app);
         if (line.hasPid)
             msg.setNumber(SyslogField.Pid, line.pid);
+        if (line.procId.length)
+            msg.setText(SyslogField.ProcId, line.procId);
         if (line.msgId.length)
             msg.setText(SyslogField.MsgId, line.msgId);
         if (line.data.length)
@@ -146,7 +149,8 @@ private static immutable ColumnInfo[] isoLocalLevelColumns = [
     timeColumn(TimeKind.Local, 170), hostColumn, appColumn, pidColumn, levelColumn, payloadColumn
 ];
 private static immutable ColumnInfo[] rfc5424Columns = [
-    timeColumn(TimeKind.Absolute, 170), hostColumn, appColumn, pidColumn,
+    timeColumn(TimeKind.Absolute, 170), hostColumn, appColumn,
+    ColumnInfo("pid", "PID", ColumnKind.Text, SyslogField.ProcId, 60),
     ColumnInfo("msgid", "MsgID", ColumnKind.Text, SyslogField.MsgId, 60), levelColumn,
     ColumnInfo("data", "Data", ColumnKind.Text, SyslogField.Data, 150), payloadColumn
 ];
@@ -211,6 +215,7 @@ private struct SyslogLine
     const(char)[] app;
     bool hasPid;
     uint pid;
+    const(char)[] procId;
     const(char)[] msgId;
     const(char)[] data;
     const(char)[] message;
@@ -350,23 +355,12 @@ private bool parseRfc5424(const(char)[] s, ref SyslogLine line) pure nothrow @no
         line.timeKind = TimeKind.Absolute;
     }
 
-    const(char)[] procId;
     if (!readChar(s, ' ') || !readField(s, line.host) || !readChar(s, ' ') || !readField(s, line.app)
-        || !readChar(s, ' ') || !readField(s, procId) || !readChar(s, ' ') || !readField(s, line.msgId)
+        || !readChar(s, ' ') || !readField(s, line.procId) || !readChar(s, ' ') || !readField(s, line.msgId)
         || !readChar(s, ' ') || !readStructuredData(s, line.data))
         return false;
     if (s.length && s[0] != ' ')
         return false; // the data must end the line or be followed by a space
-    if (procId.length)
-    {
-        const(char)[] digits = procId;
-        uint pid;
-        if (readNumber(digits, pid) && digits.length == 0)
-        {
-            line.hasPid = true;
-            line.pid = pid;
-        }
-    }
 
     readChar(s, ' ');
     if (s.length >= 3 && s[0 .. 3] == "\xEF\xBB\xBF")
@@ -510,7 +504,7 @@ unittest
     assert(msg.timeNs == toEpochNs(2026, 11, 3, 14 * hour + 22 * minute + second + 3_000_000));
     assert(msg.text(SyslogField.Host) == "mymachine"w);
     assert(msg.text(SyslogField.App) == "evntslog"w);
-    assert(!msg.hasField(SyslogField.Pid), "NILVALUE");
+    assert(!msg.hasField(SyslogField.ProcId), "NILVALUE");
     assert(msg.text(SyslogField.MsgId) == "ID47"w);
     assert(msg.text(SyslogField.Data) == `[exampleSDID@32473 iut="3" eventSource="App"]`w);
     assert(msg.payloadText == "An application event"w);
@@ -521,7 +515,7 @@ unittest
 {
     LogMessage!wchar msg;
     decodeLine(SyslogFormat.Kind.Rfc5424, "<34>1 2026-11-03T22:14:15Z host su 77 - - 'su root' failed", msg);
-    assert(msg.number(SyslogField.Pid) == 77);
+    assert(msg.text(SyslogField.ProcId) == "77"w);
     assert(!msg.hasField(SyslogField.MsgId) && !msg.hasField(SyslogField.Data));
     assert(msg.payloadText == "'su root' failed"w);
 
@@ -625,4 +619,15 @@ unittest
         decodeLine(SyslogFormat.Kind.Rfc5424, line, msg);
         assert(!msg.hasField(SyslogField.Host), line ~ ": a malformed line is text");
     }
+}
+
+@("SyslogFormat RFC 5424: a PROCID is text, not only a number")
+unittest
+{
+    LogMessage!wchar msg;
+    decodeLine(SyslogFormat.Kind.Rfc5424, "<14>1 2026-11-03T22:14:15Z host app worker-1 - - msg", msg);
+    assert(msg.text(SyslogField.ProcId) == "worker-1"w);
+
+    const pid = new SyslogFormat(SyslogFormat.Kind.Rfc5424, true).columns[3];
+    assert(pid.id == "pid" && pid.kind == ColumnKind.Text && pid.field == SyslogField.ProcId);
 }
