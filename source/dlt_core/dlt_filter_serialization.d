@@ -32,7 +32,11 @@ DltFilterRecord!CharType[] loadDlf(CharType)(string filename)
 {
     alias String = immutable(CharType)[];
 
-    String content = readText!String(filename);
+    // The file is UTF-8 (saveDlf writes it so): readText!wstring would take
+    // its bytes for UTF-16
+    import std.conv : to;
+
+    String content = readText(filename).to!String;
     DltFilterRecord!CharType[] filters;
 
     try
@@ -474,4 +478,27 @@ unittest
         remove(tempFile);
 
     writeln("List Serialization Test Passed");
+}
+
+@("loadDlf: a .dlf (UTF-8) loads as wchar records too, as the app uses them")
+unittest
+{
+    import std.file : remove, tempDir;
+    import std.path : buildPath;
+
+    DltFilterRecord!wchar record;
+    record.enabled = true;
+    record.name = "Grüße"w;
+    record.ecuId.value = "ECU1"w;
+    record.ecuId.enabled = true;
+
+    const path = buildPath(tempDir(), "dlf_wchar_round_trip.dlf");
+    saveDlf!wchar(path, [record]);
+    scope (exit)
+        remove(path);
+
+    auto loaded = loadDlf!wchar(path);
+    assert(loaded.length == 1);
+    assert(loaded[0].name == "Grüße"w);
+    assert(loaded[0].ecuId.value == "ECU1"w);
 }
