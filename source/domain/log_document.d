@@ -5,7 +5,6 @@ import domain.document_item;
 import domain.document_id;
 
 import log_core.log_message;
-import formats.dlt.fields;
 import log_core.log_filter;
 
 import domain.anchors;
@@ -375,6 +374,7 @@ class LogDocument : Document
 version (unittest)
 {
     import formats.dlt.format : buildDltMessage;
+    import formats.dlt.fields : ecuId;
 
     private string writeTestDlt(string name, size_t messageCount, const(char)[4] ecuId = "ECU1")
     {
