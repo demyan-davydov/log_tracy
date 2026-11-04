@@ -7,7 +7,7 @@ import formats.dlt.protocol : LogLevel, MessageType;
 import domain.document_id;
 import log_core.log_format : ColumnInfo, LogFormat;
 import domain.document_item;
-import domain.index.anchors;
+import domain.anchors;
 
 import utils.event_bus.event_bus_interface : SignalConsumer;
 

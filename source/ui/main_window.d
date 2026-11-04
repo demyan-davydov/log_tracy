@@ -13,7 +13,7 @@ import log_core.log_message : TimeKind;
 import domain.log_document;
 
 import ui.filter_commands : DocumentFilters;
-import domain.search_filter : SearchFilter;
+import log_core.search_filter : SearchFilter;
 import ui.main_view_fsm;
 import ui.search_view_fsm;
 import log_core.log_filter : LogFilter;

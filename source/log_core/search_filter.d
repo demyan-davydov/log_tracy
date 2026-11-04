@@ -1,4 +1,4 @@
-module domain.search_filter;
+module log_core.search_filter;
 
 import log_core.log_filter;
 import log_core.log_message;

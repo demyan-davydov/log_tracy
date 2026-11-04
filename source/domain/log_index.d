@@ -8,7 +8,7 @@ import log_core.byte_source;
 import domain.index.offset_index;
 import domain.index.filter_index;
 import domain.index.search_index;
-import domain.index.anchors;
+import domain.anchors;
 import utils.background_slot;
 import domain.document_item;
 import domain.document : Document, OperationStarted, OperationProgress, OperationFinished;

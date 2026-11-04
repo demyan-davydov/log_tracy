@@ -8,7 +8,7 @@ import log_core.log_message;
 import formats.dlt.fields;
 import log_core.log_filter;
 
-import domain.index.anchors;
+import domain.anchors;
 import domain.log_index;
 import formats.registry : createFormat, detectFormat;
 import log_core.byte_source;
@@ -1010,7 +1010,7 @@ unittest
 @("LogDocument anchors: the limit is enforced silently")
 unittest
 {
-    import domain.index.anchors : Anchors;
+    import domain.anchors : Anchors;
     import std.file : remove;
 
     string path;

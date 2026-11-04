@@ -3,7 +3,7 @@ module domain.workspace;
 import domain.document;
 import domain.document_id;
 import domain.document_item : DocumentItem;
-import domain.index.anchors;
+import domain.anchors;
 
 import log_core.log_filter : LogFilter;
 import log_core.log_format : LogFormat;

@@ -1,4 +1,4 @@
-module domain.index.anchors;
+module domain.anchors;
 
 import std.conv : to;
 
