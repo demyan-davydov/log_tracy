@@ -5,6 +5,7 @@ import dlt_core.dlt_format : DltDetector;
 import formats.dmesg : DmesgDetector;
 import formats.logcat : LogcatDetector;
 import formats.plain_text : PlainTextDetector;
+import formats.syslog : SyslogDetector;
 
 import std.algorithm.comparison : min;
 
@@ -43,6 +44,7 @@ private const(FormatDetector)[] detectors()
     all ~= new DltDetector();
     all ~= new LogcatDetector();
     all ~= new DmesgDetector();
+    all ~= new SyslogDetector();
     all ~= new PlainTextDetector();
     return all;
 }
@@ -87,4 +89,13 @@ unittest
 
     auto dmesg = cast(const(ubyte)[]) "[    0.000000] Linux version 6.1\n[    0.000002] BIOS-provided map\n";
     assert(cast(DmesgFormat) detectFormat("dmesg.txt", dmesg) !is null);
+}
+
+@("detectFormat: a syslog file is syslog, not text")
+unittest
+{
+    import formats.syslog : SyslogFormat;
+
+    auto syslog = cast(const(ubyte)[]) "Nov  3 14:22:01 host sshd[812]: a\nNov  3 14:22:02 host cron[9]: b\n";
+    assert(cast(SyslogFormat) detectFormat("syslog", syslog) !is null);
 }
