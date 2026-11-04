@@ -457,6 +457,54 @@ function setupEvents() {
         if (fn) filterCommand("addDlf", fn);
     });
 
+    // An empty set, kept with the log like a loaded one; its first rule is
+    // asked for right away
+    document.on("click", "#btn-new-dlf", () => {
+        if (activeDocId === null) return;
+        filterCommand("newFilterSet");
+        if (filterMessages.get(activeDocId)) return;
+        const set = shownFilters.sets.length - 1;
+        // No first rule: no set either, so cancelled tries don't pile up
+        if (!editRule(set, -1)) filterCommand("removeFilterSet", set);
+    });
+
+    document.on("click", ".filter-add", (evt, button) => {
+        editRule(parseInt(button.parentElement.getAttribute("set-index")), -1);
+        return true;
+    });
+
+    // A set is a copy kept with the log: exported to share it or open it in dlt-viewer
+    document.on("click", ".filter-export", (evt, button) => {
+        const set = parseInt(button.parentElement.getAttribute("set-index"));
+        const fn = Window.this.selectFile({
+            mode: "save",
+            caption: "Export Filter",
+            extension: "dlf",
+            filter: "DLT Filter Files (*.dlf)|*.dlf|All Files (*.*)|*.*"
+        });
+        if (fn) filterCommand("exportFilterSet", set, fn);
+        return true;
+    });
+
+    document.on("click", ".filter-rule-edit", (evt, button) => {
+        const row = button.parentElement;
+        editRule(parseInt(row.getAttribute("set-index")), parseInt(row.getAttribute("rule-index")));
+        return true;
+    });
+
+    document.on("dblclick", ".filter-rule", (evt, row) => {
+        if (evt.target.tag === "input") return; // the switch
+        editRule(parseInt(row.getAttribute("set-index")), parseInt(row.getAttribute("rule-index")));
+        return true;
+    });
+
+    document.on("click", ".filter-rule-remove", (evt, button) => {
+        const row = button.parentElement;
+        filterCommand("removeFilterRule", parseInt(row.getAttribute("set-index")),
+            parseInt(row.getAttribute("rule-index")));
+        return true;
+    });
+
     document.on("change", ".filter-set-switch", (evt, input) => {
         const row = input.parentElement;
         filterCommand("enableFilterSet", parseInt(row.getAttribute("set-index")), input.value);
@@ -545,35 +593,62 @@ function filterCommand(name, ...args) {
     showFilters();
 }
 
+let shownFilters = { canLoad: false, sets: [] }; // what showFilters() got last
+
+// Opens the editor of a rule of a set of the active document (rule -1: a new
+// one) and applies what it closes with. A rule the backend refuses (e.g. an
+// invalid regular expression) opens the editor again with the error.
+// @returns true if the rule was applied, false if the editor was cancelled
+function editRule(set, rule) {
+    if (activeDocId === null) return false;
+    let values = JSON.parse(Window.this.xcall("getFilterRule", set, rule) || "null");
+    if (!values) return false;
+    let error = "";
+    for (;;) {
+        const result = Window.this.modal({
+            url: "rule-editor.htm",
+            alignment: "center",
+            parameters: { title: rule < 0 ? "New Rule" : "Edit Rule", theme: currentTheme, rule: values, error }
+        });
+        if (!result) return false;
+        const json = JSON.stringify(result);
+        error = rule < 0 ? Window.this.xcall("addFilterRule", set, json)
+            : Window.this.xcall("updateFilterRule", set, rule, json);
+        if (!error) break;
+        values = result;
+    }
+    filterMessages.set(activeDocId, "");
+    showFilters();
+    return true;
+}
+
 // Shows the filter sets of the active document: a set is a row with its
 // switch, name and remove button, followed by a row per rule
 function showFilters() {
     const info = activeDocId === null
         ? { canLoad: false, sets: [] }
         : JSON.parse(Window.this.xcall("getFilters") || "{}");
+    shownFilters = info;
     const panel = $("#filter-sets");
     // Built from scratch, as the quick filter was: reused inputs keep their state
     panel.clear();
     if (!info.sets || info.sets.length === 0)
         panel.append(<div class="filters-empty">{info.canLoad
-            ? "No filters: load a .dlf to filter the log"
+            ? "No filters: load a .dlf or create a new one"
             : "Filters (.dlf) are for DLT logs"}</div>);
     (info.sets || []).forEach((set, s) => {
-        const setClasses = ["filter-set"];
-        if (!set.enabled) setClasses.push("off");
-        if (set.error) setClasses.push("unread");
-        const element = <div class={setClasses.join(" ")}>
+        const element = <div class={set.enabled ? "filter-set" : "filter-set off"}>
             <div class="filter-row filter-set-head" set-index={s}>
                 <input type="checkbox" class="filter-set-switch" />
-                <span class="filter-name">{set.name}</span>
-                <span class="filter-remove" title="Remove this filter">×</span>
+                <span class="filter-name" title={set.source ? `Loaded from ${set.source}` : ""}>{set.name}</span>
+                <span class="filter-button filter-export" title="Export to a .dlf file">⤓</span>
+                <span class="filter-button filter-add" title="Add a rule">+</span>
+                <span class="filter-button filter-remove" title="Remove this filter">×</span>
             </div>
         </div>;
         panel.append(element);
         const block = panel.lastElementChild;
         block.$(".filter-set-switch").value = set.enabled;
-        // A file gone since the log was opened last: listed, to remove or wait for
-        if (set.error) block.append(<div class="filter-note set-note">{set.error}</div>);
         set.rules.forEach((rule, r) => {
             const classes = ["filter-row", "filter-rule"];
             if (!rule.enabled) classes.push("off");
@@ -583,6 +658,8 @@ function showFilters() {
                 <span class="filter-kind" title={ruleKindTitles[rule.kind]}>{ruleKindMarks[rule.kind]}</span>
                 <span class="filter-swatch" />
                 <span class="filter-name">{rule.name || "(no name)"}</span>
+                <span class="filter-button filter-rule-edit" title="Edit this rule (or double-click it)">✎</span>
+                <span class="filter-button filter-rule-remove" title="Remove this rule">×</span>
             </div>);
             const row = block.lastElementChild;
             row.$(".filter-rule-switch").value = rule.enabled;
@@ -592,6 +669,7 @@ function showFilters() {
         });
     });
     $("#btn-dlf").style.display = info.canLoad ? "" : "none";
+    $("#btn-new-dlf").style.display = info.canLoad ? "" : "none";
     $("#filter-message").innerText = filterMessages.get(activeDocId) ?? "";
     filtersDocId = activeDocId;
 }

@@ -62,15 +62,13 @@ struct FilterRule
     string problem;
 }
 
-//! The rules loaded from one filter file
+//! A group of rules switched on and off together: what one filter file holds
 struct FilterSet
 {
     string name;
-    string path; // the file the rules come from
+    string source; // the file the rules were loaded from; "" if none
     bool enabled = true;
     FilterRule[] rules;
-    //! Why the rules couldn't be read (the file is gone); "" if they were
-    string problem;
 }
 
 //! @returns why `rule` can't be applied to a log with `columns` (an unknown

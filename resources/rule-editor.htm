@@ -1,0 +1,231 @@
+<html window-width="560" window-height="560">
+
+<!-- The editor of one rule of a .dlf, opened modal by editRule() in script.js.
+     It offers exactly the fields of a dlt-viewer filter (DlfFilter in
+     source/formats/dlt/dlf.d), so the file stays compatible both ways.
+     Parameters: { title, theme, rule: {DlfFilter fields}, error }.
+     Closes with the edited fields, or null on Cancel. -->
+
+<head>
+    <title>Filter Rule</title>
+    <style id="theme-style" src="theme-light.css" />
+    <style src="style.css" />
+    <style>
+        body { flow: vertical; }
+        main { size: *; overflow-y: auto; }
+        table.rule-form { width: *; border-spacing: 4dip 6dip; }
+        table.rule-form td { vertical-align: middle; white-space: nowrap; }
+        table.rule-form td.value { width: *; }
+        table.rule-form input[type=text] { width: *; }
+        table.rule-form input[type=integer] { width: 6em; }
+        .rule-section td { padding-top: 10dip; font-weight: 600; color: var(--text-label); }
+        .rule-hint { font-size: 0.85em; color: var(--text-label); }
+        #rule-error { color: var(--log-error); padding: 4dip 0; }
+        #rule-error:empty { display: none; }
+        #color-swatch {
+            display: inline-block; width: 14dip; height: 14dip; margin-left: 6dip;
+            border-radius: 2dip; border: 1px solid var(--border-color); vertical-align: middle;
+        }
+    </style>
+    <script type="module">
+        import { $, $$ } from "@sciter";
+
+        const params = Window.this.parameters || {};
+        const rule = params.rule || {};
+
+        // Every control bound to a field of the rule has field="name"; a value
+        // control has enables="name of its switch", turned on when typed into
+        function read() {
+            const result = {};
+            for (const control of $$("[field]")) {
+                const name = control.getAttribute("field");
+                if (control.getAttribute("type") === "checkbox") result[name] = !!control.value;
+                else if (control.tag === "select" || control.getAttribute("type") === "integer")
+                    result[name] = parseInt(control.value) || 0;
+                else result[name] = control.value || "";
+            }
+            return result;
+        }
+
+        function write(values) {
+            for (const control of $$("[field]")) {
+                const value = values[control.getAttribute("field")];
+                if (value === undefined) continue;
+                if (control.tag === "select") {
+                    // A value of the file that isn't among the options (a type or
+                    // a level dlt-viewer doesn't know) is kept, shown as it is
+                    if (!control.$(`option[value="${value}"]`)) {
+                        const option = document.createElement("option");
+                        option.setAttribute("value", String(value));
+                        option.innerText = `(${value})`;
+                        control.append(option);
+                    }
+                    control.value = String(value);
+                } else control.value = value;
+            }
+            showColor();
+        }
+
+        function showColor() {
+            $("#color-swatch").style.setProperty("background-color", $("[field=color]").value || "transparent");
+        }
+
+        document.on("ready", () => {
+            if (params.theme === "dark") $("#theme-style").attributes["src"] = "theme-dark.css";
+            $("#rule-title").innerText = params.title || "Filter Rule";
+            write(rule);
+            $("#rule-error").innerText = params.error || "";
+            $("[field=name]").focus();
+        });
+
+        document.on("input", "[enables]", (evt, control) => {
+            $(`[field=${control.getAttribute("enables")}]`).value = true;
+        });
+
+        document.on("input", "[field=color]", showColor);
+
+        $("#btn-ok").on("click", () => Window.this.close(read()));
+        $("#btn-cancel").on("click", () => Window.this.close(null));
+
+        document.on("keydown", (evt) => {
+            if (evt.code === "Escape") { Window.this.close(null); return true; }
+            if (evt.code === "Enter" && evt.target.tag !== "select") { Window.this.close(read()); return true; }
+        });
+    </script>
+</head>
+
+<body>
+    <header id="rule-title">Filter Rule</header>
+    <main>
+        <div id="rule-error"></div>
+        <table class="rule-form">
+            <tr>
+                <td></td>
+                <td>Name</td>
+                <td class="value" colspan="3"><input type="text" field="name" /></td>
+            </tr>
+            <tr>
+                <td></td>
+                <td>Type</td>
+                <td class="value" colspan="3">
+                    <select field="type">
+                        <option value="0">Include: show the matched records</option>
+                        <option value="1">Exclude: hide the matched records</option>
+                        <option value="2">Marker: highlight the matched records</option>
+                    </select>
+                </td>
+            </tr>
+            <tr>
+                <td><input type="checkbox" field="enabled" /></td>
+                <td colspan="4">Enabled</td>
+            </tr>
+            <tr>
+                <td></td>
+                <td>Color</td>
+                <td class="value" colspan="3">
+                    <input type="text" field="color" style="width: 7em" /><span id="color-swatch"></span>
+                </td>
+            </tr>
+
+            <tr class="rule-section"><td colspan="5">Conditions: all checked ones must match</td></tr>
+            <tr>
+                <td><input type="checkbox" field="enableEcu" /></td>
+                <td>ECU ID</td>
+                <td class="value" colspan="3"><input type="text" field="ecuId" enables="enableEcu" /></td>
+            </tr>
+            <tr>
+                <td><input type="checkbox" field="enableApp" /></td>
+                <td>App ID</td>
+                <td class="value"><input type="text" field="appId" enables="enableApp" /></td>
+                <td colspan="2"><label><input type="checkbox" field="regexApp" /> Regex</label></td>
+            </tr>
+            <tr>
+                <td><input type="checkbox" field="enableCtx" /></td>
+                <td>Context ID</td>
+                <td class="value"><input type="text" field="ctxId" enables="enableCtx" /></td>
+                <td colspan="2"><label><input type="checkbox" field="regexCtx" /> Regex</label></td>
+            </tr>
+            <tr>
+                <td><input type="checkbox" field="enablePayload" /></td>
+                <td>Payload</td>
+                <td class="value"><input type="text" field="payload" enables="enablePayload" /></td>
+                <td><label><input type="checkbox" field="regexPayload" /> Regex</label></td>
+                <td><label><input type="checkbox" field="ignoreCasePayload" /> Ignore case</label></td>
+            </tr>
+            <tr>
+                <td><input type="checkbox" field="enableHeader" /></td>
+                <td>Header</td>
+                <td class="value"><input type="text" field="header" enables="enableHeader" /></td>
+                <td><label><input type="checkbox" field="regexHeader" /> Regex</label></td>
+                <td><label><input type="checkbox" field="ignoreCaseHeader" /> Ignore case</label></td>
+            </tr>
+            <tr>
+                <td></td>
+                <td colspan="4" class="rule-hint">Without Regex, App ID is the exact value; Context ID, Payload
+                    and Header are found as a part. The header isn't applied yet.</td>
+            </tr>
+            <tr>
+                <td><input type="checkbox" field="enableMessageId" /></td>
+                <td>Message ID</td>
+                <td class="value" colspan="3">
+                    <input type="integer" field="messageIdMin" enables="enableMessageId" /> to
+                    <input type="integer" field="messageIdMax" enables="enableMessageId" />
+                    <span class="rule-hint">to 0: exactly the first</span>
+                </td>
+            </tr>
+            <tr>
+                <td><input type="checkbox" field="enableLevelMin" /></td>
+                <td>Level from</td>
+                <td class="value" colspan="3">
+                    <select field="levelMin" enables="enableLevelMin">
+                        <option value="0">-</option>
+                        <option value="1">Fatal</option>
+                        <option value="2">Error</option>
+                        <option value="3">Warn</option>
+                        <option value="4">Info</option>
+                        <option value="5">Debug</option>
+                        <option value="6">Verbose</option>
+                    </select>
+                </td>
+            </tr>
+            <tr>
+                <td><input type="checkbox" field="enableLevelMax" /></td>
+                <td>Level to</td>
+                <td class="value" colspan="3">
+                    <select field="levelMax" enables="enableLevelMax">
+                        <option value="0">-</option>
+                        <option value="1">Fatal</option>
+                        <option value="2">Error</option>
+                        <option value="3">Warn</option>
+                        <option value="4">Info</option>
+                        <option value="5">Debug</option>
+                        <option value="6">Verbose</option>
+                    </select>
+                </td>
+            </tr>
+            <tr>
+                <td><input type="checkbox" field="enableCtrl" /></td>
+                <td colspan="4">Control messages only</td>
+            </tr>
+
+            <tr class="rule-section"><td colspan="5">Display (kept for dlt-viewer, not used yet)</td></tr>
+            <tr>
+                <td><input type="checkbox" field="enableMarker" /></td>
+                <td colspan="4">Mark the matched records with the color</td>
+            </tr>
+            <tr>
+                <td><input type="checkbox" field="enableRegexSearchReplace" /></td>
+                <td>Replace</td>
+                <td class="value"><input type="text" field="regexSearch" enables="enableRegexSearchReplace" /></td>
+                <td>with</td>
+                <td><input type="text" field="regexReplace" enables="enableRegexSearchReplace" /></td>
+            </tr>
+        </table>
+    </main>
+    <footer>
+        <button id="btn-cancel">Cancel</button>
+        <button id="btn-ok" class="primary">OK</button>
+    </footer>
+</body>
+
+</html>

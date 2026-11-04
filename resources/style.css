@@ -510,28 +510,29 @@ frameset {
     color: var(--log-error);
 }
 
-/* The file of the set couldn't be read: muted, like a missing recent file */
-.filter-set.unread .filter-set-head .filter-name,
-.filter-note.set-note {
-    color: var(--text-label);
-}
 
-.filter-note.set-note {
-    padding-left: 26dip;
-}
-
-.filter-remove {
-    width: 16dip;
+/* The buttons of a set (⤓ export, +, ×) and of a rule (✎, ×) */
+.filter-button {
+    min-width: 16dip;
     height: 16dip;
     line-height: 16dip;
     text-align: center;
-    border-radius: 50%;
+    border-radius: 8dip;
     color: var(--tab-close);
     cursor: pointer;
 }
 
-.filter-remove:hover {
+.filter-button:hover {
     background: var(--tab-close-hover);
+}
+
+/* The buttons of a rule only where the mouse is: the list stays calm */
+.filter-rule .filter-button {
+    visibility: hidden;
+}
+
+.filter-rule:hover .filter-button {
+    visibility: visible;
 }
 
 .filter-actions {

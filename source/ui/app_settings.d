@@ -9,6 +9,7 @@ import std.array;
 import std.algorithm;
 
 import formats.registry : formatInfo;
+import formats.dlt.dlf : DlfFilter, dlfFilterFromJson, dlfFilterToJson;
 import log_core.log_format : FormatChoice, FormatInfo;
 
 struct WindowRect
@@ -44,12 +45,14 @@ string recentFilePath(string path)
     return buildNormalizedPath(absolutePath(path));
 }
 
-/// A filter file loaded for a log, with what was switched on in it
+/// A filter set of a log: a copy of the rules of the .dlf it was loaded
+/// from (or made from scratch), with the edits and switches made since
 struct SavedFilter
 {
-    string path;
+    string name;
+    string source; /// the .dlf it was loaded from or exported to; "" if none
     bool enabled = true; /// the whole set
-    bool[] rules; /// each rule, in the order of the file
+    DlfFilter[] rules; /// in the order of the file
 }
 
 /// A file of the recent list
@@ -65,7 +68,7 @@ struct RecentFile
 RecentFile copyOf(const RecentFile file)
 {
     return RecentFile(file.path, file.format, file.lastUsed,
-        file.filters.map!(f => SavedFilter(f.path, f.enabled, f.rules.dup)).array);
+        file.filters.map!(f => SavedFilter(f.name, f.source, f.enabled, f.rules.dup)).array);
 }
 
 /// ditto, of the list
@@ -300,9 +303,10 @@ static JSONValue toJSON(in AppSettings settings)
             fv.object["lastUsed"] = JSONValue(f.lastUsed);
         if (f.filters.length)
             fv.object["filters"] = JSONValue(f.filters.map!(filter => JSONValue([
-                "path": JSONValue(filter.path),
+                "name": JSONValue(filter.name),
+                "source": JSONValue(filter.source),
                 "enabled": JSONValue(filter.enabled),
-                "rules": JSONValue(filter.rules.map!(on => JSONValue(on)).array),
+                "rules": JSONValue(filter.rules.map!((ref rule) => dlfFilterToJson(rule)).array),
             ])).array);
         recentArray ~= fv;
     }
@@ -329,18 +333,11 @@ private FormatChoice formatOf(const JSONValue entry)
     return FormatChoice(id.str);
 }
 
-/// The filters saved in a recent file entry: {"filters": [{"path", "enabled",
-/// "rules": [bool]}]}; an entry without a path is skipped, what isn't a
-/// boolean is off
+/// The filters saved in a recent file entry: {"filters": [{"name", "source",
+/// "enabled", "rules": [{the fields of DlfFilter}]}]}; a set without a name
+/// and a rule that isn't a filter are skipped
 private SavedFilter[] filtersOf(const JSONValue entry)
 {
-    static bool flag(const(JSONValue)* value, bool otherwise)
-    {
-        if (value is null)
-            return otherwise;
-        return value.type == JSONType.true_;
-    }
-
     const filters = "filters" in entry;
     if (filters is null || filters.type != JSONType.array)
         return null;
@@ -349,16 +346,26 @@ private SavedFilter[] filtersOf(const JSONValue entry)
     {
         if (filter.type != JSONType.object)
             continue;
-        const path = "path" in filter;
-        if (path is null || path.type != JSONType.string)
+        const name = "name" in filter;
+        if (name is null || name.type != JSONType.string)
             continue;
         SavedFilter saved;
-        saved.path = path.str;
-        saved.enabled = flag("enabled" in filter, true);
+        saved.name = name.str;
+        if (const source = "source" in filter)
+            if (source.type == JSONType.string)
+                saved.source = source.str;
+        if (const enabled = "enabled" in filter) // on without the key or when true only
+            saved.enabled = enabled.type == JSONType.true_;
         if (const rules = "rules" in filter)
             if (rules.type == JSONType.array)
                 foreach (ref rule; rules.array)
-                    saved.rules ~= flag(&rule, false);
+                {
+                    try
+                        saved.rules ~= dlfFilterFromJson(rule);
+                    catch (Exception)
+                    {
+                    } // skipped
+                }
         result ~= saved;
     }
     return result;
@@ -722,30 +729,47 @@ unittest
     assert(nowMs() < 4_102_444_800_000); // before 2100
 }
 
-/// The filters of a file survive a save and a load; broken entries are skipped
+/// The filters of a file survive a save and a load with their rules; broken
+/// entries and rules are skipped
 unittest
 {
+    import formats.dlt.dlf : DlfFilter;
+
     const path = buildPath(tempDir(), "dlt_explorer_settings_filters_test.json");
     scope (exit) if (exists(path)) remove(path);
 
+    DlfFilter errors;
+    errors.name = "Errors";
+    errors.enableLevelMax = true;
+    errors.levelMax = 2;
+    DlfFilter off;
+    off.enabled = false;
+
     AppSettings settings;
     settings.recentFiles = [RecentFile("/a.dlt", FormatChoice("dlt"), 100,
-            [SavedFilter("/f/one.dlf", true, [true, false]), SavedFilter("/f/two.dlf", false, [])]),
+            [SavedFilter("one.dlf", "/f/one.dlf", true, [errors, off]), SavedFilter("New Filter", "", false, [])]),
         RecentFile("/b.dlt")];
     saveSettings(settings, path);
     assert(loadSettings(path).recentFiles == settings.recentFiles);
 
-    std.file.write(path, `{"recentFiles": [{"path": "/a.dlt", "filters": [{"path": 5}, "x",
-        {"path": "/f/one.dlf", "rules": [true, 1]}]}]}`);
-    assert(loadSettings(path).recentFiles[0].filters == [SavedFilter("/f/one.dlf", true, [true, false])],
-        "a rule state that isn't a boolean is off; an entry without a path is skipped");
+    std.file.write(path, `{"recentFiles": [{"path": "/a.dlt", "filters": [{"name": 5}, "x",
+        {"name": "one.dlf", "rules": [{"name": "Errors"}, {"name": 1}, 7]}]}]}`);
+    DlfFilter named;
+    named.name = "Errors";
+    assert(loadSettings(path).recentFiles[0].filters == [SavedFilter("one.dlf", "", true, [named])],
+        "a set without a name and rules that aren't filters are skipped");
+
+    std.file.write(path, `{"recentFiles": [{"path": "/a.dlt", "filters": [{"name": "a"},
+        {"name": "b", "enabled": true}, {"name": "c", "enabled": 0}, {"name": "d", "enabled": null}]}]}`);
+    assert(loadSettings(path).recentFiles[0].filters.map!(f => f.enabled).array == [true, true, false, false],
+        "on without the key or when true only");
 }
 
 /// Opening a file again or closing the window keeps its filters; they are
 /// changed in place, without reordering the list
 unittest
 {
-    auto filters = [SavedFilter("/f/one.dlf")];
+    auto filters = [SavedFilter("one.dlf", "/f/one.dlf")];
     auto list = [RecentFile("/b.log"), RecentFile("/a.log", FormatChoice("dlt"), 100, filters.dup)];
     assert(withRecentFile(list, RecentFile("/a.log", FormatChoice("dlt"), 200))[0].filters == filters);
     assert(withFilesUsed(list, ["/a.log"], 300)[0].filters == filters);

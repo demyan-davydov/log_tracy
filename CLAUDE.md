@@ -93,11 +93,14 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
   - a `FilterSet` is what one filter file holds; `RuleFilter.compile` builds the view filter from
     the enabled rules of the enabled sets (shown: an include rule matches, or there is none, and
     no exclude rule does; markers don't filter);
-  - `.dlf` files of dlt-viewer are an import into this model (`formats/dlt/dlf`), DLT logs only
+  - a `.dlf` of dlt-viewer is read as `DlfFilter`s (`formats/dlt/dlf`, all the fields of
+    dlt-viewer, written back in its layout) and each becomes a rule (`toRule`); DLT logs only
     (`canLoadDlf`); what the model can't express becomes `FilterRule.problem`, never dropped silently.
-- `ui/filter_commands.DocumentFilters` holds the sets of a document and the panel commands;
-  the window remembers them per recent file (`RecentFile.filters`: the `.dlf` path and the
-  switches, not a copy of the rules).
+- `ui/filter_commands.DocumentFilters` holds the sets of a document and the panel commands,
+  rule editing included (`resources/rule-editor.htm` edits a `DlfFilter`). A set is a **copy**:
+  a loaded `.dlf` is copied into the settings of the log (`RecentFile.filters`, rules as
+  `DlfFilter`s), edits are remembered at once, and a set can be exported to a `.dlf`. No file is
+  referred to, so a `.dlf` loaded for two logs doesn't tie them together.
 
 ### Indexing and threads
 - `LogIndex` runs one operation at a time in a `BackgroundSlot`: build the offset, filter or

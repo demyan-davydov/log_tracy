@@ -467,8 +467,20 @@ class MainWindow : SciterWindow
                         : ui.filters.toJson().toString()).toUTF16();
                 return true;
             }
-            if (method == "addDlf" || method == "removeFilterSet"
-                || method == "enableFilterSet" || method == "enableFilterRule")
+            if (method == "getFilterRule")
+            {
+                // getFilterRule(set, rule) -> the fields of DlfFilter, null if
+                // there is no such rule; rule -1: a new one
+                auto ui = _documentUis.get(_workspace.currentId, null);
+                const rule = getParamInt(1);
+                resultView = (ui is null ? "null" : rule < 0 ? DocumentFilters.newRuleJson().toString()
+                        : ui.filters.ruleJson(getParamInt(0), rule).toString()).toUTF16();
+                return true;
+            }
+            if (method == "addDlf" || method == "newFilterSet" || method == "exportFilterSet"
+                || method == "removeFilterSet" || method == "enableFilterSet"
+                || method == "enableFilterRule" || method == "addFilterRule"
+                || method == "updateFilterRule" || method == "removeFilterRule")
             {
                 auto ui = _documentUis.get(_workspace.currentId, null);
                 if (ui is null)
@@ -476,6 +488,17 @@ class MainWindow : SciterWindow
                 string error;
                 if (method == "addDlf")
                     error = ui.filters.addDlf(normalizePath(getParamString(0)));
+                else if (method == "newFilterSet")
+                    error = ui.filters.newSet();
+                else if (method == "exportFilterSet")
+                    error = ui.filters.exportSet(getParamInt(0), normalizePath(getParamString(1)));
+                else if (method == "addFilterRule")
+                    error = ui.filters.addRule(getParamInt(0), getParamString(1));
+                else if (method == "updateFilterRule")
+                    error = ui.filters.updateRule(getParamInt(0), getParamInt(1), getParamString(2));
+                else if (method == "removeFilterRule")
+                    error = ui.filters.removeRule(getParamInt(0), getParamInt(1));
+
                 else if (method == "removeFilterSet")
                     error = ui.filters.remove(getParamInt(0));
                 else if (method == "enableFilterSet")
@@ -486,7 +509,8 @@ class MainWindow : SciterWindow
                     writeln(method, ": ", error);
                 else
                 {
-                    // Remembered for the file at once, as the recent list is
+                    // The sets are copies kept in the settings of the file:
+                    // remembered at once, as the recent list is
                     foreach (item; _workspace.documents)
                         if (item.docId == _workspace.currentId)
                             _settings.recentFiles = withFilters(_settings.recentFiles,
