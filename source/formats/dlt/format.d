@@ -42,12 +42,15 @@ final class DltFormat : LogFormat
         ColumnInfo("time", "Time", ColumnKind.Time, -1, 120, TimeKind.Absolute),
         ColumnInfo("timestamp", "Timestamp", ColumnKind.Duration, DltField.Timestamp, 150,
             TimeKind.None, 10_000),
+        ColumnInfo("counter", "Count", ColumnKind.Integer, DltField.Counter, 45),
         ColumnInfo("ecu", "EcuId", ColumnKind.Text, DltField.EcuId, 60),
         ColumnInfo("app", "AppId", ColumnKind.Text, DltField.AppId, 60),
         ColumnInfo("ctx", "CtxId", ColumnKind.Text, DltField.CtxId, 60),
+        ColumnInfo("session", "SessionId", ColumnKind.Integer, DltField.SessionId, 70),
         ColumnInfo("type", "Type", ColumnKind.Enum, DltField.Type, 60,
             TimeKind.None, 0, ["LOG", "APP", "NW", "CTRL"]),
         ColumnInfo("level", "Level", ColumnKind.Level, -1, 60),
+        ColumnInfo("msgid", "MsgId", ColumnKind.Integer, DltField.MessageId, 70),
         ColumnInfo("payload", "Payload", ColumnKind.Payload),
     ];
 
@@ -89,10 +92,30 @@ final class DltFormat : LogFormat
             }
 
             const length = recordLength(data[start .. $]);
-            if (length == 0) // incomplete record at the end
+            if (length == 0) // the record runs past the end of the data
             {
-                pos = final_ ? data.length : start;
-                break;
+                if (!final_)
+                {
+                    pos = start; // it may still be growing
+                    break;
+                }
+                if (!_hasStorageHeader)
+                {
+                    pos = data.length;
+                    break;
+                }
+                // A truncated last record or a corrupt length: look for the
+                // next header inside it
+                pos = start + DLT_PATTERN.length;
+                continue;
+            }
+
+            if (!coversHeaders(data[start .. $]))
+            {
+                // A corrupt length: look for the next header inside this record,
+                // a stream without storage headers can only trust the length
+                pos = _hasStorageHeader ? start + DLT_PATTERN.length : start + length;
+                continue;
             }
 
             offsets[count++] = start;
@@ -114,12 +137,24 @@ final class DltFormat : LogFormat
             return null;
 
         const length = recordLength(buffer);
+        if (length == 0 || !coversHeaders(buffer))
+            return null;
         return buffer[0 .. length];
     }
 
     override bool decode(ref LogMessage!wchar msg, const(ubyte)[] record) const nothrow @nogc
     {
         return parseDltItem!wchar(msg, record, _hasStorageHeader);
+    }
+
+    //! @returns true if the length of the record at the start of `buffer`
+    //! covers the headers its standard header announces
+    private bool coversHeaders(const(ubyte)[] buffer) const nothrow @nogc
+    {
+        auto standardHeader = cast(const(StandardHeader)*)(buffer.ptr + storageHeaderSize);
+        if (standardHeader.getVersion() > 1)
+            return true; // other headers: the decoder says it can't show the record
+        return standardHeader.nativeLength >= standardHeader.fullHeaderAndExtendedHeaderSize();
     }
 
     //! @returns the length of the record at the start of `buffer`, including
@@ -586,4 +621,58 @@ unittest
     assert(detector.detect("x.log", cast(ubyte[])[0x01, 0x02] ~ msg).score == 0.8f);
     assert(detector.detect("x.DLT", text).score == 0.04f);
     assert(detector.detect("x.log", text).score == 0);
+}
+
+@("DltFormat.scanRecords: a record shorter than its own headers is skipped")
+unittest
+{
+    // The length (4) doesn't cover the extended header (10) or the ECU ID (4) the flags announce
+    auto shortExtended = buildDltMessage("ECU1", 1, 0, StandardHeader.Type.UseExtendedHeader, 1);
+    auto shortEcuId = buildDltMessage("ECU1", 2, 0, StandardHeader.Type.WithEcuId, 2);
+    auto good = buildDltMessage("ECU1", 3, 0, 0, 3, [0x42]);
+
+    auto format = new DltFormat();
+    assert(scanAll(format, shortExtended ~ good) == [shortExtended.length]);
+    assert(scanAll(format, shortEcuId ~ good) == [shortEcuId.length]);
+    assert(format.recordAt(shortExtended ~ good, 0).length == 0, "not a record to decode");
+
+    auto streamed = new DltFormat(false);
+    const stream = shortExtended[StorageHeader.sizeof .. $] ~ good[StorageHeader.sizeof .. $];
+    assert(scanAll(streamed, stream) == [shortExtended.length - StorageHeader.sizeof]);
+}
+
+@("DltFormat columns: counter, session ID and message ID are shown like in dlt-viewer")
+unittest
+{
+    import std.algorithm : map;
+    import std.array : array;
+
+    assert(new DltFormat().columns.map!(c => c.id).array == ["time", "timestamp", "counter",
+        "ecu", "app", "ctx", "session", "type", "level", "msgid", "payload"]);
+}
+
+@("DltFormat.scanRecords: a length running past the end doesn't hide the records after it")
+unittest
+{
+    auto broken = buildDltMessage("ECU1", 1, 0, 0, 1, [1, 2, 3]);
+    broken[StorageHeader.sizeof + 2 .. StorageHeader.sizeof + 4] = [0xFF, 0xFF];
+    auto msg2 = buildDltMessage("ECU1", 2, 0, 0, 2, [4]);
+    auto msg3 = buildDltMessage("ECU1", 3, 0, 0, 3, [5]);
+    auto data = broken ~ msg2 ~ msg3;
+
+    assert(scanAll(new DltFormat(), data) == [broken.length, broken.length + msg2.length]);
+
+    // Without final_ the record may still be growing: wait for it
+    size_t[4] offsets;
+    const r = new DltFormat().scanRecords(data, 0, offsets[], false);
+    assert(r.count == 0 && r.next == 0);
+}
+
+@("DltFormat.scanRecords: a record of another protocol version isn't judged by version 1 headers")
+unittest
+{
+    // Version 2 with the bits of an extended header and a length too short for it in version 1
+    const ubyte version2 = 2 << 5 | StandardHeader.Type.UseExtendedHeader;
+    auto record = buildDltMessage("ECU1", 1, 0, version2, 1);
+    assert(scanAll(new DltFormat(), record) == [0]);
 }

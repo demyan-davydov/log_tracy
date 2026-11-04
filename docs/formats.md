@@ -5,7 +5,7 @@
 Файл из списка недавних открывается в том формате, в котором его открывали в прошлый раз (формат и вариант сохраняются в настройках), без повторного определения; формат определяется заново, только если он не сохранен или эта сборка не может его создать (неизвестный формат, неверный вариант). Рядом с файлом в списке показывается значок формата из трех букв, полное имя — в подсказке.
 
 ## Supported
-- **DLT** (`DLT`, бинарный): с storage header (файлы DLT)
+- **DLT** (`DLT`, бинарный): протокол версии 1 с storage header (файлы DLT). Verbose-аргументы всех типов (с именем и единицей, fixed point, 128-битные целые в hex, float16, целые с кодировкой hex/bin); non-verbose — `[message ID]`, hex и ASCII данных; control-сообщения с именами сервисов и статусов, разбор get_software_version, connection_info, timezone, marker. ECU берется из стандартного заголовка, если он там есть, иначе из storage header. Колонки Count, SessionId, MsgId
 - **Plain text** (`TXT`): запасной формат, запись = строка
 - **Android logcat** (`ADB`): `threadtime` (с годом `-v year` и без), `brief`
 - **Kernel log (dmesg)** (`KRN`): обычный вывод (время от загрузки), `<priority>` (`dmesg -r`, `/proc/kmsg`), `dmesg -x` (facility и level по имени), `dmesg -T` (время по часам), `/dev/kmsg` (`priority,seq,usec,flags;message` со строками словаря)
@@ -15,7 +15,7 @@
 - **CAN trace, Vector ASC** (`ASC`): шапка (`base hex|dec`, `date`, `timestamps`), CAN, Remote, CAN FD (с символьным именем и без), ErrorFrame, прочие события
 
 ## Planned
-- **DLT**: декодирование non-verbose сообщений через FIBEX; DLT без storage header (по serial и TCP) для потоков
+- **DLT**: декодирование non-verbose сообщений через FIBEX; DLT без storage header (по serial и TCP) для потоков; протокол DLT v2 и storage header v2 (сейчас запись v2 показывается как неподдерживаемая); сборка сегментированных сообщений (NWST/NWCH/NWEN); разбор списка приложений и контекстов из get_log_info
 - **Логи приложений** «время, уровень, сообщение» (log4j/logback, spdlog, Python logging, glog): встроенные шаблоны, сейчас открываются как plain text
 - **Пользовательские форматы**: шаблон из настроек тем же движком, что и встроенные
 - **JSON Lines**: колонки по ключам (время, уровень, сообщение по известным ключам)

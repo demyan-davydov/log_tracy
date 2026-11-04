@@ -192,20 +192,17 @@ align(1) struct MessageInfo
         return (info & MessageTypeInfoMask) >> 4;
     }
 
+    //! The level of a log message, verbose or not: MTIN holds it when MSTP is
+    //! Log. Other message types, and values outside Fatal..Verbose, have no level.
     LogLevel logLevel() const pure nothrow @nogc @property
     {
-        if (isVerbose() && messageType() == MessageType.Log)
-        {
-            // Verbose: Log Level is in bits 4..6 of info (Wait, standard says Message Type Info?)
-            // Standard:
-            // Byte 0: Mesage Info
-            //   Bit 0: VERB (Verbose)
-            //   Bit 1-3: MST (Message Type)
-            //   Bit 4-7: MTIN (Message Type Info) -> This contains Log Level if MST=Log
-            return cast(LogLevel)(messageTypeInfo());
-        }
+        if (messageType() != MessageType.Log)
+            return LogLevel.None;
 
-        return LogLevel.Info; // Default/Unknown for Non-Verbose
+        const mtin = messageTypeInfo();
+        if (mtin < LogLevel.Fatal || mtin > LogLevel.Verbose)
+            return LogLevel.None;
+        return cast(LogLevel) mtin;
     }
 
     AppTraceType appTraceType() const pure nothrow @nogc @property
@@ -308,15 +305,18 @@ enum TypeInfoFlags : uint
     TypeSigned = 1 << 5,
     TypeUnsigned = 1 << 6,
     TypeFloat = 1 << 7,
-    TypeString = 1 << 8,
-    TypeRaw = 1 << 9,
+    TypeArray = 1 << 8,
+    TypeString = 1 << 9,
+    TypeRaw = 1 << 10,
     VariableInfo = 1 << 11,
     FixedPoint = 1 << 12,
     TypeTraceInfo = 1 << 13,
     TypeStruct = 1 << 14,
     StringCodingMask = 0x00000007 << 15, // Bits 15-17
     StringCodingASCII = 0 << 15,
-    StringCodingUTF8 = 1 << 15
+    StringCodingUTF8 = 1 << 15,
+    StringCodingHEX = 2 << 15, // integers: shown in hex
+    StringCodingBIN = 3 << 15, // integers: shown in binary
 }
 
 //! @brief Definitions of DLT services.
@@ -354,7 +354,12 @@ enum ServiceResponseStatus : ubyte
 {
     Ok = 0x00,
     NotSupported = 0x01,
-    Error = 0x02
+    Error = 0x02,
+    PermissionDenied = 0x03, // dlt-daemon
+    Warning = 0x04, // dlt-daemon
+    // get_log_info answers 3..7 (the options it was asked for) when it succeeds
+    NoMatchingContextId = 0x08, // get_log_info
+    Overflow = 0x09, // get_log_info
 }
 
 //! @brief Definitions of DLT service connection state
@@ -507,7 +512,7 @@ unittest
     assert(messageInfo.isVerbose() == false);
     assert(messageInfo.messageType() == MessageType.Log);
     assert(messageInfo.messageTypeInfo() == 0x00);
-    assert(messageInfo.logLevel() == LogLevel.Info);
+    assert(messageInfo.logLevel() == LogLevel.None, "level 0 is not a level");
 }
 
 @("getHeaderSize: Min Header (UEH=0)")
