@@ -108,6 +108,43 @@ bool readTimeOfDay(ref const(char)[] s, out long nanoseconds) pure nothrow @nogc
     return true;
 }
 
+//! Reads an ISO 8601 date and time: "YYYY-MM-DDTHH:MM:SS[.fraction]" and an
+//! optional zone: "Z", "+HH:MM", "+HHMM" (or "-"). A space instead of "T" too.
+//! @param timeNs - the time as written, nanoseconds since the epoch as if in UTC
+//! @param hasZone - a zone was given: timeNs - zoneOffsetNs is the moment in UTC
+bool readIsoDateTime(ref const(char)[] s, out long timeNs, out bool hasZone, out long zoneOffsetNs) pure nothrow @nogc @safe
+{
+    uint year, month, day;
+    long timeOfDay;
+    if (!readDigits(s, 4, year) || !readChar(s, '-') || !readDigits(s, 2, month) || !readChar(s, '-')
+        || !readDigits(s, 2, day) || s.length == 0 || (s[0] != 'T' && s[0] != ' '))
+        return false;
+    s = s[1 .. $];
+    if (!readTimeOfDay(s, timeOfDay) || !isValidDate(year, month, day))
+        return false;
+    timeNs = toEpochNs(year, month, day, timeOfDay);
+
+    if (s.length && s[0] == 'Z')
+    {
+        s = s[1 .. $];
+        hasZone = true;
+    }
+    else if (s.length && (s[0] == '+' || s[0] == '-'))
+    {
+        const sign = s[0] == '-' ? -1 : 1;
+        s = s[1 .. $];
+        uint hours, minutes;
+        if (!readDigits(s, 2, hours))
+            return false;
+        readChar(s, ':'); // +HH:MM or +HHMM
+        if (!readDigits(s, 2, minutes) || hours > 23 || minutes > 59)
+            return false;
+        zoneOffsetNs = sign * (hours * 60L + minutes) * 60 * 1_000_000_000L;
+        hasZone = true;
+    }
+    return true;
+}
+
 //! Days since 1970-01-01 of a date of the proleptic Gregorian calendar
 //! (H. Hinnant's days_from_civil). Not std.datetime's Date.dayOfGregorianCal:
 //! the Date constructor throws, and the callers are nothrow @nogc.
@@ -195,4 +232,37 @@ unittest
     assert(!readMonthName(s, month));
     s = "No";
     assert(!readMonthName(s, month), "too short");
+}
+
+@("text parsing: ISO 8601 date and time with or without a zone")
+unittest
+{
+    enum long second = 1_000_000_000L;
+    const local = toEpochNs(2026, 11, 3, ((14 * 60 + 22) * 60 + 1) * second);
+    long t, offset;
+    bool zone;
+
+    const(char)[] s = "2026-11-03T14:22:01 rest";
+    assert(readIsoDateTime(s, t, zone, offset) && s == " rest");
+    assert(t == local && !zone);
+
+    s = "2026-11-03T14:22:01.123456+01:00 x";
+    assert(readIsoDateTime(s, t, zone, offset) && s == " x");
+    assert(t == local + 123_456_000 && zone && offset == 3600 * second);
+
+    s = "2026-11-03T14:22:01Z";
+    assert(readIsoDateTime(s, t, zone, offset) && zone && offset == 0 && s.length == 0);
+
+    s = "2026-11-03T14:22:01-0530"; // journalctl short-iso writes no colon
+    assert(readIsoDateTime(s, t, zone, offset) && zone && offset == -(5 * 3600 + 30 * 60) * second);
+
+    s = "2026-11-03 14:22:01,5";
+    assert(readIsoDateTime(s, t, zone, offset) && t == local + second / 2);
+
+    foreach (bad; ["2026-13-03T14:22:01", "2026-11-03", "2026-11-03T14:22", "Nov  3 14:22:01",
+            "2026-11-03T14:22:01+1"])
+    {
+        s = bad;
+        assert(!readIsoDateTime(s, t, zone, offset), bad);
+    }
 }

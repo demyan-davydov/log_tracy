@@ -12,6 +12,7 @@ import log_core.log_level : LogLevel;
 import log_core.log_message : LogMessage, TimeKind;
 import log_core.text_format;
 import log_core.text_parsing;
+import log_core.syslog_priority : readPriority, severityByName;
 
 //! Field indexes of a dmesg record in LogMessage
 enum DmesgField : ubyte
@@ -166,54 +167,15 @@ private struct DmesgLine
     bool hasPriority; // the line starts with <priority>
 }
 
-//! Kernel level 0..7 (emerg .. debug)
-private LogLevel kernelLevel(uint value) pure nothrow @nogc @safe
+//! An optional "<priority>" prefix (log_core.syslog_priority). The kernel's
+//! own messages have facility 0 (kern); others write to the kernel buffer
+//! too, e.g. systemd as daemon (<30> is daemon.info).
+private bool readLinePriority(ref const(char)[] s, ref DmesgLine line) pure nothrow @nogc @safe
 {
-    static immutable LogLevel[8] levels = [
-        LogLevel.Fatal, LogLevel.Fatal, LogLevel.Fatal, // emerg, alert, crit
-        LogLevel.Error, LogLevel.Warn, // err, warning
-        LogLevel.Info, LogLevel.Info, LogLevel.Debug // notice, info, debug
-    ];
-    return value < levels.length ? levels[value] : LogLevel.None;
-}
-
-//! The level names of dmesg -x
-private bool levelByName(const(char)[] name, out LogLevel level) pure nothrow @nogc @safe
-{
-    static immutable string[8] names = ["emerg", "alert", "crit", "err", "warn", "notice", "info", "debug"];
-    foreach (i, n; names)
-    {
-        if (name == n)
-        {
-            level = kernelLevel(cast(uint) i);
-            return true;
-        }
-    }
-    return false;
-}
-
-//! Syslog facility names (RFC 5424) by number
-private static immutable string[24] facilityNames = [
-    "kern", "user", "mail", "daemon", "auth", "syslog", "lpr", "news",
-    "uucp", "cron", "authpriv", "ftp", "ntp", "audit", "alert", "clock",
-    "local0", "local1", "local2", "local3", "local4", "local5", "local6", "local7"
-];
-
-//! An optional "<priority>" prefix: facility * 8 + level. The kernel's own
-//! messages have facility 0 (kern); others write to the kernel buffer too,
-//! e.g. systemd as daemon (<30> is daemon.info).
-private bool readPriority(ref const(char)[] s, ref DmesgLine line) pure nothrow @nogc @safe
-{
-    if (s.length < 3 || s[0] != '<')
-        return true; // no prefix
-    const(char)[] rest = s[1 .. $];
-    uint value;
-    if (!readNumber(rest, value) || !readChar(rest, '>') || value >= facilityNames.length * 8)
+    string facility;
+    if (!readPriority(s, line.hasPriority, line.level, facility))
         return false;
-    line.level = kernelLevel(value & 7);
-    line.facility = facilityNames[value >> 3];
-    line.hasPriority = true;
-    s = rest;
+    line.facility = facility;
     return true;
 }
 
@@ -257,7 +219,7 @@ private bool readDecodedPrefix(ref const(char)[] s, out const(char)[] facility, 
     facility = s[0 .. colon].strip;
     s = s[colon + 1 .. $];
     const colon2 = s.indexOf(':');
-    if (colon2 <= 0 || !levelByName(s[0 .. colon2].strip, level) || facility.length == 0)
+    if (colon2 <= 0 || !severityByName(s[0 .. colon2].strip, level) || facility.length == 0)
         return false;
     s = s[colon2 + 1 .. $];
     return skipSpaces(s);
@@ -270,7 +232,7 @@ private bool parseLine(DmesgFormat.Variant variant, const(char)[] s, out DmesgLi
     case DmesgFormat.Variant.Monotonic:
     case DmesgFormat.Variant.Raw:
         line.timeKind = TimeKind.SinceBoot;
-        if (!readPriority(s, line) || !readMonotonic(s, line.timeNs))
+        if (!readLinePriority(s, line) || !readMonotonic(s, line.timeNs))
             return false;
         break;
     case DmesgFormat.Variant.Decoded:
@@ -280,7 +242,7 @@ private bool parseLine(DmesgFormat.Variant variant, const(char)[] s, out DmesgLi
         break;
     case DmesgFormat.Variant.WallClock:
         line.timeKind = TimeKind.Local;
-        if (!readPriority(s, line) || !readWallClock(s, line.timeNs))
+        if (!readLinePriority(s, line) || !readWallClock(s, line.timeNs))
             return false;
         break;
     }
