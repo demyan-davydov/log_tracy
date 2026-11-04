@@ -16,6 +16,9 @@ enum CanField : ubyte
     Dlc, // number: the bytes of data
 }
 
+//! The most data bytes of a frame: CAN FD
+enum size_t maxData = 64;
+
 //! The kind of a record of a CAN trace
 enum CanFrameType : ubyte
 {

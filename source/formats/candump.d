@@ -87,9 +87,6 @@ final class CandumpDetector : FormatDetector
 
 // ─── Line parsing ───────────────────────────────────────────────────────────
 
-//! The most data bytes of a frame: CAN FD
-private enum size_t maxData = 64;
-
 //! The error flag of a SocketCAN ID (CAN_ERR_FLAG)
 private enum uint errorFlag = 0x2000_0000;
 

@@ -97,7 +97,7 @@ final class AscFormat : TextFormat
             msg.level = LogLevel.Error;
 
         auto builder = msg.payloadBuilder();
-        if (line.type == CanFrameType.Event)
+        if (line.type == CanFrameType.Event || line.type == CanFrameType.Error)
             builder.appendUtf8(line.text);
         else
         {
@@ -190,9 +190,6 @@ private bool readBase(const(char)[] s, ref AscHeader header) pure nothrow @nogc 
 
 // ─── Lines ──────────────────────────────────────────────────────────────────
 
-//! The most data bytes of a frame: CAN FD
-private enum size_t maxData = 64;
-
 private struct AscLine
 {
     long offsetNs;
@@ -243,6 +240,8 @@ private bool parseFrame(ref const(AscHeader) header, const(char)[] s, ref AscLin
     if (word == "ErrorFrame")
     {
         line.type = CanFrameType.Error;
+        skipSpaces(s);
+        line.text = s; // the details Vector writes after it (flags, codes)
         return true;
     }
 
@@ -478,4 +477,23 @@ unittest
     foreach (other; ["(1762179721.123456) can0 123#DEADBEEF\n", "just some\ntext lines\n",
             "date of the meeting: Tuesday\n"])
         assert(detector.detect("x.asc", bytes(other)).score == 0, other);
+}
+
+@("AscFormat: an error frame keeps the details after it")
+unittest
+{
+    LogMessage!wchar msg;
+    decodeLine(ascFormat(header), "   2.000000 1  ErrorFrame Flags = 0x0 CodeExt = 0x20A2 Code = 0x82", msg);
+    assert(msg.number(CanField.Type) == CanFrameType.Error);
+    assert(msg.payloadText == "Flags = 0x0 CodeExt = 0x20A2 Code = 0x82"w);
+}
+
+@("AscFormat: with relative timestamps the time is the offset as written, even with a date")
+unittest
+{
+    LogMessage!wchar msg;
+    auto format = ascFormat("date Tue Nov 3 02:22:01.123 pm 2026\nbase hex  timestamps relative\n");
+    decodeLine(format, "   0.250000 1  123  Rx   d 1 00", msg);
+    assert(msg.timeKind == TimeKind.SinceBoot && msg.timeNs == 250 * ms, "not the start and the offset");
+    assert(format.columns[0].timeKind == TimeKind.SinceBoot);
 }
