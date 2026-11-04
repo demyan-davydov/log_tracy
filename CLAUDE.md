@@ -50,12 +50,12 @@ resources/script.js, virtual-dlt-view.js   tabs, panels, virtual table built fro
 ```
 
 ### Where things live
-A package imports only the packages below it (unittests may import more, e.g. a format to build
+A package imports only the packages to its left (unittests may import more, e.g. a format to build
 test data):
 
 ```
 utils  ←  log_core  ←  formats  ←  domain  ←  ui  ←  app.d
-                                   sciter  ←  ui
+utils  ←  sciter  ←  ui
 ```
 
 - `utils/` holds what knows nothing of logs and could move to another project as it is:
