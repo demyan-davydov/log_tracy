@@ -3,7 +3,7 @@ import { VirtualList } from "virtual-select.js";
 import { VirtualSelect } from "virtual-select.js";
 import { formatTime, formatDuration, levelName, cellClass } from "cell-format.js";
 
-// Columns of the active document, from Window.xcall("getColumns"):
+// Columns the tables of the active document show, from Window.xcall("getTableColumns"):
 // [{ id, title, kind, width, timeKind?, unitsPerSecond?, labels? }]
 let columns = [];
 

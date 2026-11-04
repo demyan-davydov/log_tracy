@@ -117,6 +117,16 @@ private static immutable ColumnInfo[] combinedColumns = commonColumns[0 .. $ - 1
 
 final class AccessLogDetector : FormatDetector
 {
+    override const(int)[] variants() const pure nothrow
+    {
+        import std.traits : EnumMembers;
+
+        int[] all;
+        foreach (variant; EnumMembers!(AccessLogFormat.Variant))
+            all ~= variant;
+        return all;
+    }
+
     override FormatInfo info() const pure nothrow @nogc
     {
         return accessLogFormatInfo;

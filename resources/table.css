@@ -71,14 +71,18 @@
 }
 */
 
-.log-table>thead>tr {
+/* The header of a log table; .column-header-row and .column-header give the
+   same look to the columns of Settings, which imitate it */
+.log-table>thead>tr,
+.column-header-row {
     -user-select: none;
     cursor: default;
     font-family: 'Courier New', Courier, monospace;
     background-color: bisque;
 }
 
-.log-table th {
+.log-table th,
+.column-header {
     -user-select: none;
     cursor: default;
     padding: 2px 4px;

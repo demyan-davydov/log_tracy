@@ -68,6 +68,11 @@ final class CandumpFormat : TextFormat
 
 final class CandumpDetector : FormatDetector
 {
+    override const(int)[] variants() const pure nothrow
+    {
+        return [0]; // one, whatever the variant
+    }
+
     override FormatInfo info() const pure nothrow @nogc
     {
         return candumpFormatInfo;

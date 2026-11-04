@@ -151,6 +151,16 @@ private static immutable ColumnInfo[] rfc5424Columns = [
 
 final class SyslogDetector : FormatDetector
 {
+    override const(int)[] variants() const pure nothrow
+    {
+        import std.traits : EnumMembers;
+
+        int[] all;
+        foreach (kind; EnumMembers!(SyslogFormat.Kind))
+            all ~= [SyslogFormat.variantOf(kind, false), SyslogFormat.variantOf(kind, true)];
+        return all;
+    }
+
     override FormatInfo info() const pure nothrow @nogc
     {
         return syslogFormatInfo;
