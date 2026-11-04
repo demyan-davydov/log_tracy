@@ -392,6 +392,21 @@ final class Workspace
         return _documents;
     }
 
+    //! @brief Finds the document opened from the file `path`
+    //! @details Paths are compared absolute and normalized, ignoring case where
+    //! the OS does
+    //! @return Its id, or an invalid one if the file isn't open
+    DocumentId findBySourcePath(string path) const
+    {
+        import std.path : absolutePath, buildNormalizedPath, filenameCmp;
+
+        const key = buildNormalizedPath(absolutePath(path));
+        foreach (record; _documents)
+            if (filenameCmp(buildNormalizedPath(absolutePath(record.sourcePath)), key) == 0)
+                return record.docId;
+        return DocumentId.init;
+    }
+
     //! @brief Gets display name of document
     string displayName(DocumentId docId)
     {
@@ -665,4 +680,43 @@ unittest
     auto ws = new Workspace();
     assert(ws.current.format is null);
     assert(ws.current.columns is null);
+}
+
+@("Workspace.findBySourcePath finds the document of a file, however it is spelled")
+unittest
+{
+    import std.path : absolutePath, buildPath;
+
+    class PlainDocument : Document
+    {
+        SignalConsumer events() { return k_nullEvents; }
+        void dispatchEvents() {}
+        DocumentView mainView() { return k_nullDocumentView; }
+        DocumentView searchView() { return k_nullDocumentView; }
+        void applyViewFilter(LogFilter!wchar filter) {}
+        void applySearchFilter(LogFilter!wchar filter) {}
+        bool setAnchor(size_t index, bool value) { return false; }
+        size_t[] exportAnchors() const pure { return null; }
+        void importAnchors(const(size_t[]) anchors) {}
+        bool requestCancel() { return false; }
+        bool sourceLost() { return false; }
+        const(LogFormat) format() { return null; }
+    }
+
+    auto ws = new Workspace();
+    const a = ws.addDocument(new PlainDocument(), "/logs/a.dlt");
+    const b = ws.addDocument(new PlainDocument(), absolutePath("b.dlt"));
+
+    assert(ws.findBySourcePath("/logs/a.dlt") == a);
+    assert(ws.findBySourcePath("/logs/./x/../a.dlt") == a);
+    assert(ws.findBySourcePath("b.dlt") == b, "relative to the current directory");
+    assert(!ws.findBySourcePath("/logs/c.dlt").isValid);
+    version (Windows)
+    {
+        const w = ws.addDocument(new PlainDocument(), `C:\Logs\W.dlt`);
+        assert(ws.findBySourcePath(`c:/logs/w.dlt`) == w, "case and separators don't matter");
+    }
+
+    ws.removeDocument(a);
+    assert(!ws.findBySourcePath("/logs/a.dlt").isValid, "a closed file can be opened again");
 }

@@ -272,7 +272,8 @@ class MainWindow : SciterWindow
 
         if (eventName == "openFile"w)
         {
-            onFileSelected(normalizePath(asString()));
+            string error;
+            onFileSelected(normalizePath(asString()), error);
             return true;
         }
 
@@ -305,29 +306,6 @@ class MainWindow : SciterWindow
 
         if (method == "getSettings")
         {
-            /*
-            // Serialize settings to JSON string
-            JSONValue j = ["gui": "dlt-explorer"];
-            j.object = null;
-            j.object["windowRect"] = [
-                "left": _settings.windowRect.left,
-                "top": _settings.windowRect.top,
-                "width": _settings.windowRect.width,
-                "height": _settings.windowRect.height
-            ];
-
-            JSONValue[] filesArr;
-            foreach (f; _settings.files)
-            {
-                JSONValue fv = ["path": f.path];
-                fv.object["scrollPosition"] = JSONValue(f.scrollPosition);
-                filesArr ~= fv;
-            }
-            j.object["files"] = JSONValue(filesArr);
-
-            j.object["activeFile"] = JSONValue(_settings.activeFile);
-            j.object["theme"] = JSONValue(_settings.theme);
-            */
             auto jsonSettings = toJSON(_settings);
 
             wstring ws = jsonSettings.toString().toUTF16();
@@ -374,14 +352,7 @@ class MainWindow : SciterWindow
             {
                 const json = getParamString(0);
                 writeln("saveAppState request: ", json);
-                try
-                {
-                    ui.app_settings.saveSettings(applyUiState(_settings, json));
-                }
-                catch (Exception e)
-                {
-                    writeln("Failed to save settings: ", e.msg);
-                }
+                saveSettings(json);
                 return true;
             }
             if (method == "getMainViewCount")
@@ -420,13 +391,30 @@ class MainWindow : SciterWindow
 
                 return true;
             }
+            if (method == "getRecentFiles")
+            {
+                resultView = recentFilesJson(_settings.recentFiles).toUTF16();
+                return true;
+            }
             if (method == "openFile")
             {
                 string path = getParamString(0);
                 if (!path.empty)
                 {
-                    auto id = onFileSelected(normalizePath(path));
-                    resultView = id.toInt();
+                    // The id of the new document, or why the file can't be
+                    // opened: {"path" (as in the recent list), "error"}
+                    string error;
+                    path = normalizePath(path);
+                    auto id = onFileSelected(path, error);
+                    if (id.isValid)
+                    {
+                        resultView = id.toInt();
+                    }
+                    else
+                    {
+                        JSONValue failure = ["path": recentFilePath(path), "error": error];
+                        resultView = failure.toString().toUTF16();
+                    }
                 }
                 return true;
             }
@@ -625,9 +613,20 @@ class MainWindow : SciterWindow
         }
     }
 
-    private DocumentId onFileSelected(string path)
+    private DocumentId onFileSelected(string path, out string error)
     {
         writeln("Opening file: ", path);
+
+        // Open already: its tab is shown instead of a second copy
+        const existing = _workspace.findBySourcePath(path);
+        if (existing.isValid)
+        {
+            _workspace.setCurrent(existing);
+            rememberRecentFile(path);
+            callScript("onDocumentOpened", existing.toInt());
+            return existing;
+        }
+
         try
         {
             writeln("Creating new document: ", path);
@@ -635,14 +634,28 @@ class MainWindow : SciterWindow
             auto docId = _workspace.addDocument(newDoc, path);
             addDocumentUi(docId);
             _workspace.setCurrent(docId);
-            callScript("onDocumentAdded", docId.toInt());
+            rememberRecentFile(path);
+            callScript("onDocumentOpened", docId.toInt());
             return docId;
         }
         catch (Exception e)
         {
             writeln("Error opening file: ", e.msg);
+            error = e.msg;
+            rememberRecentFile(path); // listed on top with the reason, to retry or see
             return DocumentId.init;
         }
+    }
+
+    /// Puts the file opened (or tried) on top of the recent list and saves it
+    /// at once, so the list survives a crash and the placeholder shows it right away
+    private void rememberRecentFile(string path)
+    {
+        auto recentFiles = withRecentFile(_settings.recentFiles, path);
+        if (recentFiles == _settings.recentFiles)
+            return; // e.g. the file on top opened again: nothing to save
+        _settings.recentFiles = recentFiles;
+        saveSettings();
     }
 
     // ... (rest of methods) ...
@@ -698,13 +711,6 @@ class MainWindow : SciterWindow
         return path;
     }
 
-    AppSettings fetchSettingsFromUi() const
-    {
-        const auto appState = callScript("getAppState");
-        const auto json = appState.to!(const(wchar)[])().toUTF8();
-        writeln("Fetching settings from UI, json: ", json);
-        return applyUiState(_settings, json);
-    }
 
     /// Merges UI state JSON (produced by JS getAppState()) into a copy of settings.
     static AppSettings applyUiState(const AppSettings base, const(char)[] json)
@@ -771,17 +777,27 @@ class MainWindow : SciterWindow
         return settings;
     }
 
+    /// Saves the settings with the UI state asked from the script
     void saveSettings() const
     {
         try
         {
-            auto settings = fetchSettingsFromUi();
-            ui.app_settings.saveSettings(settings);
+            const auto appState = callScript("getAppState");
+            saveSettings(appState.to!(const(wchar)[])().toUTF8());
         }
         catch (Exception e)
         {
-            writeln("Failed to call getSettings() ", e.msg);
+            writeln("Failed to call getAppState() ", e.msg);
         }
+    }
+
+    /// Saves the settings with `uiStateJson` (JSON of JS getAppState()) merged in
+    void saveSettings(const(char)[] uiStateJson) const
+    {
+        try
+            ui.app_settings.saveSettings(applyUiState(_settings, uiStateJson));
+        catch (Exception e)
+            writeln("Failed to save settings: ", e.msg);
     }
 
     /// Closes all documents, stopping their background operations.

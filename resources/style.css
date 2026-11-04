@@ -99,6 +99,23 @@ header {
     font-size: 0.9em;
 }
 
+/* A button within a line of text: looks like a link, keeps the text's font */
+.inline-button {
+    display: inline-block;
+    padding: 0;
+    margin: 0;
+    border: none;
+    background: none;
+    font: inherit;
+    vertical-align: baseline;
+    color: var(--btn-primary-bg);
+    cursor: pointer;
+}
+
+.inline-button:hover {
+    text-decoration: underline;
+}
+
 .recent-files {
     flow: vertical;
     margin-top: 28dip;
@@ -129,7 +146,38 @@ header {
     white-space: nowrap;
 }
 
+.recent-file-head {
+    flow: horizontal;
+}
+
 .recent-file-name {
+    width: *;
+    text-overflow: ellipsis;
+}
+
+/* A file not found stays listed, grayed, with a note; so does a file that
+   failed to open, with the reason under it */
+.recent-file.missing .recent-file-name {
+    color: var(--text-label);
+}
+
+.recent-file-note {
+    margin-left: 8dip;
+    font-size: 0.85em;
+    white-space: nowrap;
+    color: var(--text-label);
+}
+
+.recent-file.failed .recent-file-note,
+.recent-file-error {
+    color: var(--log-error);
+}
+
+.recent-file-error {
+    margin-top: 2dip;
+    font-size: 0.85em;
+    overflow-x: hidden;
+    white-space: nowrap;
     text-overflow: ellipsis;
 }
 
