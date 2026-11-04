@@ -124,7 +124,8 @@ version (unittest)
     private LogMessage!wchar messageWithPayload(string payload)
     {
         LogMessage!wchar msg;
-        auto builder = msg.setupPayload("ECU1", "APP1", "CTX1");
+        msg.beginRecord();
+        auto builder = msg.payloadBuilder();
         builder.appendAscii(payload);
         builder.storePayload();
         return msg;

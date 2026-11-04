@@ -541,7 +541,7 @@ struct DltIndex
         }
 
         const auto msgBytes = _source.getMessage(fileOffset.offset);
-        parseDltItem!wchar(item._decodedMessage, msgBytes, _source.hasStorageHeader);
+        parseDltItem!wchar(item._message, msgBytes, _source.hasStorageHeader);
         if (_source.lost)
             return false; // the message was read as zeros
         item.realIndex = index;
@@ -583,7 +583,7 @@ struct DltIndex
         }
 
         const auto msgBytes = _source.getMessage(fileOffset.offset);
-        parseDltItem!wchar(item._decodedMessage, msgBytes, _source.hasStorageHeader);
+        parseDltItem!wchar(item._message, msgBytes, _source.hasStorageHeader);
         if (_source.lost)
             return false; // the message was read as zeros
         item.realIndex = globalIndex;

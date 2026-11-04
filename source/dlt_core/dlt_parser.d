@@ -6,6 +6,7 @@ import std.stdint;
 import std.traits : isSomeChar;
 
 import log_core.log_message;
+import dlt_core.dlt_fields;
 
 //! @brief DLT Message structure:
 //! [ Storage Header ]        (16 bytes, always in file)
@@ -148,16 +149,20 @@ bool parseDltItem(Char)(out LogMessage!Char msg, const(ubyte)[] data, bool hasSt
         msgType = headers.extended.messageInfo.messageType();
     }
 
-    // setupPayload also resets the allocator and stores ecu/appId/ctxId
-    auto builder = msg.setupPayload(ecuId, appId, ctxId);
+    // Resets the message and stores ecu/appId/ctxId
+    auto builder = msg.beginDltRecord(ecuId, appId, ctxId);
 
     // ── scalar metadata ─────────────────────────────────────────────────────
-    msg.timestampSeconds = headers.storage ? headers.storage.nativeSeconds : 0;
-    msg.timestampMicroseconds = headers.storage ? headers.storage.nativeMicroseconds : 0;
-    msg.relativeTimestamp_10000 = headers.extraTimestamp;
-    msg.sessionId = headers.extraSessionId;
+    if (headers.storage)
+    {
+        msg.timeNs = headers.storage.nativeSeconds * 1_000_000_000L
+            + headers.storage.nativeMicroseconds * 1000L;
+        msg.timeKind = TimeKind.Absolute;
+    }
+    msg.setNumber(DltField.Timestamp, headers.extraTimestamp);
+    msg.setNumber(DltField.SessionId, headers.extraSessionId);
     msg.level = level;
-    msg.type = msgType;
+    msg.setNumber(DltField.Type, msgType);
     msg.messageId = headers.messageId;
 
     // ── Payload decoding ────────────────────────────────────────────────────

@@ -4,6 +4,7 @@ import log_core.log_filter;
 import dlt_core.dlt_filter_record;
 import dlt_core.dlt_filter_serialization;
 import log_core.log_message;
+import dlt_core.dlt_fields;
 
 import std.traits : isSomeChar;
 import std.algorithm.iteration : map;
@@ -138,7 +139,7 @@ unittest
     assert(quickFilter!char("", "", "", "") is null);
 
     LogMessage!char msg;
-    auto builder = msg.setupPayload("ECU1", "APP1", "CTX1");
+    auto builder = msg.beginDltRecord("ECU1", "APP1", "CTX1");
     builder.appendAscii("engine started");
     builder.storePayload();
 

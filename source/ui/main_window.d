@@ -836,40 +836,26 @@ class MainWindow : SciterWindow
 
 SciterValue asSciterArray(int index, ref const(DocumentItem) item)
 {
-    /** 
-     size_t index;
-    ulong offset;
-    ushort length;
-    ulong timestamp;
-    string ecu;
-    string appId;
-    string ctxId;
-    LogLevel level;
-    MessageType type;
-    uint messageId;
-    string payload;
- */
+    import dlt_core.dlt_fields;
 
-    // index, time, timestamp(rel), ecuId, appId, ctxId, level, type, (messageId), payload
-
+    // Row layout of the table (virtual-dlt-view.js): anchored, filterMask,
+    // index, realIndex, seconds, microseconds, timestamp(rel), ecuId, appId,
+    // ctxId, level, type, messageId, payload
+    // TODO: DLT fields only; rows will follow the column schema of the format
     SciterValue array = SciterValue.makeArray(
-        item.anchored, //
-        item.filterMask, //
+        item.anchored,
+        item.filterMask,
         index,
-        item.realIndex, //
-        item.timestampSeconds, //
-        item.timestampMicroseconds, //
-        item.relativeTimestamp_10000, //
-        item.ecuId, //
-        item.appId, //
-        item.ctxId, //
-        cast(int) item.level, //
-        cast(int) item.type, //
-        item.messageId, //
-        item.payload //
-
-        
-
-    );
+        item.realIndex,
+        item.message.timestampSeconds,
+        item.message.timestampMicroseconds,
+        item.message.relativeTimestamp_10000,
+        item.message.ecuId,
+        item.message.appId,
+        item.message.ctxId,
+        cast(int) item.message.level,
+        cast(int) item.message.type,
+        item.message.messageId,
+        item.message.payloadText);
     return array;
 }

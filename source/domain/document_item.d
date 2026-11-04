@@ -1,9 +1,6 @@
 module domain.document_item;
 
-import dlt_core.dlt_protocol : LogLevel, MessageType;
 import log_core.log_message : LogMessage;
-
-import std.stdint;
 
 //! @brief represents a single item in the document
 //! contains decoded message and metadata
@@ -15,64 +12,16 @@ struct DocumentItem
 
     // index in the original log file, can differ from the index in the document if filters are applied
     size_t realIndex;
-    uint32_t filterMask;
-    uint32_t searchMask;
+    uint filterMask;
+    uint searchMask;
     bool anchored;
     bool selected;
-    // bool visible;
 
-    package LogMessage!Char _decodedMessage;
+    package LogMessage!Char _message;
 
-    //public alias _decodedMessage this;
-
-    // Public read-only forwarding properties.
-    uint timestampSeconds() const pure nothrow @nogc @property
+    //! The decoded record; valid until the item is fetched again
+    ref const(LogMessage!Char) message() const pure nothrow @nogc return
     {
-        return _decodedMessage.timestampSeconds;
-    }
-
-    uint timestampMicroseconds() const pure nothrow @nogc @property
-    {
-        return _decodedMessage.timestampMicroseconds;
-    }
-
-    uint relativeTimestamp_10000() const pure nothrow @nogc @property
-    {
-        return _decodedMessage.relativeTimestamp_10000;
-    }
-
-    const(Char)[] ecuId() const pure nothrow @nogc @property
-    {
-        return _decodedMessage.ecuId;
-    }
-
-    const(Char)[] appId() const pure nothrow @nogc @property
-    {
-        return _decodedMessage.appId;
-    }
-
-    const(Char)[] ctxId() const pure nothrow @nogc @property
-    {
-        return _decodedMessage.ctxId;
-    }
-
-    uint messageId() const pure nothrow @nogc @property
-    {
-        return _decodedMessage.messageId;
-    }
-
-    LogLevel level() const pure nothrow @nogc @property
-    {
-        return _decodedMessage.level;
-    }
-
-    MessageType type() const pure nothrow @nogc @property
-    {
-        return _decodedMessage.type;
-    }
-    /// payload text (alias for LogMessage.payloadText)
-    const(Char)[] payload() const pure nothrow @nogc @property
-    {
-        return _decodedMessage.payloadText;
+        return _message;
     }
 }

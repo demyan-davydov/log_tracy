@@ -7,6 +7,7 @@ import domain.document_id;
 import dlt_core.dlt_source;
 import dlt_core.dlt_log_filter;
 import log_core.log_message;
+import dlt_core.dlt_fields;
 import log_core.log_filter;
 
 import domain.index.anchors;
@@ -708,7 +709,7 @@ unittest
 
     DocumentItem item;
     assert(doc.mainView.fetchItem(0, item));
-    assert(item._decodedMessage.ecuId == "CU7"w, "the padding must not be part of the ID");
+    assert(item._message.ecuId == "CU7"w, "the padding must not be part of the ID");
 
     doc.applyViewFilter(quickFilter!wchar("CU7", "", "", ""));
     dispatchUntil(doc, () => finished == 2);
@@ -1078,7 +1079,7 @@ unittest
 
     DocumentItem item;
     assert(doc.mainView.fetchItem(1, item), "the offset points at the message, not the garbage");
-    assert(item._decodedMessage.ecuId == "ECU2"w);
+    assert(item._message.ecuId == "ECU2"w);
 }
 
 @("DltDocument: opening a missing file throws instead of crashing")

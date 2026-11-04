@@ -3,6 +3,7 @@ module dlt_core.dlt_filter_record;
 import log_core.log_filter;
 import dlt_core.dlt_protocol;
 import log_core.log_message;
+import dlt_core.dlt_fields;
 import std.regex;
 import std.uni : toLower;
 import std.utf : toUTF8, toUTF16, toUTF32;
@@ -349,7 +350,7 @@ unittest
     record.filterColour = "#ff0000";
 
     LogMessage!char msg;
-    auto builder = msg.setupPayload("Test ECU", "Test App", "Test Context");
+    auto builder = msg.beginDltRecord("Test ECU", "Test App", "Test Context");
     builder.appendAscii("Test Payload");
     builder.storePayload();
     msg.level = LogLevel.Info;
