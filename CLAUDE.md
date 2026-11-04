@@ -86,11 +86,18 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
 - Pass a `LogMessage` by `ref`, never `out`: `out` resets it to `.init` without its destructor
   and leaks the buffer on every decode.
 - DLT fields are read through UFCS accessors in `formats/dlt/fields` (`msg.ecuId`, `msg.appId`, ...).
-- Filters implement `LogFilter!wchar` (`log_core/log_filter`):
-  - **`FieldFilter`** (`log_core/field_filter`) is the quick filter. It is built from the column
-    schema and a `{column id: value}` map.
-  - **`DltLogFilter`** reads `.dlf` files and only applies to DLT documents
-    (`DltLogFilter.canFilter`).
+- Filters implement `LogFilter!wchar` (`log_core/log_filter`).
+- The filters of the main view are rules, as in dlt-viewer (`log_core/rule_filter`):
+  - a `FilterRule` (include / exclude / marker) is a set of `Condition`s on **column ids** of the
+    format, so the model and the future editor work for any format;
+  - a `FilterSet` is what one filter file holds; `RuleFilter.compile` builds the view filter from
+    the enabled rules of the enabled sets (shown: an include rule matches, or there is none, and
+    no exclude rule does; markers don't filter);
+  - `.dlf` files of dlt-viewer are an import into this model (`formats/dlt/dlf`), DLT logs only
+    (`canLoadDlf`); what the model can't express becomes `FilterRule.problem`, never dropped silently.
+- `ui/filter_commands.DocumentFilters` holds the sets of a document and the panel commands;
+  the window remembers them per recent file (`RecentFile.filters`: the `.dlf` path and the
+  switches, not a copy of the rules).
 
 ### Indexing and threads
 - `LogIndex` runs one operation at a time in a `BackgroundSlot`: build the offset, filter or

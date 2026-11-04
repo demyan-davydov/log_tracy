@@ -622,13 +622,16 @@ unittest
     assert(msg.text(0) is null, "a failed decode leaves no stale record");
 }
 
-@("DltFormat columns: the quick filter finds an ID by its trimmed value")
+@("DltFormat columns: a filter rule finds an ID by its trimmed value")
 unittest
 {
     import formats.dlt.fields : beginDltRecord;
-    import log_core.field_filter : FieldFilter;
+    import log_core.rule_filter : Check, Condition, FilterRule, FilterSet, RuleFilter;
 
-    auto filter = FieldFilter.fromValues(new DltFormat().columns, ["ecu": "CU7", "app": "APP1"]);
+    FilterSet set;
+    set.rules = [FilterRule("", FilterRule.init.kind, true, "",
+            [Condition("ecu", Check.Equals, "CU7"), Condition("app", Check.Equals, "APP1")])];
+    auto filter = RuleFilter.compile(new DltFormat().columns, [set]);
     LogMessage!wchar msg;
     msg.beginDltRecord("CU7 ", "APP1", "CTX1");
     assert(filter.matches(msg), "the padding is not part of the ID");
