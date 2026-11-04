@@ -296,82 +296,28 @@ function setupEvents() {
 
     document.on("change", ".filter-group input", applyFilters);
 
-    document.on("click", ".tab", function (evt, tab) {
-        const docId = parseInt(tab.id);
-        if (evt.target.classList.contains("tab-close")) {
-            closeTab(docId);
-        } else {
-            console.log("Tab clicked:", docId);
-            switchTab(docId);
-        }
+    // A tab is activated on mousedown (as in browsers) and can then be dragged;
+    // click only handles the close button
+    document.on("click", ".tab .tab-close", function (evt, close) {
+        closeTab(close.parentElement.id);
+        return true;
     });
 
-    // Mouse-based tab dragging (more reliable than HTML5 drag-and-drop in Sciter)
-    let draggedTab = null;
-    let dragStartX = 0;
-
     document.on("mousedown", ".tab", function (evt, tab) {
-        // Ignore if clicking on close button
         if (evt.target.classList.contains("tab-close")) return;
-
-        draggedTab = tab;
-        dragStartX = evt.clientX;
-        tab.classList.add("dragging");
-        console.log("Mouse drag started on tab:", tab.id);
-        return true; // Prevent default text selection
+        if (tabDrag) return; // the previous drop is still settling
+        const docId = parseInt(tab.id);
+        if (docId !== activeDocId) switchTab(docId); // keeps the tab elements
+        beginTabDrag(tab, evt.clientX);
+        return true; // no text selection
     });
 
     document.on("mousemove", function (evt) {
-        if (!draggedTab) return;
-
-        // Check if we've moved enough to consider it a drag
-        if (Math.abs(evt.clientX - dragStartX) < 5) return;
-
-        // Find which tab we're over
-        const tabs = $$(".tab");
-        for (const tab of tabs) {
-            if (tab === draggedTab) continue;
-
-            const rect = tab.getBoundingClientRect();
-            if (evt.clientX >= rect.left && evt.clientX <= rect.right) {
-                // Highlight the drop target
-                tab.classList.add("drag-over");
-            } else {
-                tab.classList.remove("drag-over");
-            }
-        }
+        if (tabDrag) moveTabDrag(evt.clientX);
     });
 
     document.on("mouseup", function (evt) {
-        if (!draggedTab) return;
-
-        console.log("Mouse drag ended");
-
-        // Find the drop target
-        const tabs = $$(".tab");
-        let dropTarget = null;
-        for (const tab of tabs) {
-            if (tab.classList.contains("drag-over")) {
-                dropTarget = tab;
-                break;
-            }
-        }
-
-        if (dropTarget && dropTarget !== draggedTab) {
-            const draggedId = parseInt(draggedTab.id);
-            const targetIndex = parseInt(dropTarget.getAttribute("data-index"));
-
-            console.log("Reordering tab", draggedId, "to index", targetIndex);
-            Window.this.xcall("reorderTab", draggedId, targetIndex);
-            refreshTabs();
-        }
-
-        // Clean up
-        draggedTab.classList.remove("dragging");
-        for (const tab of tabs) {
-            tab.classList.remove("drag-over");
-        }
-        draggedTab = null;
+        if (tabDrag) endTabDrag();
     });
 
     document.on("keydown", function (evt) {
@@ -415,32 +361,46 @@ function applyTabStatus(tab, status) {
 }
 
 function refreshTabs() {
+    if (tabDrag) { // the tabs are being dragged: render them after the drop
+        tabDrag.refreshPending = true;
+        return;
+    }
     const info = Window.this.xcall("getWorkspaceInfo");
     if (!info) return;
     const docs = JSON.parse(info);
     const container = $("#tabs-container");
 
-    const addBtn = $("#btn-add-tab");
-    container.content(addBtn);
-
     docStatus.clear();
     activeDocId = null;
-
-    for (let i = 0; i < docs.length; i++) {
-        const doc = docs[i];
-        const status = { mainView: doc.mainView, searchView: doc.searchView, path: doc.path };
-        docStatus.set(doc.id, status);
+    for (const doc of docs) {
+        docStatus.set(doc.id, { mainView: doc.mainView, searchView: doc.searchView, path: doc.path });
         if (doc.active) activeDocId = doc.id;
-
-        const tab = <div class={doc.active ? "tab active" : "tab"} id={doc.id} draggable="true" data-index={i}>
-            <span class="tab-name">{doc.name}</span>
-            <span class="tab-close">×</span>
-        </div>;
-        container.append(tab);
-        // `tab` is a JSX node, not an element: apply the status to the element
-        // that append() created from it
-        applyTabStatus(container.lastElementChild, status);
     }
+
+    // Same documents in the same order (e.g. another tab was activated): the
+    // elements are kept, so a tab being pressed or dragged stays in the DOM
+    let tabs = [...$$("#tabs-container > .tab")];
+    const sameTabs = tabs.length === docs.length
+        && tabs.every((tab, i) => parseInt(tab.id) === docs[i].id);
+    if (!sameTabs) {
+        container.innerHTML = "";
+        container.append(<button id="btn-add-tab">+</button>);
+        for (const doc of docs)
+            container.append(<div class="tab" id={doc.id}>
+                <span class="tab-sep"></span>
+                <span class="tab-name"></span>
+                <span class="tab-close">×</span>
+            </div>);
+        tabs = [...$$("#tabs-container > .tab")];
+    }
+    docs.forEach((doc, i) => {
+        const tab = tabs[i];
+        if (doc.active) tab.classList.add("active");
+        else tab.classList.remove("active");
+        tab.setAttribute("title", doc.path);
+        tab.$(".tab-name").textContent = doc.name;
+        applyTabStatus(tab, docStatus.get(doc.id));
+    });
 
     for (const docId of mainViewStates.keys())
         if (!docStatus.has(docId)) mainViewStates.delete(docId); // closed
@@ -460,6 +420,166 @@ function closeTab(docId) {
     const id = parseInt(docId);
     Window.this.xcall("closeTab", id);
     refreshTabs();
+}
+
+// Chrome-like dragging of a tab: the tab follows the mouse along the strip,
+// the tabs it passes slide aside to free its new place, a marker shows where
+// it will land; on drop it slides into that place and the workspace order is
+// updated. No tooltips while a tab is held: they would cover the strip
+// (see TabTooltip).
+// tabDrag: { tab, tabs, rects, from, to, startX, dx, minDx, maxDx, sep,
+//            markerOrigin, active, settling, refreshPending }, null when no
+//            tab is held.
+const TAB_DRAG_THRESHOLD = 4; // px of mouse movement before a press becomes a drag
+const TAB_SETTLE_MS = 160;    // a bit longer than the .settling transition
+let tabDrag = null;
+
+function setTabShift(tab, dx) {
+    tab.style.transform = dx ? `translate(${dx}px, 0)` : "";
+}
+
+// Tooltips of the tab strip: the title of a tab (its path) and the one Sciter
+// shows by itself for a name cut by text-overflow. style.css gives them this
+// prototype: one that is about to appear while a tab is held is closed at
+// once, the shown ones are tracked to close them when a tab is pressed (they
+// can't be found with a selector).
+const shownTabTooltips = new Set();
+
+globalThis.TabTooltip = class extends Element {
+    componentDidMount() {
+        if (tabDrag) this.state.popup = false;
+        else shownTabTooltips.add(this);
+    }
+    componentWillUnmount() {
+        shownTabTooltips.delete(this);
+    }
+};
+
+function closeTabTooltips() {
+    for (const popup of [...shownTabTooltips]) {
+        shownTabTooltips.delete(popup);
+        try { popup.state.popup = false; } catch (e) { }
+    }
+}
+
+// The marker is on the edge of the place the tab will land on, between it and
+// the tab it was moved past; hidden while the tab would stay where it was.
+// It takes exactly the rectangle of a separator on that edge (d.sep), so it
+// covers the separator there; its origin is calibrated on the first show.
+function showTabDropMarker(d) {
+    const marker = $("#tab-drop-marker");
+    if (!marker) return;
+    if (d.to === d.from) {
+        marker.style.display = "none";
+        return;
+    }
+    marker.style.display = "block";
+    if (!d.markerOrigin) {
+        marker.style.left = "0px";
+        marker.style.top = "0px";
+        const r = marker.getBoundingClientRect();
+        d.markerOrigin = { left: r.left, top: r.top };
+    }
+    const edge = d.to > d.from ? d.rects[d.to].right : d.rects[d.to].left;
+    marker.style.left = `${edge + d.sep.offset - d.markerOrigin.left}px`;
+    marker.style.top = `${d.sep.top - d.markerOrigin.top}px`;
+    marker.style.width = `${d.sep.width}px`;
+    marker.style.height = `${d.sep.height}px`;
+}
+
+// Rectangle of a separator relative to the left edge of its tab
+function measureTabSeparator(tab, tabRect) {
+    const r = tab.$(".tab-sep").getBoundingClientRect();
+    return { offset: r.left - tabRect.left, top: r.top, width: r.right - r.left, height: r.bottom - r.top };
+}
+
+function beginTabDrag(tab, clientX) {
+    const tabs = [...$$("#tabs-container > .tab")];
+    const rects = tabs.map(t => t.getBoundingClientRect());
+    const from = tabs.indexOf(tab);
+    if (from < 0) return;
+    tabDrag = {
+        tab, tabs, rects, from, to: from,
+        startX: clientX, dx: 0,
+        // the tab stays within the strip
+        minDx: rects[0].left - rects[from].left,
+        maxDx: rects[rects.length - 1].right - rects[from].right,
+        sep: measureTabSeparator(tabs[0], rects[0]), markerOrigin: null,
+        active: false, settling: false, refreshPending: false
+    };
+    closeTabTooltips();
+}
+
+function moveTabDrag(clientX) {
+    const d = tabDrag;
+    if (d.settling) return;
+    const dx = clientX - d.startX;
+    if (!d.active) {
+        if (Math.abs(dx) < TAB_DRAG_THRESHOLD) return;
+        d.active = true;
+        closeTabTooltips();
+        d.tab.classList.add("dragging");
+        for (const t of d.tabs) if (t !== d.tab) t.classList.add("shifting");
+        $("#tabs-container").append(<div id="tab-drop-marker"></div>);
+    }
+    d.dx = Math.max(d.minDx, Math.min(d.maxDx, dx));
+    setTabShift(d.tab, d.dx);
+
+    // The tab takes the place of every tab whose middle its leading edge has
+    // passed (with equal widths, the strip end is exactly the middle of the
+    // last tab, hence the non-strict comparison)
+    const r = d.rects[d.from];
+    const width = r.right - r.left;
+    const left = r.left + d.dx, right = r.right + d.dx;
+    let to = d.from;
+    for (let i = 0; i < d.tabs.length; i++) {
+        if (i === d.from) continue;
+        const ri = d.rects[i];
+        const middle = (ri.left + ri.right) / 2;
+        let shift = 0;
+        if (i > d.from && right >= middle) { shift = -width; to++; }
+        else if (i < d.from && left <= middle) { shift = width; to--; }
+        setTabShift(d.tabs[i], shift);
+    }
+    d.to = to;
+    showTabDropMarker(d);
+}
+
+function endTabDrag() {
+    const d = tabDrag;
+    if (d.settling) return;
+    if (!d.active) { // a plain click
+        finishTabDrag(false);
+        return;
+    }
+    // Slide into the free place, then commit the new order
+    let target = 0;
+    if (d.to > d.from)
+        target = d.rects[d.to].right - d.rects[d.from].right;
+    else if (d.to < d.from)
+        target = d.rects[d.to].left - d.rects[d.from].left;
+    d.settling = true;
+    d.tab.classList.add("settling");
+    setTabShift(d.tab, target);
+    setTimeout(() => finishTabDrag(d.to !== d.from), TAB_SETTLE_MS);
+}
+
+function finishTabDrag(moved) {
+    const d = tabDrag;
+    tabDrag = null;
+    const marker = $("#tab-drop-marker");
+    if (marker) marker.remove();
+    if (moved) {
+        console.log("Tab", d.tab.id, "moved from", d.from, "to", d.to);
+        Window.this.xcall("reorderTab", parseInt(d.tab.id), d.to);
+        refreshTabs(); // renders the tabs in the new order, without shifts
+        return;
+    }
+    for (const t of d.tabs) {
+        for (const cls of ["dragging", "shifting", "settling"]) t.classList.remove(cls);
+        setTabShift(t, 0);
+    }
+    if (d.refreshPending) refreshTabs();
 }
 
 // Texts of the main view statuses other than the table and the lost file

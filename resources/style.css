@@ -48,14 +48,6 @@ header {
     overflow: hidden;
 }
 
-#tabs-container {
-    flow: horizontal;
-    margin-top: 4px;
-    white-space: nowrap;
-    overflow-x: auto;
-    width: 100%;
-}
-
 #doc-load-progress {
     width: 300px;
     height: 10px;
@@ -88,58 +80,161 @@ header {
     font-size: 1.2em;
 }
 
-.tab {
-    padding: 4px 12px;
-    background: var(--bg-tab-inactive);
-    border: 1px solid var(--border-color);
-    border-bottom: none;
-    border-radius: 4px 4px 0 0;
-    margin-right: 2px;
-    cursor: pointer;
+/* ---- Tabs (Chrome-like strip) ---- */
+
+/* The toolbar header ends with the tab strip: the active tab covers its
+   bottom border and merges with the content below */
+body > header {
+    padding-bottom: 0;
+}
+
+#tabs-container {
+    position: relative; /* for #tab-drop-marker */
     flow: horizontal;
-    align-items: center;
+    height: 30dip;
+    margin-top: 2dip;
+    padding: 0 4dip;
+    white-space: nowrap;
+    overflow: visible;
 }
 
-.tab .tab-name {
-    margin-right: 8px;
+.tab {
+    position: relative;
+    flow: horizontal;
+    vertical-align: middle;
+    /* Equal share of the strip, from a comfortable width down to a stub */
+    width: *;
+    max-width: 220dip;
+    min-width: 44dip;
+    height: 30dip;
+    padding: 0 6dip 0 10dip;
+    margin-bottom: -1px;
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: 7dip 7dip 0 0;
+    color: var(--tab-text);
+    background: transparent;
+    cursor: default;
+    transition: background-color linear 120ms;
 }
 
-.tab .tab-close {
-    width: 16px;
-    height: 16px;
-    text-align: center;
-    line-height: 16px;
-    border-radius: 8px;
-    color: #888;
+/* Separators between inactive tabs, hidden next to the active/hovered one.
+   A real element: Sciter doesn't size/position a :before like this */
+.tab > .tab-sep {
+    position: absolute;
+    left: -1dip; /* centered on the boundary between the tabs */
+    top: 8dip;
+    bottom: 8dip;
+    width: 2dip; /* same as #tab-drop-marker */
+    border-radius: 1dip;
+    background: var(--tab-separator);
 }
 
-.tab .tab-close:hover {
-    background: #ff4d4d;
-    color: white;
+#btn-add-tab + .tab > .tab-sep,
+.tab.active > .tab-sep,
+.tab.active + .tab > .tab-sep,
+.tab:hover > .tab-sep,
+.tab:hover + .tab > .tab-sep,
+.tab.dragging > .tab-sep,
+.tab.dragging + .tab > .tab-sep {
+    background: transparent;
+}
+
+.tab:hover {
+    background: var(--bg-tab-hover);
 }
 
 .tab.active {
+    color: var(--text-main);
     background: var(--bg-tab-active);
-    font-weight: bold;
-    position: relative;
-    bottom: -1px;
+    border-color: var(--border-color);
+}
+
+.tab .tab-name {
+    width: *;
+    min-width: 0;
+    height: 30dip;
+    line-height: 30dip;
+    overflow-x: hidden;
+    white-space: nowrap;
+    /* Sciter: ellipsis in the middle, keeps the end of the name visible */
+    text-overflow: path-ellipsis;
+}
+
+.tab .tab-close {
+    width: 16dip;
+    height: 16dip;
+    min-width: 16dip;
+    margin: * 0 * 4dip; /* Sciter: flexible top/bottom margins center it */
+    line-height: 15dip;
+    text-align: center;
+    font-size: 14dip;
+    border-radius: 8dip;
+    color: var(--tab-close);
+    transition: background-color linear 100ms;
+}
+
+/* Only the active tab can be closed by its button */
+.tab:not(.active) .tab-close {
+    display: none;
+}
+
+.tab .tab-close:hover {
+    color: var(--text-main);
+    background: var(--tab-close-hover);
+}
+
+/* Dragging: the tab follows the mouse, the others slide out of the way */
+.tab.shifting {
+    transition: transform cubic-out 150ms;
 }
 
 .tab.dragging {
-    opacity: 0.4;
+    z-index: 10;
+    color: var(--text-main);
+    background: var(--bg-tab-active);
+    border-color: var(--border-color);
 }
 
-.tab.drag-over {
-    border-left: 3px solid var(--btn-primary-bg);
+.tab.dragging.settling {
+    transition: transform cubic-out 150ms;
 }
 
 #btn-add-tab {
-    padding: 4px 10px;
-    background: var(--btn-default-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    margin-right: 8px;
-    cursor: pointer;
+    width: 26dip;
+    height: 26dip;
+    margin: 2dip 4dip 0 0;
+    padding: 0;
+    line-height: 24dip;
+    text-align: center;
+    font-size: 18dip;
+    color: var(--tab-text);
+    background: transparent;
+    border: none;
+    border-radius: 13dip;
+    cursor: default;
+}
+
+/* Tooltips of the tabs (title and the full name of a cut one) are not shown
+   while a tab is held, see TabTooltip in script.js */
+#tabs-container popup[role=tooltip],
+#tabs-container popup[role=overflow-tooltip] {
+    prototype: TabTooltip;
+}
+
+/* Where the dragged tab will land */
+#tab-drop-marker {
+    /* left/top/width/height are set by showTabDropMarker() to cover a separator */
+    display: none;
+    position: absolute;
+    border-radius: 1dip;
+    background: var(--btn-primary-bg);
+    z-index: 5; /* below the dragged tab (.tab.dragging) */
+}
+
+#btn-add-tab:hover {
+    color: var(--text-main);
+    background: var(--bg-tab-hover);
 }
 
 frameset {

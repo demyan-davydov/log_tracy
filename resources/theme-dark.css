@@ -4,6 +4,11 @@
 @const BORDER_COLOR: #3e3e42;
 @const BG_TAB_INACTIVE: #2d2d2d;
 @const BG_TAB_ACTIVE: #1e1e1e;
+@const BG_TAB_HOVER: #3a3a3d;
+@const TAB_TEXT: #9a9a9a;
+@const TAB_SEPARATOR: #555559;
+@const TAB_CLOSE: #9a9a9a;
+@const TAB_CLOSE_HOVER: #4a4a4e;
 @const BG_SIDEBAR: #252526;
 @const TEXT_HEADER_SIDEBAR: #aaa;
 @const BORDER_SIDEBAR_HEADER: #3e3e42;
@@ -35,6 +40,11 @@
     /* Toolbar & Tabs */
     --bg-tab-inactive: @BG_TAB_INACTIVE;
     --bg-tab-active: @BG_TAB_ACTIVE;
+    --bg-tab-hover: @BG_TAB_HOVER;
+    --tab-text: @TAB_TEXT;
+    --tab-separator: @TAB_SEPARATOR;
+    --tab-close: @TAB_CLOSE;
+    --tab-close-hover: @TAB_CLOSE_HOVER;
 
     /* Sidebar */
     --bg-sidebar: @BG_SIDEBAR;
