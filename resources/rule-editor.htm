@@ -1,8 +1,9 @@
-<html window-width="560" window-height="560">
+<html window-width="640" window-height="800">
 
 <!-- The editor of one rule of a .dlf, opened modal by editRule() in script.js.
-     It offers exactly the fields of a dlt-viewer filter (DlfFilter in
-     source/formats/dlt/dlf.d), so the file stays compatible both ways.
+     Laid out like the filter dialog of dlt-viewer and offers exactly its
+     fields (DlfFilter in source/formats/dlt/dlf.d), so exported files stay
+     compatible both ways.
      Parameters: { title, theme, rule: {DlfFilter fields}, error }.
      Closes with the edited fields, or null on Cancel. -->
 
@@ -11,39 +12,75 @@
     <style id="theme-style" src="theme-light.css" />
     <style src="style.css" />
     <style>
+        html, body { background: var(--bg-main); color: var(--text-main); }
         body { flow: vertical; }
-        main { size: *; overflow-y: auto; }
-        table.rule-form { width: *; border-spacing: 4dip 6dip; }
-        table.rule-form td { vertical-align: middle; white-space: nowrap; }
-        table.rule-form td.value { width: *; }
-        table.rule-form input[type=text] { width: *; }
-        table.rule-form input[type=integer] { width: 6em; }
-        .rule-section td { padding-top: 10dip; font-weight: 600; color: var(--text-label); }
-        .rule-hint { font-size: 0.85em; color: var(--text-label); }
-        #rule-error { color: var(--log-error); padding: 4dip 0; }
-        #rule-error:empty { display: none; }
-        #color-swatch {
-            display: inline-block; width: 14dip; height: 14dip; margin-left: 6dip;
-            border-radius: 2dip; border: 1px solid var(--border-color); vertical-align: middle;
+        main { size: *; overflow-y: auto; padding: 14dip 18dip; flow: vertical; border-spacing: 10dip; }
+
+        /* A row: [switch + label] [value] [options]; the columns line up */
+        .row { flow: horizontal; vertical-align: middle; border-spacing: 8dip; }
+        .row > .label { width: 150dip; flow: horizontal; vertical-align: middle; border-spacing: 6dip; white-space: nowrap; }
+        .row > .value { width: *; flow: horizontal; vertical-align: middle; border-spacing: 6dip; }
+        .row > .options { width: 170dip; flow: horizontal; vertical-align: middle; border-spacing: 10dip; white-space: nowrap; }
+        .row > .value > span { margin: * 0; } /* centered in the row: min, max */
+        .row input[type=text] { width: *; }
+        .row input[type=integer] { width: *; }
+        .row select { width: 160dip; }
+        label { flow: horizontal; vertical-align: middle; border-spacing: 4dip; white-space: nowrap; }
+
+        input[type=text], input[type=integer] {
+            padding: 4dip 6dip;
+            border: 1px solid var(--border-input);
+            border-radius: 4dip;
+            background: var(--bg-input);
+            color: var(--text-main);
         }
+        input[type=text]:focus, input[type=integer]:focus { border-color: var(--border-focus); outline: none; }
+
+        /* A group of related fields: Type, Color */
+        .group { flow: vertical; border-spacing: 8dip; padding: 10dip 12dip; border-radius: 8dip; background: var(--bg-details); }
+        .group-title { font-weight: 600; color: var(--text-label); }
+        .row > .value.radios { border-spacing: 24dip; }
+        .separator { height: 1px; background: var(--border-color); margin: 4dip 0; }
+
+        .palette { flow: horizontal; vertical-align: middle; border-spacing: 8dip; }
+        .swatch {
+            width: 20dip; height: 20dip; border-radius: 4dip; cursor: pointer;
+            border: 1px solid var(--border-color);
+        }
+        .swatch:hover { border-color: var(--text-main); }
+        .palette { margin-left: 158dip; }
+
+        .hint { font-size: 0.85em; color: var(--text-label); }
+        #id-hint { margin-left: 158dip; font-family: monospace; }
+        #rule-error { color: var(--log-error); }
+        /* OK and Cancel on the right, as in dialogs of the system */
+        footer > button:first-child { margin-left: *; }
+        #rule-error:empty { display: none; }
     </style>
     <script type="module">
         import { $, $$ } from "@sciter";
 
         const params = Window.this.parameters || {};
-        const rule = params.rule || {};
+        // Without parameters (opened on its own to look at it): the defaults of dlt-viewer
+        const rule = params.rule || { name: "New Rule", enabled: true, type: 0, color: "#000000",
+            levelMin: 0, levelMax: 6, messageIdMin: 0, messageIdMax: 0 };
 
         // Every control bound to a field of the rule has field="name"; a value
-        // control has enables="name of its switch", turned on when typed into
+        // control has enables="name of its switch", turned on when typed into.
+        // The type is the group of radio buttons named "type".
         function read() {
             const result = {};
             for (const control of $$("[field]")) {
                 const name = control.getAttribute("field");
-                if (control.getAttribute("type") === "checkbox") result[name] = !!control.value;
+                const type = control.getAttribute("type");
+                if (type === "checkbox") result[name] = !!control.value;
+                else if (type === "color") result[name] = control.value ? control.value.toString("RGB") : "";
                 else if (control.tag === "select" || control.getAttribute("type") === "integer")
                     result[name] = parseInt(control.value) || 0;
                 else result[name] = control.value || "";
             }
+            const type = [...$$("input[name=type]")].find(radio => radio.state.checked);
+            result.type = type ? parseInt(type.getAttribute("value")) : 0;
             return result;
         }
 
@@ -52,8 +89,8 @@
                 const value = values[control.getAttribute("field")];
                 if (value === undefined) continue;
                 if (control.tag === "select") {
-                    // A value of the file that isn't among the options (a type or
-                    // a level dlt-viewer doesn't know) is kept, shown as it is
+                    // A value of the file that isn't among the options (a level
+                    // dlt-viewer doesn't know) is kept, shown as it is
                     if (!control.$(`option[value="${value}"]`)) {
                         const option = document.createElement("option");
                         option.setAttribute("value", String(value));
@@ -63,16 +100,33 @@
                     control.value = String(value);
                 } else control.value = value;
             }
-            showColor();
+            writeType(values.type ?? 0);
+            showIdHint();
         }
 
-        function showColor() {
-            $("#color-swatch").style.setProperty("background-color", $("[field=color]").value || "transparent");
+        // A type dlt-viewer doesn't know is kept, as a radio button of its own
+        function writeType(type) {
+            let radio = $(`input[name=type][value="${type}"]`);
+            if (!radio) {
+                $(".radios").append(<label><input type="radio" name="type" value={String(type)} />{`(${type})`}</label>);
+                radio = $(`input[name=type][value="${type}"]`);
+            }
+            radio.state.checked = true;
+        }
+
+        // What the message id condition means, in decimal and in hex, as dlt-viewer shows it
+        function showIdHint() {
+            const min = parseInt($("[field=messageIdMin]").value) || 0;
+            const max = parseInt($("[field=messageIdMax]").value) || 0;
+            const hex = n => "0x" + n.toString(16).toUpperCase().padStart(8, "0");
+            $("#id-hint").innerText = max === 0
+                ? `ID == ${min}   (${hex(min)})`
+                : `${min} <= ID < ${max}   (${hex(min)} .. ${hex(max)})`;
         }
 
         document.on("ready", () => {
             if (params.theme === "dark") $("#theme-style").attributes["src"] = "theme-dark.css";
-            $("#rule-title").innerText = params.title || "Filter Rule";
+            Window.this.caption = params.title || "Filter Rule";
             write(rule);
             $("#rule-error").innerText = params.error || "";
             $("[field=name]").focus();
@@ -81,146 +135,157 @@
         document.on("input", "[enables]", (evt, control) => {
             $(`[field=${control.getAttribute("enables")}]`).value = true;
         });
+        document.on("change", "select[enables]", (evt, control) => {
+            $(`[field=${control.getAttribute("enables")}]`).value = true;
+        });
 
-        document.on("input", "[field=color]", showColor);
+        document.on("click", ".palette .swatch[color]", (evt, swatch) => {
+            $("#color").value = swatch.getAttribute("color");
+        });
+
+        document.on("input", "[field=messageIdMin], [field=messageIdMax]", showIdHint);
+        document.on("change", "[field=messageIdMin], [field=messageIdMax]", showIdHint);
 
         $("#btn-ok").on("click", () => Window.this.close(read()));
         $("#btn-cancel").on("click", () => Window.this.close(null));
 
         document.on("keydown", (evt) => {
             if (evt.code === "Escape") { Window.this.close(null); return true; }
-            if (evt.code === "Enter" && evt.target.tag !== "select") { Window.this.close(read()); return true; }
+            if (evt.code === "Enter" && evt.target.tag === "input") { Window.this.close(read()); return true; }
         });
     </script>
 </head>
 
 <body>
-    <header id="rule-title">Filter Rule</header>
     <main>
         <div id="rule-error"></div>
-        <table class="rule-form">
-            <tr>
-                <td></td>
-                <td>Name</td>
-                <td class="value" colspan="3"><input type="text" field="name" /></td>
-            </tr>
-            <tr>
-                <td></td>
-                <td>Type</td>
-                <td class="value" colspan="3">
-                    <select field="type">
-                        <option value="0">Include: show the matched records</option>
-                        <option value="1">Exclude: hide the matched records</option>
-                        <option value="2">Marker: highlight the matched records</option>
-                    </select>
-                </td>
-            </tr>
-            <tr>
-                <td><input type="checkbox" field="enabled" /></td>
-                <td colspan="4">Enabled</td>
-            </tr>
-            <tr>
-                <td></td>
-                <td>Color</td>
-                <td class="value" colspan="3">
-                    <input type="text" field="color" style="width: 7em" /><span id="color-swatch"></span>
-                </td>
-            </tr>
 
-            <tr class="rule-section"><td colspan="5">Conditions: all checked ones must match</td></tr>
-            <tr>
-                <td><input type="checkbox" field="enableEcu" /></td>
-                <td>ECU ID</td>
-                <td class="value" colspan="3"><input type="text" field="ecuId" enables="enableEcu" /></td>
-            </tr>
-            <tr>
-                <td><input type="checkbox" field="enableApp" /></td>
-                <td>App ID</td>
-                <td class="value"><input type="text" field="appId" enables="enableApp" /></td>
-                <td colspan="2"><label><input type="checkbox" field="regexApp" /> Regex</label></td>
-            </tr>
-            <tr>
-                <td><input type="checkbox" field="enableCtx" /></td>
-                <td>Context ID</td>
-                <td class="value"><input type="text" field="ctxId" enables="enableCtx" /></td>
-                <td colspan="2"><label><input type="checkbox" field="regexCtx" /> Regex</label></td>
-            </tr>
-            <tr>
-                <td><input type="checkbox" field="enablePayload" /></td>
-                <td>Payload</td>
-                <td class="value"><input type="text" field="payload" enables="enablePayload" /></td>
-                <td><label><input type="checkbox" field="regexPayload" /> Regex</label></td>
-                <td><label><input type="checkbox" field="ignoreCasePayload" /> Ignore case</label></td>
-            </tr>
-            <tr>
-                <td><input type="checkbox" field="enableHeader" /></td>
-                <td>Header</td>
-                <td class="value"><input type="text" field="header" enables="enableHeader" /></td>
-                <td><label><input type="checkbox" field="regexHeader" /> Regex</label></td>
-                <td><label><input type="checkbox" field="ignoreCaseHeader" /> Ignore case</label></td>
-            </tr>
-            <tr>
-                <td></td>
-                <td colspan="4" class="rule-hint">Without Regex, App ID is the exact value; Context ID, Payload
-                    and Header are found as a part. The header isn't applied yet.</td>
-            </tr>
-            <tr>
-                <td><input type="checkbox" field="enableMessageId" /></td>
-                <td>Message ID</td>
-                <td class="value" colspan="3">
-                    <input type="integer" field="messageIdMin" enables="enableMessageId" /> to
-                    <input type="integer" field="messageIdMax" enables="enableMessageId" />
-                    <span class="rule-hint">to 0: exactly the first</span>
-                </td>
-            </tr>
-            <tr>
-                <td><input type="checkbox" field="enableLevelMin" /></td>
-                <td>Level from</td>
-                <td class="value" colspan="3">
-                    <select field="levelMin" enables="enableLevelMin">
-                        <option value="0">-</option>
-                        <option value="1">Fatal</option>
-                        <option value="2">Error</option>
-                        <option value="3">Warn</option>
-                        <option value="4">Info</option>
-                        <option value="5">Debug</option>
-                        <option value="6">Verbose</option>
-                    </select>
-                </td>
-            </tr>
-            <tr>
-                <td><input type="checkbox" field="enableLevelMax" /></td>
-                <td>Level to</td>
-                <td class="value" colspan="3">
-                    <select field="levelMax" enables="enableLevelMax">
-                        <option value="0">-</option>
-                        <option value="1">Fatal</option>
-                        <option value="2">Error</option>
-                        <option value="3">Warn</option>
-                        <option value="4">Info</option>
-                        <option value="5">Debug</option>
-                        <option value="6">Verbose</option>
-                    </select>
-                </td>
-            </tr>
-            <tr>
-                <td><input type="checkbox" field="enableCtrl" /></td>
-                <td colspan="4">Control messages only</td>
-            </tr>
+        <div class="row">
+            <div class="label"><label><input type="checkbox" field="enabled" /> Active</label></div>
+        </div>
+        <div class="row">
+            <div class="label">Name</div>
+            <div class="value"><input type="text" field="name" /></div>
+        </div>
 
-            <tr class="rule-section"><td colspan="5">Display (kept for dlt-viewer, not used yet)</td></tr>
-            <tr>
-                <td><input type="checkbox" field="enableMarker" /></td>
-                <td colspan="4">Mark the matched records with the color</td>
-            </tr>
-            <tr>
-                <td><input type="checkbox" field="enableRegexSearchReplace" /></td>
-                <td>Replace</td>
-                <td class="value"><input type="text" field="regexSearch" enables="enableRegexSearchReplace" /></td>
-                <td>with</td>
-                <td><input type="text" field="regexReplace" enables="enableRegexSearchReplace" /></td>
-            </tr>
-        </table>
+        <div class="group">
+            <div class="row">
+                <div class="label group-title">Type</div>
+                <div class="value radios">
+                    <label><input type="radio" name="type" value="0" /> Include (positive)</label>
+                    <label><input type="radio" name="type" value="1" /> Exclude (negative)</label>
+                    <label><input type="radio" name="type" value="2" /> Marker</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="group">
+            <div class="row">
+                <div class="label group-title"><label><input type="checkbox" field="enableMarker" /> Marker color</label></div>
+                <!-- The color input of Sciter: a swatch, the value and a picker -->
+                <div class="value"><input type="color" id="color" field="color" /></div>
+            </div>
+            <div class="palette">
+                <span class="swatch" color="#ff0000" style="background:#ff0000"></span>
+                <span class="swatch" color="#ffff00" style="background:#ffff00"></span>
+                <span class="swatch" color="#00ff00" style="background:#00ff00"></span>
+                <span class="swatch" color="#00ffff" style="background:#00ffff"></span>
+                <span class="swatch" color="#0000ff" style="background:#0000ff"></span>
+                <span class="swatch" color="#ff00ff" style="background:#ff00ff"></span>
+                <span class="swatch" color="#ff9999" style="background:#ff9999"></span>
+                <span class="swatch" color="#ffffcc" style="background:#ffffcc"></span>
+                <span class="swatch" color="#99ff99" style="background:#99ff99"></span>
+                <span class="swatch" color="#9999ff" style="background:#9999ff"></span>
+                <span class="swatch" color="#ff99ff" style="background:#ff99ff"></span>
+            </div>
+        </div>
+
+        <div class="separator"></div>
+
+        <div class="row">
+            <div class="label"><label><input type="checkbox" field="enableEcu" /> ECU Id</label></div>
+            <div class="value"><input type="text" field="ecuId" enables="enableEcu" /></div>
+            <div class="options"></div>
+        </div>
+        <div class="row">
+            <div class="label"><label><input type="checkbox" field="enableApp" /> Application Id</label></div>
+            <div class="value"><input type="text" field="appId" enables="enableApp" /></div>
+            <div class="options"><label><input type="checkbox" field="regexApp" /> RegExp</label></div>
+        </div>
+        <div class="row">
+            <div class="label"><label><input type="checkbox" field="enableCtx" /> Context Id</label></div>
+            <div class="value"><input type="text" field="ctxId" enables="enableCtx" /></div>
+            <div class="options"><label><input type="checkbox" field="regexCtx" /> RegExp</label></div>
+        </div>
+        <div class="row">
+            <div class="label"><label><input type="checkbox" field="enableHeader" /> Header Text</label></div>
+            <div class="value"><input type="text" field="header" enables="enableHeader" /></div>
+            <div class="options">
+                <label><input type="checkbox" field="regexHeader" /> RegExp</label>
+                <label title="Ignore case"><input type="checkbox" field="ignoreCaseHeader" /> Aa</label>
+            </div>
+        </div>
+        <div class="row">
+            <div class="label"><label><input type="checkbox" field="enablePayload" /> Payload Text</label></div>
+            <div class="value"><input type="text" field="payload" enables="enablePayload" /></div>
+            <div class="options">
+                <label><input type="checkbox" field="regexPayload" /> RegExp</label>
+                <label title="Ignore case"><input type="checkbox" field="ignoreCasePayload" /> Aa</label>
+            </div>
+        </div>
+        <div class="hint">Without RegExp, Application Id is the exact value; Context Id, Header and Payload
+            are found as a part. Aa: ignore case. The header text isn't applied yet.</div>
+
+        <div class="row">
+            <div class="label"><label><input type="checkbox" field="enableMessageId" /> Message Id</label></div>
+            <div class="value">
+                <span>min</span><input type="integer" field="messageIdMin" enables="enableMessageId" />
+                <span>max</span><input type="integer" field="messageIdMax" enables="enableMessageId" />
+            </div>
+            <div class="options"></div>
+        </div>
+        <div class="hint" id="id-hint"></div>
+
+        <div class="row">
+            <div class="label"><label><input type="checkbox" field="enableLevelMin" /> Log Level Min</label></div>
+            <div class="value">
+                <select field="levelMin" enables="enableLevelMin">
+                    <option value="0">off</option>
+                    <option value="1">fatal</option>
+                    <option value="2">error</option>
+                    <option value="3">warn</option>
+                    <option value="4">info</option>
+                    <option value="5">debug</option>
+                    <option value="6">verbose</option>
+                </select>
+            </div>
+        </div>
+        <div class="row">
+            <div class="label"><label><input type="checkbox" field="enableLevelMax" /> Log Level Max</label></div>
+            <div class="value">
+                <select field="levelMax" enables="enableLevelMax">
+                    <option value="0">off</option>
+                    <option value="1">fatal</option>
+                    <option value="2">error</option>
+                    <option value="3">warn</option>
+                    <option value="4">info</option>
+                    <option value="5">debug</option>
+                    <option value="6">verbose</option>
+                </select>
+            </div>
+        </div>
+        <div class="row">
+            <div class="label"><label><input type="checkbox" field="enableCtrl" /> Control Messages</label></div>
+        </div>
+        <div class="row">
+            <div class="label"><label><input type="checkbox" field="enableRegexSearchReplace" /> Regex Replace</label></div>
+            <div class="value">
+                <input type="text" field="regexSearch" enables="enableRegexSearchReplace" />
+                <input type="text" field="regexReplace" enables="enableRegexSearchReplace" />
+            </div>
+            <div class="options"></div>
+        </div>
+        <div class="hint">Marker color and Regex Replace are kept for dlt-viewer, not shown here yet.</div>
     </main>
     <footer>
         <button id="btn-cancel">Cancel</button>

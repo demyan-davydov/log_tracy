@@ -476,12 +476,17 @@ function setupEvents() {
     // A set is a copy kept with the log: exported to share it or open it in dlt-viewer
     document.on("click", ".filter-export", (evt, button) => {
         const set = parseInt(button.parentElement.getAttribute("set-index"));
-        const fn = Window.this.selectFile({
+        // Offered the file the set was loaded from or exported to last, if any
+        const source = shownFilters.sets[set]?.source || "";
+        const params = {
             mode: "save",
             caption: "Export Filter",
             extension: "dlf",
             filter: "DLT Filter Files (*.dlf)|*.dlf|All Files (*.*)|*.*"
-        });
+        };
+        // Without its .dlf: the dialog adds the extension itself (name.dlf.dlf otherwise)
+        if (source) params.path = source.replace(/\.dlf$/i, "");
+        const fn = Window.this.selectFile(params);
         if (fn) filterCommand("exportFilterSet", set, fn);
         return true;
     });
