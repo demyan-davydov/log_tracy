@@ -166,6 +166,13 @@
     border-right: 1px solid var(--border-color);
 }
 
+/* Auxiliary columns (all but Payload): the value on one line, never cut; their
+   widths in main.htm are minimums that keep the layout from changing often.
+   Payload wraps to stay readable whole. */
+.log-table>tbody>tr>td:not(:last-child) {
+    white-space: nowrap;
+}
+
 /* Force Payload column to take remaining space */
 .log-table>thead>tr>th:last-child,
 .log-table>tbody>tr>td:last-child {

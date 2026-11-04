@@ -6,6 +6,8 @@ globalThis.VirtualMainViewTBody = VirtualMainViewTBody;
 globalThis.VirtualSearchViewTBody = VirtualSearchViewTBody;
 
 let currentTheme = "light";
+// Font size of the log tables, % of the normal one (Settings)
+let tableFontSize = 100;
 // Main view rendered last time: the table is reloaded when another document is
 // shown or the content of the shown one changes (dataVersion of the ready view).
 // shownDataVersion is null while the view isn't the table.
@@ -172,6 +174,7 @@ function restoreSettings() {
             if (settings.theme) {
                 setTheme(settings.theme);
             }
+            if (settings.tableFontSize) setTableFontSize(settings.tableFontSize);
             // Files open at the end of the last session, the active one first
             const paths = (settings.files || []).map(f => f.path);
             if (settings.activeFile) paths.unshift(settings.activeFile);
@@ -236,6 +239,16 @@ function setTheme(theme) {
     Window.this.update();
 }
 
+// Scales the log tables: the font of each column keeps its proportion to the
+// others (the cells set theirs in % of the table's). The column widths stay as
+// they are: they are minimums, the auxiliary columns keep their values on one line
+function setTableFontSize(percent) {
+    tableFontSize = percent;
+    for (const table of $$("table.log-table"))
+        table.style.fontSize = `${percent}%`;
+    console.log("Table font size set to:", percent);
+}
+
 globalThis.getTabContent = function () {
     const tabContent = $("#tab-content");
     return tabContent;
@@ -274,11 +287,12 @@ function openSettingsAction() {
     const result = Window.this.modal({
         url: "settings.htm",
         alignment: "center",
-        parameters: { theme: currentTheme }
+        parameters: { theme: currentTheme, tableFontSize }
     });
     if (result && result.theme) {
         setTheme(result.theme);
     }
+    if (result && result.tableFontSize) setTableFontSize(result.tableFontSize);
 }
 
 function openFileAction() {
@@ -966,6 +980,8 @@ globalThis.getAppState = function () {
     const list = getMainViewList();
     return JSON.stringify({
         windowRect: { left, top, width, height },
+        theme: currentTheme,
+        tableFontSize,
         scrollPosition: list ? (list.state.scrollPos || 0) : 0
     });
 }

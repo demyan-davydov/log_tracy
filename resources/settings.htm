@@ -1,4 +1,4 @@
-<html window-width="400" window-height="300">
+<html window-width="400" window-height="370">
 
 <head>
     <title>Settings</title>
@@ -18,12 +18,14 @@
             } else {
                 $("select#theme").value = "light";
             }
+            $("select#table-font-size").value = String(settings.tableFontSize || 100);
         });
 
         $("#btn-save").on("click", () => {
             const theme = $("select#theme").value;
+            const tableFontSize = parseInt($("select#table-font-size").value);
             // Return result to caller
-            Window.this.close({ theme: theme });
+            Window.this.close({ theme, tableFontSize });
         });
 
         $("#btn-cancel").on("click", () => {
@@ -41,6 +43,19 @@
             <select id="theme">
                 <option value="light">Light</option>
                 <option value="dark">Dark</option>
+            </select>
+        </div>
+        <div class="setting-group">
+            <label>Log table font size</label>
+            <select id="table-font-size">
+                <option value="80">80%</option>
+                <option value="90">90%</option>
+                <option value="100">100%</option>
+                <option value="110">110%</option>
+                <option value="125">125%</option>
+                <option value="150">150%</option>
+                <option value="175">175%</option>
+                <option value="200">200%</option>
             </select>
         </div>
         <!-- Add more settings here -->

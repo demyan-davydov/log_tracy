@@ -755,6 +755,12 @@ class MainWindow : SciterWindow
                 settings.windowRect.height = r["height"].integer.to!int;
             }
 
+            // Preferences changed in the Settings dialog
+            if ("theme" in j)
+                settings.theme = j["theme"].str;
+            if ("tableFontSize" in j)
+                settings.tableFontSize = j["tableFontSize"].integer.to!int;
+
             // Get active file scroll pos
             int scroll = 0;
             if ("scrollPosition" in j)

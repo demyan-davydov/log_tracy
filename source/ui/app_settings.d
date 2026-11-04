@@ -38,6 +38,7 @@ struct AppSettings
     FileState[] files;
     string activeFile;
     string theme;
+    int tableFontSize = 100; /// font size of the log tables, % of the normal one
 
     this(ref return scope const AppSettings rhs)
     {
@@ -45,6 +46,7 @@ struct AppSettings
         this.files = rhs.files.dup;
         this.activeFile = rhs.activeFile;
         this.theme = rhs.theme;
+        this.tableFontSize = rhs.tableFontSize;
     }
 
     void opAssign(const AppSettings rhs)
@@ -53,6 +55,7 @@ struct AppSettings
         this.files = rhs.files.dup;
         this.activeFile = rhs.activeFile;
         this.theme = rhs.theme;
+        this.tableFontSize = rhs.tableFontSize;
     }
 
     bool opEquals(const ref AppSettings rhs) const
@@ -60,7 +63,8 @@ struct AppSettings
         return windowRect == rhs.windowRect &&
             files == rhs.files &&
             activeFile == rhs.activeFile &&
-            theme == rhs.theme;
+            theme == rhs.theme &&
+            tableFontSize == rhs.tableFontSize;
     }
 
     size_t toHash() const @safe nothrow
@@ -69,6 +73,7 @@ struct AppSettings
         hash = hashOf(files, hash);
         hash = hashOf(activeFile, hash);
         hash = hashOf(theme, hash);
+        hash = hashOf(tableFontSize, hash);
         return hash;
     }
 }
@@ -107,6 +112,7 @@ static toJSON(AppSettings settings)
     j.object["files"] = JSONValue(fileArray);
     j.object["activeFile"] = JSONValue(settings.activeFile);
     j.object["theme"] = JSONValue(settings.theme);
+    j.object["tableFontSize"] = JSONValue(settings.tableFontSize);
 
     return j;
 }
@@ -168,6 +174,11 @@ static AppSettings loadSettings(string path = defaultSettingsPath())
             settings.theme = j["theme"].str;
         }
 
+        if ("tableFontSize" in j)
+        {
+            settings.tableFontSize = j["tableFontSize"].integer.to!int;
+        }
+
     }
     catch (Exception e)
     {
@@ -200,6 +211,7 @@ void saveSettings(in AppSettings settings, string path = defaultSettingsPath())
     j.object["files"] = JSONValue(fileArray);
     j.object["activeFile"] = JSONValue(settings.activeFile);
     j.object["theme"] = JSONValue(settings.theme);
+    j.object["tableFontSize"] = JSONValue(settings.tableFontSize);
 
     try
     {
