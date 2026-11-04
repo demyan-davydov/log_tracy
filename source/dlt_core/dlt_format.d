@@ -518,6 +518,25 @@ unittest
     assert(msg.timestampSeconds == 400);
 }
 
+@("DltFormat.decode: reuses the buffer of the message")
+unittest
+{
+    auto data = buildDltMessage("ECU1", 1, 0, 0, 1, [0x42]);
+    auto format = new DltFormat();
+    LogMessage!wchar msg;
+
+    assert(format.decode(msg, format.recordAt(data, 0)));
+    const firstText = msg.text(0).ptr;
+    foreach (_; 0 .. 3)
+    {
+        assert(format.decode(msg, format.recordAt(data, 0)));
+        assert(msg.text(0).ptr is firstText, "no new buffer per decode");
+    }
+
+    assert(!format.decode(msg, null));
+    assert(msg.text(0) is null, "a failed decode leaves no stale record");
+}
+
 // ─── DltDetector tests ─────────────────────────────────────────────────────
 
 @("DltDetector: a storage header at the start is certain, the extension is a hint")

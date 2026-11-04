@@ -121,13 +121,19 @@ LogItemHeaders findHeaders(const(ubyte)[] data, bool hasStorageHeader = true) pu
     return headers;
 }
 
-bool parseDltItem(Char)(out LogMessage!Char msg, const(ubyte)[] data, bool hasStorageHeader = true) nothrow @nogc
+//! @brief Decodes a DLT message into `msg`, reusing its buffer
+//! @note `msg` is `ref`, not `out`: `out` resets it to .init without its
+//! destructor, which leaks the buffer and allocates a new one on every call.
+bool parseDltItem(Char)(ref LogMessage!Char msg, const(ubyte)[] data, bool hasStorageHeader = true) nothrow @nogc
         if (isSomeChar!Char)
 {
     const LogItemHeaders headers = findHeaders(data, hasStorageHeader);
 
     if (headers.standard is null)
+    {
+        msg.clear();
         return false;
+    }
 
     const bool msbf = headers.standard.isBigEndian();
 
