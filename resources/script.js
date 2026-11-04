@@ -176,7 +176,7 @@ globalThis.getTabContent = function () {
 
 globalThis.getLoadingContainer = function () {
     const tabContent = getTabContent();
-    const loading = tabContent.$(".loading-container");
+    const loading = tabContent.$("#loading-container");
     return loading;
 }
 
@@ -648,6 +648,33 @@ const mainViewTexts = {
     filterFailed: () => "Filter failed",
 };
 
+// Line under the text of a status: what the user can do, or the error
+const mainViewDetails = {
+    loadingFile: () => "Cancel closes the file",
+    loadFailed: (vm) => vm.error || "",
+    filterCancelled: () => "Change or clear the filters to show messages again",
+    filterFailed: (vm) => vm.error || "",
+};
+
+const searchViewDetails = {
+    searchCancelled: () => "Run the search again to see results",
+    searchFailed: (vm) => vm.error || "",
+};
+
+// Fills a status view: text, progress (hidden without one), detail, Cancel
+// (its row hidden when the status can't be cancelled)
+function showStatus(ids, vm, texts, details) {
+    const progress = $(ids.progress);
+    const hasProgress = vm.progress !== undefined;
+    progress.style.display = hasProgress ? "" : "none";
+    if (hasProgress) progress.value = percent(vm.progress);
+    const text = texts[vm.status];
+    $(ids.status).innerText = text ? text(vm) : vm.status;
+    const detail = details[vm.status];
+    $(ids.detail).innerText = detail ? detail(vm) : "";
+    $(ids.cancel).parentElement.style.display = vm.canCancel ? "" : "none";
+}
+
 function percent(progress) {
     return Math.round(progress * 100);
 }
@@ -688,9 +715,7 @@ function updateViewMode() {
 
     const showOnly = (shown) => {
         for (const element of [table, loading, lostView])
-            element.style.display = element !== shown ? "none"
-                : element === table ? "block" // clear inline style to let it act as a table
-                : "flex";
+            element.style.display = element !== shown ? "none" : "block";
     };
 
     if (!vm) {
@@ -723,13 +748,8 @@ function updateViewMode() {
         $("#source-lost-path").innerText = status.path || "";
     } else {
         showOnly(loading);
-        const progress = $("#doc-load-progress");
-        const hasProgress = vm.progress !== undefined;
-        progress.style.display = hasProgress ? "" : "none";
-        if (hasProgress) progress.value = percent(vm.progress);
-        const text = mainViewTexts[vm.status];
-        $("#doc-load-status").innerText = text ? text(vm) : vm.status;
-        $("#btn-cancel-load").style.display = vm.canCancel ? "" : "none";
+        showStatus({ status: "#doc-load-status", progress: "#doc-load-progress",
+            detail: "#doc-load-detail", cancel: "#btn-cancel-load" }, vm, mainViewTexts, mainViewDetails);
     }
     shownDocId = activeDocId;
     shownDataVersion = null; // the next table is reloaded, whatever its dataVersion
@@ -775,14 +795,9 @@ function updateSearchViewMode() {
     }
 
     table.style.display = "none";
-    loading.style.display = "flex";
-    const progress = $("#search-view-progress");
-    const hasProgress = vm.progress !== undefined;
-    progress.style.display = hasProgress ? "" : "none";
-    if (hasProgress) progress.value = percent(vm.progress);
-    const text = searchViewTexts[vm.status];
-    $("#search-view-status").innerText = text ? text(vm) : vm.status;
-    $("#btn-cancel-search").style.display = vm.canCancel ? "" : "none";
+    loading.style.display = "block";
+    showStatus({ status: "#search-view-status", progress: "#search-view-progress",
+        detail: "#search-view-detail", cancel: "#btn-cancel-search" }, vm, searchViewTexts, searchViewDetails);
 
     shownSearchDocId = activeDocId;
     shownSearchDataVersion = null; // the next result is reloaded, whatever its dataVersion

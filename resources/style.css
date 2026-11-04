@@ -48,17 +48,6 @@ header {
     overflow: hidden;
 }
 
-#doc-load-progress {
-    width: 300px;
-    height: 10px;
-}
-
-#doc-load-status {
-    margin-top: 10px;
-    font-size: 1.1em;
-    color: var(--text-main);
-}
-
 /* ---- Placeholder: instead of all the panels while no document is open ---- */
 
 #empty-placeholder {

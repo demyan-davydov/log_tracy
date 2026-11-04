@@ -99,18 +99,26 @@
         <frameset rows="*, 250dip">
             <section id="main-content">
                 <div id="tab-content" class="tab-content">
-                    <div id="loading-container" class="loading-container" style="display:none;">
-                        <progress id="doc-load-progress" value="0" max="100"></progress>
-                        <div id="doc-load-status">Loading DLT file...</div>
-                        <button id="btn-cancel-load">Cancel</button>
+                    <!-- Status views: see .status-view in tab-content.css -->
+                    <div id="loading-container" class="status-view" style="display:none;">
+                        <div class="status-body">
+                            <div id="doc-load-status" class="status-title">Loading DLT file...</div>
+                            <progress id="doc-load-progress" value="0" max="100"></progress>
+                            <div id="doc-load-detail" class="status-detail"></div>
+                            <div class="status-actions">
+                                <button id="btn-cancel-load">Cancel</button>
+                            </div>
+                        </div>
                     </div>
-                    <div id="source-lost" class="source-lost" style="display:none;">
-                        <div class="source-lost-title">The file is no longer available</div>
-                        <div id="source-lost-path"></div>
-                        <div id="source-lost-error"></div>
-                        <div class="source-lost-actions">
-                            <button id="btn-lost-retry">Retry</button>
-                            <button id="btn-lost-close">Close</button>
+                    <div id="source-lost" class="status-view" style="display:none;">
+                        <div class="status-body">
+                            <div class="status-title">The file is no longer available</div>
+                            <div id="source-lost-path" class="status-detail status-path"></div>
+                            <div id="source-lost-error" class="status-detail status-error"></div>
+                            <div class="status-actions">
+                                <button id="btn-lost-retry">Retry</button>
+                                <button id="btn-lost-close">Close</button>
+                            </div>
                         </div>
                     </div>
                     <table class="log-table main-view" fixed-layout="true">
@@ -143,10 +151,15 @@
                 <div id="search-message"></div>
 
                 <header>Details / Search Results</header>
-                <div id="search-loading-container" class="loading-container" style="display:none;">
-                    <progress id="search-view-progress" value="0" max="100"></progress>
-                    <div id="search-view-status">Searching...</div>
-                    <button id="btn-cancel-search">Cancel</button>
+                <div id="search-loading-container" class="status-view compact" style="display:none;">
+                    <div class="status-body">
+                        <div id="search-view-status" class="status-title">Searching...</div>
+                        <progress id="search-view-progress" value="0" max="100"></progress>
+                        <div id="search-view-detail" class="status-detail"></div>
+                        <div class="status-actions">
+                            <button id="btn-cancel-search">Cancel</button>
+                        </div>
+                    </div>
                 </div>
                 <table class="log-table search-view" fixed-layout="true">
                     <thead>

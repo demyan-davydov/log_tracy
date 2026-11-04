@@ -4,43 +4,80 @@
     height: *;
 }
 
-/* Shown instead of the views of a document whose file can't be read any more */
-.source-lost {
+/* ---- Status views: loading, filtering, searching, failures, lost file ----
+   Shown instead of a table. A centered block: title, thin progress bar,
+   detail (hint or error, wraps), buttons. Centered by flexible margins: when
+   the panel is low they shrink to zero instead of pushing the content out. */
+
+.status-view {
     size: *;
+    flow: vertical;
+    overflow: hidden;
     background: var(--bg-main);
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    padding: 20px;
+    color: var(--text-main);
 }
 
-.source-lost-title {
-    font-weight: bold;
-    margin-bottom: 8px;
+.status-body {
+    flow: vertical;
+    width: 380dip;
+    max-width: 100%;
+    margin: * *;
+    padding: 12dip 16dip;
 }
 
-#source-lost-error {
-    color: red;
-    margin-top: 4px;
+.status-title {
+    text-align: center;
+    font-size: 15dip;
+    font-weight: 600;
 }
 
-#source-lost-error:empty {
+.status-body > progress {
+    width: *;
+    height: 6dip;
+    margin-top: 10dip;
+}
+
+.status-detail {
+    margin-top: 6dip;
+    text-align: center;
+    color: var(--text-label);
+}
+
+.status-detail:empty {
     display: none;
 }
 
-.source-lost-actions {
-    flow: horizontal;
-    border-spacing: 8px;
-    margin-top: 12px;
+/* A path has separators: cut in the middle, on one line */
+.status-path {
+    overflow-x: hidden;
+    white-space: nowrap;
+    text-overflow: path-ellipsis;
 }
 
-.loading-container {
-    size: *;
-    background: var(--bg-main);
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    padding: 20px;
+.status-error {
+    color: var(--log-error);
+}
+
+.status-actions {
+    flow: horizontal;
+    width: max-content;
+    margin: 12dip * 0; /* centered */
+    border-spacing: 8dip;
+}
+
+/* In the low search results panel */
+.status-view.compact .status-body {
+    padding: 6dip 16dip;
+}
+
+.status-view.compact .status-title {
+    font-size: 13dip;
+}
+
+.status-view.compact .status-body > progress {
+    margin-top: 6dip;
+}
+
+.status-view.compact .status-actions {
+    margin-top: 8dip;
 }
