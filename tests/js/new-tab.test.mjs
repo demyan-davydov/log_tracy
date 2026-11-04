@@ -3,17 +3,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-    noNewTab, plusAction, openNewTab, activateNewTab, activateDocument,
+    noNewTab, plusShown, openNewTab, activateNewTab, activateDocument,
     closeNewTab, documentOpened, documentsCounted, showsPlaceholder,
     shownDocument, fileFailed, failureReason
 } from "../../resources/new-tab.js";
 
-test("+ opens the file dialog while no document is open", () => {
-    assert.equal(plusAction(0), "openDialog");
+test("no + while no document is open: the start screen has its own Open", () => {
+    assert.equal(plusShown(0), false);
 });
 
 test("+ opens the new tab while documents are open", () => {
-    assert.equal(plusAction(2), "newTab");
+    assert.equal(plusShown(2), true);
     assert.deepEqual(openNewTab(), { open: true, active: true });
 });
 

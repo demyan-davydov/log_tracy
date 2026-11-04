@@ -1,7 +1,7 @@
 import { $, $$ } from "@sciter";
 import { VirtualDltTBody, VirtualMainViewTBody, VirtualSearchViewTBody, setColumns, renderHeader } from "virtual-dlt-view.js";
 import {
-    noNewTab, plusAction, openNewTab, activateNewTab, activateDocument,
+    noNewTab, plusShown, openNewTab, activateNewTab, activateDocument,
     closeNewTab, documentOpened, documentsCounted, showsPlaceholder,
     shownDocument, fileFailed, failureReason
 } from "new-tab.js";
@@ -378,10 +378,6 @@ globalThis.onMenuCommand = function (id) {
 
 function setupEvents() {
     document.on("click", "#btn-add-tab", () => {
-        if (plusAction(docCount) === "openDialog") {
-            openFileAction();
-            return;
-        }
         newTab = openNewTab();
         openFailure = null; // a fresh start
         shownPlaceholder = null; // render it again, without the failure
@@ -748,7 +744,7 @@ function refreshTabs() {
     const sameTabs = tabs.length === docs.length
         && tabs.every((tab, i) => parseInt(tab.id) === docs[i].id);
     if (!sameTabs) {
-        // The + button is kept: it animates between its two looks
+        // The + button is kept, the tabs follow it
         for (const tab of tabs) tab.remove();
         const newTabElement = $(`#${NEW_TAB_ID}`); // kept, after the documents
         for (const doc of docs) {
@@ -761,7 +757,7 @@ function refreshTabs() {
         }
         tabs = [...$$(DOC_TABS)];
     }
-    updateAddTabButton(docs.length === 0);
+    $("#btn-add-tab").style.display = plusShown(docs.length) ? "" : "none";
     docs.forEach((doc, i) => {
         const tab = tabs[i];
         if (doc.active && !newTab.active) tab.classList.add("active");
@@ -825,19 +821,6 @@ function renderNewTab() {
     }
     if (newTab.active) tab.classList.add("active");
     else tab.classList.remove("active");
-}
-
-// The + button: "+ Open File" while no document is open, a small round "+"
-// in the corner of the tab strip otherwise, opening the New Tab
-function updateAddTabButton(wide) {
-    const button = $("#btn-add-tab");
-    if (wide) {
-        button.classList.add("wide");
-        button.removeAttribute("title");
-    } else {
-        button.classList.remove("wide");
-        button.setAttribute("title", "New Tab");
-    }
 }
 
 function switchTab(docId) {

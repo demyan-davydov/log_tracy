@@ -342,41 +342,22 @@ body > header {
     transition: transform cubic-out 150ms;
 }
 
-/* "+ Open File" while no document is open (.wide), a round "+" otherwise;
-   the "+" keeps its place, the label is clipped as the button narrows */
+/* A round "+" left of the tabs, opening the New Tab; only while documents
+   are open: the start screen has its own Open */
 #btn-add-tab {
-    flow: horizontal;
     width: 26dip;
     height: 26dip;
     margin: 2dip 4dip 0 0;
     padding: 0;
-    overflow-x: hidden;
-    white-space: nowrap;
+    line-height: 24dip;
+    text-align: center;
+    font-size: 18dip;
     color: var(--tab-text);
     background: transparent;
     border: none;
     border-radius: 13dip;
     cursor: default;
-    transition: width cubic-out 180ms, background-color linear 120ms;
-}
-
-#btn-add-tab.wide {
-    width: 104dip;
-    color: var(--text-main);
-    background: var(--bg-tab-hover);
-}
-
-#btn-add-tab > .add-tab-plus {
-    width: 26dip;
-    min-width: 26dip;
-    line-height: 24dip;
-    text-align: center;
-    font-size: 18dip;
-}
-
-#btn-add-tab > .add-tab-label {
-    line-height: 26dip;
-    padding-right: 12dip;
+    transition: background-color linear 120ms;
 }
 
 /* The full name of a cut tab name is not shown while a tab is held, see
@@ -407,10 +388,6 @@ body > header {
 #btn-add-tab:hover {
     color: var(--text-main);
     background: var(--bg-tab-hover);
-}
-
-#btn-add-tab.wide:hover {
-    background: var(--tab-close-hover); /* a step darker than its resting look */
 }
 
 frameset {

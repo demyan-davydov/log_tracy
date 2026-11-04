@@ -7,10 +7,10 @@
 export const noNewTab = Object.freeze({ open: false, active: false });
 const newTabShown = Object.freeze({ open: true, active: true });
 
-// What "+" does: without documents the start screen already shows the recent
-// files, so it opens the file dialog; with documents it opens the new tab
-export function plusAction(docCount) {
-    return docCount > 0 ? "newTab" : "openDialog";
+// "+" is there only while documents are open: without them the start screen
+// already offers Open and the recent files
+export function plusShown(docCount) {
+    return docCount > 0;
 }
 
 // Opens the new tab, or shows the one already open: never two of them
