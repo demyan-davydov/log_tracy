@@ -102,9 +102,10 @@ body > header {
     position: relative;
     flow: horizontal;
     vertical-align: middle;
-    /* Equal share of the strip, from a comfortable width down to a stub */
+    /* As wide as the full name; when the strip is short, the tabs share it
+       (long names are cut first), down to a stub */
     width: *;
-    max-width: 220dip;
+    max-width: max-content;
     min-width: 44dip;
     height: 30dip;
     padding: 0 6dip 0 10dip;
@@ -215,11 +216,19 @@ body > header {
     cursor: default;
 }
 
-/* Tooltips of the tabs (title and the full name of a cut one) are not shown
-   while a tab is held, see TabTooltip in script.js */
-#tabs-container popup[role=tooltip],
+/* The full name of a cut tab name is not shown while a tab is held, see
+   TabTooltip in script.js */
 #tabs-container popup[role=overflow-tooltip] {
     prototype: TabTooltip;
+}
+
+/* Full name of a cut tab name, shown over it: looks like a continuation of
+   the tab - a bit lower than it, rounded the same way */
+#tabs-container popup[role=overflow-tooltip] {
+    height: 24dip;
+    line-height: 24dip;
+    padding: 0 8dip;
+    border-radius: 7dip 7dip 0 0;
 }
 
 /* Where the dragged tab will land */

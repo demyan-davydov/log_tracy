@@ -397,7 +397,6 @@ function refreshTabs() {
         const tab = tabs[i];
         if (doc.active) tab.classList.add("active");
         else tab.classList.remove("active");
-        tab.setAttribute("title", doc.path);
         tab.$(".tab-name").textContent = doc.name;
         applyTabStatus(tab, docStatus.get(doc.id));
     });
@@ -438,8 +437,8 @@ function setTabShift(tab, dx) {
     tab.style.transform = dx ? `translate(${dx}px, 0)` : "";
 }
 
-// Tooltips of the tab strip: the title of a tab (its path) and the one Sciter
-// shows by itself for a name cut by text-overflow. style.css gives them this
+// Tooltip of the tab strip: the full name Sciter shows by itself for a name
+// cut by text-overflow (tabs have no title). style.css gives it this
 // prototype: one that is about to appear while a tab is held is closed at
 // once, the shown ones are tracked to close them when a tab is pressed (they
 // can't be found with a selector).
