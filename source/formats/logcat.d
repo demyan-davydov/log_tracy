@@ -403,3 +403,15 @@ unittest
     assert(decodeLine(noYear, "2026-11-03 14:22:01.123  1  2 I T: x", msg));
     assert(msg.timeKind == TimeKind.None);
 }
+
+@("Logcat: a line with month 00 is text, for the detector and the decoder")
+unittest
+{
+    enum line = "00-05 12:00:00.000  1  2 I Tag: x";
+    assert(new LogcatDetector().detect("x.log", bytes(line ~ "\n")).score == 0);
+
+    auto format = new LogcatFormat(LogcatFormat.Variant.Threadtime);
+    LogMessage!wchar msg;
+    assert(decodeLine(format, line, msg));
+    assert(msg.timeKind == TimeKind.None && msg.payloadText == line ~ ""w);
+}

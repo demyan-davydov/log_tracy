@@ -103,7 +103,9 @@ bool isValidDate(int year, uint month, uint day) pure nothrow @nogc @safe
 {
     import std.datetime.date : valid;
 
-    return month <= 12 && day <= 31 && valid!"days"(year, month, day);
+    // valid!"days" halts the process on a month out of 1..12 (an assert(0)
+    // in std.datetime, kept in release builds): check the month first
+    return month >= 1 && month <= 12 && valid!"days"(year, month, day);
 }
 
 //! Nanoseconds since the epoch of a date and a time of day, as if in UTC
@@ -148,4 +150,12 @@ unittest
     assert(!isValidDate(2001, 2, 29));
     assert(!isValidDate(2026, 4, 31));
     assert(!isValidDate(2026, 13, 1));
+}
+
+@("text parsing: month 0 and day 0 are not dates (and don't halt std.datetime)")
+unittest
+{
+    assert(!isValidDate(2000, 0, 5));
+    assert(!isValidDate(2000, 5, 0));
+    assert(!isValidDate(2000, 0, 0));
 }
