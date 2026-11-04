@@ -50,11 +50,27 @@ resources/script.js, virtual-dlt-view.js   tabs, panels, virtual table built fro
 ```
 
 ### Where things live
+A package imports only the packages below it (unittests may import more, e.g. a format to build
+test data):
+
+```
+utils  ←  log_core  ←  formats  ←  domain  ←  ui  ←  app.d
+                                   sciter  ←  ui
+```
+
+- `utils/` holds what knows nothing of logs and could move to another project as it is:
+  chunked array, mapped file, lock guard, background slot, state machines (`utils/fsm`),
+  event buses (`utils/event_bus/`).
 - `log_core/` holds what doesn't depend on a format (LogMessage, LogFormat, filters,
   ByteSource), `log_core/text/` the base of the text formats.
 - Every format lives in `formats/`: one module (`formats/logcat.d`), or a package when it has
   several (`formats/dlt/`, `formats/can/`, `formats/syslog/`). `formats/registry.d` lists them.
 - `domain/` (documents, indexes) knows formats only through `LogFormat` and `detectFormat`.
+- `sciter/` is the D wrapper over Sciter (window, application, value, ...), `sciter/capi/` the
+  C API it calls.
+- `ui/` is the window and the logic behind it; the Sciter-free part of it is unit-tested.
+- `scripts/` holds the build, bundle and check scripts; they run from the project root
+  wherever they are called from.
 
 ### Formats and detection
 - The formats supported now and the ones planned: `docs/formats.md`. Keep it up to date
