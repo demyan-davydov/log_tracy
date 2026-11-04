@@ -233,6 +233,9 @@ private bool parseLine(SyslogFormat.Kind kind, const(char)[] s, out SyslogLine l
     case SyslogFormat.Kind.IsoLocal:
         long time, offset;
         bool hasZone;
+        // Syslog writes a 'T' (rsyslog, journalctl): application logs a space
+        if (s.length <= 10 || s[10] != 'T')
+            return false;
         // The kind of the time is that of the column: another one is text
         if (!readIsoDateTime(s, time, hasZone, offset) || hasZone != (kind == SyslogFormat.Kind.Iso))
             return false;
@@ -246,11 +249,27 @@ private bool parseLine(SyslogFormat.Kind kind, const(char)[] s, out SyslogLine l
     if (!readChar(s, ' '))
         return false;
     skipSpaces(s);
-    if (!readToken(s, line.host))
+    // An application log has a level where syslog has the host
+    if (!readToken(s, line.host) || isLevelWord(line.host))
         return false;
     readChar(s, ' ');
     readTag(s, line);
     return true;
+}
+
+//! @returns true if `word` is a level as application logs write it
+private bool isLevelWord(const(char)[] word) pure nothrow @nogc @safe
+{
+    import std.uni : sicmp;
+
+    static immutable string[13] levels = [
+        "trace", "debug", "info", "notice", "warn", "warning", "err", "error",
+        "crit", "critical", "fatal", "severe", "verbose"
+    ];
+    foreach (level; levels)
+        if (sicmp(word, level) == 0)
+            return true;
+    return false;
 }
 
 //! "Mmm dd hh:mm:ss[.fraction]", the day padded with a space or a zero
@@ -300,6 +319,9 @@ private void readTag(const(char)[] s, ref SyslogLine line) pure nothrow @nogc @s
     }
     if (!readChar(rest, ':'))
         return;
+    // "tag: message": a colon inside a word ("12:30", "Error:disk") is not a tag
+    if (!hasPid && rest.length && rest[0] != ' ')
+        return;
     readChar(rest, ' ');
 
     line.app = s[0 .. i];
@@ -333,6 +355,8 @@ private bool parseRfc5424(const(char)[] s, ref SyslogLine line) pure nothrow @no
         || !readChar(s, ' ') || !readField(s, procId) || !readChar(s, ' ') || !readField(s, line.msgId)
         || !readChar(s, ' ') || !readStructuredData(s, line.data))
         return false;
+    if (s.length && s[0] != ' ')
+        return false; // the data must end the line or be followed by a space
     if (procId.length)
     {
         const(char)[] digits = procId;
@@ -565,4 +589,40 @@ unittest
     foreach (other; ["11-03 14:22:01.123  1234  1250 I Tag: logcat\n", "[    0.000000] Linux version\n",
             "just some\ntext lines\n"])
         assert(detector.detect("x.log", bytes(other)).score == 0, other);
+}
+
+@("SyslogDetector: application logs with an ISO time are not syslog")
+unittest
+{
+    auto detector = new SyslogDetector();
+    foreach (sample; [
+        "2026-11-03 14:22:01,123 INFO server: started\n2026-11-03 14:22:02,500 WARN db: slow\n",
+        "2026-11-03T14:22:01.123Z INFO server: started\n2026-11-03T14:22:02.500Z ERROR db: down\n",
+    ])
+        assert(detector.detect("app.log", bytes(sample)).score == 0, sample);
+}
+
+@("SyslogFormat BSD: a word with a colon is not a tag unless a space follows")
+unittest
+{
+    LogMessage!wchar msg;
+    decodeLine(SyslogFormat.Kind.Bsd, "Nov  3 14:22:01 host 12:30 backup done", msg);
+    assert(!msg.hasField(SyslogField.App) && msg.payloadText == "12:30 backup done"w);
+
+    decodeLine(SyslogFormat.Kind.Bsd, "Nov  3 14:22:01 host Error:disk full", msg);
+    assert(!msg.hasField(SyslogField.App) && msg.payloadText == "Error:disk full"w);
+
+    decodeLine(SyslogFormat.Kind.Bsd, "Nov  3 14:22:01 host kernel:", msg);
+    assert(msg.text(SyslogField.App) == "kernel"w && msg.payloadText.length == 0, "a tag at the end");
+}
+
+@("SyslogFormat RFC 5424: the structured data must be followed by a space or the end")
+unittest
+{
+    LogMessage!wchar msg;
+    foreach (line; [`<14>1 - host app - - -oops`, `<14>1 - host app - - [a x="1"]junk`])
+    {
+        decodeLine(SyslogFormat.Kind.Rfc5424, line, msg);
+        assert(!msg.hasField(SyslogField.Host), line ~ ": a malformed line is text");
+    }
 }

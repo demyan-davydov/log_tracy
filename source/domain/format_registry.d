@@ -99,3 +99,14 @@ unittest
     auto syslog = cast(const(ubyte)[]) "Nov  3 14:22:01 host sshd[812]: a\nNov  3 14:22:02 host cron[9]: b\n";
     assert(cast(SyslogFormat) detectFormat("syslog", syslog) !is null);
 }
+
+@("detectFormat: a logcat -v year file stays logcat when some lines don't parse")
+unittest
+{
+    import formats.logcat : LogcatFormat;
+
+    // The second line has an unknown level letter
+    auto logcat = cast(const(ubyte)[]) ("2026-11-03 14:22:01.123  1  2 I T: a\n"
+            ~ "2026-11-03 14:22:01.124  1  2 X T: b\n2026-11-03 14:22:01.125  1  2 D T: c\n");
+    assert(cast(LogcatFormat) detectFormat("x.log", logcat) !is null);
+}

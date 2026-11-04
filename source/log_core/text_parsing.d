@@ -109,7 +109,7 @@ bool readTimeOfDay(ref const(char)[] s, out long nanoseconds) pure nothrow @nogc
 }
 
 //! Reads an ISO 8601 date and time: "YYYY-MM-DDTHH:MM:SS[.fraction]" and an
-//! optional zone: "Z", "+HH:MM", "+HHMM" (or "-"). A space instead of "T" too.
+//! optional zone: "Z", "+HH:MM", "+HHMM", "+HH" (or "-"). A space instead of "T" too.
 //! @param timeNs - the time as written, nanoseconds since the epoch as if in UTC
 //! @param hasZone - a zone was given: timeNs - zoneOffsetNs is the moment in UTC
 bool readIsoDateTime(ref const(char)[] s, out long timeNs, out bool hasZone, out long zoneOffsetNs) pure nothrow @nogc @safe
@@ -136,8 +136,18 @@ bool readIsoDateTime(ref const(char)[] s, out long timeNs, out bool hasZone, out
         uint hours, minutes;
         if (!readDigits(s, 2, hours))
             return false;
-        readChar(s, ':'); // +HH:MM or +HHMM
-        if (!readDigits(s, 2, minutes) || hours > 23 || minutes > 59)
+        // +HH:MM, +HHMM or +HH
+        if (readChar(s, ':'))
+        {
+            if (!readDigits(s, 2, minutes))
+                return false;
+        }
+        else if (s.length >= 2 && s[0] >= '0' && s[0] <= '9')
+        {
+            if (!readDigits(s, 2, minutes))
+                return false;
+        }
+        if (hours > 23 || minutes > 59)
             return false;
         zoneOffsetNs = sign * (hours * 60L + minutes) * 60 * 1_000_000_000L;
         hasZone = true;
@@ -265,4 +275,17 @@ unittest
         s = bad;
         assert(!readIsoDateTime(s, t, zone, offset), bad);
     }
+}
+
+@("text parsing: an ISO 8601 zone of hours only")
+unittest
+{
+    long t, offset;
+    bool zone;
+    const(char)[] s = "2026-11-03T14:22:01+01 host";
+    assert(readIsoDateTime(s, t, zone, offset) && s == " host");
+    assert(zone && offset == 3600 * 1_000_000_000L);
+
+    s = "2026-11-03T14:22:01-05";
+    assert(readIsoDateTime(s, t, zone, offset) && offset == -5 * 3600 * 1_000_000_000L);
 }
