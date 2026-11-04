@@ -14,9 +14,10 @@ struct ChunkedArray(T, size_t chunkBits = 16, size_t maxChunks = 1 << 16)
     enum size_t maxLength = chunkLength * maxChunks;
     private enum size_t indexMask = chunkLength - 1;
 
-    //! The directory: maxChunks pointers to chunks, mapped on the first
+    //! The directory: maxChunks pointers to chunks, reserved on the first
     //! append and never moved, so a chunk is found the same way while the
-    //! array grows. Its pages are taken as the chunk pointers fill them.
+    //! array grows. Its pages are taken as the chunk pointers fill them
+    //! (committed one by one on Windows, on the first write with mmap).
     private T** _chunks;
     private size_t _allocatedChunks;
     private size_t _length;
@@ -130,13 +131,16 @@ struct ChunkedArray(T, size_t chunkBits = 16, size_t maxChunks = 1 << 16)
             return false;
         if (_chunks is null)
         {
-            void* directory = mapPages(maxChunks * (T*).sizeof);
+            void* directory = reservePages(maxChunks * (T*).sizeof);
             if (directory is null)
                 return false;
             _chunks = cast(T**) directory;
         }
         while (_allocatedChunks * chunkLength < count)
         {
+            // The directory entry first: its page may not be committed yet
+            if (!commitPages(&_chunks[_allocatedChunks], (T*).sizeof))
+                return false;
             void* chunk = mapPages(chunkLength * T.sizeof);
             if (chunk is null)
                 return false; // the chunks taken so far stay: they are reused
@@ -167,6 +171,25 @@ version (Windows)
         return VirtualAlloc(null, bytes, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     }
 
+    //! Address space only: commitPages() before writing to it
+    //! @returns null if the address space can't be taken
+    private void* reservePages(size_t bytes) nothrow @nogc
+    {
+        import core.sys.windows.windows : VirtualAlloc, MEM_RESERVE, PAGE_READWRITE;
+
+        return VirtualAlloc(null, bytes, MEM_RESERVE, PAGE_READWRITE);
+    }
+
+    //! Commits the pages of reserved memory that hold [address, address + bytes).
+    //! Committing a page again does nothing.
+    private bool commitPages(void* address, size_t bytes) nothrow @nogc
+    {
+        import core.sys.windows.windows : VirtualAlloc, MEM_COMMIT, PAGE_READWRITE;
+
+        return VirtualAlloc(address, bytes, MEM_COMMIT, PAGE_READWRITE) !is null;
+    }
+
+    //! Frees memory of mapPages() or reservePages()
     private void unmapPages(void* pages, size_t bytes) nothrow @nogc
     {
         import core.sys.windows.windows : VirtualFree, MEM_RELEASE;
@@ -183,6 +206,17 @@ else version (Posix)
 
         void* pages = mmap(null, bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
         return pages == MAP_FAILED ? null : pages;
+    }
+
+    //! Pages of mmap are taken only once written to: reserving is mapping
+    private void* reservePages(size_t bytes) nothrow @nogc
+    {
+        return mapPages(bytes);
+    }
+
+    private bool commitPages(void* address, size_t bytes) nothrow @nogc
+    {
+        return true;
     }
 
     private void unmapPages(void* pages, size_t bytes) nothrow @nogc
