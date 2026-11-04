@@ -233,11 +233,6 @@ class SciterWindow : SciterEventHandler
                 UINT_PTR)&size);
     }
 
-    final void run()
-    {
-        // _api.SciterRun(_hwnd); // Missing in SciterAPI_T
-    }
-
     final SciterValue callScript(T...)(const(char)[] name, T args) const
     {
         SciterValue resValue;
