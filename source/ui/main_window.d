@@ -14,9 +14,7 @@ import domain.log_document;
 
 import dlt_core.dlt_filter_serialization;
 import dlt_core.dlt_filter_record;
-import dlt_core.dlt_log_filter : DltLogFilter;
-import dlt_core.dlt_format : DltFormat;
-import log_core.field_filter : FieldFilter;
+import ui.filter_commands : applyQuickFilter, loadDltFilter;
 import domain.search_filter : SearchFilter;
 import ui.main_view_fsm;
 import ui.search_view_fsm;
@@ -285,7 +283,9 @@ class MainWindow : SciterWindow
         }
         if (eventName == "applyFilter"w)
         {
-            onApplyFilter(asString());
+            const error = applyQuickFilter(_workspace.current, asString().toUTF8);
+            if (error.length)
+                writeln("Error applying filter: ", error);
             return true;
         }
         if (eventName == "tab-clicked"w)
@@ -434,9 +434,15 @@ class MainWindow : SciterWindow
             }
             if (method == "applyFilter")
             {
+                // applyFilter(json) -> error message, "" when the filter was applied
                 string json = getParamString(0);
                 if (!json.empty)
-                    onApplyFilter(json);
+                {
+                    const error = applyQuickFilter(_workspace.current, json);
+                    if (error.length)
+                        writeln("Error applying filter: ", error);
+                    resultView = error.toUTF16();
+                }
                 return true;
             }
             if (method == "onTabClicked")
@@ -448,39 +454,14 @@ class MainWindow : SciterWindow
             }
             if (method == "loadDlf")
             {
+                // loadDlf(path) -> error message, "" when the search was started
                 string path = getParamString(0);
                 if (!path.empty)
                 {
-                    try
-                    {
-                        // The records of a .dlf refer to the fields of DLT messages
-                        if (cast(const(DltFormat)) _workspace.current.format is null)
-                        {
-                            resultView = JSONValue(["error": "DLT filters (.dlf) apply to DLT logs only"])
-                                .toString().toUTF16();
-                            return true;
-                        }
-                        auto filter = new DltLogFilter!wchar();
-                        filter.load(normalizePath(path));
-                        _workspace.current.applySearchFilter(filter);
-                        // @todo: return filter info to UI
-                        /*
-                        if (filters.length > 0)
-                        {
-                            auto f = filters[0];
-                            JSONValue j = [
-                                "ecuId": f.ecuId.value,
-                                "appId": f.applicationId.value.asString(),
-                                "ctxId": f.contextId.value.asString(),
-                                "payloadRegex": f.payloadText.value.asString()
-                            ];
-                            resultView = j.toString().toUTF16();
-                        }*/
-                    }
-                    catch (Exception e)
-                    {
-                        writeln("Error loading DLF: ", e.msg);
-                    }
+                    const error = loadDltFilter(_workspace.current, normalizePath(path));
+                    if (error.length)
+                        writeln("Error loading DLF: ", error);
+                    resultView = error.toUTF16();
                 }
                 return true;
             }
@@ -670,27 +651,6 @@ class MainWindow : SciterWindow
         catch (Exception e)
         {
             writeln("Error loading fibex: ", e.msg);
-        }
-    }
-
-    /// Applies the quick filter of the main view: {column id: value} for the
-    /// columns of the active document, all values empty resets it.
-    private void onApplyFilter(string json)
-    {
-        try
-        {
-            string[string] values;
-            foreach (string id, value; parseJSON(json).object)
-                if (value.type == JSONType.string)
-                    values[id] = value.str;
-
-            auto filter = FieldFilter.fromValues(_workspace.current.columns, values);
-            writeln("Applying view filter: ", filter is null ? "none" : json);
-            _workspace.current.applyViewFilter(filter); // null resets the filter
-        }
-        catch (Exception e)
-        {
-            writeln("Error applying filter: ", e.msg);
         }
     }
 

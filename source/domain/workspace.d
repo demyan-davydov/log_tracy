@@ -6,7 +6,7 @@ import domain.document_item : DocumentItem;
 import domain.index.anchors;
 
 import log_core.log_filter : LogFilter;
-import log_core.log_format : ColumnInfo, LogFormat;
+import log_core.log_format : LogFormat;
 
 import event_bus.event_bus_interface : SignalConsumer, SubscriptionToken;
 import event_bus.event_bus_sync : EventBusSync;
@@ -91,11 +91,6 @@ private class NullDocument : Document
     override DocumentView searchView()
     {
         return k_nullDocumentView;
-    }
-
-    override const(ColumnInfo)[] columns()
-    {
-        return null;
     }
 
     override const(LogFormat) format()
@@ -451,11 +446,6 @@ unittest
             return k_nullDocumentView;
         }
 
-        const(ColumnInfo)[] columns()
-        {
-            return null;
-        }
-
         const(LogFormat) format()
         {
             return null;
@@ -547,7 +537,6 @@ unittest
         void dispatchEvents() { bus.dispatch(); }
         DocumentView mainView() { return k_nullDocumentView; }
         DocumentView searchView() { return k_nullDocumentView; }
-        const(ColumnInfo)[] columns() { return null; }
         const(LogFormat) format() { return null; }
         void applyViewFilter(LogFilter!wchar filter) {}
         void applySearchFilter(LogFilter!wchar filter) {}
@@ -604,7 +593,6 @@ unittest
         void dispatchEvents() {}
         DocumentView mainView() { return k_nullDocumentView; }
         DocumentView searchView() { return k_nullDocumentView; }
-        const(ColumnInfo)[] columns() { return null; }
         const(LogFormat) format() { return null; }
         void applyViewFilter(LogFilter!wchar filter) {}
         void applySearchFilter(LogFilter!wchar filter) {}
@@ -640,7 +628,6 @@ unittest
         void dispatchEvents() { bus.dispatch(); }
         DocumentView mainView() { return k_nullDocumentView; }
         DocumentView searchView() { return k_nullDocumentView; }
-        const(ColumnInfo)[] columns() { return null; }
         const(LogFormat) format() { return null; }
         void applyViewFilter(LogFilter!wchar filter) {}
         void applySearchFilter(LogFilter!wchar filter) {}
@@ -670,4 +657,12 @@ unittest
     newDoc.bus.publish(SourceLost());
     ws.dispatchEvents();
     assert(lost == [id], "the new document is forwarded under the same id");
+}
+
+@("Workspace: without a document there is no format and no columns")
+unittest
+{
+    auto ws = new Workspace();
+    assert(ws.current.format is null);
+    assert(ws.current.columns is null);
 }

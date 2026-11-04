@@ -7,7 +7,7 @@ import log_core.log_message;
 import std.algorithm.iteration : map;
 import std.algorithm.searching : countUntil;
 import std.array : array;
-import std.conv : ConvException, to;
+import std.conv : ConvException, ConvOverflowException, to;
 import std.format : format;
 import std.regex : matchFirst, regex, Regex;
 import std.string : strip;
@@ -92,10 +92,13 @@ final class FieldFilter : LogFilter!wchar
         return conditions.length ? new FieldFilter(conditions) : null;
     }
 
+    //! A hex value is read as the 64 bits of an ID: FFFFFFFFFFFFFFFF is -1
     private static long parseNumber(ref const(ColumnInfo) column, const(char)[] value, uint radix)
     {
         try
-            return to!long(value, radix);
+            return radix == 16 ? cast(long) to!ulong(value, radix) : to!long(value, radix);
+        catch (ConvOverflowException)
+            throw new Exception(format("%s: %s is out of range", column.title, value));
         catch (ConvException)
             throw new Exception(format("%s: \"%s\" is not a%s number",
                 column.title, value, radix == 16 ? " hex" : ""));
@@ -265,4 +268,18 @@ unittest
     auto filter = filterOf(["tag": "Other"]);
     assert(!filter.dup().matches(msg));
     assert(!filter.idup().matches(msg));
+}
+
+@("FieldFilter: a hex value takes all 64 bits, a number out of range says so")
+unittest
+{
+    import std.algorithm.searching : canFind;
+    import std.exception : collectExceptionMsg;
+
+    LogMessage!wchar msg;
+    makeRecord(msg, "Tag", 1, cast(long) ulong.max, 0, "text");
+    assert(filterOf(["id": "FFFFFFFFFFFFFFFF"]).matches(msg), "a full 64-bit ID");
+
+    const error = collectExceptionMsg(filterOf(["pid": "99999999999999999999"]));
+    assert(error.canFind("out of range"), error);
 }

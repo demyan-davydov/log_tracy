@@ -129,11 +129,6 @@ class LogDocument : Document
         return _searchView;
     }
 
-    override const(ColumnInfo)[] columns()
-    {
-        return _index.format.columns;
-    }
-
     override const(LogFormat) format()
     {
         return _index.format;

@@ -67,11 +67,15 @@ interface Document
 
     DocumentView searchView();
 
-    //! Columns of the log table, as declared by the format of the document
-    const(ColumnInfo)[] columns();
-
     //! The format of the document, null if there is none
     const(LogFormat) format();
+
+    //! Columns of the log table, as declared by the format of the document
+    final const(ColumnInfo)[] columns()
+    {
+        const f = format();
+        return f is null ? null : f.columns;
+    }
 
     //string sourcePath() const nothrow @nogc;
 

@@ -1,6 +1,8 @@
 module dlt_core.dlt_log_filter;
 
 import log_core.log_filter;
+import log_core.log_format : LogFormat;
+import dlt_core.dlt_format : DltFormat;
 import dlt_core.dlt_filter_record;
 import dlt_core.dlt_filter_serialization;
 import log_core.log_message;
@@ -32,6 +34,13 @@ final class DltLogFilter(CharType) : LogFilter!CharType if (isSomeChar!(CharType
     this(string path)
     {
         load(path);
+    }
+
+    //! @returns true if the records of a .dlf can be matched against the
+    //! messages of `format`: they refer to the fields of DLT messages
+    static bool canFilter(const(LogFormat) format) pure nothrow @nogc
+    {
+        return cast(const(DltFormat)) format !is null;
     }
 
     const(DltFilterRecord!CharType[]) records() const @property
@@ -88,4 +97,16 @@ final class DltLogFilter(CharType) : LogFilter!CharType if (isSomeChar!(CharType
     {
         return new DltLogFilter!CharType(this);
     }
+}
+
+@("DltLogFilter.canFilter: DLT formats only")
+unittest
+{
+    import dlt_core.dlt_format : DltFormat;
+    import formats.plain_text : PlainTextFormat;
+
+    assert(DltLogFilter!wchar.canFilter(new DltFormat()));
+    assert(DltLogFilter!wchar.canFilter(new DltFormat(false)), "DLT without storage header too");
+    assert(!DltLogFilter!wchar.canFilter(new PlainTextFormat()));
+    assert(!DltLogFilter!wchar.canFilter(null), "no document");
 }

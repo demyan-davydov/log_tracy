@@ -390,10 +390,10 @@ function setupEvents() {
         });
         if (fn) {
             try {
-                // The filter runs as a search; a reply is an error only
-                const json = Window.this.xcall("loadDlf", fn);
-                const reply = json ? JSON.parse(json) : null;
-                if (reply?.error) $("#search-message").innerText = reply.error;
+                // The filter runs as a search; the reply is an error message or ""
+                const error = Window.this.xcall("loadDlf", fn);
+                $("#filter-message").innerText = error || "";
+                saveQuickFilter();
             } catch (e) {
                 console.error("Failed to load DLF:", e);
             }
@@ -444,13 +444,41 @@ function setupEvents() {
     });
 }
 
-// {column id: value} of the quick filter, for FieldFilter.fromValues()
-function applyFilters() {
+// The quick filter of every open document, as it was left in the panel:
+//   docId -> { values: {column id: value}, message }
+// The panel is one for all documents: it shows the entry of the active one.
+const quickFilters = new Map();
+let quickFilterDocId = null; // the document the panel shows
+let quickFilterColumns = null; // JSON of the columns the panel was built for
+
+// {column id: value} typed in the panel, for FieldFilter.fromValues()
+function quickFilterValues() {
     const values = {};
     for (const input of $$("#quick-filter input"))
         values[input.getAttribute("column-id")] = input.value;
-    // The table reloads when the filter operation reports completion
-    Window.this.xcall("applyFilter", JSON.stringify(values));
+    return values;
+}
+
+// Remembers the panel as the quick filter of the document it shows
+function saveQuickFilter() {
+    if (quickFilterDocId === null || !docStatus.has(quickFilterDocId)) return;
+    quickFilters.set(quickFilterDocId,
+        { values: quickFilterValues(), message: $("#filter-message").innerText || "" });
+}
+
+function applyFilters() {
+    // A change event fired while switching tabs belongs to the document the
+    // panel still shows, not to the active one: only remember its values
+    if (quickFilterDocId !== activeDocId) {
+        saveQuickFilter();
+        return;
+    }
+    // Returns an error message (e.g. not a number) or "" when applied; on an
+    // error the document keeps its previous filter. The table reloads when the
+    // filter operation reports completion.
+    const error = Window.this.xcall("applyFilter", JSON.stringify(quickFilterValues()));
+    $("#filter-message").innerText = error ? `Filter error: ${error}` : "";
+    saveQuickFilter();
 }
 
 // Columns that the quick filter can take a value for, see FieldFilter
@@ -466,18 +494,21 @@ function filterPlaceholder(column) {
     }
 }
 
-// The fields of the quick filter for the columns of the active document.
-// Typed values are kept for the columns the new format has too.
-function renderQuickFilter(columns) {
-    const panel = $("#quick-filter");
-    const typed = {};
-    for (const input of $$("#quick-filter input"))
-        typed[input.getAttribute("column-id")] = input.value;
-    panel.content(columns.filter(c => filterableKinds.has(c.kind)).map(c =>
+// Shows the quick filter of the active document: a field per filterable
+// column, with the values the document was left with. Rebuilt only when the
+// document or its columns change; empty while no document is open.
+function showQuickFilter(columnsJson) {
+    if (quickFilterDocId === activeDocId && quickFilterColumns === columnsJson) return;
+    const entry = quickFilters.get(activeDocId) ?? { values: {}, message: "" };
+    const columns = activeDocId === null ? [] : JSON.parse(columnsJson);
+    $("#quick-filter").content(columns.filter(c => filterableKinds.has(c.kind)).map(c =>
         <div class="filter-group">
             <label>{c.kind === "Payload" ? `${c.title} (regex)` : c.title}</label>
-            <input type="text" column-id={c.id} placeholder={filterPlaceholder(c)} value={typed[c.id] ?? ""} />
+            <input type="text" column-id={c.id} placeholder={filterPlaceholder(c)} value={entry.values[c.id] ?? ""} />
         </div>));
+    $("#filter-message").innerText = entry.message;
+    quickFilterDocId = activeDocId;
+    quickFilterColumns = columnsJson;
 }
 
 // Status of every open document, kept up to date for all documents, not only
@@ -511,6 +542,7 @@ function refreshTabs() {
     const container = $("#tabs-container");
 
     saveSearchDraft(); // the controls may be about to show another document
+    saveQuickFilter(); // so may the quick filter
     docStatus.clear();
     activeDocId = null;
     for (const doc of docs) {
@@ -518,7 +550,7 @@ function refreshTabs() {
         if (doc.active) activeDocId = doc.id;
     }
     for (const doc of [...docs].reverse()) rememberRecentFile(doc.path);
-    applyColumns();
+    showQuickFilter(applyColumns());
 
     // Same documents in the same order (e.g. another tab was activated): the
     // elements are kept, so a tab being pressed or dragged stays in the DOM
@@ -553,6 +585,8 @@ function refreshTabs() {
         if (!docStatus.has(docId)) committedSearches.delete(docId); // closed
     for (const docId of searchDrafts.keys())
         if (!docStatus.has(docId)) searchDrafts.delete(docId);
+    for (const docId of quickFilters.keys())
+        if (!docStatus.has(docId)) quickFilters.delete(docId);
 
     updateViewMode();
     updateSearchViewMode();
@@ -563,20 +597,20 @@ function refreshTabs() {
 // The columns of the log tables follow the format of the active document.
 // The tables are rebuilt only when they change: switching between documents of
 // the same format keeps them as they are.
+// @returns the JSON of the columns of the active document, "[]" if none
 let appliedColumns = null; // JSON of the columns the tables show
 function applyColumns() {
-    const json = Window.this.xcall("getColumns");
-    if (!json || json === "[]" || json === appliedColumns) return; // none, or unchanged
+    const json = Window.this.xcall("getColumns") || "[]";
+    if (json === "[]" || json === appliedColumns) return json; // none, or unchanged
     appliedColumns = json;
-    const columns = JSON.parse(json);
-    setColumns(columns);
-    renderQuickFilter(columns);
+    setColumns(JSON.parse(json));
     for (const table of $$("table.log-table")) {
         table.$("thead").content(renderHeader());
         const list = table.$("tbody");
         list.componentUpdate?.();
         list.refreshVisibleRows?.(); // rows on screen get the new cells
     }
+    return json;
 }
 
 // The + button: "+ Open File" while no document is open, a small round "+"
