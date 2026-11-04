@@ -448,13 +448,14 @@ function setupEvents() {
         }
     });
 
-    // Filter sets are only appended; each one has its remove button
+    // Filter sets are only appended; each one has its remove button. A filter
+    // file of DLT Explorer for any log, a .dlf of dlt-viewer for a DLT one.
     document.on("click", "#btn-dlf", () => {
-        const fn = Window.this.selectFile({
-            mode: "open",
-            filter: "DLT Filter Files (*.dlf)|*.dlf|All Files (*.*)|*.*"
-        });
-        if (fn) filterCommand("addDlf", fn);
+        const filter = shownFilters.canDlf
+            ? "Filter Files (*.logfilter;*.dlf)|*.logfilter;*.dlf|DLT Explorer Filters (*.logfilter)|*.logfilter|dlt-viewer Filters (*.dlf)|*.dlf|All Files (*.*)|*.*"
+            : "DLT Explorer Filters (*.logfilter)|*.logfilter|All Files (*.*)|*.*";
+        const fn = Window.this.selectFile({ mode: "open", filter });
+        if (fn) filterCommand("loadFilterFile", fn);
     });
 
     // An empty set, kept with the log like a loaded one; its first rule is
@@ -473,19 +474,25 @@ function setupEvents() {
         return true;
     });
 
-    // A set is a copy kept with the log: exported to share it or open it in dlt-viewer
+    // A set is a copy kept with the log: exported to share it, to a filter file
+    // of DLT Explorer or (DLT logs) to a .dlf for dlt-viewer
     document.on("click", ".filter-export", (evt, button) => {
         const set = parseInt(button.parentElement.getAttribute("set-index"));
-        // Offered the file the set was loaded from or exported to last, if any
-        const source = shownFilters.sets[set]?.source || "";
+        // Offered the file the set was loaded from or exported to last, or
+        // <name>.<format>.logfilter; its kind is offered first
+        const fileName = shownFilters.sets[set]?.fileName || "";
+        const dlf = shownFilters.canDlf && /\.dlf$/i.test(fileName);
+        const native = "DLT Explorer Filters (*.logfilter)|*.logfilter";
+        const dlt = "dlt-viewer Filters (*.dlf)|*.dlf";
+        const kinds = !shownFilters.canDlf ? [native] : dlf ? [dlt, native] : [native, dlt];
         const params = {
             mode: "save",
             caption: "Export Filter",
-            extension: "dlf",
-            filter: "DLT Filter Files (*.dlf)|*.dlf|All Files (*.*)|*.*"
+            extension: dlf ? "dlf" : "logfilter",
+            filter: kinds.join("|") + "|All Files (*.*)|*.*"
         };
-        // Without its .dlf: the dialog adds the extension itself (name.dlf.dlf otherwise)
-        if (source) params.path = source.replace(/\.dlf$/i, "");
+        // Without its extension: the dialog adds it itself (name.dlf.dlf otherwise)
+        if (fileName) params.path = fileName.replace(/\.(dlf|logfilter)$/i, "");
         const fn = Window.this.selectFile(params);
         if (fn) filterCommand("exportFilterSet", set, fn);
         return true;
@@ -598,7 +605,7 @@ function filterCommand(name, ...args) {
     showFilters();
 }
 
-let shownFilters = { canLoad: false, sets: [] }; // what showFilters() got last
+let shownFilters = { canFilter: false, canDlf: false, sets: [] }; // what showFilters() got last
 
 // Opens the editor of a rule of a set of the active document (rule -1: a new
 // one) and applies what it closes with. A rule the backend refuses (e.g. an
@@ -613,7 +620,13 @@ function editRule(set, rule) {
         const result = Window.this.modal({
             url: "rule-editor.htm",
             alignment: "center",
-            parameters: { title: rule < 0 ? "New Rule" : "Edit Rule", theme: currentTheme, rule: values, error }
+            parameters: {
+                title: rule < 0 ? "New Rule" : "Edit Rule", theme: currentTheme, rule: values, error,
+                columns: JSON.parse(Window.this.xcall("getColumns") || "[]"),
+                // What is wrong with the rule, while it is edited: the editor
+                // marks it at once instead of being reopened with the error
+                check: rule => Window.this.xcall("checkFilterRule", JSON.stringify(rule))
+            }
         });
         if (!result) return false;
         const json = JSON.stringify(result);
@@ -631,22 +644,22 @@ function editRule(set, rule) {
 // switch, name and remove button, followed by a row per rule
 function showFilters() {
     const info = activeDocId === null
-        ? { canLoad: false, sets: [] }
+        ? { canFilter: false, canDlf: false, sets: [] }
         : JSON.parse(Window.this.xcall("getFilters") || "{}");
     shownFilters = info;
     const panel = $("#filter-sets");
     // Built from scratch, as the quick filter was: reused inputs keep their state
     panel.clear();
     if (!info.sets || info.sets.length === 0)
-        panel.append(<div class="filters-empty">{info.canLoad
-            ? "No filters: load a .dlf or create a new one"
-            : "Filters (.dlf) are for DLT logs"}</div>);
+        panel.append(<div class="filters-empty">{info.canFilter
+            ? "No filters: load a filter file or create a new one"
+            : "This log has no columns to filter by"}</div>);
     (info.sets || []).forEach((set, s) => {
         const element = <div class={set.enabled ? "filter-set" : "filter-set off"}>
             <div class="filter-row filter-set-head" set-index={s}>
                 <input type="checkbox" class="filter-set-switch" />
                 <span class="filter-name" title={set.source ? `Loaded from ${set.source}` : ""}>{set.name}</span>
-                <span class="filter-button filter-export" title="Export to a .dlf file">⤓</span>
+                <span class="filter-button filter-export" title="Export to a filter file">⤓</span>
                 <span class="filter-button filter-add" title="Add a rule">+</span>
                 <span class="filter-button filter-remove" title="Remove this filter">×</span>
             </div>
@@ -673,8 +686,8 @@ function showFilters() {
                 block.append(<div class="filter-note">{`Not applied: ${rule.error}`}</div>);
         });
     });
-    $("#btn-dlf").style.display = info.canLoad ? "" : "none";
-    $("#btn-new-dlf").style.display = info.canLoad ? "" : "none";
+    $("#btn-dlf").style.display = info.canFilter ? "" : "none";
+    $("#btn-new-dlf").style.display = info.canFilter ? "" : "none";
     $("#filter-message").innerText = filterMessages.get(activeDocId) ?? "";
     filtersDocId = activeDocId;
 }

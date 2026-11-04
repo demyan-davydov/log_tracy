@@ -1,9 +1,8 @@
 module formats.dlt.dlf;
 
 //! The filter files of dlt-viewer (.dlf): read as DlfFilters with all the
-//! fields of dlt-viewer (what the rule editor edits), written back in the
-//! layout of dlt-viewer, and turned into filter rules on the columns of
-//! DltFormat (toRule). A filter becomes a rule with the same meaning as in
+//! fields of dlt-viewer, written in the layout of dlt-viewer, and turned into
+//! filter rules on the columns of DltFormat and back (fromDlf, toDlf). A filter becomes a rule with the same meaning as in
 //! dlt-viewer (qdlt/qdltfilter.cpp, QDltFilter::match):
 //!   type 0/1/2         -> include / exclude / marker
 //!   ecuid              -> ecu equals
@@ -13,14 +12,14 @@ module formats.dlt.dlf;
 //!   messageId min..max -> msgid equals min if max is 0, else min <= id < max
 //!   ctrl messages      -> type is CTRL
 //!   log level min/max  -> level range (records without a level are out)
-//! The header text has no column: such a rule gets a problem and isn't applied.
+//!   headertext         -> header contains, or regex: no log has this column
+//!                         yet, so such a rule is kept but not applied
 //! The regex search/replace changes how the payload is shown, not what is
-//! shown, so it is ignored.
+//! shown: it isn't kept (fromDlf says so). toDlf writes rules back, dropping
+//! and naming the conditions a .dlf can't hold.
 
 import log_core.log_format : LogFormat;
 import log_core.rule_filter;
-
-import std.json : JSONValue;
 
 //! @returns true if the rules of a .dlf apply to the logs of `format`: they
 //! refer to the columns of DltFormat
@@ -48,42 +47,6 @@ struct DlfFilter
     string color = "#000000";
     int levelMax = 6;
     int levelMin = 0;
-}
-
-//! The fields of the filter by name, as the rule editor and the settings take them
-JSONValue dlfFilterToJson(ref const(DlfFilter) filter)
-{
-    JSONValue json = JSONValue.emptyObject;
-    static foreach (i, field; DlfFilter.tupleof)
-        json[__traits(identifier, field)] = JSONValue(filter.tupleof[i]);
-    return json;
-}
-
-//! @brief A filter from its fields by name; those missing keep the defaults
-//! @throws Exception if it isn't an object or a field has a wrong type
-DlfFilter dlfFilterFromJson(const(JSONValue) json)
-{
-    import std.conv : to;
-    import std.json : JSONType;
-
-    if (json.type != JSONType.object)
-        throw new Exception("a filter is an object");
-    DlfFilter filter;
-    static foreach (i, field; DlfFilter.tupleof)
-    {{
-        alias T = typeof(field);
-        if (auto value = __traits(identifier, field) in json.object)
-        {
-            static if (is(T == bool))
-                filter.tupleof[i] = value.boolean; // throws on another type
-            else static if (is(T == string))
-                filter.tupleof[i] = value.str;
-            else
-                filter.tupleof[i] = (value.type == JSONType.uinteger
-                        ? value.uinteger.to!T : value.integer.to!T); // throws if out of range
-        }
-    }}
-    return filter;
 }
 
 //! @brief Reads the filters of a .dlf file
@@ -280,9 +243,168 @@ string toDlfXml(const(DlfFilter)[] filters)
     return xml.data;
 }
 
+//! @brief The rules of the filters (see toRule)
+//! @param warnings - gets what of them isn't kept, by rule: the regex replace,
+//! which changes how the payload is shown
+FilterRule[] fromDlf(const(DlfFilter)[] filters, ref string[] warnings)
+{
+    FilterRule[] rules;
+    foreach (ref f; filters)
+    {
+        if (f.enableRegexSearchReplace)
+            warnings ~= ruleTitle(f.name) ~ ": the regex replace isn't kept";
+        rules ~= toRule(f);
+    }
+    return rules;
+}
+
+private string ruleTitle(string name)
+{
+    return name.length ? "\"" ~ name ~ "\"" : "a rule without a name";
+}
+
+//! @brief The filters of the rules, for a .dlf
+//! @param warnings - gets the conditions a .dlf can't hold (they are dropped),
+//! by rule
+DlfFilter[] toDlf(const(FilterRule)[] rules, ref string[] warnings)
+{
+    import std.algorithm.searching : canFind;
+    import std.format : format;
+
+    DlfFilter[] filters;
+    foreach (ref rule; rules)
+    {
+        DlfFilter f;
+        f.name = rule.name;
+        f.enabled = rule.enabled;
+        f.type = rule.kind == RuleKind.Exclude ? 1 : rule.kind == RuleKind.Marker ? 2 : 0;
+        if (rule.color.length)
+            f.color = rule.color;
+
+        string[] taken; // a .dlf holds one condition per column
+        foreach (ref c; rule.conditions)
+        {
+            bool kept;
+            if (!taken.canFind(c.columnId))
+                kept = put(f, c);
+            if (kept)
+                taken ~= c.columnId;
+            else
+                warnings ~= format("%s: the condition on %s can't be written to a .dlf",
+                    ruleTitle(rule.name), c.columnId);
+        }
+        filters ~= f;
+    }
+    return filters;
+}
+
+//! Puts a condition into a filter of dlt-viewer
+//! @returns false if a filter can't hold it
+private bool put(ref DlfFilter f, ref const(Condition) c)
+{
+    import log_core.log_level : LogLevel;
+
+    const regex = c.check == Check.Regex;
+    switch (c.columnId)
+    {
+    case "ecu":
+        if (c.check != Check.Equals || c.ignoreCase)
+            return false;
+        f.enableEcu = true;
+        f.ecuId = c.text;
+        return true;
+    case "app":
+        if ((c.check != Check.Equals && !regex) || c.ignoreCase)
+            return false;
+        f.enableApp = true;
+        f.regexApp = regex;
+        f.appId = c.text;
+        return true;
+    case "ctx":
+        if ((c.check != Check.Contains && !regex) || c.ignoreCase)
+            return false;
+        f.enableCtx = true;
+        f.regexCtx = regex;
+        f.ctxId = c.text;
+        return true;
+    case "payload":
+        if (c.check != Check.Contains && !regex)
+            return false;
+        f.enablePayload = true;
+        f.regexPayload = regex;
+        f.ignoreCasePayload = c.ignoreCase;
+        f.payload = c.text;
+        return true;
+    case "header":
+        if (c.check != Check.Contains && !regex)
+            return false;
+        f.enableHeader = true;
+        f.regexHeader = regex;
+        f.ignoreCaseHeader = c.ignoreCase;
+        f.header = c.text;
+        return true;
+    case "msgid":
+        if (c.check == Check.Equals)
+        {
+            long id;
+            try
+                id = parseNumberText(c.text, false);
+            catch (Exception)
+                return false;
+            if (id < 0 || id > uint.max)
+                return false;
+            f.enableMessageId = true;
+            f.messageIdMin = cast(uint) id;
+            f.messageIdMax = 0;
+            return true;
+        }
+        if (c.check != Check.Range || c.min < 0 || c.max < c.min || c.max >= uint.max)
+            return false;
+        f.enableMessageId = true;
+        f.messageIdMin = cast(uint) c.min;
+        f.messageIdMax = cast(uint)(c.max + 1); // dlt-viewer: min <= id < max
+        return true;
+    case "type":
+        if (c.check != Check.Equals || c.text != "CTRL")
+            return false;
+        f.enableCtrl = true;
+        return true;
+    case "level":
+        long min = c.min, max = c.max;
+        if (c.check == Check.Equals)
+        {
+            import std.algorithm.searching : countUntil;
+            import std.uni : icmp;
+
+            min = max = levelNames.countUntil!(name => icmp(name, c.text) == 0);
+            if (min < 0)
+            {
+                try
+                    min = max = parseNumberText(c.text, false);
+                catch (Exception)
+                    return false;
+            }
+        }
+        else if (c.check != Check.Range)
+            return false;
+        if (min < LogLevel.None || max > LogLevel.Verbose)
+            return false;
+        // A side at its end is left open, as toRule makes it
+        f.enableLevelMin = min > LogLevel.Fatal;
+        f.levelMin = cast(int) min;
+        f.enableLevelMax = max < LogLevel.Verbose || !f.enableLevelMin;
+        f.levelMax = cast(int) max;
+        return true;
+    default:
+        return false;
+    }
+}
+
 //! The rule of a filter, see the module comment
 FilterRule toRule(ref const(DlfFilter) f)
 {
+    import std.conv : to;
+
     import log_core.log_level : LogLevel;
     import std.algorithm.comparison : max;
 
@@ -304,15 +426,16 @@ FilterRule toRule(ref const(DlfFilter) f)
         add("app", f.regexApp ? Check.Regex : Check.Equals, f.appId);
     if (f.enableCtx)
         add("ctx", f.regexCtx ? Check.Regex : Check.Contains, f.ctxId);
-    if (f.enableHeader)
-        rule.problem = "the header text can't be filtered yet";
+    if (f.enableHeader) // no log has the column yet: the rule isn't applied, but kept
+        add("header", f.regexHeader ? Check.Regex : Check.Contains, f.header, 0, 0,
+            f.ignoreCaseHeader);
     if (f.enablePayload)
         add("payload", f.regexPayload ? Check.Regex : Check.Contains, f.payload, 0, 0,
             f.ignoreCasePayload);
     if (f.enableMessageId)
     {
         if (f.messageIdMax == 0)
-            add("msgid", Check.Equals, "", f.messageIdMin, f.messageIdMin);
+            add("msgid", Check.Equals, f.messageIdMin.to!string);
         else
             add("msgid", Check.Range, "", f.messageIdMin, cast(long) f.messageIdMax - 1);
     }
@@ -433,7 +556,7 @@ unittest
 unittest
 {
     auto id = onlyCondition("<enableMessageId>1</enableMessageId><messageIdMin>7</messageIdMin><messageIdMax>0</messageIdMax>");
-    assert(id.columnId == "msgid" && id.check == Check.Equals && id.min == 7);
+    assert(id.columnId == "msgid" && id.check == Check.Equals && id.text == "7");
 
     id = onlyCondition("<enableMessageId>1</enableMessageId><messageIdMin>7</messageIdMin><messageIdMax>10</messageIdMax>");
     assert(id.check == Check.Range && id.min == 7 && id.max == 9);
@@ -456,12 +579,95 @@ unittest
     assert(min.min == LogLevel.Info && min.max == LogLevel.Verbose, "max not enabled: to Verbose");
 }
 
-@("parseDlfFilters: the header text is a problem of the rule, not dropped silently")
+@("toRule: the header text is a condition on the column \"header\", which no log has yet")
 unittest
 {
+    auto header = onlyCondition("<headertext>X</headertext><enableheadertext>1</enableheadertext>"
+            ~ "<ignoreCase_Header>1</ignoreCase_Header>");
+    assert(header.columnId == "header" && header.check == Check.Contains && header.text == "X");
+    assert(header.ignoreCase);
     auto rule = onlyRule("<headertext>X</headertext><enableheadertext>1</enableheadertext>");
-    assert(rule.problem.length);
-    assert(onlyRule("<headertext>X</headertext><enableheadertext>0</enableheadertext>").problem == "");
+    assert(ruleError(new DltFormat().columns, rule).length, "not applied, but kept");
+}
+
+@("fromDlf: the rules of the filters, and what of them is lost")
+unittest
+{
+    import std.algorithm.searching : canFind;
+
+    DlfFilter plain;
+    plain.name = "Plain";
+    DlfFilter replace;
+    replace.name = "Replacing";
+    replace.enableRegexSearchReplace = true;
+    replace.regexSearch = "a";
+    string[] warnings;
+    auto rules = fromDlf([plain, replace], warnings);
+    assert(rules.length == 2 && rules[1].name == "Replacing");
+    assert(warnings.length == 1 && warnings[0].canFind("Replacing"), "the regex replace isn't kept");
+}
+
+@("toDlf: the rules written to a .dlf are read back the same")
+unittest
+{
+    DlfFilter f;
+    f.type = 1;
+    f.name = "All";
+    f.color = "#00ff00";
+    f.ecuId = "ECU1";
+    f.enableEcu = true;
+    f.appId = "A.P";
+    f.enableApp = f.regexApp = true;
+    f.ctxId = "CT";
+    f.enableCtx = true;
+    f.payload = "err";
+    f.enablePayload = f.ignoreCasePayload = true;
+    f.header = "H";
+    f.enableHeader = f.regexHeader = true;
+    f.enableMessageId = true;
+    f.messageIdMin = 7;
+    f.messageIdMax = 10;
+    f.enableCtrl = true;
+    f.enableLevelMin = f.enableLevelMax = true;
+    f.levelMin = 2;
+    f.levelMax = 4;
+    DlfFilter single;
+    single.enableMessageId = true;
+    single.messageIdMin = 5;
+
+    string[] warnings;
+    const rules = fromDlf([f, single], warnings);
+    auto filters = toDlf(rules, warnings);
+    assert(warnings.length == 0);
+    assert(fromDlf(filters, warnings) == rules);
+}
+
+@("toDlf: a message id typed in the editor (text) is written")
+unittest
+{
+    FilterRule rule;
+    rule.conditions = [Condition("msgid", Check.Equals, "5"), Condition("level", Check.Equals, "warn")];
+    string[] warnings;
+    auto filters = toDlf([rule], warnings);
+    assert(warnings.length == 0, warnings.length ? warnings[0] : "");
+    assert(filters[0].enableMessageId && filters[0].messageIdMin == 5 && filters[0].messageIdMax == 0);
+    assert(filters[0].enableLevelMin && filters[0].levelMin == 3 && filters[0].levelMax == 3);
+}
+
+@("toDlf: what a .dlf can't hold is dropped and named")
+unittest
+{
+    import std.algorithm.searching : canFind;
+
+    FilterRule rule;
+    rule.name = "Wide";
+    rule.conditions = [Condition("session", Check.Equals, "3"),
+        Condition("ctx", Check.Equals, "CTX1"), Condition("app", Check.Equals, "APP")];
+    string[] warnings;
+    auto filters = toDlf([rule], warnings);
+    assert(filters.length == 1 && filters[0].enableApp && filters[0].appId == "APP");
+    assert(!filters[0].enableCtx, "ctx equals: dlt-viewer only finds a part");
+    assert(warnings.length == 2 && warnings[0].canFind("Wide"));
 }
 
 @("parseDlfFilters: all the conditions of a filter, every one applies to DltFormat")
@@ -591,30 +797,6 @@ unittest
     f.enabled = true;
     writeDlf(path, [f]);
     assert(readDlf(path) == [f]);
-}
-
-@("dlfFilterToJson: the fields by name, read back the same; missing ones keep the defaults")
-unittest
-{
-    import std.exception : assertThrown;
-    import std.json : parseJSON;
-
-    DlfFilter f;
-    f.type = 2;
-    f.name = "Errors";
-    f.appId = "APP";
-    f.enableApp = true;
-    f.messageIdMax = 10;
-    const json = dlfFilterToJson(f);
-    assert(json["name"].str == "Errors" && json["enableApp"].boolean && json["type"].integer == 2);
-    assert(dlfFilterFromJson(json) == f);
-
-    auto partial = dlfFilterFromJson(parseJSON(`{"name": "x"}`));
-    assert(partial.name == "x" && partial.levelMax == 6 && partial.enabled);
-
-    assertThrown(dlfFilterFromJson(parseJSON(`[1]`)));
-    assertThrown(dlfFilterFromJson(parseJSON(`{"name": 5}`)));
-    assertThrown(dlfFilterFromJson(parseJSON(`{"messageIdMin": -1}`)));
 }
 
 @("parseDlfFilters: what isn't a .dlf is refused")

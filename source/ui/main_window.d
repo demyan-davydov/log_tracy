@@ -69,7 +69,9 @@ private final class DocumentUi : MainViewSink, MainViewCommands, SearchViewSink,
         if (_filters is null)
         {
             auto doc = _workspace.doc(_docId);
-            _filters = new DocumentFilters(doc.format, (filter) { doc.applyViewFilter(filter); });
+            auto log = cast(LogDocument) doc;
+            const formatId = log is null ? "" : log.formatChoice.id;
+            _filters = new DocumentFilters(doc.format, formatId, (filter) { doc.applyViewFilter(filter); });
         }
         return _filters;
     }
@@ -457,13 +459,13 @@ class MainWindow : SciterWindow
                     onTabClicked(tabId);
                 return true;
             }
-            // The filter sets of the active document; the commands return an
-            // error message, "" when done (the view is filtered again)
+            // The filter sets of the active document; the commands return a
+            // message for the user (an error, or what was lost), "" if none
             if (method == "getFilters")
             {
-                // {canLoad, sets: [...]}, see DocumentFilters.toJson
+                // {canFilter, canDlf, sets: [...]}, see DocumentFilters.toJson
                 auto ui = _documentUis.get(_workspace.currentId, null);
-                resultView = (ui is null ? `{"canLoad":false,"sets":[]}`
+                resultView = (ui is null ? `{"canFilter":false,"canDlf":false,"sets":[]}`
                         : ui.filters.toJson().toString()).toUTF16();
                 return true;
             }
@@ -477,7 +479,15 @@ class MainWindow : SciterWindow
                         : ui.filters.ruleJson(getParamInt(0), rule).toString()).toUTF16();
                 return true;
             }
-            if (method == "addDlf" || method == "newFilterSet" || method == "exportFilterSet"
+            if (method == "checkFilterRule")
+            {
+                // checkFilterRule(rule json) -> {error, conditions: [...]}, see DocumentFilters.checkRule
+                auto ui = _documentUis.get(_workspace.currentId, null);
+                resultView = (ui is null ? `{"error":"","conditions":[]}`
+                        : ui.filters.checkRule(getParamString(0)).toString()).toUTF16();
+                return true;
+            }
+            if (method == "loadFilterFile" || method == "newFilterSet" || method == "exportFilterSet"
                 || method == "removeFilterSet" || method == "enableFilterSet"
                 || method == "enableFilterRule" || method == "addFilterRule"
                 || method == "updateFilterRule" || method == "removeFilterRule")
@@ -486,8 +496,8 @@ class MainWindow : SciterWindow
                 if (ui is null)
                     return true;
                 string error;
-                if (method == "addDlf")
-                    error = ui.filters.addDlf(normalizePath(getParamString(0)));
+                if (method == "loadFilterFile")
+                    error = ui.filters.loadFile(normalizePath(getParamString(0)));
                 else if (method == "newFilterSet")
                     error = ui.filters.newSet();
                 else if (method == "exportFilterSet")

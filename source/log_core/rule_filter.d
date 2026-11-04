@@ -33,7 +33,9 @@ enum RuleKind : ubyte
 //! How a condition checks the value of its column
 enum Check : ubyte
 {
-    Equals, // text: the whole text (ignoreCase); number: min; enum: the label in `text`
+    Equals, // `text`: the whole text (ignoreCase), a number (in hex for a hex column),
+            // a level (name or number), an enum label
+
     Contains, // text: a substring (ignoreCase)
     Regex, // text: a regular expression found in it (ignoreCase)
     Range, // number or level: min <= value <= max
@@ -44,8 +46,8 @@ struct Condition
 {
     string columnId;
     Check check;
-    string text; // Equals on text and enum columns, Contains, Regex
-    long min, max; // Equals (min) and Range on numbers and levels
+    string text; // Equals, Contains, Regex: the value as typed, on any column
+    long min, max; // Range on numbers and levels
     bool ignoreCase;
 }
 
@@ -187,9 +189,13 @@ private CompiledCondition compileCondition(const(ColumnInfo)[] columns, ref cons
     case ColumnKind.Hex:
     case ColumnKind.Duration:
         if (condition.check == Check.Equals)
-            compiled.min = compiled.max = condition.min;
+            compiled.min = compiled.max = column.kind == ColumnKind.Level
+                ? parseLevel(*column, condition.text) : parseNumber(*column, condition.text);
         else if (condition.check == Check.Range)
         {
+            if (condition.min > condition.max)
+                throw new Exception(format("%s: the range is empty, its start is above its end",
+                    column.title));
             compiled.min = condition.min;
             compiled.max = condition.max;
         }
@@ -198,6 +204,86 @@ private CompiledCondition compileCondition(const(ColumnInfo)[] columns, ref cons
         break;
     }
     return compiled;
+}
+
+//! @brief A number typed for a number column: in hex for a hex column (with
+//! or without 0x), read as the 64 bits of an ID
+//! @throws Exception if it isn't one
+private long parseNumber(ref const(ColumnInfo) column, string text)
+{
+    try
+        return parseNumberText(text, column.kind == ColumnKind.Hex);
+    catch (Exception e)
+        throw new Exception(column.title ~ ": " ~ e.msg);
+}
+
+//! The names of the levels, by their LogLevel value: how filter files and the
+//! rule editor write them
+immutable string[] levelNames = ["none", "fatal", "error", "warn", "info", "debug", "verbose"];
+
+//! @brief A level typed for the level column: its name (any case) or its number
+//! @throws Exception if it isn't one
+private long parseLevel(ref const(ColumnInfo) column, string text)
+{
+    import std.string : strip;
+
+    const index = levelNames.countUntil!(name => icmp(name, text.strip) == 0);
+    if (index >= 0)
+        return index;
+    try
+    {
+        const level = parseNumberText(text, false);
+        if (level >= 0 && level < levelNames.length)
+            return level;
+    }
+    catch (Exception)
+    {
+    }
+    throw new Exception(format("%s: \"%s\" is not a level, expected one of %-(%s, %)",
+            column.title, text, levelNames[1 .. $]));
+}
+
+//! @brief A number typed as text: decimal, or hex with 0x (always hex in a
+//! hex column, with or without it), read as the 64 bits of an ID
+//! @throws Exception if it isn't one
+long parseNumberText(string text, bool hex)
+{
+    import std.conv : ConvException, to;
+    import std.string : strip;
+
+    auto value = text.strip;
+    if (value.length >= 2 && (value[0 .. 2] == "0x" || value[0 .. 2] == "0X"))
+    {
+        value = value[2 .. $];
+        hex = true;
+    }
+    try
+    {
+        if (value.length == 0)
+            throw new ConvException("empty");
+        return hex ? cast(long) value.to!ulong(16) : value.to!long;
+    }
+    catch (ConvException)
+        throw new Exception(format("\"%s\" is not a%s number", text, hex ? " hex" : ""));
+}
+
+//! @returns what is wrong with each condition of the rule, "" for the right
+//! ones: an unknown column, a check it doesn't take, a value it can't read, an
+//! empty range, an invalid regular expression
+string[] conditionErrors(const(ColumnInfo)[] columns, ref const(FilterRule) rule)
+{
+    string[] errors;
+    foreach (ref condition; rule.conditions)
+    {
+        try
+        {
+            compileCondition(columns, condition);
+            errors ~= "";
+        }
+        catch (Exception e)
+            errors ~= e.msg;
+    }
+    return errors;
 }
 
 //! The filter of the main view compiled from the enabled rules of the enabled
@@ -425,13 +511,35 @@ unittest
     r.pid = 1234;
     r.id = 0x1F;
     r.type = 1;
-    assert(conditionMatches(number("pid", Check.Equals, 1234), r));
-    assert(!conditionMatches(number("pid", Check.Equals, 123), r));
+    assert(conditionMatches(text("pid", Check.Equals, "1234"), r));
+    assert(!conditionMatches(text("pid", Check.Equals, "123"), r));
     assert(conditionMatches(number("pid", Check.Range, 1000, 1234), r), "inclusive");
     assert(!conditionMatches(number("pid", Check.Range, 1235, 2000), r));
-    assert(conditionMatches(number("id", Check.Equals, 0x1F), r));
+    assert(conditionMatches(text("id", Check.Equals, "1F"), r));
     assert(conditionMatches(text("type", Check.Equals, "ctrl"), r));
     assert(!conditionMatches(text("type", Check.Equals, "LOG"), r));
+}
+
+@("RuleFilter: a number column takes its value as text too, in hex for a hex column")
+unittest
+{
+    Record r;
+    r.pid = 1234;
+    r.id = 0x1F;
+    assert(conditionMatches(text("pid", Check.Equals, "1234"), r));
+    assert(conditionMatches(text("id", Check.Equals, "1F"), r));
+    assert(conditionMatches(text("id", Check.Equals, "0x1f"), r));
+    assert(!conditionMatches(text("id", Check.Equals, "20"), r));
+
+    FilterRule bad;
+    bad.conditions = [text("pid", Check.Equals, "12x")];
+    assert(ruleError(testColumns, bad).length, "not a number");
+    bad.conditions = [text("pid", Check.Equals, "")];
+    assert(ruleError(testColumns, bad).length, "no number at all");
+    bad.conditions = [text("id", Check.Equals, "0x")];
+    assert(ruleError(testColumns, bad).length, "no hex digits either");
+    bad.conditions = [text("level", Check.Equals, "loud")];
+    assert(ruleError(testColumns, bad).length, "not a level");
 }
 
 @("RuleFilter: a level range, a record without a level is out of any")
@@ -441,9 +549,51 @@ unittest
     r.level = LogLevel.Warn;
     assert(conditionMatches(number("level", Check.Range, LogLevel.Fatal, LogLevel.Warn), r));
     assert(!conditionMatches(number("level", Check.Range, LogLevel.Info, LogLevel.Verbose), r));
-    assert(conditionMatches(number("level", Check.Equals, LogLevel.Warn), r));
+    assert(conditionMatches(text("level", Check.Equals, "warn"), r), "a level by its name");
+    assert(conditionMatches(text("level", Check.Equals, "3"), r), "or its number");
     r.level = LogLevel.None;
     assert(!conditionMatches(number("level", Check.Range, LogLevel.Fatal, LogLevel.Verbose), r));
+}
+
+@("ruleError: a range that is empty, its minimum above its maximum, says so")
+unittest
+{
+    import std.algorithm.searching : canFind;
+
+    FilterRule r;
+    r.conditions = [number("level", Check.Range, LogLevel.Verbose, LogLevel.Error)];
+    assert(ruleError(testColumns, r).canFind("empty"));
+    r.conditions = [number("pid", Check.Range, 10, 5)];
+    assert(ruleError(testColumns, r).canFind("empty"));
+    r.conditions = [number("pid", Check.Range, 5, 5)];
+    assert(ruleError(testColumns, r) == "");
+}
+
+@("conditionErrors: what is wrong with each condition, \"\" for the right ones")
+unittest
+{
+    import std.algorithm.searching : canFind;
+
+    FilterRule r;
+    r.conditions = [text("tag", Check.Equals, "A"), number("level", Check.Range, LogLevel.Verbose, LogLevel.Error),
+        text("payload", Check.Regex, "(unclosed"), text("nope", Check.Equals, "x")];
+    const errors = conditionErrors(testColumns, r);
+    assert(errors.length == 4);
+    assert(errors[0] == "" && errors[1].canFind("empty") && errors[2].length && errors[3].canFind("nope"));
+}
+
+@("parseNumberText: decimal, hex with 0x or in a hex column, nothing else")
+unittest
+{
+    import std.exception : assertThrown;
+
+    assert(parseNumberText("12", false) == 12);
+    assert(parseNumberText(" 0x1f ", false) == 0x1F);
+    assert(parseNumberText("1F", true) == 0x1F);
+    assert(parseNumberText("FFFFFFFFFFFFFFFF", true) == -1, "the 64 bits of an ID");
+    assertThrown(parseNumberText("", false));
+    assertThrown(parseNumberText("0x", false));
+    assertThrown(parseNumberText("1F", false));
 }
 
 @("RuleFilter: a rule needs all its conditions, a rule without any matches every record")
@@ -453,10 +603,10 @@ unittest
     LogMessage!wchar msg;
     make(msg, Record());
     auto both = compileRules(rule(RuleKind.Include,
-            text("tag", Check.Equals, "Tag"), number("pid", Check.Equals, 1)));
+            text("tag", Check.Equals, "Tag"), text("pid", Check.Equals, "1")));
     assert(both.matches(msg));
     auto one = compileRules(rule(RuleKind.Include,
-            text("tag", Check.Equals, "Tag"), number("pid", Check.Equals, 2)));
+            text("tag", Check.Equals, "Tag"), text("pid", Check.Equals, "2")));
     assert(!one.matches(msg));
     assert(compileRules(rule(RuleKind.Include)).matches(msg));
 }
