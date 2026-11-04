@@ -31,10 +31,16 @@ function formatTime(us, timeKind) {
     if (timeKind === "SinceBoot") return `${seconds}.${fraction}`;
     if (us === 0) return "-"; // no time recorded
     const date = new Date(seconds * 1000);
-    const day = `${pad(date.getMonth() + 1, 2)}/${pad(date.getDate(), 2)}`;
-    const time = `${pad(date.getHours(), 2)}:${pad(date.getMinutes(), 2)}:${pad(date.getSeconds(), 2)}`;
-    if (timeKind === "AbsoluteNoYear") return `${day} ${time}.${fraction}`;
-    return `${date.getFullYear()}/${day} ${time}.${fraction}`;
+    // Absolute is a moment, shown in the user's zone; Local* is the wall-clock
+    // time of the source stored as if it were UTC, shown as is
+    const local = timeKind !== "Absolute";
+    const [year, month, dayOfMonth, hours, minutes, secs] = local
+        ? [date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds()]
+        : [date.getFullYear(), date.getMonth(), date.getDate(), date.getHours(), date.getMinutes(), date.getSeconds()];
+    const day = `${pad(month + 1, 2)}/${pad(dayOfMonth, 2)}`;
+    const time = `${pad(hours, 2)}:${pad(minutes, 2)}:${pad(secs, 2)}`;
+    if (timeKind === "LocalNoYear") return `${day} ${time}.${fraction}`;
+    return `${year}/${day} ${time}.${fraction}`;
 }
 
 // Duration cell: a number in 1/unitsPerSecond of a second
@@ -48,6 +54,8 @@ function formatDuration(units, unitsPerSecond) {
 const levelNames = ["", "Fatal", "Error", "Warn", "Info", "Debug", "Verbose"];
 
 function renderCell(column, value) {
+    if (value === null && column.kind !== "Time")
+        return <td class="aux"></td>; // the record has no such field
     switch (column.kind) {
         case "Time": return <td class="aux">{formatTime(value, column.timeKind)}</td>;
         case "Level": {

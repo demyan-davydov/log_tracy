@@ -1,0 +1,75 @@
+module formats.plain_text;
+
+import log_core.log_format;
+import log_core.log_message : LogMessage;
+import log_core.text_format;
+
+//! Any text: a record per line, only the payload. The fallback for text that
+//! no other format recognises.
+final class PlainTextFormat : TextFormat
+{
+    private static immutable ColumnInfo[] _columns = [
+        ColumnInfo("payload", "Text", ColumnKind.Payload),
+    ];
+
+    this() pure nothrow @nogc @safe
+    {
+        super(false);
+    }
+
+    override string name() const pure nothrow @nogc
+    {
+        return "Text";
+    }
+
+    override const(ColumnInfo)[] columns() const pure nothrow @nogc
+    {
+        return _columns;
+    }
+
+    protected override bool decodeText(ref LogMessage!wchar msg, const(char)[] text) const nothrow @nogc
+    {
+        msg.beginRecord();
+        auto builder = msg.payloadBuilder();
+        builder.appendUtf8(text);
+        return true;
+    }
+}
+
+final class PlainTextDetector : FormatDetector
+{
+    //! Low: any more specific format that fits wins
+    enum float fallbackScore = 0.05f;
+
+    override Detection detect(string path, const(ubyte)[] head) const
+    {
+        return Detection(looksLikeText(head) ? fallbackScore : 0);
+    }
+
+    override LogFormat create(int variant, const(ubyte)[] head) const
+    {
+        return new PlainTextFormat();
+    }
+}
+
+@("PlainTextFormat: a record per line, the line is the payload")
+unittest
+{
+    auto format = new PlainTextFormat();
+    auto data = cast(const(ubyte)[]) "first line\r\nsecond line\n";
+    size_t[4] offsets;
+    const r = format.scanRecords(data, 0, offsets[], true);
+    assert(r.count == 2 && offsets[0 .. 2] == [0, 12]);
+
+    LogMessage!wchar msg;
+    assert(format.decode(msg, format.recordAt(data, 12)));
+    assert(msg.payloadText == "second line"w);
+}
+
+@("PlainTextDetector: text gets a low score, binary data none")
+unittest
+{
+    auto detector = new PlainTextDetector();
+    assert(detector.detect("x.txt", cast(const(ubyte)[]) "some text\n").score == PlainTextDetector.fallbackScore);
+    assert(detector.detect("x.bin", cast(const(ubyte)[])[1, 0, 2]).score == 0);
+}

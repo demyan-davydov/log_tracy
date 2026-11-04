@@ -151,11 +151,11 @@ final class DltDetector : FormatDetector
             return Detection(1.0f);
         if (findNextStorageHeader(head).length != 0)
             return Detection(0.8f); // garbage before the first message
+        // Only decides for binary data: below the plain text fallback, so
+        // text in a .dlt file opens as text
         if (sicmp(extension(path), ".dlt") == 0)
-            return Detection(0.5f);
-        // The only format so far: opens anything, as before.
-        // TODO: 0 once plain text is the fallback
-        return Detection(0.01f);
+            return Detection(0.04f);
+        return Detection(0);
     }
 
     override LogFormat create(int variant, const(ubyte)[] head) const
@@ -567,6 +567,6 @@ unittest
 
     assert(detector.detect("x.log", msg).score == 1.0f);
     assert(detector.detect("x.log", cast(ubyte[])[0x01, 0x02] ~ msg).score == 0.8f);
-    assert(detector.detect("x.DLT", text).score == 0.5f);
-    assert(detector.detect("x.log", text).score < 0.5f);
+    assert(detector.detect("x.DLT", text).score == 0.04f);
+    assert(detector.detect("x.log", text).score == 0);
 }

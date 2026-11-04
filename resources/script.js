@@ -206,7 +206,7 @@ function renderPlaceholder() {
     placeholder.content(<div class="placeholder-body">
         <div class="placeholder-title">No file open</div>
         <div class="placeholder-hint">
-            Open a DLT log with <kbd>⌘O</kbd> or <b>+ Open File</b> above
+            Open a log with <kbd>⌘O</kbd> or <b>+ Open File</b> above
         </div>
     </div>);
     if (!recentFiles.length) return;
@@ -298,7 +298,7 @@ function openSettingsAction() {
 function openFileAction() {
     const fn = Window.this.selectFile({
         mode: "open",
-        filter: "DLT Files (*.dlt)|*.dlt|All Files (*.*)|*.*"
+        filter: "Log Files (*.dlt;*.log;*.txt)|*.dlt;*.log;*.txt|DLT Files (*.dlt)|*.dlt|Text Logs (*.log;*.txt)|*.log;*.txt|All Files (*.*)|*.*"
     });
     if (fn) {
         console.log("File selected:", fn);
@@ -749,8 +749,8 @@ function finishTabDrag(moved) {
 
 // Texts of the main view statuses other than the table and the lost file
 const mainViewTexts = {
-    loadingFile: (vm) => `Loading DLT file... ${percent(vm.progress)}%`,
-    loadFailed: () => "Failed to load DLT file",
+    loadingFile: (vm) => `Loading file... ${percent(vm.progress)}%`,
+    loadFailed: () => "Failed to load the file",
     filtering: (vm) => `Filtering... ${percent(vm.progress)}%`,
     filterCancelled: () => "Filter cancelled",
     filterFailed: () => "Filter failed",
