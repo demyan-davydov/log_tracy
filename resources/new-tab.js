@@ -31,8 +31,9 @@ export function closeNewTab() {
     return noNewTab;
 }
 
-// A file was opened: in the new tab if it was shown, so the tab becomes the file's
-export function documentAdded(state) {
+// A file was opened (or its open tab shown): from the new tab if it was shown,
+// so the new tab gives way to the file
+export function documentOpened(state) {
     return state.active ? noNewTab : state;
 }
 

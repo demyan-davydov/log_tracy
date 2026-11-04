@@ -2,7 +2,7 @@ import { $, $$ } from "@sciter";
 import { VirtualDltTBody, VirtualMainViewTBody, VirtualSearchViewTBody } from "virtual-dlt-view.js";
 import {
     noNewTab, plusAction, openNewTab, activateNewTab, activateDocument,
-    closeNewTab, documentAdded, documentsCounted, showsPlaceholder,
+    closeNewTab, documentOpened, documentsCounted, showsPlaceholder,
     shownDocument, fileFailed, failureReason
 } from "new-tab.js";
 
@@ -1045,9 +1045,11 @@ globalThis.onMainViewChanged = function (docId, json) {
     if (docId === shownDocument(newTab, docCount, activeDocId)) updateViewMode();
 };
 
-globalThis.onDocumentAdded = function (docId) {
-    console.log("Native: onDocumentAdded (int)", docId);
-    newTab = documentAdded(newTab); // opened from the New Tab: takes its place
+// Native: a file was opened, in a new document or in the one that had it open
+// already (then that one is the current document again)
+globalThis.onDocumentOpened = function (docId) {
+    console.log("Native: onDocumentOpened (int)", docId);
+    newTab = documentOpened(newTab); // opened from the New Tab: takes its place
     openFailure = null;
     refreshTabs(); // the table reloads when the file is loaded
 };

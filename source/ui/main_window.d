@@ -613,6 +613,17 @@ class MainWindow : SciterWindow
     private DocumentId onFileSelected(string path, out string error)
     {
         writeln("Opening file: ", path);
+
+        // Open already: its tab is shown instead of a second copy
+        const existing = _workspace.findBySourcePath(path);
+        if (existing.isValid)
+        {
+            _workspace.setCurrent(existing);
+            rememberRecentFile(path);
+            callScript("onDocumentOpened", existing.toInt());
+            return existing;
+        }
+
         try
         {
             writeln("Creating new document: ", path);
@@ -621,7 +632,7 @@ class MainWindow : SciterWindow
             addDocumentUi(docId);
             _workspace.setCurrent(docId);
             rememberRecentFile(path);
-            callScript("onDocumentAdded", docId.toInt());
+            callScript("onDocumentOpened", docId.toInt());
             return docId;
         }
         catch (Exception e)

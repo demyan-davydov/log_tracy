@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
     noNewTab, plusAction, openNewTab, activateNewTab, activateDocument,
-    closeNewTab, documentAdded, documentsCounted, showsPlaceholder,
+    closeNewTab, documentOpened, documentsCounted, showsPlaceholder,
     shownDocument, fileFailed, failureReason
 } from "../../resources/new-tab.js";
 
@@ -38,12 +38,12 @@ test("closing the new tab removes it", () => {
 });
 
 test("a file opened from the new tab takes its place", () => {
-    assert.deepEqual(documentAdded(openNewTab()), noNewTab);
+    assert.deepEqual(documentOpened(openNewTab()), noNewTab);
 });
 
 test("a file opened from a document tab leaves the new tab in the strip", () => {
     const state = activateDocument(openNewTab());
-    assert.deepEqual(documentAdded(state), state);
+    assert.deepEqual(documentOpened(state), state);
 });
 
 test("without documents there is no new tab: the start screen is the same", () => {
