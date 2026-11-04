@@ -27,7 +27,8 @@ scripts\test-windows.bat           # on Windows: build + unittests
 - Running the app:
   - `resources/` is read from disk at run time, so a JS/CSS/HTML change needs a restart, not a
     rebuild.
-  - `libsciter.dylib` (or `sciter.dll`) must sit next to the executable.
+  - `libsciter.dylib` (or `sciter.dll`) must sit next to the executable. The libraries of every
+    platform are in `libs/`; the bundle scripts take them from there.
   - `settings.json` sits next to the executable and is rewritten on exit. Run a copy of the binary
     from another folder to keep the developer's own settings.
 

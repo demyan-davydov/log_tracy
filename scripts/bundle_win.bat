@@ -18,11 +18,11 @@ mkdir "%DIST_DIR%"
 :: Copy binary
 copy "%APP_NAME%" "%DIST_DIR%\"
 
-:: Copy libraries
-if exist "sciter.dll" (
-    copy "sciter.dll" "%DIST_DIR%\"
-) else (
-    echo Warning: sciter.dll not found in project root.
+:: Copy the Sciter library of the built architecture (x86_64)
+copy "libs\windows\x64\sciter.dll" "%DIST_DIR%\"
+if %errorlevel% neq 0 (
+    echo Copying sciter.dll failed!
+    exit /b 1
 )
 
 :: Copy resources

@@ -19,13 +19,13 @@ mkdir -p "$DIST_DIR"
 cp "$APP_NAME" "$DIST_DIR/"
 chmod +x "$DIST_DIR/$APP_NAME"
 
-# Copy libraries
-# Assuming libsciter.so is available in the project root or system path
-if [ -f "libsciter.so" ]; then
-    cp "libsciter.so" "$DIST_DIR/"
-else
-    echo "Warning: libsciter.so not found in project root."
-fi
+# Copy the Sciter library of this machine's architecture
+case "$(uname -m)" in
+    x86_64) LIB_ARCH=x64 ;;
+    aarch64 | arm64) LIB_ARCH=arm64 ;;
+    *) echo "No Sciter library for $(uname -m) in libs/linux."; exit 1 ;;
+esac
+cp "libs/linux/$LIB_ARCH/libsciter.so" "$DIST_DIR/" || exit 1
 
 # Copy resources
 cp -r resources "$DIST_DIR/"

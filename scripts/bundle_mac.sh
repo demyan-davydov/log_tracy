@@ -24,8 +24,8 @@ chmod +x "$BUNDLE_NAME/Contents/MacOS/$APP_NAME"
 cp -r resources/* "$BUNDLE_NAME/Contents/Resources/"
 cp resources/main.htm "$BUNDLE_NAME/Contents/Resources/" 2>/dev/null || :
 
-# Copy dylibs
-cp *.dylib "$BUNDLE_NAME/Contents/MacOS/"
+# Copy the Sciter library (universal: x86_64 and arm64)
+cp libs/macosx/libsciter.dylib "$BUNDLE_NAME/Contents/MacOS/" || exit 1
 
 # Clear quarantine attributes
 xattr -cr "$BUNDLE_NAME"
