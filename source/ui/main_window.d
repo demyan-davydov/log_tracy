@@ -849,10 +849,11 @@ unittest
 }
 
 //! @brief A row of the log table: anchored, filterMask, view index, message
-//! index, then a cell per column (see virtual-dlt-view.js)
+//! index, level, then a cell per column (see virtual-dlt-view.js). The level
+//! colors the cells of the columns that ask for it (ColumnInfo.byLevel).
 SciterValue asSciterRow(int index, ref const(DocumentItem) item, const(ColumnInfo)[] columns)
 {
-    enum fixedCells = 4;
+    enum fixedCells = 5;
     const msg = &item.message();
 
     SciterValue row = SciterValue.makeArrayWithSize(fixedCells + columns.length);
@@ -861,6 +862,7 @@ SciterValue asSciterRow(int index, ref const(DocumentItem) item, const(ColumnInf
     cells.opIndex(1, item.filterMask);
     cells.opIndex(2, index);
     cells.opIndex(3, cast(double) item.realIndex);
+    cells.opIndex(4, cast(int) msg.level);
 
     foreach (i, ref column; columns)
     {
@@ -930,7 +932,22 @@ string columnsJson(const(ColumnInfo)[] columns)
             c["unitsPerSecond"] = JSONValue(column.unitsPerSecond);
         if (column.kind == ColumnKind.Enum)
             c["labels"] = JSONValue(column.labels);
+        if (column.byLevel)
+            c["byLevel"] = JSONValue(true);
         result ~= c;
     }
     return JSONValue(result).toString();
+}
+
+@("columnsJson: a column colored by the level says so")
+unittest
+{
+    import std.algorithm.searching : canFind;
+
+    const json = columnsJson([
+        ColumnInfo("status", "Status", ColumnKind.Integer, 0, 50, TimeKind.None, 0, null, true),
+        ColumnInfo("bytes", "Bytes", ColumnKind.Integer, 1, 70),
+    ]);
+    assert(json.canFind(`"byLevel":true`), json);
+    assert(json.count(`"byLevel"`) == 1, "only for the flagged column");
 }

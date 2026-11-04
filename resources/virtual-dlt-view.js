@@ -59,22 +59,26 @@ function formatDuration(units, unitsPerSecond) {
 
 const levelNames = ["", "Fatal", "Error", "Warn", "Info", "Debug", "Verbose"];
 
-function renderCell(column, value) {
+// A cell of `column`; `level` (a LogLevel of the record) colors it if the
+// column asks for it (byLevel: an HTTP status shown as it is)
+function renderCell(column, value, level) {
+    const name = column.byLevel ? levelNames[level] : "";
+    const aux = name ? `aux level-${name.toLowerCase()}` : "aux";
     if (value === null && column.kind !== "Time")
-        return <td class="aux"></td>; // the record has no such field
+        return <td class={aux}></td>; // the record has no such field
     switch (column.kind) {
-        case "Time": return <td class="aux">{formatTime(value)}</td>;
+        case "Time": return <td class={aux}>{formatTime(value)}</td>;
         case "Level": {
             if (!value) return <td class="aux"></td>; // LogLevel.None: the record has no level
             const level = levelNames[value] ?? "unknown";
             return <td class={`level-${level.toLowerCase()}`}>{level}</td>;
         }
         case "Payload": return <td selectable>{value}</td>;
-        case "Integer": return <td class="aux">{String(value)}</td>;
-        case "Hex": return <td class="aux">{value}</td>; // formatted by the backend: all 64 bits
-        case "Duration": return <td class="aux">{formatDuration(value, column.unitsPerSecond)}</td>;
-        case "Enum": return <td class="aux">{column.labels?.[value] ?? "unknown"}</td>;
-        default: return <td class="aux">{value}</td>; // Text
+        case "Integer": return <td class={aux}>{String(value)}</td>;
+        case "Hex": return <td class={aux}>{value}</td>; // formatted by the backend: all 64 bits
+        case "Duration": return <td class={aux}>{formatDuration(value, column.unitsPerSecond)}</td>;
+        case "Enum": return <td class={aux}>{column.labels?.[value] ?? "unknown"}</td>;
+        default: return <td class={aux}>{value}</td>; // Text
     }
 }
 
@@ -127,12 +131,13 @@ export class VirtualDltTBody extends VirtualSelect {
         const idx_anchor = 0;
         const idx_viewIndex = 2;
         const idx_absolute_index = 3;
-        const idx_firstColumn = 4;
+        const idx_level = 4; // LogLevel of the record: colors the columns with byLevel
+        const idx_firstColumn = 5;
 
         return <tr state-current={isCurrent} state-checked={isSelected} view-index={item[idx_viewIndex]}>
             <td class="anchor" has-anchor={item[idx_anchor] ? "true" : "false"} msg-index={item[idx_absolute_index]}></td>
             <td class="aux">{item[idx_absolute_index]}</td>
-            {columns.map((column, i) => renderCell(column, item[idx_firstColumn + i]))}
+            {columns.map((column, i) => renderCell(column, item[idx_firstColumn + i], item[idx_level]))}
         </tr>
     }
 

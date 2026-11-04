@@ -126,6 +126,26 @@ bool readWord(ref const(char)[] s, out const(char)[] word) pure nothrow @nogc @s
     return true;
 }
 
+//! Reads the time of the Common Log Format: "10/Oct/2026:13:55:36 -0700"
+//! @returns the moment, nanoseconds since the epoch in UTC
+bool readClfDateTime(ref const(char)[] s, out long timeNs) pure nothrow @nogc @safe
+{
+    uint day, month, year, zoneHours, zoneMinutes;
+    long timeOfDay;
+    if (!readDigits(s, 2, day) || !readChar(s, '/') || !readMonthName(s, month) || !readChar(s, '/')
+        || !readDigits(s, 4, year) || !readChar(s, ':') || !readTimeOfDay(s, timeOfDay)
+        || !readChar(s, ' ') || s.length == 0 || (s[0] != '+' && s[0] != '-'))
+        return false;
+    const sign = s[0] == '-' ? -1 : 1;
+    s = s[1 .. $];
+    if (!readDigits(s, 2, zoneHours) || !readDigits(s, 2, zoneMinutes) || zoneHours > 23
+        || zoneMinutes > 59 || !isValidDate(year, month, day))
+        return false;
+    const offset = sign * (zoneHours * 60L + zoneMinutes) * 60 * 1_000_000_000L;
+    timeNs = toEpochNs(year, month, day, timeOfDay) - offset;
+    return true;
+}
+
 //! Reads "HH:MM:SS" and an optional ".fraction"
 //! @returns nanoseconds since midnight
 bool readTimeOfDay(ref const(char)[] s, out long nanoseconds) pure nothrow @nogc @safe
@@ -358,4 +378,23 @@ unittest
     assert(readWord(s, word) && word == "host" && s == " rest");
     s = " leading";
     assert(!readWord(s, word));
+}
+
+@("text parsing: the time of the Common Log Format")
+unittest
+{
+    enum long hour = 3600 * 1_000_000_000L;
+    long t;
+    const(char)[] s = "10/Oct/2026:13:55:36 -0700]";
+    assert(readClfDateTime(s, t) && s == "]");
+    assert(t == toEpochNs(2026, 10, 10, ((13 * 60 + 55) * 60 + 36) * 1_000_000_000L) + 7 * hour);
+
+    s = "01/Jan/2026:00:00:00 +0100";
+    assert(readClfDateTime(s, t) && t == toEpochNs(2026, 1, 1, 0) - hour);
+
+    foreach (bad; ["10/Foo/2026:13:55:36 -0700", "32/Oct/2026:13:55:36 -0700", "10/Oct/2026:13:55:36"])
+    {
+        s = bad;
+        assert(!readClfDateTime(s, t), bad);
+    }
 }

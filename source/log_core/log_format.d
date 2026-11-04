@@ -26,6 +26,7 @@ struct ColumnInfo
     TimeKind timeKind; // Time: how the time is shown
     long unitsPerSecond; // Duration
     string[] labels; // Enum
+    bool byLevel; // the cell is colored by the level of its record (an HTTP status)
 
     //! @returns true if the column shows a field, not the core
     bool isField() const pure nothrow @nogc @safe

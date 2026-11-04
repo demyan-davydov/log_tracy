@@ -2,6 +2,7 @@ module domain.format_registry;
 
 import log_core.log_format;
 import dlt_core.dlt_format : DltDetector;
+import formats.access_log : AccessLogDetector;
 import formats.dmesg : DmesgDetector;
 import formats.logcat : LogcatDetector;
 import formats.plain_text : PlainTextDetector;
@@ -45,6 +46,7 @@ private const(FormatDetector)[] detectors()
     all ~= new LogcatDetector();
     all ~= new DmesgDetector();
     all ~= new SyslogDetector();
+    all ~= new AccessLogDetector();
     all ~= new PlainTextDetector();
     return all;
 }
@@ -109,4 +111,13 @@ unittest
     auto logcat = cast(const(ubyte)[]) ("2026-11-03 14:22:01.123  1  2 I T: a\n"
             ~ "2026-11-03 14:22:01.124  1  2 X T: b\n2026-11-03 14:22:01.125  1  2 D T: c\n");
     assert(cast(LogcatFormat) detectFormat("x.log", logcat) !is null);
+}
+
+@("detectFormat: a web server access log")
+unittest
+{
+    import formats.access_log : AccessLogFormat;
+
+    auto log = cast(const(ubyte)[]) (`127.0.0.1 - - [10/Oct/2026:13:55:36 -0700] "GET / HTTP/1.0" 200 2326` ~ "\n");
+    assert(cast(AccessLogFormat) detectFormat("access.log", log) !is null);
 }
