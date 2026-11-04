@@ -10,9 +10,9 @@ import core.stdc.string : memchr;
 //!
 //! A record is a line. A multiline format glues the lines that don't start a
 //! record (a stack trace, a continued message) to the record before them; a
-//! record is cut at a line boundary once it is longer than maxRecordLength,
-//! and a line longer than that is cut into records of that size at most, so
-//! any data has records of bounded size.
+//! record never grows longer than maxRecordLength bytes and a line break: a
+//! continuation line that doesn't fit starts a record, and a line longer than
+//! that is cut into records of that size, so any data has records of bounded size.
 //! The first line of the data always starts a record.
 abstract class TextFormat : LogFormat
 {
@@ -87,7 +87,7 @@ abstract class TextFormat : LogFormat
         if (!_multiline)
             return end;
 
-        while (end < data.length && end - start < maxRecordLength)
+        while (end < data.length)
         {
             const next = lineEnd(data, end);
             if (next == incomplete && !final_)
@@ -97,6 +97,8 @@ abstract class TextFormat : LogFormat
             const lineStop = next == incomplete ? data.length : next;
             if (isRecordStart(withoutLineBreak(cast(const(char)[]) data[end .. lineStop])))
                 return end;
+            if (withoutFinalNewline(data, start, lineStop) - start > maxRecordLength)
+                return end; // the record would be too long with the line
             end = lineStop;
         }
         if (end == data.length && !final_)
@@ -109,25 +111,34 @@ private enum size_t incomplete = size_t.max; // lineEnd(): the data ends first
 private enum size_t tooLong = size_t.max - 1; // lineEnd(): longer than maxRecordLength
 
 //! @returns the end of the line starting at `start` (after its line break),
-//! `incomplete` or `tooLong`. Looks at maxRecordLength bytes at most.
+//! `incomplete` or `tooLong`: a line holds at most maxRecordLength bytes and
+//! its "\n". Looks at that many bytes at most.
 private size_t lineEnd(const(ubyte)[] data, size_t start) nothrow @nogc
 {
-    const limit = start + TextFormat.maxRecordLength < data.length
-        ? start + TextFormat.maxRecordLength : data.length;
+    const limit = start + TextFormat.maxRecordLength + 1 < data.length
+        ? start + TextFormat.maxRecordLength + 1 : data.length;
     const newline = findNewline(data[0 .. limit], start);
     if (newline != notFound)
         return newline + 1;
     return limit == data.length ? incomplete : tooLong;
 }
 
+//! @returns `end` without the "\n" just before it, if there is one after `start`
+private size_t withoutFinalNewline(const(ubyte)[] data, size_t start, size_t end) pure nothrow @nogc @safe
+{
+    return end > start && data[end - 1] == '\n' ? end - 1 : end;
+}
+
 //! @returns where a line too long for a record is cut: maxRecordLength bytes
-//! after `start`, moved back to the start of a UTF-8 character
+//! after `start`, moved back to the start of a UTF-8 character. A character
+//! takes 4 bytes at most: data that is not UTF-8 is cut 3 bytes back at most.
 private size_t cutLine(const(ubyte)[] data, size_t start) pure nothrow @nogc @safe
 {
-    size_t cut = start + TextFormat.maxRecordLength;
-    while (cut > start + 1 && (data[cut] & 0xC0) == 0x80)
+    const size_t limit = start + TextFormat.maxRecordLength;
+    size_t cut = limit;
+    while (cut > limit - 3 && (data[cut] & 0xC0) == 0x80)
         --cut;
-    return cut;
+    return (data[cut] & 0xC0) == 0x80 ? limit : cut; // not UTF-8: cut at the limit
 }
 
 private enum size_t notFound = size_t.max;
@@ -373,4 +384,50 @@ unittest
     // characters holds the text of any record
     assert(LogMessage!wchar.capacity >= TextFormat.maxRecordLength,
         "longer records would be cut when decoded");
+}
+
+@("TextFormat: a line of maxRecordLength bytes and its line break is one record")
+unittest
+{
+    import std.array : replicate;
+
+    enum max = TextFormat.maxRecordLength;
+    auto format = new HashFormat(false);
+    foreach (line; ["#".replicate(max) ~ "\n", "#".replicate(max - 1) ~ "\r\n"])
+    {
+        const data = line ~ "#next\n";
+        assert(scanAll(format, bytes(data)) == [0, line.length], "no empty record after it");
+        assert(format.recordAt(bytes(data), 0).length == line.length);
+    }
+}
+
+@("TextFormat: a multiline record with long continuation lines stays within the limit")
+unittest
+{
+    import std.array : replicate;
+
+    enum max = TextFormat.maxRecordLength;
+    const continuation = " ".replicate(40 * 1024 - 1) ~ "\n";
+    const data = "#start\n" ~ continuation.replicate(3);
+
+    auto format = new HashFormat(true);
+    auto offsets = scanAll(format, bytes(data));
+    foreach (i, offset; offsets)
+    {
+        const record = format.recordAt(bytes(data), offset);
+        assert(record.length <= max + 1, "a record holds at most maxRecordLength bytes and a line break");
+        const next = i + 1 < offsets.length ? offsets[i + 1] : data.length;
+        assert(offset + record.length == next, "recordAt agrees with the scan");
+    }
+}
+
+@("TextFormat: a long line of bytes that are not UTF-8 is cut into records of the limit")
+unittest
+{
+    enum max = TextFormat.maxRecordLength;
+    auto data = new ubyte[](3 * max);
+    data[] = 0x80; // continuation bytes only: no character starts anywhere
+
+    auto offsets = scanAll(new HashFormat(false), data);
+    assert(offsets.length <= 4, "not thousands of tiny records");
 }
