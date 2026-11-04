@@ -3,13 +3,13 @@ module domain.workspace;
 import domain.document;
 import domain.document_id;
 import domain.document_item : DocumentItem;
-import domain.index.anchors;
+import domain.anchors;
 
 import log_core.log_filter : LogFilter;
 import log_core.log_format : LogFormat;
 
-import event_bus.event_bus_interface : SignalConsumer, SubscriptionToken;
-import event_bus.event_bus_sync : EventBusSync;
+import utils.event_bus.event_bus_interface : SignalConsumer, SubscriptionToken;
+import utils.event_bus.event_bus_sync : EventBusSync;
 
 import std.algorithm : countUntil, remove;
 import std.meta : AliasSeq;
@@ -540,7 +540,7 @@ unittest
 @("Workspace forwards document events tagged with DocumentId")
 unittest
 {
-    import event_bus.event_bus_async : EventBusAsync;
+    import utils.event_bus.event_bus_async : EventBusAsync;
 
     // Document whose events are published by the test itself
     class EventSourceDocument : Document
@@ -632,7 +632,7 @@ unittest
 @("Workspace.replaceDocument keeps the id and forwards the new document only")
 unittest
 {
-    import event_bus.event_bus_async : EventBusAsync;
+    import utils.event_bus.event_bus_async : EventBusAsync;
 
     class EventSourceDocument : Document
     {

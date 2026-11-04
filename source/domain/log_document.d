@@ -5,10 +5,9 @@ import domain.document_item;
 import domain.document_id;
 
 import log_core.log_message;
-import formats.dlt.fields;
 import log_core.log_filter;
 
-import domain.index.anchors;
+import domain.anchors;
 import domain.log_index;
 import formats.registry : createFormat, detectFormat;
 import log_core.byte_source;
@@ -17,8 +16,8 @@ import domain.view_status;
 
 import utils.lock_guard;
 
-import event_bus.event_bus_async : EventBusAsync;
-import event_bus.event_bus_interface : SignalConsumer;
+import utils.event_bus.event_bus_async : EventBusAsync;
+import utils.event_bus.event_bus_interface : SignalConsumer;
 
 import std.parallelism : Task, TaskPool;
 import std.typecons : scoped, Unique, Proxy;
@@ -375,6 +374,7 @@ class LogDocument : Document
 version (unittest)
 {
     import formats.dlt.format : buildDltMessage;
+    import formats.dlt.fields : ecuId;
 
     private string writeTestDlt(string name, size_t messageCount, const(char)[4] ecuId = "ECU1")
     {
@@ -1010,7 +1010,7 @@ unittest
 @("LogDocument anchors: the limit is enforced silently")
 unittest
 {
-    import domain.index.anchors : Anchors;
+    import domain.anchors : Anchors;
     import std.file : remove;
 
     string path;

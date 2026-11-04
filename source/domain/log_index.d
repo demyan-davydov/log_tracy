@@ -8,12 +8,12 @@ import log_core.byte_source;
 import domain.index.offset_index;
 import domain.index.filter_index;
 import domain.index.search_index;
-import domain.index.anchors;
-import domain.background_slot;
+import domain.anchors;
+import utils.background_slot;
 import domain.document_item;
 import domain.document : Document, OperationStarted, OperationProgress, OperationFinished;
 
-import event_bus.event_bus_interface : SignalProducer;
+import utils.event_bus.event_bus_interface : SignalProducer;
 
 import utils.lock_guard;
 
@@ -603,7 +603,7 @@ unittest
 {
     import core.thread : Thread;
     import core.time : msecs, MonoTime;
-    import event_bus.event_bus_async : EventBusAsync;
+    import utils.event_bus.event_bus_async : EventBusAsync;
     import formats.plain_text : PlainTextFormat;
     import std.array : replicate;
     import std.file : remove, tempDir, write;

@@ -3,7 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 DLT Explorer: a desktop viewer for DLT and text logs (macOS, Linux, Windows), written in D with
-the Sciter UI framework through its own minimal binding (`source/sciter`, `source/sciter_wrapper`).
+the Sciter UI framework through its own minimal binding (`source/sciter`: the C API in `sciter/capi`, the D wrapper over it).
 The UI is vanilla HTML/CSS/JS in `resources/`, not Reactor style. Files can be ~1 GB: nothing
 loads a whole log into memory.
 
@@ -15,8 +15,8 @@ Build and test with **ldc2** (`--compiler=ldc2`); the scripts assume it too.
 dub build --compiler=ldc2          # builds ./dlt_explorer
 dub test --compiler=ldc2           # all D unittests ("N modules passed unittests")
 node --test tests/js               # JS unit tests (pure modules such as resources/new-tab.js)
-./check-windows-compile.sh         # from macOS/Linux: cross-compiles app + unittests for Windows x64, no link
-test-windows.bat                   # on Windows: build + unittests
+scripts/check-windows-compile.sh   # from macOS/Linux: cross-compiles app + unittests for Windows x64, no link
+scripts\test-windows.bat           # on Windows: build + unittests
 ```
 
 - The druntime test runner has no filter, and it stops a module's tests at the first failing
@@ -27,7 +27,8 @@ test-windows.bat                   # on Windows: build + unittests
 - Running the app:
   - `resources/` is read from disk at run time, so a JS/CSS/HTML change needs a restart, not a
     rebuild.
-  - `libsciter.dylib` (or `sciter.dll`) must sit next to the executable.
+  - `libsciter.dylib` (or `sciter.dll`) must sit next to the executable. The libraries of every
+    platform are in `libs/`; the bundle scripts take them from there.
   - `settings.json` sits next to the executable and is rewritten on exit. Run a copy of the binary
     from another folder to keep the developer's own settings.
 
@@ -50,11 +51,27 @@ resources/script.js, virtual-dlt-view.js   tabs, panels, virtual table built fro
 ```
 
 ### Where things live
+A package imports only the packages to its left (unittests may import more, e.g. a format to build
+test data):
+
+```
+utils  ←  log_core  ←  formats  ←  domain  ←  ui  ←  app.d
+utils  ←  sciter  ←  ui
+```
+
+- `utils/` holds what knows nothing of logs and could move to another project as it is:
+  chunked array, mapped file, lock guard, background slot, state machines (`utils/fsm`),
+  event buses (`utils/event_bus/`).
 - `log_core/` holds what doesn't depend on a format (LogMessage, LogFormat, filters,
   ByteSource), `log_core/text/` the base of the text formats.
 - Every format lives in `formats/`: one module (`formats/logcat.d`), or a package when it has
   several (`formats/dlt/`, `formats/can/`, `formats/syslog/`). `formats/registry.d` lists them.
 - `domain/` (documents, indexes) knows formats only through `LogFormat` and `detectFormat`.
+- `sciter/` is the D wrapper over Sciter (window, application, value, ...), `sciter/capi/` the
+  C API it calls.
+- `ui/` is the window and the logic behind it; the Sciter-free part of it is unit-tested.
+- `scripts/` holds the build, bundle and check scripts; they run from the project root
+  wherever they are called from.
 
 ### Formats and detection
 - The formats supported now and the ones planned: `docs/formats.md`. Keep it up to date
@@ -131,7 +148,7 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
 - Per-document UI state lives in `Map`s keyed by document id in `script.js` (search drafts,
   quick filter values, scroll/selection).
 - The view status shown to the user comes from the state machines `ui/main_view_fsm` and
-  `ui/search_view_fsm` (on `source/fsm`). They are kept free of Sciter so they can be unit-tested.
+  `ui/search_view_fsm` (on `utils/fsm`). They are kept free of Sciter so they can be unit-tested.
 - UI command logic that needs testing goes into Sciter-free modules (e.g. `ui/filter_commands`),
   not into `MainWindow`.
 

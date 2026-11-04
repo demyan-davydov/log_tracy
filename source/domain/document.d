@@ -2,14 +2,13 @@ module domain.document;
 
 import log_core.log_message;
 import log_core.log_filter : LogFilter;
-import formats.dlt.protocol : LogLevel, MessageType;
 
 import domain.document_id;
 import log_core.log_format : ColumnInfo, LogFormat;
 import domain.document_item;
-import domain.index.anchors;
+import domain.anchors;
 
-import event_bus.event_bus_interface : SignalConsumer;
+import utils.event_bus.event_bus_interface : SignalConsumer;
 
 interface DocumentView
 {
