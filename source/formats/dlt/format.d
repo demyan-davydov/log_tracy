@@ -9,6 +9,9 @@ import formats.dlt.fields : DltField;
 
 import std.algorithm.comparison : max, min;
 
+//! How the user and the settings know DltFormat
+enum FormatInfo dltFormatInfo = FormatInfo("dlt", "DLT", "DLT");
+
 //! DLT messages, with a storage header (DLT files) or without one (streams).
 //! Record layout: [ Storage Header ] Standard Header [ ... ] where the
 //! standard header holds the length of the message without the storage header.
@@ -32,7 +35,7 @@ final class DltFormat : LogFormat
 
     override string name() const pure nothrow @nogc
     {
-        return "DLT";
+        return dltFormatInfo.name;
     }
 
     private static immutable ColumnInfo[] _columns = [
@@ -137,6 +140,11 @@ final class DltFormat : LogFormat
 //! Recognises DLT files by their storage header
 final class DltDetector : FormatDetector
 {
+    override FormatInfo info() const pure nothrow @nogc
+    {
+        return dltFormatInfo;
+    }
+
     override Detection detect(string path, const(ubyte)[] head) const
     {
         import std.path : extension;

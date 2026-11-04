@@ -27,6 +27,9 @@ enum SyslogField : ubyte
     ProcId, // text: the PROCID of RFC 5424, not always a number
 }
 
+//! How the user and the settings know SyslogFormat
+enum FormatInfo syslogFormatInfo = FormatInfo("syslog", "Syslog", "SYS");
+
 final class SyslogFormat : TextFormat
 {
     enum Kind
@@ -65,7 +68,7 @@ final class SyslogFormat : TextFormat
 
     override string name() const pure nothrow @nogc
     {
-        return "Syslog";
+        return syslogFormatInfo.name;
     }
 
     override const(ColumnInfo)[] columns() const pure nothrow @nogc
@@ -148,6 +151,11 @@ private static immutable ColumnInfo[] rfc5424Columns = [
 
 final class SyslogDetector : FormatDetector
 {
+    override FormatInfo info() const pure nothrow @nogc
+    {
+        return syslogFormatInfo;
+    }
+
     override Detection detect(string path, const(ubyte)[] head) const
     {
         alias Kind = SyslogFormat.Kind;
@@ -181,7 +189,11 @@ final class SyslogDetector : FormatDetector
 
     override LogFormat create(int variant, const(ubyte)[] head) const
     {
-        return new SyslogFormat(cast(SyslogFormat.Kind)(variant / 2), (variant & 1) != 0);
+        import std.conv : to;
+
+        if (variant < 0)
+            throw new Exception("no syslog variant " ~ variant.to!string);
+        return new SyslogFormat((variant / 2).to!(SyslogFormat.Kind), (variant & 1) != 0); // throws for a kind it has not
     }
 }
 

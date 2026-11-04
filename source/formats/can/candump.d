@@ -16,6 +16,9 @@ import log_core.log_message : LogMessage, TimeKind;
 import log_core.text.text_format;
 import log_core.text.text_parsing;
 
+//! How the user and the settings know CandumpFormat
+enum FormatInfo candumpFormatInfo = FormatInfo("candump", "CAN trace (candump)", "CAN");
+
 final class CandumpFormat : TextFormat
 {
     this() pure nothrow @nogc @safe
@@ -25,7 +28,7 @@ final class CandumpFormat : TextFormat
 
     override string name() const pure nothrow @nogc
     {
-        return "CAN trace (candump)";
+        return candumpFormatInfo.name;
     }
 
     private static immutable ColumnInfo[] _columns = canColumns(TimeKind.Absolute, false);
@@ -65,6 +68,11 @@ final class CandumpFormat : TextFormat
 
 final class CandumpDetector : FormatDetector
 {
+    override FormatInfo info() const pure nothrow @nogc
+    {
+        return candumpFormatInfo;
+    }
+
     override Detection detect(string path, const(ubyte)[] head) const
     {
         size_t lines, fits;

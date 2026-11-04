@@ -63,13 +63,17 @@ resources/script.js, virtual-dlt-view.js   tabs, panels, virtual table built fro
   64 KB and picks the best.
 - Plain text is the low-score fallback; data no detector accepts is refused.
 - A `.dlt` extension alone only decides for binary data.
+- A recent file remembers the format it was opened with (`FormatChoice`: `FormatInfo.id` and
+  the variant) and opens in it again through `createFormat`, without detection; a file with no
+  saved format, or one this build can't create (unknown id, invalid variant), is detected. Never change a format's `id`: settings refer to it.
 - A format instance is created per document (it may hold a variant) and must stay immutable:
   the UI thread and the indexing thread call it concurrently.
 
 ### Adding a text format
 Derive from `TextFormat` and implement `decodeText`, `columns` and `name`. Implement
 `isRecordStart` too if continuation lines are glued to their record. Add a `FormatDetector` and
-register it in `formats/registry`. Parsing helpers (numbers, times, dates) live in
+register it in `formats/registry`. Declare the format's `FormatInfo` (stable `id`, `name`, a
+three-letter `shortName` for the badge of a recent file) and return it from the detector's `info`. Parsing helpers (numbers, times, dates) live in
 `log_core/text/text_parsing`.
 
 ### LogMessage and LogFilter

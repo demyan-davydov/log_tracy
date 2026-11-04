@@ -129,7 +129,7 @@ header {
 }
 
 .recent-file {
-    flow: vertical;
+    flow: horizontal;
     padding: 6dip 10dip;
     border-radius: 6dip;
     cursor: default;
@@ -140,8 +140,36 @@ header {
     background: var(--bg-tab-hover);
 }
 
+/* The format of the file, like an application icon: the same square for
+   every format, three letters in it, the full name on hover */
+.recent-file-badge {
+    size: 32dip;
+    margin: * 10dip * 0;
+    border: 1px solid var(--border-color);
+    border-radius: 7dip;
+    background: var(--bg-header);
+    color: var(--text-label);
+    font-size: 10dip;
+    font-weight: 700;
+    line-height: 30dip;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.recent-file-badge.empty {
+    border-color: transparent;
+    background: none;
+}
+
+/* Takes the rest of the item and no more: long names and folders are cut */
+.recent-file-text {
+    flow: vertical;
+    width: *;
+}
+
 .recent-file-name,
 .recent-file-dir {
+    width: *;
     overflow-x: hidden;
     white-space: nowrap;
 }
@@ -155,30 +183,36 @@ header {
     text-overflow: ellipsis;
 }
 
-/* A file not found stays listed, grayed, with a note; so does a file that
-   failed to open, with the reason under it */
-.recent-file.missing .recent-file-name {
-    color: var(--text-label);
-}
-
-.recent-file-note {
+/* When the file was worked with last, or "Opened" for an open one */
+.recent-file-when {
     margin-left: 8dip;
     font-size: 0.85em;
     white-space: nowrap;
     color: var(--text-label);
 }
 
-.recent-file.failed .recent-file-note,
-.recent-file-error {
-    color: var(--log-error);
+.recent-file-when.opened {
+    font-weight: 600;
 }
 
-.recent-file-error {
+/* A file not found stays listed, grayed, with a note under its path; so does
+   a file that failed to open, with the reason */
+.recent-file.missing .recent-file-name {
+    color: var(--text-label);
+}
+
+.recent-file-note {
+    width: *;
     margin-top: 2dip;
     font-size: 0.85em;
     overflow-x: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
+    color: var(--text-label);
+}
+
+.recent-file.failed .recent-file-note {
+    color: var(--log-error);
 }
 
 /* Folders have separators: path-ellipsis cuts them in the middle */

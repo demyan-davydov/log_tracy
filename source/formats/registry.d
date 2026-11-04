@@ -20,6 +20,16 @@ enum size_t detectionHeadSize = 64 * 1024;
 //! @throws Exception if no format fits
 LogFormat detectFormat(string path, const(ubyte)[] data)
 {
+    FormatChoice choice;
+    return detectFormat(path, data, choice);
+}
+
+//! @brief Picks the format that fits the data best.
+//! @param choice - set to the detector and variant picked, to open the data
+//! the same way later with createFormat()
+//! @throws Exception if no format fits
+LogFormat detectFormat(string path, const(ubyte)[] data, out FormatChoice choice)
+{
     const head = data[0 .. min(data.length, detectionHeadSize)];
 
     auto all = detectors();
@@ -37,7 +47,28 @@ LogFormat detectFormat(string path, const(ubyte)[] data)
 
     if (best == all.length)
         throw new Exception("unknown log format");
+    choice = FormatChoice(all[best].info.id, bestDetection.variant);
     return all[best].create(bestDetection.variant, head);
+}
+
+//! @brief Creates the format chosen before (by detection or by the user),
+//! without detecting it again
+//! @throws Exception if no format has the id of `choice`
+LogFormat createFormat(FormatChoice choice, const(ubyte)[] data)
+{
+    foreach (detector; detectors())
+        if (detector.info.id == choice.id)
+            return detector.create(choice.variant, data[0 .. min(data.length, detectionHeadSize)]);
+    throw new Exception("unknown log format \"" ~ choice.id ~ "\"");
+}
+
+//! @returns the format with the id, or FormatInfo.init if there is none
+FormatInfo formatInfo(string id)
+{
+    foreach (detector; detectors())
+        if (detector.info.id == id)
+            return detector.info;
+    return FormatInfo.init;
 }
 
 private const(FormatDetector)[] detectors()
@@ -138,4 +169,83 @@ unittest
     auto asc = cast(const(ubyte)[]) ("date Tue Nov 3 02:22:01.123 pm 2026\nbase hex  timestamps absolute\n"
             ~ "   0.000000 Start of measurement\n   0.001234 1  123  Rx   d 1 00\n");
     assert(cast(AscFormat) detectFormat("trace.asc", asc) !is null);
+}
+
+@("detectFormat: reports the detector and variant it picked")
+unittest
+{
+    import formats.syslog.syslog : syslogFormatInfo;
+
+    FormatChoice choice;
+    auto syslog = cast(const(ubyte)[]) "Nov  3 14:22:01 host sshd[812]: a\nNov  3 14:22:02 host cron[9]: b\n";
+    detectFormat("syslog", syslog, choice);
+    assert(choice.id == syslogFormatInfo.id);
+    assert(choice == FormatChoice(syslogFormatInfo.id, syslogDetection(syslog).variant));
+}
+
+version (unittest) private Detection syslogDetection(const(ubyte)[] head)
+{
+    import formats.syslog.syslog : SyslogDetector;
+
+    return new SyslogDetector().detect("syslog", head);
+}
+
+@("createFormat: creates the chosen format even when another one fits better")
+unittest
+{
+    import formats.logcat : LogcatFormat, logcatFormatInfo;
+    import formats.plain_text : PlainTextFormat, plainTextFormatInfo;
+
+    auto logcat = cast(const(ubyte)[]) "11-03 14:22:01.123  1234  1250 I Tag: text\n";
+    assert(cast(PlainTextFormat) createFormat(FormatChoice(plainTextFormatInfo.id), logcat) !is null);
+
+    FormatChoice choice;
+    detectFormat("x.txt", logcat, choice);
+    assert(cast(LogcatFormat) createFormat(choice, logcat) !is null);
+    assert(createFormat(choice, logcat).columns == detectFormat("x.txt", logcat).columns,
+        "the same variant");
+}
+
+@("createFormat: an unknown format id is an error")
+unittest
+{
+    import std.exception : assertThrown;
+
+    assertThrown(createFormat(FormatChoice("no-such-format"), null));
+}
+
+@("createFormat: a variant the format doesn't have is an error, not a broken format")
+unittest
+{
+    import formats.access_log : accessLogFormatInfo;
+    import formats.dmesg : dmesgFormatInfo;
+    import formats.logcat : logcatFormatInfo;
+    import formats.syslog.syslog : syslogFormatInfo;
+    import std.exception : assertThrown;
+
+    foreach (id; [accessLogFormatInfo.id, dmesgFormatInfo.id, logcatFormatInfo.id, syslogFormatInfo.id])
+    {
+        assertThrown(createFormat(FormatChoice(id, 99), null), id);
+        assertThrown(createFormat(FormatChoice(id, -1), null), id);
+    }
+}
+
+@("formatInfo: every format has a unique id and a three-letter badge")
+unittest
+{
+    import std.ascii : isUpper, isDigit;
+    import std.algorithm.searching : all;
+
+    string[] ids;
+    foreach (detector; detectors())
+    {
+        const info = detector.info;
+        assert(info.id.length && info.name.length, info.id);
+        assert(info.shortName.length == 3 && info.shortName.all!(c => isUpper(c) || isDigit(c)), info.shortName);
+        foreach (id; ids)
+            assert(id != info.id, "duplicate id " ~ id);
+        ids ~= info.id;
+        assert(formatInfo(info.id) == info);
+    }
+    assert(formatInfo("no-such-format") == FormatInfo.init);
 }

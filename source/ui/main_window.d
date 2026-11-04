@@ -8,7 +8,7 @@ import domain.workspace;
 import domain.document_id;
 import domain.document;
 import domain.document_item;
-import log_core.log_format : ColumnInfo, ColumnKind;
+import log_core.log_format : ColumnInfo, ColumnKind, FormatChoice;
 import log_core.log_message : TimeKind;
 import domain.log_document;
 
@@ -26,7 +26,7 @@ import sciter.behavior;
 import std.path : baseName;
 import std.utf : toUTF8, toUTF16;
 import std.string : fromStringz;
-import std.array : empty;
+import std.array : array, empty;
 import std.algorithm;
 import std.stdio;
 import std.json;
@@ -208,12 +208,31 @@ class MainWindow : SciterWindow
         _documentUis[docId] = new DocumentUi(_workspace, docId);
     }
 
+    /// Closes the document; its file is marked used now in the recent list,
+    /// which is saved at once
     private void closeDocument(DocumentId docId)
     {
+        string path;
+        foreach (item; _workspace.documents)
+            if (item.docId == docId)
+                path = item.sourcePath;
+
         _documentUis.remove(docId);
         auto doc = _workspace.removeDocument(docId);
         if (doc !is null)
             doc.destroy();
+
+        if (path.length)
+        {
+            _settings.recentFiles = withFilesUsed(_settings.recentFiles, [path], nowMs());
+            saveSettings();
+        }
+    }
+
+    /// Files of the open documents, in the order of the tabs
+    private const(string)[] openPaths()
+    {
+        return _workspace.documents.map!(item => item.sourcePath).array;
     }
 
     /// Returns: the id of the open document `id`, invalid if there is none
@@ -352,6 +371,9 @@ class MainWindow : SciterWindow
             {
                 const json = getParamString(0);
                 writeln("saveAppState request: ", json);
+                // The window closes: the open files were being worked with until
+                // now, they come on top of the files closed before
+                _settings.recentFiles = withFilesUsed(_settings.recentFiles, openPaths(), nowMs());
                 saveSettings(json);
                 return true;
             }
@@ -393,7 +415,7 @@ class MainWindow : SciterWindow
             }
             if (method == "getRecentFiles")
             {
-                resultView = recentFilesJson(_settings.recentFiles).toUTF16();
+                resultView = recentFilesJson(_settings.recentFiles, openPaths()).toUTF16();
                 return true;
             }
             if (method == "openFile")
@@ -567,6 +589,13 @@ class MainWindow : SciterWindow
         return false;
     }
 
+    /// The format a document was opened with; unset for a document without one
+    private static FormatChoice formatChoiceOf(const Document document)
+    {
+        auto log = cast(const LogDocument) document;
+        return log is null ? FormatChoice.init : log.formatChoice;
+    }
+
     /// Reopens the file of a document whose source was lost, in the same tab.
     /// Returns: an error message for the UI (e.g. the disk is still missing),
     /// or "" if the document was replaced by a freshly opened one
@@ -574,12 +603,14 @@ class MainWindow : SciterWindow
     {
         DocumentId docId;
         string path;
+        FormatChoice choice; // reopened in the format it had, not detected again
         foreach (item; _workspace.documents)
         {
             if (item.docId.toInt() == id)
             {
                 docId = item.docId;
                 path = item.sourcePath;
+                choice = formatChoiceOf(item.document);
             }
         }
         if (!docId.isValid)
@@ -592,7 +623,7 @@ class MainWindow : SciterWindow
             // Timings: both steps run on the UI thread and may block on a disk
             // that has just been reconnected or removed
             const openStart = MonoTime.currTime;
-            auto fresh = new LogDocument(path);
+            auto fresh = new LogDocument(path, choice);
             const openTime = MonoTime.currTime - openStart;
 
             const destroyStart = MonoTime.currTime;
@@ -622,7 +653,7 @@ class MainWindow : SciterWindow
         if (existing.isValid)
         {
             _workspace.setCurrent(existing);
-            rememberRecentFile(path);
+            rememberRecentFile(RecentFile(path, formatChoiceOf(_workspace.doc(existing)), nowMs()));
             callScript("onDocumentOpened", existing.toInt());
             return existing;
         }
@@ -630,11 +661,12 @@ class MainWindow : SciterWindow
         try
         {
             writeln("Creating new document: ", path);
-            auto newDoc = new LogDocument(path);
+            // Opened the way it was last time: the format may have been chosen by hand
+            auto newDoc = new LogDocument(path, savedFormat(_settings.recentFiles, path));
             auto docId = _workspace.addDocument(newDoc, path);
             addDocumentUi(docId);
             _workspace.setCurrent(docId);
-            rememberRecentFile(path);
+            rememberRecentFile(RecentFile(path, newDoc.formatChoice, nowMs()));
             callScript("onDocumentOpened", docId.toInt());
             return docId;
         }
@@ -642,19 +674,17 @@ class MainWindow : SciterWindow
         {
             writeln("Error opening file: ", e.msg);
             error = e.msg;
-            rememberRecentFile(path); // listed on top with the reason, to retry or see
+            // Listed on top with the reason (and its format and time of the last success), to retry or see
+            rememberRecentFile(RecentFile(path));
             return DocumentId.init;
         }
     }
 
     /// Puts the file opened (or tried) on top of the recent list and saves it
     /// at once, so the list survives a crash and the placeholder shows it right away
-    private void rememberRecentFile(string path)
+    private void rememberRecentFile(RecentFile file)
     {
-        auto recentFiles = withRecentFile(_settings.recentFiles, path);
-        if (recentFiles == _settings.recentFiles)
-            return; // e.g. the file on top opened again: nothing to save
-        _settings.recentFiles = recentFiles;
+        _settings.recentFiles = withRecentFile(_settings.recentFiles, file);
         saveSettings();
     }
 
@@ -778,7 +808,7 @@ class MainWindow : SciterWindow
     }
 
     /// Saves the settings with the UI state asked from the script
-    void saveSettings() const
+    void saveSettings()
     {
         try
         {
@@ -791,9 +821,12 @@ class MainWindow : SciterWindow
         }
     }
 
-    /// Saves the settings with `uiStateJson` (JSON of JS getAppState()) merged in
-    void saveSettings(const(char)[] uiStateJson) const
+    /// Saves the settings with `uiStateJson` (JSON of JS getAppState()) merged in.
+    /// The open files are marked used now, in place: the time survives a crash,
+    /// the order of the list stays that of the files opened and closed.
+    void saveSettings(const(char)[] uiStateJson)
     {
+        _settings.recentFiles = withFilesStamped(_settings.recentFiles, openPaths(), nowMs());
         try
             ui.app_settings.saveSettings(applyUiState(_settings, uiStateJson));
         catch (Exception e)

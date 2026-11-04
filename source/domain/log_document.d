@@ -10,9 +10,9 @@ import log_core.log_filter;
 
 import domain.index.anchors;
 import domain.log_index;
-import formats.registry : detectFormat;
+import formats.registry : createFormat, detectFormat;
 import log_core.byte_source;
-import log_core.log_format : LogFormat, ColumnInfo;
+import log_core.log_format : LogFormat, ColumnInfo, FormatChoice;
 import domain.view_status;
 
 import utils.lock_guard;
@@ -35,6 +35,7 @@ class LogDocument : Document
     private Anchors _anchors;
 
     private string _sourcePath;
+    private FormatChoice _formatChoice;
 
     private EventBusAsync _events; // must outlive _index: its worker publishes here
     private ViewStatus _mainStatus = ViewStatus(ViewStatus.State.NotReady); // offset index not built yet
@@ -58,14 +59,34 @@ class LogDocument : Document
 
     this() @disable;
 
-    //! @brief Opens the file and detects its format
+    //! @brief Opens the file in the format chosen before, or detects it
+    //! @param choice - the format to open with; unset: detect it
     //! @throws Exception if the file can't be opened or its format is unknown
-    this(string path)
+    this(string path, FormatChoice choice = FormatChoice.init)
     {
         auto source = new FileSource(path);
         scope (failure)
             source.close();
-        this(path, source, detectFormat(path, source.data));
+        // A choice this build can't make (a format it doesn't know, a broken
+        // variant) is detected again instead of locking the file out
+        LogFormat format;
+        if (choice.isSet)
+        {
+            try
+                format = createFormat(choice, source.data);
+            catch (Exception)
+                format = null;
+        }
+        if (format is null)
+            format = detectFormat(path, source.data, choice);
+        this(path, source, format);
+        _formatChoice = choice;
+    }
+
+    //! The format the document was opened with, to open its file the same way again
+    FormatChoice formatChoice() const pure nothrow @nogc
+    {
+        return _formatChoice;
     }
 
     //! @param path - shown to the user
@@ -1119,6 +1140,48 @@ unittest
 
     assert(cast(const(DltFormat)) doc.format !is null);
     assert(doc.format.columns is doc.columns);
+}
+
+@("LogDocument: opens in a format chosen before, and tells which one it opened with")
+unittest
+{
+    import formats.logcat : logcatFormatInfo;
+    import formats.plain_text : PlainTextFormat, plainTextFormatInfo;
+    import std.file : remove, tempDir, write;
+    import std.path : buildPath;
+
+    auto path = buildPath(tempDir(), "dlt_document_choice.log");
+    write(path, "11-03 14:22:01.123  1234  1250 I Tag: text\n");
+    scope (exit)
+        remove(path);
+
+    auto detected = new LogDocument(path);
+    scope (exit)
+        detected.destroy();
+    assert(detected.formatChoice.id == logcatFormatInfo.id, "detected");
+
+    const asText = FormatChoice(plainTextFormatInfo.id);
+    auto chosen = new LogDocument(path, asText);
+    scope (exit)
+        chosen.destroy();
+    assert(cast(const(PlainTextFormat)) chosen.format !is null, "the choice wins over detection");
+    assert(chosen.formatChoice == asText);
+
+    auto unset = new LogDocument(path, FormatChoice.init);
+    scope (exit)
+        unset.destroy();
+    assert(unset.formatChoice.id == logcatFormatInfo.id, "no choice: detected");
+
+    // A choice this build can't make (a newer build's format, a broken settings
+    // file) must not lock the file out: it is detected instead
+    foreach (bad; [FormatChoice("no-such-format"), FormatChoice(logcatFormatInfo.id, 99)])
+    {
+        auto fallback = new LogDocument(path, bad);
+        scope (exit)
+            fallback.destroy();
+        assert(fallback.formatChoice.id == logcatFormatInfo.id, bad.id);
+        assert(fallback.formatChoice.variant != 99, bad.id);
+    }
 }
 
 @("LogDocument: opening a missing file throws instead of crashing")
