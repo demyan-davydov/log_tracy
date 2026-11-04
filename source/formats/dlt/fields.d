@@ -18,6 +18,7 @@ enum DltField : ubyte
     MessageId, // number
     SessionId, // number
     Timestamp, // number: time since the ECU started, in 0.1 ms (standard header)
+    Counter, // number: message counter of the standard header
 }
 
 static assert(DltField.max < LogMessage!char.maxFields);
@@ -32,7 +33,6 @@ auto beginDltRecord(Char)(ref LogMessage!Char msg,
     msg.setText(DltField.EcuId, removeIdPadding(ecuId));
     msg.setText(DltField.AppId, removeIdPadding(appId));
     msg.setText(DltField.CtxId, removeIdPadding(ctxId));
-    msg.setNumber(DltField.Type, MessageType.Log);
     return msg.payloadBuilder();
 }
 
@@ -85,6 +85,12 @@ uint messageId(Char)(ref const(LogMessage!Char) msg) pure nothrow @nogc
 void messageId(Char)(ref LogMessage!Char msg, uint value) pure nothrow @nogc
 {
     msg.setNumber(DltField.MessageId, value);
+}
+
+//! Message counter of the standard header (0..255, wraps)
+ubyte counter(Char)(ref const(LogMessage!Char) msg) pure nothrow @nogc
+{
+    return cast(ubyte) msg.number(DltField.Counter);
 }
 
 uint sessionId(Char)(ref const(LogMessage!Char) msg) pure nothrow @nogc

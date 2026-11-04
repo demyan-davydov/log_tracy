@@ -290,15 +290,23 @@ private struct PayloadBuilder(Char) if (isSomeChar!Char)
         }
     }
 
-    void appendAscii(const(char)[] text) pure nothrow @nogc
+    //! `separated`: false joins the text to the previous argument
+    void appendAscii(const(char)[] text, bool separated = true) pure nothrow @nogc
     {
-        appendSeparatorIfNeeded();
+        if (separated)
+            appendSeparatorIfNeeded();
+        else
+            _isFirstArg = false;
         _tail = copyAsMuchAsPossible(text, _tail);
     }
 
-    void appendUtf8(const(char)[] utf8) pure nothrow @nogc
+    //! `separated`: false joins the text to the previous argument
+    void appendUtf8(const(char)[] utf8, bool separated = true) pure nothrow @nogc
     {
-        appendSeparatorIfNeeded();
+        if (separated)
+            appendSeparatorIfNeeded();
+        else
+            _isFirstArg = false;
         _tail = copyUtf8to(utf8, _tail);
     }
 
@@ -393,9 +401,11 @@ private struct PayloadBuilder(Char) if (isSomeChar!Char)
         import std.conv : toChars;
 
         appendSeparatorIfNeeded();
-        auto resultRange = toChars(value);
-        //_tail = copyAsMuchAsPossible(resultRange, _tail);
-        _tail = copy(resultRange, _tail);
+        char[24] digits;
+        size_t length = 0;
+        foreach (c; toChars(value))
+            digits[length++] = c;
+        _tail = copyAsMuchAsPossible(digits[0 .. length], _tail);
     }
 
     void append(T)(T value) nothrow @nogc if (isFloatingPoint!T)
@@ -403,11 +413,30 @@ private struct PayloadBuilder(Char) if (isSomeChar!Char)
         import core.stdc.stdio : snprintf;
 
         appendSeparatorIfNeeded();
-        char[64] numBuf;
-        int written = snprintf(numBuf.ptr, numBuf.length, "%f", cast(double) value);
+        char[512] numBuf; // -double.max has 309 digits before the point
+        int written = snprintf(numBuf.ptr, numBuf.length, "%.8f", cast(double) value);
         if (written > 0 && written < numBuf.length)
         {
             _tail = copyAsMuchAsPossible(numBuf[0 .. written], _tail);
+        }
+    }
+
+    //! Appends '|' and the bytes as ASCII: a byte that is not printable ASCII
+    //! becomes '.' (the text column of a hex dump)
+    void appendAsciiDump(const(char)[] bytes) pure nothrow @nogc
+    {
+        appendSeparatorIfNeeded();
+        if (_tail.length == 0)
+            return;
+        _tail[0] = '|';
+        _tail = _tail[1 .. $];
+
+        foreach (c; bytes)
+        {
+            if (_tail.length == 0)
+                break;
+            _tail[0] = c >= 0x20 && c < 0x7F ? c : '.';
+            _tail = _tail[1 .. $];
         }
     }
 
@@ -423,10 +452,17 @@ private struct PayloadBuilder(Char) if (isSomeChar!Char)
             return cast(Char)(nibble < 10 ? '0' + nibble : 'A' + nibble - 10);
         }
 
-        size_t posInGroup = 0;
-
-        foreach (c; hex)
+        // Groups of groupSize bytes with a delimiter between them, none after the last
+        foreach (i, c; hex)
         {
+            if (i != 0 && i % groupSize == 0)
+            {
+                if (_tail.length == 0)
+                    break;
+                _tail[0] = delimiter;
+                _tail = _tail[1 .. $];
+            }
+
             // Need at least 2 chars for the two hex digits
             if (_tail.length < 2)
                 break;
@@ -435,22 +471,6 @@ private struct PayloadBuilder(Char) if (isSomeChar!Char)
             _tail[0] = toHexChar(b >> 4); // high nibble first
             _tail[1] = toHexChar(b & 0x0F); // low nibble second
             _tail = _tail[2 .. $];
-
-            if (++posInGroup == groupSize)
-            {
-                posInGroup = 0;
-                if (_tail.length == 0)
-                    break;
-                _tail[0] = delimiter;
-                _tail = _tail[1 .. $];
-            }
-        }
-
-        // Write trailing delimiter after last (possibly partial) group
-        if (posInGroup > 0 && _tail.length > 0)
-        {
-            _tail[0] = delimiter;
-            _tail = _tail[1 .. $];
         }
     }
 }
@@ -469,10 +489,8 @@ private Target[] copyAsMuchAsPossible(Source, Target)(const(Source)[] src, Targe
     }
     else
     {
-        for (size_t i = 0; i < src.length; ++i)
-        {
+        foreach (i; 0 .. length)
             dst[i] = src[i];
-        }
     }
 
     return dst[length .. $];
@@ -911,7 +929,7 @@ unittest
     builder.append(cast(float) 0.1f);
     builder.storePayload();
 
-    assert(msg.payloadText == "0.100000");
+    assert(msg.payloadText == "0.10000000");
 }
 
 @("PayloadBuilder: append double")
@@ -923,7 +941,7 @@ unittest
     builder.append(cast(double) 0.1);
     builder.storePayload();
 
-    assert(msg.payloadText == "0.100000");
+    assert(msg.payloadText == "0.10000000");
 }
 
 @("PayloadBuilder: append float for wchar")
@@ -935,7 +953,7 @@ unittest
     builder.append(cast(float) 0.1f);
     builder.storePayload();
 
-    assert(msg.payloadText == "0.100000"w);
+    assert(msg.payloadText == "0.10000000"w);
 }
 
 @("PayloadBuilder: mixed types with separators")
@@ -1098,7 +1116,7 @@ unittest
 @("PayloadBuilder: appendHex single full group")
 unittest
 {
-    // 4 bytes = one group → "DEADBEEF " (trailing space after each group)
+    // 4 bytes = one group → "DEADBEEF", no delimiter after the last group
     LogMessage!char msg;
     msg.beginRecord();
     auto builder = msg.payloadBuilder();
@@ -1108,13 +1126,13 @@ unittest
     builder.appendHex(data[]);
     builder.storePayload();
 
-    assert(msg.payloadText == "DEADBEEF ");
+    assert(msg.payloadText == "DEADBEEF");
 }
 
 @("PayloadBuilder: appendHex two groups")
 unittest
 {
-    // 8 bytes = two groups → "DEADBEEF 01020304 "
+    // 8 bytes = two groups → "DEADBEEF 01020304"
     LogMessage!char msg;
     msg.beginRecord();
     auto builder = msg.payloadBuilder();
@@ -1125,13 +1143,13 @@ unittest
     builder.appendHex(data[]);
     builder.storePayload();
 
-    assert(msg.payloadText == "DEADBEEF 01020304 ");
+    assert(msg.payloadText == "DEADBEEF 01020304");
 }
 
 @("PayloadBuilder: appendHex partial group")
 unittest
 {
-    // 3 bytes = partial group → "010203 "
+    // 3 bytes = partial group → "010203"
     LogMessage!char msg;
     msg.beginRecord();
     auto builder = msg.payloadBuilder();
@@ -1139,7 +1157,7 @@ unittest
     builder.appendHex(data[]);
     builder.storePayload();
 
-    assert(msg.payloadText == "010203 ");
+    assert(msg.payloadText == "010203");
 }
 
 @("PayloadBuilder: appendHex empty")
@@ -1152,6 +1170,118 @@ unittest
     builder.storePayload();
 
     assert(msg.payloadText == "");
+}
+
+@("PayloadBuilder: appendHex after another argument has one separator")
+unittest
+{
+    LogMessage!char msg;
+    msg.beginRecord();
+    auto builder = msg.payloadBuilder();
+    char[2] data = [0x0A, 0x0B];
+    builder.appendHex(data[]);
+    builder.appendAscii("end");
+    builder.storePayload();
+
+    assert(msg.payloadText == "0A0B end");
+}
+
+@("PayloadBuilder: appendAsciiDump shows printable ASCII after a bar, the rest as dots")
+unittest
+{
+    LogMessage!wchar msg;
+    msg.beginRecord();
+    {
+        auto builder = msg.payloadBuilder();
+        builder.appendAscii("[1]");
+        char[6] bytes = ['A', ' ', 0x01, 0x7F, cast(char) 0xC3, '~'];
+        builder.appendAsciiDump(bytes[]);
+    }
+    assert(msg.payloadText == "[1] |A ...~"w);
+}
+
+@("PayloadBuilder: text can be joined to the previous argument without a separator")
+unittest
+{
+    LogMessage!wchar msg;
+    msg.beginRecord();
+    {
+        auto builder = msg.payloadBuilder();
+        builder.appendAscii("APP", false); // the first one has no separator anyway
+        builder.appendAscii("(");
+        builder.appendUtf8("описание", false);
+        builder.appendAscii("):", false);
+        builder.appendAscii("CTX");
+    }
+    assert(msg.payloadText == "APP (описание): CTX"w);
+}
+
+@("PayloadBuilder: a full buffer keeps what fits and drops the rest")
+unittest
+{
+    import std.array : replicate;
+    import std.algorithm : all;
+
+    static void fill(Char)()
+    {
+        LogMessage!Char msg;
+        msg.beginRecord();
+        size_t room;
+        {
+            auto builder = msg.payloadBuilder();
+            room = builder._tail.length;
+            builder.appendAscii("x".replicate(room + 100));
+            builder.append(123_456_789); // no room left
+            builder.append(1.5);
+            builder.appendBool(true);
+            char[3] bytes = [1, 2, 3];
+            builder.appendHex(bytes[]);
+            builder.appendUtf8("tail");
+            builder.appendAsciiDump("dump");
+        }
+        assert(msg.payloadText.length == room, "the payload fills its buffer, no more");
+        assert(msg.payloadText.all!(c => c == 'x'));
+    }
+
+    fill!char();
+    fill!wchar();
+}
+
+@("PayloadBuilder: a float of any size is written whole")
+unittest
+{
+    import std.algorithm : canFind, startsWith, endsWith;
+
+    LogMessage!char msg;
+    msg.beginRecord();
+    {
+        auto builder = msg.payloadBuilder();
+        builder.appendAscii("a");
+        builder.append(1e60);
+        builder.append(-double.max);
+    }
+    const text = msg.payloadText;
+    assert(text.startsWith("a 99999999999999994938"), text); // 1e60 as a double
+    assert(text.endsWith(".00000000"));
+    assert(text.canFind(".00000000 -17976931348623157"), "both values are whole");
+}
+
+@("PayloadBuilder: a number that does not fit whole is cut")
+unittest
+{
+    import std.array : replicate;
+
+    LogMessage!wchar msg;
+    msg.beginRecord();
+    size_t room;
+    {
+        auto builder = msg.payloadBuilder();
+        room = builder._tail.length;
+        builder.appendAscii("x".replicate(room - 4)); // separator + 3 digits fit
+        builder.append(123_456);
+    }
+    assert(msg.payloadText.length == room);
+    assert(msg.payloadText[$ - 4 .. $] == " 123"w);
 }
 
 @("PayloadBuilder: destructor auto-store")

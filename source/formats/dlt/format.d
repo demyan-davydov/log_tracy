@@ -2,6 +2,8 @@ module formats.dlt.format;
 
 import formats.dlt.protocol;
 import formats.dlt.parser : parseDltItem;
+import formats.dlt.header_v2 : HeaderV2, HeaderV2Status, baseHeaderV2Size, messageLengthV2,
+    protocolVersion, readHeaderV2;
 
 import log_core.log_format;
 import log_core.log_message : LogMessage, TimeKind;
@@ -15,6 +17,7 @@ enum FormatInfo dltFormatInfo = FormatInfo("dlt", "DLT", "DLT");
 //! DLT messages, with a storage header (DLT files) or without one (streams).
 //! Record layout: [ Storage Header ] Standard Header [ ... ] where the
 //! standard header holds the length of the message without the storage header.
+//! Both versions of the protocol and of the storage header, mixed in any way.
 final class DltFormat : LogFormat
 {
     private immutable bool _hasStorageHeader;
@@ -42,23 +45,21 @@ final class DltFormat : LogFormat
         ColumnInfo("time", "Time", ColumnKind.Time, -1, 120, TimeKind.Absolute),
         ColumnInfo("timestamp", "Timestamp", ColumnKind.Duration, DltField.Timestamp, 150,
             TimeKind.None, 10_000),
+        ColumnInfo("counter", "Count", ColumnKind.Integer, DltField.Counter, 45),
         ColumnInfo("ecu", "EcuId", ColumnKind.Text, DltField.EcuId, 60),
         ColumnInfo("app", "AppId", ColumnKind.Text, DltField.AppId, 60),
         ColumnInfo("ctx", "CtxId", ColumnKind.Text, DltField.CtxId, 60),
+        ColumnInfo("session", "SessionId", ColumnKind.Integer, DltField.SessionId, 70),
         ColumnInfo("type", "Type", ColumnKind.Enum, DltField.Type, 60,
             TimeKind.None, 0, ["LOG", "APP", "NW", "CTRL"]),
         ColumnInfo("level", "Level", ColumnKind.Level, -1, 60),
+        ColumnInfo("msgid", "MsgId", ColumnKind.Integer, DltField.MessageId, 70),
         ColumnInfo("payload", "Payload", ColumnKind.Payload),
     ];
 
     override const(ColumnInfo)[] columns() const pure nothrow @nogc
     {
         return _columns;
-    }
-
-    private size_t storageHeaderSize() const pure nothrow @nogc
-    {
-        return _hasStorageHeader ? StorageHeader.sizeof : 0;
     }
 
     override ScanResult scanRecords(const(ubyte)[] data, size_t from, size_t[] offsets, bool final_) const nothrow @nogc
@@ -88,11 +89,32 @@ final class DltFormat : LogFormat
                 start = found.ptr - data.ptr;
             }
 
-            const length = recordLength(data[start .. $]);
-            if (length == 0) // incomplete record at the end
+            const layout = layoutOf(data[start .. $]);
+            const length = layout.length;
+            if (length == 0) // the record runs past the end of the data
             {
-                pos = final_ ? data.length : start;
-                break;
+                if (!final_)
+                {
+                    pos = start; // it may still be growing
+                    break;
+                }
+                if (!_hasStorageHeader)
+                {
+                    pos = data.length;
+                    break;
+                }
+                // A truncated last record or a corrupt length: look for the
+                // next header inside it
+                pos = start + DLT_PATTERN.length;
+                continue;
+            }
+
+            if (!layout.coversHeaders)
+            {
+                // A corrupt length: look for the next header inside this record,
+                // a stream without storage headers can only trust the length
+                pos = _hasStorageHeader ? start + DLT_PATTERN.length : start + length;
+                continue;
             }
 
             offsets[count++] = start;
@@ -113,8 +135,10 @@ final class DltFormat : LogFormat
         if (_hasStorageHeader && !startsWithStorageHeader(buffer))
             return null;
 
-        const length = recordLength(buffer);
-        return buffer[0 .. length];
+        const layout = layoutOf(buffer);
+        if (layout.length == 0 || !layout.coversHeaders)
+            return null;
+        return buffer[0 .. layout.length];
     }
 
     override bool decode(ref LogMessage!wchar msg, const(ubyte)[] record) const nothrow @nogc
@@ -122,19 +146,66 @@ final class DltFormat : LogFormat
         return parseDltItem!wchar(msg, record, _hasStorageHeader);
     }
 
-    //! @returns the length of the record at the start of `buffer`, including
-    //! the storage header, or 0 if the buffer ends before the record does
-    private size_t recordLength(const(ubyte)[] buffer) const nothrow @nogc
+    //! @returns the layout of the record at the start of `buffer`. Versions 0
+    //! (old loggers) and 1 share their headers; the length of a version 3..7
+    //! message is taken where version 1 has it, its headers are left to the
+    //! decoder, which says it can't show them.
+    private RecordLayout layoutOf(const(ubyte)[] buffer) const nothrow @nogc
     {
-        const headerSize = storageHeaderSize;
-        if (buffer.length < headerSize + StandardHeader.sizeof)
-            return 0;
+        RecordLayout layout;
 
-        auto standardHeader = cast(const(StandardHeader)*)(buffer.ptr + headerSize);
-        // A corrupt length shorter than the standard header still moves on
-        const size_t length = headerSize + max(standardHeader.nativeLength, StandardHeader.sizeof);
-        return length <= buffer.length ? length : 0;
+        size_t storage = 0;
+        if (_hasStorageHeader)
+        {
+            storage = readStorageHeader(buffer).size;
+            if (storage == 0)
+                return layout; // cut
+        }
+
+        // A corrupt length shorter than the base header still moves on
+        const message = buffer[storage .. $];
+        const version_ = protocolVersion(message);
+        size_t length;
+        if (version_ == 2)
+        {
+            if (message.length < baseHeaderV2Size)
+                return layout;
+            length = max(messageLengthV2(message), baseHeaderV2Size);
+        }
+        else
+        {
+            if (message.length < StandardHeader.sizeof)
+                return layout;
+            length = max((cast(const(StandardHeader)*) message.ptr).nativeLength, StandardHeader.sizeof);
+        }
+        if (storage + length > buffer.length)
+            return layout;
+
+        const record = message[0 .. length];
+        if (version_ == 2)
+        {
+            HeaderV2 header;
+            // Reserved values: shown as an invalid header, the length is right
+            layout.coversHeaders = readHeaderV2(record, header) != HeaderV2Status.cut;
+        }
+        else if (version_ <= 1)
+        {
+            auto standardHeader = cast(const(StandardHeader)*) record.ptr;
+            layout.coversHeaders = standardHeader.nativeLength >= standardHeader.fullHeaderAndExtendedHeaderSize();
+        }
+        else
+            layout.coversHeaders = true;
+
+        layout.length = storage + length;
+        return layout;
     }
+}
+
+//! Where the record at the start of a buffer ends, and if it is sound
+private struct RecordLayout
+{
+    size_t length; // with the storage header; 0: the buffer ends before the record does
+    bool coversHeaders; // the length covers the headers the record announces
 }
 
 //! Recognises DLT files by their storage header
@@ -167,14 +238,15 @@ final class DltDetector : FormatDetector
     }
 }
 
-//! @returns true if `buffer` starts with a complete storage header
+//! @returns true if `buffer` starts with a storage header pattern and holds
+//! at least a storage header of version 1
 private bool startsWithStorageHeader(const(ubyte)[] buffer) pure @nogc nothrow
 {
-    return buffer.length >= StorageHeader.sizeof && buffer[0 .. DLT_PATTERN.length] == DLT_PATTERN[];
+    return buffer.length >= StorageHeader.sizeof && startsWithStoragePattern(buffer);
 }
 
-//! @returns slice of original buffer starting from DLT header pattern (DLT\01)
-//! or empty slice reffered to bufferEnd
+//! @returns slice of original buffer starting from a storage header pattern
+//! ("DLT\x01" or "DLT\x02") or empty slice reffered to bufferEnd
 //! @note The result slice will have at least StorageHeader.sizeof bytes,
 //! otherwise the empty slice is returned
 private const(ubyte)[] findNextStorageHeader(const(ubyte)[] buffer) pure @nogc nothrow
@@ -182,37 +254,28 @@ private const(ubyte)[] findNextStorageHeader(const(ubyte)[] buffer) pure @nogc n
     if (buffer.length < StorageHeader.sizeof)
         return buffer[$ .. $];
 
-    const(ubyte)* ptr = buffer.ptr;
-    const(ubyte)* end = buffer.ptr + buffer.length - StorageHeader.sizeof + 1;
-
-    // DLT header is 4 bytes "DLT\01".
-    // This sequence do not contain repeated symbols,
-    // so we can use simplier algorithm to search for it:
-    // we do not to return to the start of the buffer
-    // and search for the pattern from the start
-    // we can just move forward and check each byte
-
-    while (ptr < end)
+    const last = buffer.length - StorageHeader.sizeof;
+    for (size_t i = 0; i <= last; ++i)
     {
-        if (*ptr++ != DLT_PATTERN[0])
-            continue;
-
-        if (*ptr != DLT_PATTERN[1])
-            continue;
-        ++ptr;
-
-        if (*ptr != DLT_PATTERN[2])
-            continue;
-        ++ptr;
-
-        if (*ptr != DLT_PATTERN[3])
-            continue;
-
-        ptr -= DLT_PATTERN.sizeof - 1;
-        return ptr[0 .. buffer.ptr + buffer.length - ptr];
+        if (buffer[i] == DLT_PATTERN[0] && isPlausibleStorageHeader(buffer[i .. $]))
+            return buffer[i .. $];
     }
 
     return buffer[$ .. $];
+}
+
+//! @returns true if `buffer` starts with a storage header pattern followed by
+//! what may be a message: false when the pattern is only bytes of a payload
+//! (a message of an unknown version follows). A buffer that ends before the
+//! message may still hold one.
+private bool isPlausibleStorageHeader(const(ubyte)[] buffer) pure @nogc nothrow
+{
+    if (!startsWithStoragePattern(buffer))
+        return false;
+    const size = readStorageHeader(buffer).size;
+    if (size == 0 || size >= buffer.length)
+        return true;
+    return protocolVersion(buffer[size .. $]) <= 2;
 }
 
 // ─── Test Helpers ──────────────────────────────────────────────────────────
@@ -324,7 +387,7 @@ unittest
     buf[0] = 'D';
     buf[1] = 'L';
     buf[2] = 'T';
-    buf[3] = '\02'; // wrong trailing byte
+    buf[3] = '\03'; // no storage header has version 3
     auto result = findNextStorageHeader(buf[]);
     assert(result.length == 0);
 }
@@ -586,4 +649,157 @@ unittest
     assert(detector.detect("x.log", cast(ubyte[])[0x01, 0x02] ~ msg).score == 0.8f);
     assert(detector.detect("x.DLT", text).score == 0.04f);
     assert(detector.detect("x.log", text).score == 0);
+}
+
+@("DltFormat.scanRecords: a record shorter than its own headers is skipped")
+unittest
+{
+    // The length (4) doesn't cover the extended header (10) or the ECU ID (4) the flags announce
+    auto shortExtended = buildDltMessage("ECU1", 1, 0, StandardHeader.Type.UseExtendedHeader, 1);
+    auto shortEcuId = buildDltMessage("ECU1", 2, 0, StandardHeader.Type.WithEcuId, 2);
+    auto good = buildDltMessage("ECU1", 3, 0, 0, 3, [0x42]);
+
+    auto format = new DltFormat();
+    assert(scanAll(format, shortExtended ~ good) == [shortExtended.length]);
+    assert(scanAll(format, shortEcuId ~ good) == [shortEcuId.length]);
+    assert(format.recordAt(shortExtended ~ good, 0).length == 0, "not a record to decode");
+
+    auto streamed = new DltFormat(false);
+    const stream = shortExtended[StorageHeader.sizeof .. $] ~ good[StorageHeader.sizeof .. $];
+    assert(scanAll(streamed, stream) == [shortExtended.length - StorageHeader.sizeof]);
+}
+
+@("DltFormat columns: counter, session ID and message ID are shown like in dlt-viewer")
+unittest
+{
+    import std.algorithm : map;
+    import std.array : array;
+
+    assert(new DltFormat().columns.map!(c => c.id).array == ["time", "timestamp", "counter",
+        "ecu", "app", "ctx", "session", "type", "level", "msgid", "payload"]);
+}
+
+@("DltFormat.scanRecords: a length running past the end doesn't hide the records after it")
+unittest
+{
+    auto broken = buildDltMessage("ECU1", 1, 0, 0, 1, [1, 2, 3]);
+    broken[StorageHeader.sizeof + 2 .. StorageHeader.sizeof + 4] = [0xFF, 0xFF];
+    auto msg2 = buildDltMessage("ECU1", 2, 0, 0, 2, [4]);
+    auto msg3 = buildDltMessage("ECU1", 3, 0, 0, 3, [5]);
+    auto data = broken ~ msg2 ~ msg3;
+
+    assert(scanAll(new DltFormat(), data) == [broken.length, broken.length + msg2.length]);
+
+    // Without final_ the record may still be growing: wait for it
+    size_t[4] offsets;
+    const r = new DltFormat().scanRecords(data, 0, offsets[], false);
+    assert(r.count == 0 && r.next == 0);
+}
+
+@("DltFormat.scanRecords: a record of an unknown protocol version")
+unittest
+{
+    // Version 3 with the bits of an extended header and a length too short for it in version 1
+    const ubyte version3 = 3 << 5 | StandardHeader.Type.UseExtendedHeader;
+    auto record = buildDltMessage("ECU1", 1, 0, version3, 1);
+
+    // After a storage header it is taken for bytes of a payload: no such version exists
+    assert(scanAll(new DltFormat(), record).length == 0);
+    // A stream has no choice: the record is kept, the decoder says it can't show it
+    assert(scanAll(new DltFormat(false), record[StorageHeader.sizeof .. $]) == [0]);
+}
+
+// ─── Protocol and storage header version 2 ──────────────────────────────────
+
+version (unittest)
+{
+    import formats.dlt.header_v2 : BuildV2, dltViewerTestFile;
+
+    ubyte[] storageHeaderV2(const(char)[] ecuId)
+    {
+        ubyte[] bytes = cast(ubyte[]) "DLT\x02".dup;
+        bytes ~= [0, 0, 0, 0, 1, 0, 0, 0, 0];
+        bytes ~= cast(ubyte) ecuId.length;
+        return bytes ~ cast(const(ubyte)[]) ecuId;
+    }
+}
+
+@("DltFormat.scanRecords: version 2 records with storage headers of both versions")
+unittest
+{
+    BuildV2 b;
+    b.ecuId = "ECU1";
+    b.payload = [1, 2, 3];
+    auto v2 = storageHeaderV2("STORAGE") ~ b.bytes(); // a storage header of 21 bytes
+    auto v1Storage = cast(ubyte[]) buildDltMessage("ECU1", 1, 0, 0, 1)[0 .. StorageHeader.sizeof] ~ b.bytes();
+    auto v1 = buildDltMessage("ECU1", 2, 0, 0, 2, [4]);
+    auto data = v2 ~ v1 ~ v1Storage ~ v2;
+
+    auto format = new DltFormat();
+    const offsets = [0, v2.length, v2.length + v1.length, v2.length + v1.length + v1Storage.length];
+    assert(scanAll(format, data) == offsets);
+    foreach (i, offset; offsets)
+        assert(format.recordAt(data, offset).length == [v2, v1, v1Storage, v2][i].length);
+}
+
+@("DltFormat.scanRecords: version 2 records without storage header")
+unittest
+{
+    BuildV2 b;
+    b.payload = [9];
+    auto data = dltViewerTestFile ~ b.bytes() ~ dltViewerTestFile;
+    assert(scanAll(new DltFormat(false), data) == [0, 71, 71 + b.bytes().length]);
+}
+
+@("DltFormat.scanRecords: a version 2 record shorter than its header is skipped")
+unittest
+{
+    BuildV2 broken;
+    broken.ecuId = "ECU1";
+    broken.length = 9; // ends inside the ECU ID
+    BuildV2 good;
+    auto data = storageHeaderV2("S") ~ broken.bytes() ~ storageHeaderV2("S") ~ good.bytes();
+
+    const second = storageHeaderV2("S").length + broken.bytes().length;
+    assert(scanAll(new DltFormat(), data) == [second]);
+}
+
+@("DltDetector: a version 2 storage header at the start is certain")
+unittest
+{
+    BuildV2 b;
+    assert(new DltDetector().detect("x.log", storageHeaderV2("ECU1") ~ b.bytes()).score == 1.0f);
+}
+
+@("DltFormat.scanRecords: a version 2 record with reserved values is kept and shown as invalid")
+unittest
+{
+    auto reserved = dltViewerTestFile.dup;
+    reserved[0] |= 0x03; // CNTI 3: the length is right, the content unknown
+    auto data = storageHeaderV2("S") ~ reserved ~ storageHeaderV2("S") ~ dltViewerTestFile;
+
+    auto format = new DltFormat();
+    const first = storageHeaderV2("S").length + reserved.length;
+    assert(scanAll(format, data) == [0, first]);
+
+    LogMessage!wchar msg;
+    assert(format.decode(msg, format.recordAt(data, 0)));
+    assert(msg.payloadText == "[invalid DLT version 2 header]"w);
+}
+
+@("findNextStorageHeader: a pattern not followed by a message of a known version is not a header")
+unittest
+{
+    ubyte[] garbage = cast(ubyte[]) "text DLT\x02".dup ~ new ubyte[](9) ~ cast(ubyte[])[0, 0xE0, 0, 0, 0]
+        ~ cast(ubyte[]) "DLT\x01".dup ~ new ubyte[](12) ~ cast(ubyte[])[0xE0, 0, 0, 4, 0, 0];
+    assert(findNextStorageHeader(garbage).length == 0);
+    assert(new DltDetector().detect("x.log", garbage).score == 0);
+
+    auto msg = buildDltMessage("ECU1", 1, 0, 0, 1, [0x42]);
+    auto data = garbage ~ msg;
+    assert(findNextStorageHeader(data).ptr == &data[garbage.length]);
+
+    // A header cut by the end of the data may still be one
+    auto cut = garbage ~ msg[0 .. StorageHeader.sizeof];
+    assert(findNextStorageHeader(cut).length == StorageHeader.sizeof);
 }
