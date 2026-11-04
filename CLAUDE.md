@@ -86,11 +86,24 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
 - Pass a `LogMessage` by `ref`, never `out`: `out` resets it to `.init` without its destructor
   and leaks the buffer on every decode.
 - DLT fields are read through UFCS accessors in `formats/dlt/fields` (`msg.ecuId`, `msg.appId`, ...).
-- Filters implement `LogFilter!wchar` (`log_core/log_filter`):
-  - **`FieldFilter`** (`log_core/field_filter`) is the quick filter. It is built from the column
-    schema and a `{column id: value}` map.
-  - **`DltLogFilter`** reads `.dlf` files and only applies to DLT documents
-    (`DltLogFilter.canFilter`).
+- Filters implement `LogFilter!wchar` (`log_core/log_filter`).
+- The filters of the main view are rules, as in dlt-viewer, the same for every format
+  (`log_core/rule_filter`):
+  - a `FilterRule` (include / exclude / marker) is a set of `Condition`s on **column ids** of the
+    format; a condition on a column the log doesn't have makes the rule "not applied"
+    (`ruleError`), it is kept, never dropped silently;
+  - a `FilterSet` is what one filter file holds; `RuleFilter.compile` builds the view filter from
+    the enabled rules of the enabled sets (shown: an include rule matches, or there is none, and
+    no exclude rule does; markers don't filter).
+- Filter files: our own JSON format (`log_core/filter_file`, `<name>.<format id>.logfilter`, the
+  format is also written inside) for any log; a `.dlf` of dlt-viewer (`formats/dlt/dlf`) for DLT
+  logs only, converted to rules and back (`fromDlf`, `toDlf`), naming what is lost.
+- `ui/filter_commands.DocumentFilters` holds the sets of a document and the panel commands. A set
+  is a **copy**: a loaded file is copied into the settings of the log (`RecentFile.filters`, rules
+  as in a filter file), edits are remembered at once, and a set can be exported. No file is
+  referred to, so a file loaded for two logs doesn't tie them together.
+- The rule editor (`resources/rule-editor.htm`) has a row per column of the format; the mapping
+  of conditions to rows is the Sciter-free `resources/rule-form.js`, tested by `tests/js`.
 
 ### Indexing and threads
 - `LogIndex` runs one operation at a time in a `BackgroundSlot`: build the offset, filter or

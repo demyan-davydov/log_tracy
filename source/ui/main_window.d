@@ -12,9 +12,7 @@ import log_core.log_format : ColumnInfo, ColumnKind, FormatChoice;
 import log_core.log_message : TimeKind;
 import domain.log_document;
 
-import formats.dlt.filter_serialization;
-import formats.dlt.filter_record;
-import ui.filter_commands : applyQuickFilter, loadDltFilter;
+import ui.filter_commands : DocumentFilters;
 import domain.search_filter : SearchFilter;
 import ui.main_view_fsm;
 import ui.search_view_fsm;
@@ -40,6 +38,7 @@ private final class DocumentUi : MainViewSink, MainViewCommands, SearchViewSink,
     private DocumentId _docId;
     private MainViewFsm _mainView;
     private SearchViewFsm _searchView;
+    private DocumentFilters _filters;
 
     MainViewModel mainViewShown; // the latest view shown by the machine
     bool mainViewChanged; // shown since it was last sent to JS
@@ -62,6 +61,19 @@ private final class DocumentUi : MainViewSink, MainViewCommands, SearchViewSink,
     {
         _mainView.process(e);
         _searchView.process(e);
+    }
+
+    /// The filter sets of the main view of the document, created on first use
+    DocumentFilters filters()
+    {
+        if (_filters is null)
+        {
+            auto doc = _workspace.doc(_docId);
+            auto log = cast(LogDocument) doc;
+            const formatId = log is null ? "" : log.formatChoice.id;
+            _filters = new DocumentFilters(doc.format, formatId, (filter) { doc.applyViewFilter(filter); });
+        }
+        return _filters;
     }
 
     void pressMainCancel()
@@ -301,13 +313,6 @@ class MainWindow : SciterWindow
             onLoadFibex(normalizePath(asString()));
             return true;
         }
-        if (eventName == "applyFilter"w)
-        {
-            const error = applyQuickFilter(_workspace.current, asString().toUTF8);
-            if (error.length)
-                writeln("Error applying filter: ", error);
-            return true;
-        }
         if (eventName == "tab-clicked"w)
         {
             onTabClicked(asString());
@@ -447,19 +452,6 @@ class MainWindow : SciterWindow
                     onLoadFibex(normalizePath(path));
                 return true;
             }
-            if (method == "applyFilter")
-            {
-                // applyFilter(json) -> error message, "" when the filter was applied
-                string json = getParamString(0);
-                if (!json.empty)
-                {
-                    const error = applyQuickFilter(_workspace.current, json);
-                    if (error.length)
-                        writeln("Error applying filter: ", error);
-                    resultView = error.toUTF16();
-                }
-                return true;
-            }
             if (method == "onTabClicked")
             {
                 string tabId = getParamString(0);
@@ -467,17 +459,75 @@ class MainWindow : SciterWindow
                     onTabClicked(tabId);
                 return true;
             }
-            if (method == "loadDlf")
+            // The filter sets of the active document; the commands return a
+            // message for the user (an error, or what was lost), "" if none
+            if (method == "getFilters")
             {
-                // loadDlf(path) -> error message, "" when the search was started
-                string path = getParamString(0);
-                if (!path.empty)
+                // {canFilter, canDlf, sets: [...]}, see DocumentFilters.toJson
+                auto ui = _documentUis.get(_workspace.currentId, null);
+                resultView = (ui is null ? `{"canFilter":false,"canDlf":false,"sets":[]}`
+                        : ui.filters.toJson().toString()).toUTF16();
+                return true;
+            }
+            if (method == "getFilterRule")
+            {
+                // getFilterRule(set, rule) -> the fields of DlfFilter, null if
+                // there is no such rule; rule -1: a new one
+                auto ui = _documentUis.get(_workspace.currentId, null);
+                const rule = getParamInt(1);
+                resultView = (ui is null ? "null" : rule < 0 ? DocumentFilters.newRuleJson().toString()
+                        : ui.filters.ruleJson(getParamInt(0), rule).toString()).toUTF16();
+                return true;
+            }
+            if (method == "checkFilterRule")
+            {
+                // checkFilterRule(rule json) -> {error, conditions: [...]}, see DocumentFilters.checkRule
+                auto ui = _documentUis.get(_workspace.currentId, null);
+                resultView = (ui is null ? `{"error":"","conditions":[]}`
+                        : ui.filters.checkRule(getParamString(0)).toString()).toUTF16();
+                return true;
+            }
+            if (method == "loadFilterFile" || method == "newFilterSet" || method == "exportFilterSet"
+                || method == "removeFilterSet" || method == "enableFilterSet"
+                || method == "enableFilterRule" || method == "addFilterRule"
+                || method == "updateFilterRule" || method == "removeFilterRule")
+            {
+                auto ui = _documentUis.get(_workspace.currentId, null);
+                if (ui is null)
+                    return true;
+                string error;
+                if (method == "loadFilterFile")
+                    error = ui.filters.loadFile(normalizePath(getParamString(0)));
+                else if (method == "newFilterSet")
+                    error = ui.filters.newSet();
+                else if (method == "exportFilterSet")
+                    error = ui.filters.exportSet(getParamInt(0), normalizePath(getParamString(1)));
+                else if (method == "addFilterRule")
+                    error = ui.filters.addRule(getParamInt(0), getParamString(1));
+                else if (method == "updateFilterRule")
+                    error = ui.filters.updateRule(getParamInt(0), getParamInt(1), getParamString(2));
+                else if (method == "removeFilterRule")
+                    error = ui.filters.removeRule(getParamInt(0), getParamInt(1));
+
+                else if (method == "removeFilterSet")
+                    error = ui.filters.remove(getParamInt(0));
+                else if (method == "enableFilterSet")
+                    error = ui.filters.enableSet(getParamInt(0), getParamBool(1));
+                else
+                    error = ui.filters.enableRule(getParamInt(0), getParamInt(1), getParamBool(2));
+                if (error.length)
+                    writeln(method, ": ", error);
+                else
                 {
-                    const error = loadDltFilter(_workspace.current, normalizePath(path));
-                    if (error.length)
-                        writeln("Error loading DLF: ", error);
-                    resultView = error.toUTF16();
+                    // The sets are copies kept in the settings of the file:
+                    // remembered at once, as the recent list is
+                    foreach (item; _workspace.documents)
+                        if (item.docId == _workspace.currentId)
+                            _settings.recentFiles = withFilters(_settings.recentFiles,
+                                item.sourcePath, ui.filters.saved());
+                    saveSettings();
                 }
+                resultView = error.toUTF16();
                 return true;
             }
             if (method == "getColumns")
@@ -627,8 +677,12 @@ class MainWindow : SciterWindow
             const openTime = MonoTime.currTime - openStart;
 
             const destroyStart = MonoTime.currTime;
+            // The filters the old document had, for the new one
+            auto oldUi = _documentUis.get(docId, null);
+            const filters = oldUi is null ? null : oldUi.filters.saved();
             auto old = _workspace.replaceDocument(docId, fresh);
             addDocumentUi(docId); // the new document starts with a new machine
+            _documentUis[docId].filters.restore(filters);
             if (old !is null)
                 old.destroy();
             const destroyTime = MonoTime.currTime - destroyStart;
@@ -665,6 +719,8 @@ class MainWindow : SciterWindow
             auto newDoc = new LogDocument(path, savedFormat(_settings.recentFiles, path));
             auto docId = _workspace.addDocument(newDoc, path);
             addDocumentUi(docId);
+            // The filters loaded for the file last time, before the list moves it
+            _documentUis[docId].filters.restore(savedFilters(_settings.recentFiles, path));
             _workspace.setCurrent(docId);
             rememberRecentFile(RecentFile(path, newDoc.formatChoice, nowMs()));
             callScript("onDocumentOpened", docId.toInt());

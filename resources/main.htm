@@ -68,14 +68,13 @@
     <frameset id="document-views" cols="200px, *">
         <section class="left-panel" id="sidebar">
             <header>Filters</header>
-            <!-- a field per column of the format: showQuickFilter() in script.js -->
-            <div id="quick-filter"></div>
+            <!-- the filter sets of the active document: showFilters() in script.js -->
+            <div id="filter-sets"></div>
             <div id="filter-message"></div>
             <div class="filter-actions">
+                <button id="btn-new-dlf">New Filter</button>
                 <button id="btn-dlf">Load Filter</button>
-                <button id="btn-clear-filters">Clear All</button>
             </div>
-            <div id="dlf-message"></div>
 
             <header class="sidebar-section">Decoding</header>
             <div class="filter-actions">

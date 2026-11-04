@@ -390,13 +390,16 @@ version (unittest)
         return path;
     }
 
-    /// Quick filter of the main view by the ECU ID of DLT messages
+    /// Filter of the main view by the ECU ID of DLT messages
     private LogFilter!wchar ecuFilter(string ecuId)
     {
         import formats.dlt.format : DltFormat;
-        import log_core.field_filter : FieldFilter;
+        import log_core.rule_filter : Check, Condition, FilterRule, FilterSet, RuleFilter;
 
-        return FieldFilter.fromValues(new DltFormat().columns, ["ecu": ecuId]);
+        FilterSet set;
+        set.rules = [FilterRule("", FilterRule.init.kind, true, "",
+                [Condition("ecu", Check.Equals, ecuId)])];
+        return RuleFilter.compile(new DltFormat().columns, [set]);
     }
 
     /// Test filter that accepts all or no messages

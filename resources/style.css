@@ -42,14 +42,12 @@ header {
 }
 
 #search-message:empty,
-#filter-message:empty,
-#dlf-message:empty {
+#filter-message:empty {
     display: none;
 }
 
 #search-message,
-#filter-message,
-#dlf-message {
+#filter-message {
     color: red;
     padding: 2px 4px;
 }
@@ -437,32 +435,104 @@ frameset {
     font-weight: 600;
 }
 
-.filter-group {
-    margin-bottom: 12px;
+/* ---- Filter sets of the active document: showFilters() in script.js ---- */
+
+#filter-sets {
+    flow: vertical;
 }
 
-.filter-group label {
-    display: block;
-    margin-bottom: 4px;
-    font-size: 0.9em;
+.filters-empty {
     color: var(--text-label);
-    font-weight: 500;
+    font-size: 0.9em;
 }
 
-.filter-group input {
-    display: block;
+.filter-set {
+    margin-bottom: 8dip;
+}
+
+.filter-row {
+    flow: horizontal;
+    vertical-align: middle;
+    border-spacing: 4dip;
+    padding: 2dip 4dip;
+    border-radius: 4dip;
+}
+
+.filter-row:hover {
+    background: var(--bg-tab-hover);
+}
+
+.filter-set-head {
+    font-weight: 600;
+}
+
+.filter-rule {
+    padding-left: 22dip; /* under the name of the set */
+}
+
+.filter-row input {
+    margin: 0;
+}
+
+/* Cut at the end, the full name in the overflow tooltip */
+.filter-name {
     width: *;
-    /* fill available width */
-    padding: 6px;
-    border: 1px solid var(--border-input);
-    border-radius: 4px;
-    background: var(--bg-input);
-    color: var(--text-main);
+    overflow-x: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 
-.filter-group input:focus {
-    border-color: var(--border-focus);
-    outline: none;
+/* What the rule does: + include, − exclude, ◆ marker */
+.filter-kind {
+    width: 1em;
+    text-align: center;
+    color: var(--text-label);
+}
+
+.filter-swatch {
+    width: 10dip;
+    height: 10dip;
+    border-radius: 2dip;
+    border: 1px solid var(--border-color);
+}
+
+/* Switched off, or in a set switched off, or not applied: muted */
+.filter-set.off .filter-rule .filter-name,
+.filter-rule.off .filter-name,
+.filter-rule.error .filter-name {
+    color: var(--text-label);
+}
+
+/* Why the rule isn't applied, under it */
+.filter-note {
+    padding-left: 48dip;
+    font-size: 0.85em;
+    color: var(--log-error);
+}
+
+
+/* The buttons of a set (⤓ export, +, ×) and of a rule (✎, ×) */
+.filter-button {
+    min-width: 16dip;
+    height: 16dip;
+    line-height: 16dip;
+    text-align: center;
+    border-radius: 8dip;
+    color: var(--tab-close);
+    cursor: pointer;
+}
+
+.filter-button:hover {
+    background: var(--tab-close-hover);
+}
+
+/* The buttons of a rule only where the mouse is: the list stays calm */
+.filter-rule .filter-button {
+    visibility: hidden;
+}
+
+.filter-rule:hover .filter-button {
+    visibility: visible;
 }
 
 .filter-actions {

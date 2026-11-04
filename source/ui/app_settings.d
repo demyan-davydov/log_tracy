@@ -9,6 +9,8 @@ import std.array;
 import std.algorithm;
 
 import formats.registry : formatInfo;
+import log_core.filter_file : ruleFromJson, rulesToJson;
+import log_core.rule_filter : FilterRule;
 import log_core.log_format : FormatChoice, FormatInfo;
 
 struct WindowRect
@@ -44,12 +46,72 @@ string recentFilePath(string path)
     return buildNormalizedPath(absolutePath(path));
 }
 
+/// A filter set of a log: a copy of the rules of the .dlf it was loaded
+/// from (or made from scratch), with the edits and switches made since
+struct SavedFilter
+{
+    string name;
+    string source; /// the .dlf it was loaded from or exported to; "" if none
+    bool enabled = true; /// the whole set
+    FilterRule[] rules; /// in the order of the file
+}
+
 /// A file of the recent list
 struct RecentFile
 {
     string path;
     FormatChoice format; /// the format it was opened with last time; unset if never opened
     long lastUsed; /// when it was worked with last: ms since the Unix epoch (UTC); 0 if unknown
+    SavedFilter[] filters; /// loaded for it, in the order loaded
+}
+
+/// A mutable copy of a recent file entry
+RecentFile copyOf(const RecentFile file)
+{
+    return RecentFile(file.path, file.format, file.lastUsed,
+        file.filters.map!(f => SavedFilter(f.name, f.source, f.enabled, copyOf(f.rules))).array);
+}
+
+/// A mutable copy of rules
+FilterRule[] copyOf(const(FilterRule)[] rules)
+{
+    FilterRule[] copy;
+    foreach (ref rule; rules)
+    {
+        // All its fields, then a copy of the conditions: a field added later is copied too
+        auto c = cast(FilterRule) rule;
+        c.conditions = rule.conditions.dup;
+        copy ~= c;
+    }
+    return copy;
+}
+
+/// ditto, of the list
+private RecentFile[] copyOf(const RecentFile[] list)
+{
+    return list.map!(f => copyOf(f)).array;
+}
+
+/// Returns: the filters loaded for `path` last time, null if it isn't in the list
+SavedFilter[] savedFilters(const RecentFile[] list, string path)
+{
+    path = recentFilePath(path);
+    foreach (file; list)
+        if (filenameCmp(file.path, path) == 0)
+            return copyOf(file).filters;
+    return null;
+}
+
+/// Returns the recent list with the filters of `path` replaced, in place; a
+/// file not in the list isn't added
+RecentFile[] withFilters(const RecentFile[] list, string path, SavedFilter[] filters)
+{
+    path = recentFilePath(path);
+    RecentFile[] result = copyOf(list);
+    foreach (ref file; result)
+        if (filenameCmp(file.path, path) == 0)
+            file.filters = filters;
+    return result;
 }
 
 /// Now, as RecentFile.lastUsed counts it: UTC, so a change of the time zone or
@@ -68,11 +130,11 @@ long nowMs()
 /// the one it had in the list (e.g. it failed to open this time).
 RecentFile[] withRecentFile(const RecentFile[] list, RecentFile file)
 {
-    RecentFile[] result = list.dup;
+    RecentFile[] result = copyOf(list);
     if (file.path.length)
     {
         file.path = recentFilePath(file.path);
-        foreach (saved; list)
+        foreach (ref saved; result)
         {
             if (filenameCmp(saved.path, file.path) != 0)
                 continue;
@@ -80,6 +142,8 @@ RecentFile[] withRecentFile(const RecentFile[] list, RecentFile file)
                 file.format = saved.format;
             if (file.lastUsed == 0)
                 file.lastUsed = saved.lastUsed;
+            if (file.filters is null)
+                file.filters = saved.filters;
         }
         result = [file] ~ result.filter!(f => filenameCmp(f.path, file.path) != 0).array;
     }
@@ -101,12 +165,16 @@ RecentFile[] withFilesUsed(const RecentFile[] list, const string[] paths, long n
 
     RecentFile[] used;
     foreach (file; list.filter!(f => isUsed(f)))
-        used ~= RecentFile(file.path, file.format, now);
+    {
+        auto copy = copyOf(file);
+        copy.lastUsed = now;
+        used ~= copy;
+    }
     foreach (path; normalized) // open, but pushed out of the list
         if (!used.canFind!(f => filenameCmp(f.path, path) == 0))
             used ~= RecentFile(path, FormatChoice.init, now);
 
-    RecentFile[] result = used ~ list.dup.filter!(f => !isUsed(f)).array;
+    RecentFile[] result = used ~ copyOf(list).filter!(f => !isUsed(f)).array;
     return result[0 .. min(result.length, recentFilesMax)];
 }
 
@@ -114,7 +182,7 @@ RecentFile[] withFilesUsed(const RecentFile[] list, const string[] paths, long n
 /// the order doesn't change, files not in the list aren't added
 RecentFile[] withFilesStamped(const RecentFile[] list, const string[] paths, long now)
 {
-    RecentFile[] result = list.dup;
+    RecentFile[] result = copyOf(list);
     foreach (ref file; result)
         if (paths.canFind!(p => filenameCmp(recentFilePath(p), file.path) == 0))
             file.lastUsed = now;
@@ -167,7 +235,7 @@ struct AppSettings
         this.windowRect = rhs.windowRect;
         this.files = rhs.files.dup;
         this.activeFile = rhs.activeFile;
-        this.recentFiles = rhs.recentFiles.dup;
+        this.recentFiles = copyOf(rhs.recentFiles);
         this.theme = rhs.theme;
         this.tableFontSize = rhs.tableFontSize;
     }
@@ -177,7 +245,7 @@ struct AppSettings
         this.windowRect = rhs.windowRect;
         this.files = rhs.files.dup;
         this.activeFile = rhs.activeFile;
-        this.recentFiles = rhs.recentFiles.dup;
+        this.recentFiles = copyOf(rhs.recentFiles);
         this.theme = rhs.theme;
         this.tableFontSize = rhs.tableFontSize;
     }
@@ -248,6 +316,13 @@ static JSONValue toJSON(in AppSettings settings)
         }
         if (f.lastUsed > 0)
             fv.object["lastUsed"] = JSONValue(f.lastUsed);
+        if (f.filters.length)
+            fv.object["filterSets"] = JSONValue(f.filters.map!(filter => JSONValue([
+                "name": JSONValue(filter.name),
+                "source": JSONValue(filter.source),
+                "enabled": JSONValue(filter.enabled),
+                "rules": rulesToJson(filter.rules),
+            ])).array);
         recentArray ~= fv;
     }
     j.object["recentFiles"] = JSONValue(recentArray);
@@ -271,6 +346,45 @@ private FormatChoice formatOf(const JSONValue entry)
         return FormatChoice(id.str, cast(int) variant.integer);
     }
     return FormatChoice(id.str);
+}
+
+/// The filter sets saved in a recent file entry: {"filterSets": [{"name",
+/// "source", "enabled", "rules": [rules as in a filter file]}]}; a set without
+/// a name and a rule that can't be read are skipped. The "filters" of the
+/// DLT-only format written before aren't read.
+private SavedFilter[] filtersOf(const JSONValue entry)
+{
+    const filters = "filterSets" in entry;
+    if (filters is null || filters.type != JSONType.array)
+        return null;
+    SavedFilter[] result;
+    foreach (filter; filters.array)
+    {
+        if (filter.type != JSONType.object)
+            continue;
+        const name = "name" in filter;
+        if (name is null || name.type != JSONType.string)
+            continue;
+        SavedFilter saved;
+        saved.name = name.str;
+        if (const source = "source" in filter)
+            if (source.type == JSONType.string)
+                saved.source = source.str;
+        if (const enabled = "enabled" in filter) // on without the key or when true only
+            saved.enabled = enabled.type == JSONType.true_;
+        if (const rules = "rules" in filter)
+            if (rules.type == JSONType.array)
+                foreach (ref rule; rules.array)
+                {
+                    try
+                        saved.rules ~= ruleFromJson(rule);
+                    catch (Exception)
+                    {
+                    } // skipped
+                }
+        result ~= saved;
+    }
+    return result;
 }
 
 /// The time saved in a recent file entry: {"lastUsed": ms}; 0 if there is none
@@ -348,7 +462,7 @@ static AppSettings loadSettings(string path = defaultSettingsPath())
                         const filePath = "path" in val;
                         if (filePath !is null && filePath.type == JSONType.string)
                             settings.recentFiles = withRecentFile(settings.recentFiles,
-                                RecentFile(filePath.str, formatOf(val), lastUsedOf(val)));
+                                RecentFile(filePath.str, formatOf(val), lastUsedOf(val), filtersOf(val)));
                     }
                 }
             }
@@ -629,4 +743,61 @@ unittest
 {
     assert(nowMs() > 1_762_000_000_000); // after Nov 2025
     assert(nowMs() < 4_102_444_800_000); // before 2100
+}
+
+/// The filter sets of a file survive a save and a load with their rules;
+/// broken entries and rules are skipped, the entries of the DLT-only format
+/// written before ("filters") aren't read
+unittest
+{
+    import log_core.rule_filter : Check, Condition, FilterRule, RuleKind;
+
+    const path = buildPath(tempDir(), "dlt_explorer_settings_filters_test.json");
+    scope (exit) if (exists(path)) remove(path);
+
+    FilterRule errors;
+    errors.name = "Errors";
+    errors.conditions = [Condition("level", Check.Range, "", 1, 2), Condition("tag", Check.Equals, "AM")];
+    FilterRule off;
+    off.enabled = false;
+    off.kind = RuleKind.Exclude;
+
+    AppSettings settings;
+    settings.recentFiles = [RecentFile("/a.log", FormatChoice("logcat"), 100,
+            [SavedFilter("one.dlf", "/f/one.dlf", true, [errors, off]), SavedFilter("New Filter", "", false, [])]),
+        RecentFile("/b.dlt")];
+    saveSettings(settings, path);
+    assert(loadSettings(path).recentFiles == settings.recentFiles);
+
+    std.file.write(path, `{"recentFiles": [{"path": "/a.dlt", "filterSets": [{"name": 5}, "x",
+        {"name": "one", "rules": [{"name": "Errors"}, {"kind": "sometimes"}, 7]}]}]}`);
+    FilterRule named;
+    named.name = "Errors";
+    assert(loadSettings(path).recentFiles[0].filters == [SavedFilter("one", "", true, [named])],
+        "a set without a name and rules that aren't rules are skipped");
+
+    std.file.write(path, `{"recentFiles": [{"path": "/a.dlt", "filterSets": [{"name": "a"},
+        {"name": "b", "enabled": true}, {"name": "c", "enabled": 0}, {"name": "d", "enabled": null}]}]}`);
+    assert(loadSettings(path).recentFiles[0].filters.map!(f => f.enabled).array == [true, true, false, false],
+        "on without the key or when true only");
+
+    std.file.write(path, `{"recentFiles": [{"path": "/a.dlt", "filters": [{"name": "old", "rules": [{"name": "x"}]}]}]}`);
+    assert(loadSettings(path).recentFiles[0].filters.length == 0);
+}
+
+/// Opening a file again or closing the window keeps its filters; they are
+/// changed in place, without reordering the list
+unittest
+{
+    auto filters = [SavedFilter("one.dlf", "/f/one.dlf")];
+    auto list = [RecentFile("/b.log"), RecentFile("/a.log", FormatChoice("dlt"), 100, filters.dup)];
+    assert(withRecentFile(list, RecentFile("/a.log", FormatChoice("dlt"), 200))[0].filters == filters);
+    assert(withFilesUsed(list, ["/a.log"], 300)[0].filters == filters);
+
+    assert(savedFilters(list, "/logs/../a.log") == filters);
+    assert(savedFilters(list, "/c.log") is null);
+
+    auto changed = withFilters(list, "/a.log", []);
+    assert(changed[1].path == "/a.log" && changed[1].filters.length == 0, "in place");
+    assert(withFilters(list, "/c.log", filters.dup) == list, "a file not in the list isn't added");
 }

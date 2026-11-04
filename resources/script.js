@@ -423,6 +423,7 @@ function setupEvents() {
         }
         const refreshStart = Date.now();
         refreshTabs(); // the reopened document starts loading: the table reloads when it is ready
+        showFilters(); // a new document with the same id: its filters are restored
         console.log(`Retry: xcall ${retryTime} ms, views refresh ${Date.now() - refreshStart} ms`);
     });
 
@@ -447,31 +448,90 @@ function setupEvents() {
         }
     });
 
+    // Filter sets are only appended; each one has its remove button. A filter
+    // file of DLT Explorer for any log, a .dlf of dlt-viewer for a DLT one.
     document.on("click", "#btn-dlf", () => {
-        const fn = Window.this.selectFile({
-            mode: "open",
-            filter: "DLT Filter Files (*.dlf)|*.dlf|All Files (*.*)|*.*"
-        });
-        if (fn) {
-            try {
-                // The filter runs as a search; the reply is an error message or ""
-                const error = Window.this.xcall("loadDlf", fn);
-                // Its own message: the quick filter keeps its own
-                $("#dlf-message").innerText = error || "";
-                saveQuickFilter();
-            } catch (e) {
-                console.error("Failed to load DLF:", e);
-            }
-        }
+        const filter = shownFilters.canDlf
+            ? "Filter Files (*.logfilter;*.dlf)|*.logfilter;*.dlf|DLT Explorer Filters (*.logfilter)|*.logfilter|dlt-viewer Filters (*.dlf)|*.dlf|All Files (*.*)|*.*"
+            : "DLT Explorer Filters (*.logfilter)|*.logfilter|All Files (*.*)|*.*";
+        const fn = Window.this.selectFile({ mode: "open", filter });
+        if (fn) filterCommand("loadFilterFile", fn);
     });
 
-    document.on("click", "#btn-clear-filters", () => {
-        for (const input of $$("#quick-filter input"))
-            input.value = "";
-        applyFilters();
+    // An empty set, kept with the log like a loaded one; its first rule is
+    // asked for right away
+    document.on("click", "#btn-new-dlf", () => {
+        if (activeDocId === null) return;
+        filterCommand("newFilterSet");
+        if (filterMessages.get(activeDocId)) return;
+        const set = shownFilters.sets.length - 1;
+        // No first rule: no set either, so cancelled tries don't pile up
+        if (!editRule(set, -1)) filterCommand("removeFilterSet", set);
     });
 
-    document.on("change", ".filter-group input", applyFilters);
+    document.on("click", ".filter-add", (evt, button) => {
+        editRule(parseInt(button.parentElement.getAttribute("set-index")), -1);
+        return true;
+    });
+
+    // A set is a copy kept with the log: exported to share it, to a filter file
+    // of DLT Explorer or (DLT logs) to a .dlf for dlt-viewer
+    document.on("click", ".filter-export", (evt, button) => {
+        const set = parseInt(button.parentElement.getAttribute("set-index"));
+        // Offered the file the set was loaded from or exported to last, or
+        // <name>.<format>.logfilter; its kind is offered first
+        const fileName = shownFilters.sets[set]?.fileName || "";
+        const dlf = shownFilters.canDlf && /\.dlf$/i.test(fileName);
+        const native = "DLT Explorer Filters (*.logfilter)|*.logfilter";
+        const dlt = "dlt-viewer Filters (*.dlf)|*.dlf";
+        const kinds = !shownFilters.canDlf ? [native] : dlf ? [dlt, native] : [native, dlt];
+        const params = {
+            mode: "save",
+            caption: "Export Filter",
+            extension: dlf ? "dlf" : "logfilter",
+            filter: kinds.join("|") + "|All Files (*.*)|*.*"
+        };
+        // Without its extension: the dialog adds it itself (name.dlf.dlf otherwise)
+        if (fileName) params.path = fileName.replace(/\.(dlf|logfilter)$/i, "");
+        const fn = Window.this.selectFile(params);
+        if (fn) filterCommand("exportFilterSet", set, fn);
+        return true;
+    });
+
+    document.on("click", ".filter-rule-edit", (evt, button) => {
+        const row = button.parentElement;
+        editRule(parseInt(row.getAttribute("set-index")), parseInt(row.getAttribute("rule-index")));
+        return true;
+    });
+
+    document.on("dblclick", ".filter-rule", (evt, row) => {
+        if (evt.target.tag === "input") return; // the switch
+        editRule(parseInt(row.getAttribute("set-index")), parseInt(row.getAttribute("rule-index")));
+        return true;
+    });
+
+    document.on("click", ".filter-rule-remove", (evt, button) => {
+        const row = button.parentElement;
+        filterCommand("removeFilterRule", parseInt(row.getAttribute("set-index")),
+            parseInt(row.getAttribute("rule-index")));
+        return true;
+    });
+
+    document.on("change", ".filter-set-switch", (evt, input) => {
+        const row = input.parentElement;
+        filterCommand("enableFilterSet", parseInt(row.getAttribute("set-index")), input.value);
+    });
+
+    document.on("change", ".filter-rule-switch", (evt, input) => {
+        const row = input.parentElement;
+        filterCommand("enableFilterRule", parseInt(row.getAttribute("set-index")),
+            parseInt(row.getAttribute("rule-index")), input.value);
+    });
+
+    document.on("click", ".filter-remove", (evt, button) => {
+        filterCommand("removeFilterSet", parseInt(button.parentElement.getAttribute("set-index")));
+        return true;
+    });
 
     // A tab is activated on mousedown (as in browsers) and can then be dragged;
     // click only handles the close button
@@ -523,88 +583,113 @@ function setupEvents() {
     });
 }
 
-// The quick filter of every open document, as it was left in the panel:
-//   docId -> { values: {column id: value}, message, dlfMessage }
-// message is the error of the quick filter, dlfMessage that of Load Filter.
-// The panel is one for all documents: it shows the entry of the active one.
-const quickFilters = new Map();
-let quickFilterDocId = null; // the document the panel shows
-let quickFilterColumns = null; // JSON of the columns the panel was built for
+// The filter sets live in the backend (DocumentFilters), per document; the
+// panel shows those of the active document. Only the error message of the last
+// filter command is kept here: docId -> message
+const filterMessages = new Map();
+let filtersDocId; // the document the panel shows; undefined: not shown yet
 
-// {column id: value} typed in the panel, for FieldFilter.fromValues()
-function quickFilterValues() {
-    const values = {};
-    for (const input of $$("#quick-filter input"))
-        values[input.getAttribute("column-id")] = input.value;
-    return values;
+const ruleKindMarks = { include: "+", exclude: "\u2212", marker: "\u25C6" };
+const ruleKindTitles = {
+    include: "Shows the records it matches",
+    exclude: "Hides the records it matches",
+    marker: "Highlights the records it matches (not shown yet)"
+};
+
+// Runs a filter command of the active document and shows the sets again; the
+// table reloads when the filter operation reports completion
+function filterCommand(name, ...args) {
+    if (activeDocId === null) return;
+    const error = Window.this.xcall(name, ...args);
+    filterMessages.set(activeDocId, error || "");
+    showFilters();
 }
 
-// Remembers the panel as the quick filter of the document it shows
-function saveQuickFilter() {
-    if (quickFilterDocId === null || !docStatus.has(quickFilterDocId)) return;
-    quickFilters.set(quickFilterDocId,
-        {
-            values: quickFilterValues(),
-            message: $("#filter-message").innerText || "",
-            dlfMessage: $("#dlf-message").innerText || ""
+let shownFilters = { canFilter: false, canDlf: false, sets: [] }; // what showFilters() got last
+
+// Opens the editor of a rule of a set of the active document (rule -1: a new
+// one) and applies what it closes with. A rule the backend refuses (e.g. an
+// invalid regular expression) opens the editor again with the error.
+// @returns true if the rule was applied, false if the editor was cancelled
+function editRule(set, rule) {
+    if (activeDocId === null) return false;
+    let values = JSON.parse(Window.this.xcall("getFilterRule", set, rule) || "null");
+    if (!values) return false;
+    let error = "";
+    for (;;) {
+        const result = Window.this.modal({
+            url: "rule-editor.htm",
+            alignment: "center",
+            parameters: {
+                title: rule < 0 ? "New Rule" : "Edit Rule", theme: currentTheme, rule: values, error,
+                columns: JSON.parse(Window.this.xcall("getColumns") || "[]"),
+                // What is wrong with the rule, while it is edited: the editor
+                // marks it at once instead of being reopened with the error
+                check: rule => Window.this.xcall("checkFilterRule", JSON.stringify(rule))
+            }
         });
-}
-
-function applyFilters() {
-    // A change event fired while switching tabs belongs to the document the
-    // panel still shows, not to the active one: only remember its values
-    if (quickFilterDocId !== activeDocId) {
-        saveQuickFilter();
-        return;
+        if (!result) return false;
+        const json = JSON.stringify(result);
+        error = rule < 0 ? Window.this.xcall("addFilterRule", set, json)
+            : Window.this.xcall("updateFilterRule", set, rule, json);
+        if (!error) break;
+        values = result;
     }
-    // Returns an error message (e.g. not a number) or "" when applied; on an
-    // error the document keeps its previous filter. The table reloads when the
-    // filter operation reports completion.
-    const json = JSON.stringify(quickFilterValues());
-    console.log("applyFilter for doc", activeDocId, json);
-    const error = Window.this.xcall("applyFilter", json);
-    $("#filter-message").innerText = error ? `Filter error: ${error}` : "";
-    saveQuickFilter();
+    filterMessages.set(activeDocId, "");
+    showFilters();
+    return true;
 }
 
-// Columns that the quick filter can take a value for, see FieldFilter
-const filterableKinds = new Set(["Text", "Integer", "Hex", "Enum", "Payload"]);
-
-function filterPlaceholder(column) {
-    switch (column.kind) {
-        case "Payload": return "regular expression, e.g. error.*";
-        case "Integer": return "a number";
-        case "Hex": return "a hex number, e.g. 1F";
-        case "Enum": return column.labels.join(", ");
-        default: return "the exact value";
-    }
-}
-
-// Shows the quick filter of the active document: a field per filterable
-// column, with the values the document was left with. Rebuilt only when the
-// document or its columns change; empty while no document is open.
-function showQuickFilter(columnsJson) {
-    if (quickFilterDocId === activeDocId && quickFilterColumns === columnsJson) return;
-    const entry = quickFilters.get(activeDocId) ?? { values: {}, message: "", dlfMessage: "" };
-    const columns = activeDocId === null ? [] : JSON.parse(columnsJson);
-    const panel = $("#quick-filter");
-    // Built from scratch: content() may reuse the inputs of the previous
-    // document, whose current value then stays while only the value attribute
-    // changes (the field looks empty until focused)
+// Shows the filter sets of the active document: a set is a row with its
+// switch, name and remove button, followed by a row per rule
+function showFilters() {
+    const info = activeDocId === null
+        ? { canFilter: false, canDlf: false, sets: [] }
+        : JSON.parse(Window.this.xcall("getFilters") || "{}");
+    shownFilters = info;
+    const panel = $("#filter-sets");
+    // Built from scratch, as the quick filter was: reused inputs keep their state
     panel.clear();
-    // One by one: append() takes a single node
-    for (const c of columns.filter(c => filterableKinds.has(c.kind)))
-        panel.append(<div class="filter-group">
-            <label>{c.kind === "Payload" ? `${c.title} (regex)` : c.title}</label>
-            <input type="text" column-id={c.id} placeholder={filterPlaceholder(c)} />
-        </div>);
-    // The current value of a field, as for the search input (showSearchDraft)
-    for (const input of panel.$$("input"))
-        input.value = entry.values[input.getAttribute("column-id")] ?? "";
-    $("#filter-message").innerText = entry.message;
-    $("#dlf-message").innerText = entry.dlfMessage;
-    quickFilterDocId = activeDocId;
-    quickFilterColumns = columnsJson;
+    if (!info.sets || info.sets.length === 0)
+        panel.append(<div class="filters-empty">{info.canFilter
+            ? "No filters: load a filter file or create a new one"
+            : "This log has no columns to filter by"}</div>);
+    (info.sets || []).forEach((set, s) => {
+        const element = <div class={set.enabled ? "filter-set" : "filter-set off"}>
+            <div class="filter-row filter-set-head" set-index={s}>
+                <input type="checkbox" class="filter-set-switch" />
+                <span class="filter-name" title={set.source ? `Loaded from ${set.source}` : ""}>{set.name}</span>
+                <span class="filter-button filter-export" title="Export to a filter file">⤓</span>
+                <span class="filter-button filter-add" title="Add a rule">+</span>
+                <span class="filter-button filter-remove" title="Remove this filter">×</span>
+            </div>
+        </div>;
+        panel.append(element);
+        const block = panel.lastElementChild;
+        block.$(".filter-set-switch").value = set.enabled;
+        set.rules.forEach((rule, r) => {
+            const classes = ["filter-row", "filter-rule"];
+            if (!rule.enabled) classes.push("off");
+            if (rule.error) classes.push("error");
+            block.append(<div class={classes.join(" ")} set-index={s} rule-index={r}>
+                <input type="checkbox" class="filter-rule-switch" />
+                <span class="filter-kind" title={ruleKindTitles[rule.kind]}>{ruleKindMarks[rule.kind]}</span>
+                <span class="filter-swatch" />
+                <span class="filter-name">{rule.name || "(no name)"}</span>
+                <span class="filter-button filter-rule-edit" title="Edit this rule (or double-click it)">✎</span>
+                <span class="filter-button filter-rule-remove" title="Remove this rule">×</span>
+            </div>);
+            const row = block.lastElementChild;
+            row.$(".filter-rule-switch").value = rule.enabled;
+            if (rule.color) row.$(".filter-swatch").style.setProperty("background-color", rule.color);
+            if (rule.error)
+                block.append(<div class="filter-note">{`Not applied: ${rule.error}`}</div>);
+        });
+    });
+    $("#btn-dlf").style.display = info.canFilter ? "" : "none";
+    $("#btn-new-dlf").style.display = info.canFilter ? "" : "none";
+    $("#filter-message").innerText = filterMessages.get(activeDocId) ?? "";
+    filtersDocId = activeDocId;
 }
 
 // Status of every open document, kept up to date for all documents, not only
@@ -648,14 +733,14 @@ function refreshTabs() {
     newTab = documentsCounted(newTab, docCount);
 
     saveSearchDraft(); // the controls may be about to show another document
-    saveQuickFilter(); // so may the quick filter
     docStatus.clear();
     activeDocId = null;
     for (const doc of docs) {
         docStatus.set(doc.id, { mainView: doc.mainView, searchView: doc.searchView, path: doc.path });
         if (doc.active) activeDocId = doc.id;
     }
-    showQuickFilter(applyColumns());
+    applyColumns();
+    if (activeDocId !== filtersDocId) showFilters(); // the sets change by commands only
 
     // Same documents in the same order (e.g. another tab was activated): the
     // elements are kept, so a tab being pressed or dragged stays in the DOM
@@ -694,8 +779,8 @@ function refreshTabs() {
         if (!docStatus.has(docId)) committedSearches.delete(docId); // closed
     for (const docId of searchDrafts.keys())
         if (!docStatus.has(docId)) searchDrafts.delete(docId);
-    for (const docId of quickFilters.keys())
-        if (!docStatus.has(docId)) quickFilters.delete(docId);
+    for (const docId of filterMessages.keys())
+        if (!docStatus.has(docId)) filterMessages.delete(docId);
 
     updateViewMode();
     updateSearchViewMode();
