@@ -50,6 +50,8 @@ resources/script.js, virtual-dlt-view.js   tabs, panels, virtual table built fro
 ```
 
 ### Formats and detection
+- The formats supported now and the ones planned: `docs/formats.md`. Keep it up to date
+  when a format or a variant is added.
 - `domain/format_registry.detectFormat` asks every `FormatDetector` for a score on the first
   64 KB and picks the best.
 - Plain text is the low-score fallback; data no detector accepts is refused.
