@@ -179,6 +179,19 @@ bool looksLikeText(const(ubyte)[] head) pure nothrow @nogc @safe
     return true;
 }
 
+//! @brief The detection of a format whose best variant fits `fits` of the
+//! `lines` sample lines: nothing below `minShare`, else above the plain text
+//! fallback and a mere file extension
+Detection detectionByShare(size_t fits, size_t lines, int variant, float minShare = 0.6f) pure nothrow @nogc @safe
+{
+    if (lines == 0)
+        return Detection(0);
+    const float share = cast(float) fits / lines;
+    if (share < minShare)
+        return Detection(0);
+    return Detection(0.5f + 0.5f * share, variant);
+}
+
 //! @brief Calls `dg` for each complete line of `head` (a sample of the data),
 //! without its line break; the last line is skipped if it may be cut
 void forEachSampleLine(const(ubyte)[] head, scope void delegate(const(char)[] line) dg)
@@ -430,4 +443,14 @@ unittest
 
     auto offsets = scanAll(new HashFormat(false), data);
     assert(offsets.length <= 4, "not thousands of tiny records");
+}
+
+@("detectionByShare: nothing below the share, a score above the fallbacks")
+unittest
+{
+    assert(detectionByShare(0, 0, 1).score == 0, "no lines");
+    assert(detectionByShare(5, 10, 1).score == 0, "below 0.6");
+    const d = detectionByShare(8, 10, 3);
+    assert(d.variant == 3 && d.score > 0.5f && d.score < 1.0f);
+    assert(detectionByShare(10, 10, 0).score == 1.0f);
 }

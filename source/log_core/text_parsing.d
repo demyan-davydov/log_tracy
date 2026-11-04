@@ -105,6 +105,27 @@ bool readMonthName(ref const(char)[] s, out uint month) pure nothrow @nogc @safe
     return false;
 }
 
+//! Reads "Mmm dd hh:mm:ss[.fraction]": a month name, a day padded with a
+//! space or a zero, a time of day (syslog, dmesg -T)
+bool readMonthDayTime(ref const(char)[] s, out uint month, out uint day, out long timeOfDayNs) pure nothrow @nogc @safe
+{
+    return readMonthName(s, month) && skipSpaces(s) && readNumber(s, day) && skipSpaces(s)
+        && readTimeOfDay(s, timeOfDayNs);
+}
+
+//! Reads a word up to the next space, not empty
+bool readWord(ref const(char)[] s, out const(char)[] word) pure nothrow @nogc @safe
+{
+    size_t n = 0;
+    while (n < s.length && s[n] != ' ')
+        ++n;
+    if (n == 0)
+        return false;
+    word = s[0 .. n];
+    s = s[n .. $];
+    return true;
+}
+
 //! Reads "HH:MM:SS" and an optional ".fraction"
 //! @returns nanoseconds since midnight
 bool readTimeOfDay(ref const(char)[] s, out long nanoseconds) pure nothrow @nogc @safe
@@ -317,4 +338,24 @@ unittest
     assert(readNumber64(s, v) && v == 999_999_999_999_999_999);
     s = "x";
     assert(!readNumber64(s, v));
+}
+
+@("text parsing: month, day and time; words")
+unittest
+{
+    uint month, day;
+    long time;
+    const(char)[] s = "Nov  3 14:22:01.5 host";
+    assert(readMonthDayTime(s, month, day, time) && s == " host");
+    assert(month == 11 && day == 3 && time == ((14 * 60 + 22) * 60 + 1) * 1_000_000_000L + 500_000_000);
+    s = "Jan 03 00:00:00";
+    assert(readMonthDayTime(s, month, day, time) && day == 3);
+    s = "Nov 3";
+    assert(!readMonthDayTime(s, month, day, time));
+
+    const(char)[] word;
+    s = "host rest";
+    assert(readWord(s, word) && word == "host" && s == " rest");
+    s = " leading";
+    assert(!readWord(s, word));
 }

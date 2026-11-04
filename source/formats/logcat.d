@@ -101,9 +101,6 @@ final class LogcatFormat : TextFormat
 
 final class LogcatDetector : FormatDetector
 {
-    //! Share of the sample lines that must fit
-    enum float minShare = 0.6f;
-
     override Detection detect(string path, const(ubyte)[] head) const
     {
         size_t lines, threadtime, brief;
@@ -117,9 +114,6 @@ final class LogcatDetector : FormatDetector
             else if (parseBrief(line, parsed))
                 ++brief;
         });
-        if (lines == 0)
-            return Detection(0);
-
         auto variant = LogcatFormat.Variant.Threadtime;
         size_t best = threadtime;
         if (brief > best)
@@ -128,11 +122,7 @@ final class LogcatDetector : FormatDetector
             best = brief;
         }
 
-        const float share = cast(float) best / lines;
-        if (share < minShare)
-            return Detection(0);
-        // Above the plain text fallback and a mere .dlt extension
-        return Detection(0.5f + 0.5f * share, variant);
+        return detectionByShare(best, lines, variant);
     }
 
     override LogFormat create(int variant, const(ubyte)[] head) const

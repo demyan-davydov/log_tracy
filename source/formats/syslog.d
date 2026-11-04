@@ -148,9 +148,6 @@ private static immutable ColumnInfo[] rfc5424Columns = [
 
 final class SyslogDetector : FormatDetector
 {
-    //! Share of the sample lines that must fit
-    enum float minShare = 0.6f;
-
     override Detection detect(string path, const(ubyte)[] head) const
     {
         alias Kind = SyslogFormat.Kind;
@@ -174,18 +171,12 @@ final class SyslogDetector : FormatDetector
                 }
             }
         });
-        if (lines == 0)
-            return Detection(0);
-
         size_t best = 0;
         foreach (kind, count; fits)
             if (count > fits[best])
                 best = kind;
-        const float share = cast(float) fits[best] / lines;
-        if (share < minShare)
-            return Detection(0);
         const bool priority = withPriority[best] * 2 > fits[best];
-        return Detection(0.5f + 0.5f * share, SyslogFormat.variantOf(cast(Kind) best, priority));
+        return detectionByShare(fits[best], lines, SyslogFormat.variantOf(cast(Kind) best, priority));
     }
 
     override LogFormat create(int variant, const(ubyte)[] head) const
@@ -244,7 +235,7 @@ private bool parseLine(SyslogFormat.Kind kind, const(char)[] s, out SyslogLine l
         return false;
     skipSpaces(s);
     // An application log has a level where syslog has the host
-    if (!readToken(s, line.host) || isLevelWord(line.host))
+    if (!readWord(s, line.host) || isLevelWord(line.host))
         return false;
     readChar(s, ' ');
     readTag(s, line);
@@ -266,28 +257,14 @@ private bool isLevelWord(const(char)[] word) pure nothrow @nogc @safe
     return false;
 }
 
-//! "Mmm dd hh:mm:ss[.fraction]", the day padded with a space or a zero
+//! "Mmm dd hh:mm:ss[.fraction]": no year
 private bool readBsdTime(ref const(char)[] s, out long timeNs) pure nothrow @nogc @safe
 {
     uint month, day;
     long timeOfDay;
-    if (!readMonthName(s, month) || !skipSpaces(s) || !readNumber(s, day) || !skipSpaces(s)
-        || !readTimeOfDay(s, timeOfDay) || !isValidDate(noYear, month, day))
+    if (!readMonthDayTime(s, month, day, timeOfDay) || !isValidDate(noYear, month, day))
         return false;
     timeNs = toEpochNs(noYear, month, day, timeOfDay);
-    return true;
-}
-
-//! A word up to the next space, not empty
-private bool readToken(ref const(char)[] s, out const(char)[] token) pure nothrow @nogc @safe
-{
-    size_t n = 0;
-    while (n < s.length && s[n] != ' ')
-        ++n;
-    if (n == 0)
-        return false;
-    token = s[0 .. n];
-    s = s[n .. $];
     return true;
 }
 
@@ -361,7 +338,7 @@ private bool parseRfc5424(const(char)[] s, ref SyslogLine line) pure nothrow @no
 //! A field of RFC 5424: empty for "-"
 private bool readField(ref const(char)[] s, out const(char)[] value) pure nothrow @nogc @safe
 {
-    if (!readToken(s, value))
+    if (!readWord(s, value))
         return false;
     if (value == "-")
         value = null;

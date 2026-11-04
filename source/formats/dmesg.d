@@ -128,9 +128,6 @@ final class DmesgFormat : TextFormat
 
 final class DmesgDetector : FormatDetector
 {
-    //! Share of the sample lines that must fit
-    enum float minShare = 0.6f;
-
     override Detection detect(string path, const(ubyte)[] head) const
     {
         size_t lines;
@@ -153,21 +150,16 @@ final class DmesgDetector : FormatDetector
                 }
             }
         });
-        if (lines == 0)
-            return Detection(0);
-
         size_t best = 0;
         foreach (variant, count; fits)
             if (count > fits[best])
                 best = variant;
 
-        const float share = cast(float) fits[best] / lines;
-        if (share < minShare)
-            return Detection(0);
         // Most lines with a priority: show the facility too
-        if (best == DmesgFormat.Variant.Monotonic && withPriority * 2 > fits[best])
-            best = DmesgFormat.Variant.Raw;
-        return Detection(0.5f + 0.5f * share, cast(int) best);
+        auto variant = cast(DmesgFormat.Variant) best;
+        if (variant == DmesgFormat.Variant.Monotonic && withPriority * 2 > fits[best])
+            variant = DmesgFormat.Variant.Raw;
+        return detectionByShare(fits[best], lines, variant);
     }
 
     override LogFormat create(int variant, const(ubyte)[] head) const
@@ -246,8 +238,7 @@ private bool readWallClock(ref const(char)[] s, out long timeNs) pure nothrow @n
     if (!readChar(s, '[') || s.length < 4 || s[3] != ' ')
         return false;
     s = s[4 .. $]; // the weekday
-    if (!readMonthName(s, month) || !skipSpaces(s) || !readNumber(s, day) || !skipSpaces(s)
-        || !readTimeOfDay(s, timeOfDay) || !skipSpaces(s) || !readDigits(s, 4, year)
+    if (!readMonthDayTime(s, month, day, timeOfDay) || !skipSpaces(s) || !readDigits(s, 4, year)
         || !readChar(s, ']') || !isValidDate(year, month, day))
         return false;
     timeNs = toEpochNs(year, month, day, timeOfDay);
