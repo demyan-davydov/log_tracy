@@ -23,9 +23,15 @@ export function renderHeader() {
 
 const pad = (value, digits) => String(value).padStart(digits, "0");
 
-// Time cell: microseconds since the epoch (or since boot), null if none
-function formatTime(us, timeKind) {
-    if (us === null || us === undefined) return "-";
+// TimeKind of the backend (log_core/log_message), by value
+const timeKinds = ["None", "Absolute", "Local", "LocalNoYear", "SinceBoot"];
+
+// Time cell: [microseconds since the epoch (or since boot), TimeKind] of the
+// record, null if it has no time
+function formatTime(cell) {
+    if (!cell) return "-";
+    const us = cell[0];
+    const timeKind = timeKinds[cell[1]];
     const seconds = Math.floor(us / 1e6);
     const fraction = pad(us - seconds * 1e6, 6);
     if (timeKind === "SinceBoot") return `${seconds}.${fraction}`;
@@ -57,7 +63,7 @@ function renderCell(column, value) {
     if (value === null && column.kind !== "Time")
         return <td class="aux"></td>; // the record has no such field
     switch (column.kind) {
-        case "Time": return <td class="aux">{formatTime(value, column.timeKind)}</td>;
+        case "Time": return <td class="aux">{formatTime(value)}</td>;
         case "Level": {
             if (!value) return <td class="aux"></td>; // LogLevel.None: the record has no level
             const level = levelNames[value] ?? "unknown";

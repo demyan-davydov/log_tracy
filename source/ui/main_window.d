@@ -874,14 +874,19 @@ SciterValue asSciterRow(int index, ref const(DocumentItem) item, const(ColumnInf
         final switch (column.kind)
         {
         case ColumnKind.Time:
-            // Microseconds: exact in a double (a script number) for 285 years
+            // [microseconds, TimeKind]: the kind of this record, the column's
+            // is only the usual one. Microseconds are exact in a double (a
+            // script number) for 285 years.
             if (msg.timeKind == TimeKind.None)
             {
                 SciterValue none = SciterValue.makeNull();
                 cells.opIndex(cell, none);
             }
             else
-                cells.opIndex(cell, cast(double)(msg.timeNs / 1000));
+            {
+                SciterValue time = SciterValue.makeArray(cast(double)(msg.timeNs / 1000), cast(int) msg.timeKind);
+                cells.opIndex(cell, time);
+            }
             break;
         case ColumnKind.Level:
             cells.opIndex(cell, cast(int) msg.level);

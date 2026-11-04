@@ -5,9 +5,9 @@ module formats.syslog;
 //!   ISO (rsyslog, journalctl short-iso): "2026-11-03T14:22:01.123456+01:00 host app[1]: message"
 //!   RFC 5424: "<165>1 2026-11-03T14:22:01.003Z host app procid msgid [data] message"
 //! BSD and ISO lines may start with a "<priority>". A time with a zone is a
-//! moment (shown in the user's zone), one without is shown as written. Lines
-//! that don't fit, or whose time is of another kind than the file's, keep
-//! their text as the payload.
+//! moment (shown in the user's zone), one without is shown as written: each
+//! record has its own kind of time. Lines that don't fit keep their text as
+//! the payload.
 
 import log_core.log_format;
 import log_core.log_level : LogLevel;
@@ -32,8 +32,7 @@ final class SyslogFormat : TextFormat
     enum Kind
     {
         Bsd, // "Mmm dd hh:mm:ss": no year
-        Iso, // ISO 8601 with a zone
-        IsoLocal, // ISO 8601 without a zone
+        Iso, // ISO 8601, with a zone (a moment) or without (as written)
         Rfc5424,
     }
 
@@ -77,8 +76,6 @@ final class SyslogFormat : TextFormat
             return _hasPriority ? bsdLevelColumns : bsdColumns;
         case Kind.Iso:
             return _hasPriority ? isoLevelColumns : isoColumns;
-        case Kind.IsoLocal:
-            return _hasPriority ? isoLocalLevelColumns : isoLocalColumns;
         case Kind.Rfc5424:
             return rfc5424Columns;
         }
@@ -142,12 +139,6 @@ private static immutable ColumnInfo[] isoColumns = [
 private static immutable ColumnInfo[] isoLevelColumns = [
     timeColumn(TimeKind.Absolute, 170), hostColumn, appColumn, pidColumn, levelColumn, payloadColumn
 ];
-private static immutable ColumnInfo[] isoLocalColumns = [
-    timeColumn(TimeKind.Local, 170), hostColumn, appColumn, pidColumn, payloadColumn
-];
-private static immutable ColumnInfo[] isoLocalLevelColumns = [
-    timeColumn(TimeKind.Local, 170), hostColumn, appColumn, pidColumn, levelColumn, payloadColumn
-];
 private static immutable ColumnInfo[] rfc5424Columns = [
     timeColumn(TimeKind.Absolute, 170), hostColumn, appColumn,
     ColumnInfo("pid", "PID", ColumnKind.Text, SyslogField.ProcId, 60),
@@ -163,7 +154,7 @@ final class SyslogDetector : FormatDetector
     override Detection detect(string path, const(ubyte)[] head) const
     {
         alias Kind = SyslogFormat.Kind;
-        static immutable Kind[4] kinds = [Kind.Rfc5424, Kind.Iso, Kind.IsoLocal, Kind.Bsd];
+        static immutable Kind[3] kinds = [Kind.Rfc5424, Kind.Iso, Kind.Bsd];
 
         size_t lines;
         size_t[Kind.max + 1] fits, withPriority;
@@ -235,14 +226,12 @@ private bool parseLine(SyslogFormat.Kind kind, const(char)[] s, out SyslogLine l
         line.timeKind = TimeKind.LocalNoYear;
         break;
     case SyslogFormat.Kind.Iso:
-    case SyslogFormat.Kind.IsoLocal:
         long time, offset;
         bool hasZone;
         // Syslog writes a 'T' (rsyslog, journalctl): application logs a space
         if (s.length <= 10 || s[10] != 'T')
             return false;
-        // The kind of the time is that of the column: another one is text
-        if (!readIsoDateTime(s, time, hasZone, offset) || hasZone != (kind == SyslogFormat.Kind.Iso))
+        if (!readIsoDateTime(s, time, hasZone, offset))
             return false;
         line.timeNs = time - offset;
         line.timeKind = hasZone ? TimeKind.Absolute : TimeKind.Local;
@@ -483,14 +472,10 @@ unittest
     assert(msg.text(SyslogField.Host) == "host"w && msg.text(SyslogField.App) == "app"w);
     assert(msg.payloadText == "m"w);
 
-    decodeLine(SyslogFormat.Kind.IsoLocal, "2026-11-03T14:22:01 host app: m", msg);
-    assert(msg.timeKind == TimeKind.Local && msg.timeNs == local);
-
-    // A line whose time is of another kind than the file's is text
-    decodeLine(SyslogFormat.Kind.IsoLocal, "2026-11-03T14:22:01Z host app: m", msg);
-    assert(msg.timeKind == TimeKind.None && msg.payloadText == "2026-11-03T14:22:01Z host app: m"w);
+    // The same file may have lines without a zone: each keeps its fields
     decodeLine(SyslogFormat.Kind.Iso, "2026-11-03T14:22:01 host app: m", msg);
-    assert(msg.timeKind == TimeKind.None);
+    assert(msg.timeKind == TimeKind.Local && msg.timeNs == local);
+    assert(msg.text(SyslogField.Host) == "host"w && msg.payloadText == "m"w);
 }
 
 @("SyslogFormat RFC 5424: all the fields")
@@ -532,7 +517,7 @@ unittest
 unittest
 {
     LogMessage!wchar msg;
-    foreach (kind; [SyslogFormat.Kind.Bsd, SyslogFormat.Kind.Iso, SyslogFormat.Kind.IsoLocal, SyslogFormat.Kind.Rfc5424])
+    foreach (kind; [SyslogFormat.Kind.Bsd, SyslogFormat.Kind.Iso, SyslogFormat.Kind.Rfc5424])
     {
         decodeLine(kind, "    a continued line", msg);
         assert(msg.timeKind == TimeKind.None && msg.level == LogLevel.None);
@@ -558,7 +543,6 @@ unittest
             == ["time", "host", "app", "pid", "msgid", "level", "data", "payload"], "always a priority");
     assert(new SyslogFormat(SyslogFormat.Kind.Bsd, false).columns[0].timeKind == TimeKind.LocalNoYear);
     assert(new SyslogFormat(SyslogFormat.Kind.Iso, false).columns[0].timeKind == TimeKind.Absolute);
-    assert(new SyslogFormat(SyslogFormat.Kind.IsoLocal, false).columns[0].timeKind == TimeKind.Local);
     assert(new SyslogFormat(SyslogFormat.Kind.Rfc5424, false).columns[0].timeKind == TimeKind.Absolute);
 }
 
@@ -577,7 +561,7 @@ unittest
     expect("Nov  3 14:22:01 host sshd[812]: a\nNov  3 14:22:02 host kernel: b\n", Kind.Bsd, false);
     expect("<34>Nov  3 14:22:01 host su: a\n<13>Nov  3 14:22:02 host x: b\n", Kind.Bsd, true);
     expect("2026-11-03T14:22:01.1+01:00 host app[1]: a\n", Kind.Iso, false);
-    expect("2026-11-03T14:22:01 host app[1]: a\n", Kind.IsoLocal, false);
+    expect("2026-11-03T14:22:01 host app[1]: a\n", Kind.Iso, false);
     expect("<165>1 2026-11-03T14:22:01.003Z host app - ID47 - a\n", Kind.Rfc5424, true);
 
     foreach (other; ["11-03 14:22:01.123  1234  1250 I Tag: logcat\n", "[    0.000000] Linux version\n",

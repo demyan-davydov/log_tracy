@@ -24,8 +24,7 @@ final class LogcatFormat : TextFormat
 {
     enum Variant
     {
-        Threadtime, // time without a year
-        ThreadtimeYear, // -v year
+        Threadtime, // time with or without a year (-v year): each record has its kind
         Brief, // no time, no thread
     }
 
@@ -40,9 +39,6 @@ final class LogcatFormat : TextFormat
         ColumnInfo("payload", "Message", ColumnKind.Payload),
     ];
 
-    private static immutable ColumnInfo[] _threadtimeYearColumns = [
-        ColumnInfo("time", "Time", ColumnKind.Time, -1, 120, TimeKind.Local),
-    ] ~ _threadtimeColumns[1 .. $];
 
     private static immutable ColumnInfo[] _briefColumns = [
         ColumnInfo("pid", "PID", ColumnKind.Integer, LogcatField.Pid, 50),
@@ -73,8 +69,6 @@ final class LogcatFormat : TextFormat
         {
         case Variant.Threadtime:
             return _threadtimeColumns;
-        case Variant.ThreadtimeYear:
-            return _threadtimeYearColumns;
         case Variant.Brief:
             return _briefColumns;
         }
@@ -85,12 +79,7 @@ final class LogcatFormat : TextFormat
         msg.beginRecord();
 
         LogcatLine line;
-        bool parsed = _variant == Variant.Brief ? parseBrief(text, line) : parseThreadtime(text, line);
-        // The Time column shows the year or not for the whole file: a line of
-        // the other variant would get a wrong or a made-up year
-        if (parsed && _variant != Variant.Brief
-            && (line.timeKind == TimeKind.Local) != (_variant == Variant.ThreadtimeYear))
-            parsed = false;
+        const bool parsed = _variant == Variant.Brief ? parseBrief(text, line) : parseThreadtime(text, line);
         if (!parsed)
         {
             auto builder = msg.payloadBuilder();
@@ -117,19 +106,14 @@ final class LogcatDetector : FormatDetector
 
     override Detection detect(string path, const(ubyte)[] head) const
     {
-        size_t lines, threadtime, threadtimeYear, brief;
+        size_t lines, threadtime, brief;
         LogcatLine parsed;
         forEachSampleLine(head, (const(char)[] line) {
             if (line.length == 0 || isDivider(line))
                 return;
             ++lines;
             if (parseThreadtime(line, parsed))
-            {
-                if (parsed.timeKind == TimeKind.Local)
-                    ++threadtimeYear;
-                else
-                    ++threadtime;
-            }
+                ++threadtime;
             else if (parseBrief(line, parsed))
                 ++brief;
         });
@@ -138,11 +122,6 @@ final class LogcatDetector : FormatDetector
 
         auto variant = LogcatFormat.Variant.Threadtime;
         size_t best = threadtime;
-        if (threadtimeYear > best)
-        {
-            variant = LogcatFormat.Variant.ThreadtimeYear;
-            best = threadtimeYear;
-        }
         if (brief > best)
         {
             variant = LogcatFormat.Variant.Brief;
@@ -324,7 +303,7 @@ unittest
 @("LogcatFormat threadtime: padded tag, empty message, year, microseconds")
 unittest
 {
-    auto format = new LogcatFormat(LogcatFormat.Variant.ThreadtimeYear);
+    auto format = new LogcatFormat(LogcatFormat.Variant.Threadtime);
     LogMessage!wchar msg;
 
     assert(decodeLine(format, "2026-02-28 00:00:00.000123   1     2 E Tag     : ", msg));
@@ -371,7 +350,7 @@ unittest
     assert(d.score == 1.0f && d.variant == LogcatFormat.Variant.Threadtime);
 
     d = detector.detect("x.log", bytes("2026-11-03 14:22:01.123  1  2 D T: a\n"));
-    assert(d.score == 1.0f && d.variant == LogcatFormat.Variant.ThreadtimeYear);
+    assert(d.score == 1.0f && d.variant == LogcatFormat.Variant.Threadtime, "-v year: the same variant");
 
     d = detector.detect("x.log", bytes("I/Tag( 12): a\nE/Other(  3): b\nnoise\n"));
     assert(d.score > 0.5f && d.variant == LogcatFormat.Variant.Brief);
@@ -389,19 +368,18 @@ unittest
     assert(msg.payloadText == "started"w);
 }
 
-@("LogcatFormat threadtime: a line of the other variant is kept as text, not given a made-up year")
+@("LogcatFormat threadtime: lines with and without a year keep their fields, each its time kind")
 unittest
 {
     LogMessage!wchar msg;
+    auto format = new LogcatFormat(LogcatFormat.Variant.Threadtime);
 
-    auto withYear = new LogcatFormat(LogcatFormat.Variant.ThreadtimeYear);
-    assert(decodeLine(withYear, "11-03 14:22:01.123  1  2 I T: x", msg));
-    assert(msg.timeKind == TimeKind.None, "no year 2000 in a file with years");
-    assert(msg.payloadText == "11-03 14:22:01.123  1  2 I T: x"w);
+    assert(decodeLine(format, "11-03 14:22:01.123  1  2 I T: x", msg));
+    assert(msg.timeKind == TimeKind.LocalNoYear && msg.number(LogcatField.Pid) == 1);
 
-    auto noYear = new LogcatFormat(LogcatFormat.Variant.Threadtime);
-    assert(decodeLine(noYear, "2026-11-03 14:22:01.123  1  2 I T: x", msg));
-    assert(msg.timeKind == TimeKind.None);
+    assert(decodeLine(format, "2026-11-03 14:22:01.123  1  2 I T: x", msg));
+    assert(msg.timeKind == TimeKind.Local, "the year is shown for this line");
+    assert(msg.number(LogcatField.Pid) == 1 && msg.text(LogcatField.Tag) == "T"w);
 }
 
 @("Logcat: a line with month 00 is text, for the detector and the decoder")
