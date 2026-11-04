@@ -61,7 +61,11 @@
         </div>
     </header>
 
-    <frameset cols="200px, *">
+    <!-- Instead of all the panels below while no document is open; filled by
+         renderPlaceholder() -->
+    <div id="empty-placeholder" style="display:none;"></div>
+
+    <frameset id="document-views" cols="200px, *">
         <section class="left-panel" id="sidebar">
             <header>Filters</header>
             <div class="filter-group">
@@ -94,10 +98,6 @@
         <!-- right side -->
         <frameset rows="*, 250dip">
             <section id="main-content">
-                <div id="empty-placeholder" style="display:none;">
-                    <div class="icon">📁</div>
-                    <div class="text">No documents open. Click + to open a DLT file.</div>
-                </div>
                 <div id="tab-content" class="tab-content">
                     <div id="loading-container" class="loading-container" style="display:none;">
                         <progress id="doc-load-progress" value="0" max="100"></progress>

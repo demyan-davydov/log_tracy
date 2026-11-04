@@ -59,25 +59,85 @@ header {
     color: var(--text-main);
 }
 
+/* ---- Placeholder: instead of all the panels while no document is open ---- */
+
 #empty-placeholder {
     size: *;
+    flow: vertical;
     background: var(--bg-main);
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    padding: 20px;
-    color: #888;
+    color: var(--text-main);
+    overflow-y: auto;
 }
 
-#empty-placeholder .icon {
-    font-size: 64px;
-    margin-bottom: 20px;
-    opacity: 0.5;
+/* Centered both ways by flexible margins */
+.placeholder-body {
+    flow: vertical;
+    width: 420dip;
+    margin: * *;
+    padding: 24dip 0;
 }
 
-#empty-placeholder .text {
-    font-size: 1.2em;
+.placeholder-title {
+    text-align: center;
+    font-size: 20dip;
+    font-weight: 600;
+}
+
+.placeholder-hint {
+    margin-top: 8dip;
+    text-align: center;
+    color: var(--text-label);
+}
+
+.placeholder-hint kbd {
+    padding: 1dip 5dip;
+    border: 1px solid var(--border-color);
+    border-radius: 4dip;
+    background: var(--bg-header);
+    font-family: inherit;
+    font-size: 0.9em;
+}
+
+.recent-files {
+    flow: vertical;
+    margin-top: 28dip;
+}
+
+.recent-files-header {
+    margin: 0 10dip 6dip;
+    font-size: 0.85em;
+    font-weight: 600;
+    color: var(--text-label);
+}
+
+.recent-file {
+    flow: vertical;
+    padding: 6dip 10dip;
+    border-radius: 6dip;
+    cursor: default;
+    transition: background-color linear 100ms;
+}
+
+.recent-file:hover {
+    background: var(--bg-tab-hover);
+}
+
+.recent-file-name,
+.recent-file-dir {
+    overflow-x: hidden;
+    white-space: nowrap;
+}
+
+.recent-file-name {
+    text-overflow: ellipsis;
+}
+
+/* Folders have separators: path-ellipsis cuts them in the middle */
+.recent-file-dir {
+    margin-top: 2dip;
+    font-size: 0.85em;
+    color: var(--text-label);
+    text-overflow: path-ellipsis;
 }
 
 /* ---- Tabs (Chrome-like strip) ---- */

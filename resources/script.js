@@ -105,9 +105,53 @@ function restoreSettings() {
             if (settings.theme) {
                 setTheme(settings.theme);
             }
+            // Files open at the end of the last session, the active one first
+            const paths = (settings.files || []).map(f => f.path);
+            if (settings.activeFile) paths.unshift(settings.activeFile);
+            for (const path of paths.reverse()) rememberRecentFile(path);
         }
     } catch (e) {
         console.error("Failed to restore settings:", e);
+    }
+}
+
+// Recent files shown by the placeholder, most recent first: the files of the
+// last session, then every file open in this one
+const RECENT_FILES_MAX = 8;
+let recentFiles = [];
+
+function rememberRecentFile(path) {
+    if (!path) return;
+    recentFiles = [path, ...recentFiles.filter(p => p !== path)].slice(0, RECENT_FILES_MAX);
+}
+
+function splitPath(path) {
+    const cut = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+    return { dir: path.slice(0, cut + 1), name: path.slice(cut + 1) };
+}
+
+// Fills the placeholder shown while no document is open
+function renderPlaceholder() {
+    const placeholder = $("#empty-placeholder");
+    placeholder.content(<div class="placeholder-body">
+        <div class="placeholder-title">No file open</div>
+        <div class="placeholder-hint">
+            Open a DLT log with <kbd>⌘O</kbd> or <b>+ Open File</b> above
+        </div>
+    </div>);
+    if (!recentFiles.length) return;
+
+    // Items one by one: append() of JSX is known to work, nested arrays aren't
+    placeholder.$(".placeholder-body").append(<div class="recent-files">
+        <div class="recent-files-header">Recent files</div>
+    </div>);
+    const list = placeholder.$(".recent-files");
+    for (const path of recentFiles) {
+        const { dir, name } = splitPath(path);
+        list.append(<div class="recent-file" path={path} title={path}>
+            <div class="recent-file-name">{name}</div>
+            <div class="recent-file-dir">{dir}</div>
+        </div>);
     }
 }
 
@@ -197,6 +241,10 @@ globalThis.onMenuCommand = function (id) {
 
 function setupEvents() {
     document.on("click", "#btn-add-tab", openFileAction);
+
+    document.on("click", ".recent-file", (evt, item) => {
+        Window.this.xcall("openFile", item.getAttribute("path"));
+    });
 
     // Anchor column: toggles the anchor of the message in both views. Ignored by
     // the backend while an operation runs or at the anchor limit.
@@ -371,6 +419,7 @@ function refreshTabs() {
         docStatus.set(doc.id, { mainView: doc.mainView, searchView: doc.searchView, path: doc.path });
         if (doc.active) activeDocId = doc.id;
     }
+    for (const doc of [...docs].reverse()) rememberRecentFile(doc.path);
 
     // Same documents in the same order (e.g. another tab was activated): the
     // elements are kept, so a tab being pressed or dragged stays in the DOM
@@ -619,7 +668,8 @@ function savedMainViewState(docId, dataVersion) {
     return saved && saved.dataVersion === dataVersion ? saved : null;
 }
 
-// Renders the main view of the active document as its machine shows it
+// Renders the main view of the active document as its machine shows it, or
+// the placeholder instead of all the panels while no document is open
 function updateViewMode() {
     const table = getMainViewTable();
     const loading = getLoadingContainer();
@@ -632,15 +682,19 @@ function updateViewMode() {
     if (shownDocId !== null && shownDocId !== activeDocId && shownDataVersion !== null)
         saveMainViewState(shownDocId, shownDataVersion);
 
+    // No document: the placeholder replaces all the panels, the filters too
+    empty.style.display = vm ? "none" : "flex";
+    $("#document-views").style.display = vm ? "" : "none";
+
     const showOnly = (shown) => {
-        for (const element of [table, loading, empty, lostView])
+        for (const element of [table, loading, lostView])
             element.style.display = element !== shown ? "none"
                 : element === table ? "block" // clear inline style to let it act as a table
                 : "flex";
     };
 
     if (!vm) {
-        showOnly(empty);
+        renderPlaceholder();
         shownDocId = null;
         shownDataVersion = null;
         return;
