@@ -859,6 +859,12 @@ SciterValue asSciterRow(int index, ref const(DocumentItem) item, const(ColumnInf
     foreach (i, ref column; columns)
     {
         const cell = fixedCells + i;
+        if (column.isField && !msg.hasField(column.field))
+        {
+            SciterValue none = SciterValue.makeNull(); // e.g. a line without a header
+            cells.opIndex(cell, none);
+            continue;
+        }
         final switch (column.kind)
         {
         case ColumnKind.Time:

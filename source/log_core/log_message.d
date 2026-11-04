@@ -10,8 +10,9 @@ import log_core.log_level : LogLevel;
 enum TimeKind : ubyte
 {
     None, // the record has no time
-    Absolute, // wall-clock time, nanoseconds since the Unix epoch (UTC)
-    AbsoluteNoYear, // wall-clock time whose source has no year (logcat, syslog)
+    Absolute, // a moment: nanoseconds since the Unix epoch (UTC); shown in the user's zone
+    Local, // wall-clock time of the source without a zone, stored as if it were UTC; shown as is
+    LocalNoYear, // Local without a year (logcat, syslog): stored in the year 2000
     SinceBoot, // nanoseconds since the device started (dmesg)
 }
 
@@ -45,6 +46,8 @@ struct LogMessage(Char) if (isSomeChar!Char)
 
     private Char[][maxFields] _texts;
     private long[maxFields] _numbers;
+    private ubyte _fieldsSet; // bit per field: set by setText()/setNumber()
+    static assert(maxFields <= 8 * _fieldsSet.sizeof);
     private Char[] _payloadText;
     debug private bool _payloadStarted;
 
@@ -63,9 +66,16 @@ struct LogMessage(Char) if (isSomeChar!Char)
         return _numbers[field];
     }
 
+    //! @returns true if the record has the field (its value may be empty or 0)
+    bool hasField(size_t field) const pure nothrow @nogc
+    {
+        return (_fieldsSet & (1 << field)) != 0;
+    }
+
     void setNumber(size_t field, long value) pure nothrow @nogc
     {
         _numbers[field] = value;
+        _fieldsSet |= 1 << field;
     }
 
     //! Starts decoding a new record: clears the previous one
@@ -89,6 +99,7 @@ struct LogMessage(Char) if (isSomeChar!Char)
         Char[] result = allocatorTail[0 .. len];
         replaceNonPrintable(result);
         _texts[field] = result;
+        _fieldsSet |= 1 << field;
     }
 
     //! The payload takes the rest of the buffer: no setText() after this
@@ -114,6 +125,7 @@ struct LogMessage(Char) if (isSomeChar!Char)
         level = LogLevel.None;
         _texts[] = null;
         _numbers[] = 0;
+        _fieldsSet = 0;
         _payloadText = null;
         debug _payloadStarted = false;
     }
@@ -680,6 +692,7 @@ unittest
     assert(msg.text(0) == "HELLO");
     assert(msg.text(3) == "WORLD");
     assert(msg.text(1) is null, "unset fields are empty");
+    assert(msg.hasField(0) && msg.hasField(3) && !msg.hasField(1));
 }
 
 @("LogMessage: setText replaces non-printable")
@@ -741,6 +754,7 @@ unittest
     assert(msg.level == LogLevel.None);
     assert(msg.text(0) is null);
     assert(msg.number(1) == 0);
+    assert(!msg.hasField(0) && !msg.hasField(1));
     assert(msg.payloadText is null);
 }
 
