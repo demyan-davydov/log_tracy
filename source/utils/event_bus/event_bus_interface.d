@@ -1,4 +1,4 @@
-module event_bus.event_bus_interface;
+module utils.event_bus.event_bus_interface;
 
 import std.traits : Unqual;
 

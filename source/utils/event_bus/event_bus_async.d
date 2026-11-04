@@ -14,13 +14,13 @@
  *   // opt-in for a specific message type:
  *   struct Progress { enum isOverridable = true; float value; }
  */
-module event_bus.event_bus_async;
+module utils.event_bus.event_bus_async;
 
-import event_bus.event_bus_helper;
+import utils.event_bus.event_bus_helper;
 
 import core.sync.mutex : Mutex;
 
-public import event_bus.event_bus_interface;
+public import utils.event_bus.event_bus_interface;
 
 // ─── Queued event: owns a copy of the published value ────────────────────
 

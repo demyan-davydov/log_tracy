@@ -1,4 +1,4 @@
-module fsm.fsm;
+module utils.fsm;
 
 import std.meta : AliasSeq, NoDuplicates, anySatisfy, staticIndexOf;
 

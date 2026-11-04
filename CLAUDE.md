@@ -131,7 +131,7 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
 - Per-document UI state lives in `Map`s keyed by document id in `script.js` (search drafts,
   quick filter values, scroll/selection).
 - The view status shown to the user comes from the state machines `ui/main_view_fsm` and
-  `ui/search_view_fsm` (on `source/fsm`). They are kept free of Sciter so they can be unit-tested.
+  `ui/search_view_fsm` (on `utils/fsm`). They are kept free of Sciter so they can be unit-tested.
 - UI command logic that needs testing goes into Sciter-free modules (e.g. `ui/filter_commands`),
   not into `MainWindow`.
 

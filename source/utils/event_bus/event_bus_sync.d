@@ -9,13 +9,13 @@
  * - Multiple subscriber exceptions are chained via Throwable.next (D idiom)
  * - @nogc callbacks are supported; internal bookkeeping uses the GC
  */
-module event_bus.event_bus_sync;
+module utils.event_bus.event_bus_sync;
 
-import event_bus.event_bus_helper;
+import utils.event_bus.event_bus_helper;
 
 import core.sync.mutex : Mutex;
 
-public import event_bus.event_bus_interface;
+public import utils.event_bus.event_bus_interface;
 
 // ─── EventBusSync ─────────────────────────────────────────────────────────
 

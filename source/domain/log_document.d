@@ -17,8 +17,8 @@ import domain.view_status;
 
 import utils.lock_guard;
 
-import event_bus.event_bus_async : EventBusAsync;
-import event_bus.event_bus_interface : SignalConsumer;
+import utils.event_bus.event_bus_async : EventBusAsync;
+import utils.event_bus.event_bus_interface : SignalConsumer;
 
 import std.parallelism : Task, TaskPool;
 import std.typecons : scoped, Unique, Proxy;

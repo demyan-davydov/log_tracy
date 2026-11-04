@@ -6,9 +6,9 @@
  * members are heap-allocated, so it can be embedded in bus classes without
  * manual heap boxing.
  */
-module event_bus.event_bus_helper;
+module utils.event_bus.event_bus_helper;
 
-import event_bus.event_bus_interface;
+import utils.event_bus.event_bus_interface;
 
 import core.sync.mutex : Mutex;
 import std.algorithm : remove, countUntil;

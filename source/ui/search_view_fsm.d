@@ -11,7 +11,7 @@
 //! document through SearchViewCommands. Same structure as ui.main_view_fsm.
 module ui.search_view_fsm;
 
-import fsm.fsm : Fsm, NoTransition, To, Transition;
+import utils.fsm : Fsm, NoTransition, To, Transition;
 import domain.document : Document, OperationFinished, OperationProgress, OperationStarted, SourceLost;
 
 import std.json : JSONValue;

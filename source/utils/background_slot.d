@@ -1,4 +1,4 @@
-module domain.background_slot;
+module utils.background_slot;
 
 import core.thread : Thread;
 import core.atomic : atomicLoad, atomicStore, MemoryOrder;

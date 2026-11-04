@@ -9,7 +9,7 @@ import log_core.log_format : ColumnInfo, LogFormat;
 import domain.document_item;
 import domain.index.anchors;
 
-import event_bus.event_bus_interface : SignalConsumer;
+import utils.event_bus.event_bus_interface : SignalConsumer;
 
 interface DocumentView
 {
