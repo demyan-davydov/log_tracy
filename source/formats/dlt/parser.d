@@ -320,7 +320,7 @@ private struct ShortText(size_t capacity)
                 _chars[_length++] = c;
     }
 
-    void add(ulong number) pure nothrow @nogc
+    void add(T)(T number) pure nothrow @nogc if (__traits(isIntegral, T))
     {
         import std.conv : toChars;
 
@@ -680,6 +680,12 @@ private void decodeControl(Builder)(ref Builder builder, uint serviceId, ubyte c
         }
         break;
 
+    case ServiceID.GetLogInfo:
+        // Its status is the options it was asked for: 0 says nothing of the layout
+        if (status >= 3 && appendLogInfo(builder, status, p, msbf))
+            return;
+        break;
+
     case ServiceID.ConnectionInfo:
         // state, then the communication interface
         if (p.length >= 1)
@@ -713,6 +719,186 @@ private void decodeControl(Builder)(ref Builder builder, uint serviceId, ubyte c
     }
 
     appendData(builder, p);
+}
+
+//! Appends the applications and contexts of a get_log_info response:
+//! "APP (description): CTX level=info trace=on (description), CTX2; APP2: ..."
+//! Its options (the status) say what a context has, as dlt-daemon writes it:
+//! 4 the log level, 5 the trace status, 6 both, 7 both and the descriptions
+//! (an application has its own after its contexts). The communication
+//! interface may follow the applications ("remo"), it is not shown.
+//! @returns false, appending nothing, if `data` doesn't hold what it announces
+//! or holds more
+private bool appendLogInfo(Builder)(ref Builder builder, ubyte options, const(ubyte)[] data,
+    bool msbf) nothrow @nogc
+{
+    const bool hasLevel = options == 4 || options == 6 || options == 7;
+    const bool hasTrace = options == 5 || options == 6 || options == 7;
+    const bool hasDescriptions = options == 7;
+
+    static struct Reader
+    {
+        const(ubyte)[] p;
+        bool msbf;
+
+        bool count(out ushort value) nothrow @nogc
+        {
+            if (p.length < 2)
+                return false;
+            value = readValue!ushort(p[0 .. 2], msbf);
+            p = p[2 .. $];
+            return true;
+        }
+
+        bool bytes(size_t length, out const(ubyte)[] value) nothrow @nogc
+        {
+            if (p.length < length)
+                return false;
+            value = p[0 .. length];
+            p = p[length .. $];
+            return true;
+        }
+
+        bool text(out const(char)[] value) nothrow @nogc
+        {
+            ushort length;
+            const(ubyte)[] b;
+            if (!count(length) || !bytes(length, b))
+                return false;
+            value = withoutTrailingZeros(cast(const(char)[]) b);
+            return true;
+        }
+    }
+
+    // One context, given to `visit` unless it is null
+    static bool context(ref Reader r, bool hasLevel, bool hasTrace, bool hasDescriptions,
+        scope void delegate(const(char)[] id, int level, int trace, const(char)[] description) nothrow @nogc visit) nothrow @nogc
+    {
+        const(ubyte)[] id, level, trace;
+        const(char)[] description;
+        if (!r.bytes(4, id) || (hasLevel && !r.bytes(1, level)) || (hasTrace && !r.bytes(1, trace))
+                || (hasDescriptions && !r.text(description)))
+            return false;
+        if (visit !is null)
+            visit(removeIdPadding(cast(const(char)[]) id),
+                hasLevel ? cast(byte) level[0] : int.min, hasTrace ? cast(byte) trace[0] : int.min, description);
+        return true;
+    }
+
+    // An application: its ID, contexts and description, given to `visit` unless null
+    static bool application(ref Reader r, bool hasLevel, bool hasTrace, bool hasDescriptions,
+        scope void delegate(const(char)[] id, const(char)[] description) nothrow @nogc visitApp,
+        scope void delegate(const(char)[] id, int level, int trace, const(char)[] description) nothrow @nogc visitContext) nothrow @nogc
+    {
+        const(ubyte)[] id;
+        ushort contexts;
+        if (!r.bytes(4, id) || !r.count(contexts))
+            return false;
+
+        // The description comes after the contexts: read it first
+        Reader ahead = r;
+        foreach (_; 0 .. contexts)
+            if (!context(ahead, hasLevel, hasTrace, hasDescriptions, null))
+                return false;
+        const(char)[] description;
+        if (hasDescriptions && !ahead.text(description))
+            return false;
+
+        if (visitApp !is null)
+            visitApp(removeIdPadding(cast(const(char)[]) id), description);
+        if (visitContext !is null)
+            foreach (_; 0 .. contexts)
+                context(r, hasLevel, hasTrace, hasDescriptions, visitContext);
+        r = ahead;
+        return true;
+    }
+
+    // Checks the whole response before appending anything
+    Reader check = Reader(data, msbf);
+    ushort applications;
+    if (!check.count(applications))
+        return false;
+    foreach (_; 0 .. applications)
+        if (!application(check, hasLevel, hasTrace, hasDescriptions, null, null))
+            return false;
+    if (check.p.length != 0 && check.p.length != 4)
+        return false; // more than the communication interface: another layout
+
+    bool firstApp = true, firstContext;
+    void visitApp(const(char)[] id, const(char)[] description) nothrow @nogc
+    {
+        if (!firstApp)
+            builder.appendAscii(";", false);
+        firstApp = false;
+        firstContext = true;
+        builder.appendAscii(id.length > 0 ? id : "-");
+        if (description.length > 0)
+        {
+            builder.appendAscii("(");
+            builder.appendUtf8(description, false);
+            builder.appendAscii(")", false);
+        }
+        builder.appendAscii(":", false);
+    }
+
+    void visitContext(const(char)[] id, int level, int trace, const(char)[] description) nothrow @nogc
+    {
+        if (!firstContext)
+            builder.appendAscii(",", false);
+        firstContext = false;
+        builder.appendAscii(id.length > 0 ? id : "-");
+        if (level != int.min)
+        {
+            ShortText!24 text;
+            text.add("level=");
+            addLevelName(text, level);
+            builder.appendAscii(text.text);
+        }
+        if (trace != int.min)
+        {
+            ShortText!24 text;
+            text.add("trace=");
+            addTraceName(text, trace);
+            builder.appendAscii(text.text);
+        }
+        if (description.length > 0)
+        {
+            builder.appendAscii("(");
+            builder.appendUtf8(description, false);
+            builder.appendAscii(")", false);
+        }
+    }
+
+    Reader r = Reader(data, msbf);
+    r.count(applications);
+    foreach (_; 0 .. applications)
+        application(r, hasLevel, hasTrace, hasDescriptions, &visitApp, &visitContext);
+    return true;
+}
+
+//! Adds the name of a log level of a context: -1 is its default, 0 off
+private void addLevelName(size_t capacity)(ref ShortText!capacity text, int level) pure nothrow @nogc
+{
+    static immutable string[] names = ["off", "fatal", "error", "warn", "info", "debug", "verbose"];
+    if (level == -1)
+        text.add("default");
+    else if (level >= 0 && level < names.length)
+        text.add(names[level]);
+    else
+        text.add(level);
+}
+
+//! Adds the name of a trace status of a context: -1 is its default
+private void addTraceName(size_t capacity)(ref ShortText!capacity text, int trace) pure nothrow @nogc
+{
+    if (trace == -1)
+        text.add("default");
+    else if (trace == 0)
+        text.add("off");
+    else if (trace == 1)
+        text.add("on");
+    else
+        text.add(trace);
 }
 
 //! @returns the name of a control service, "ctrl" for an unknown one
@@ -855,6 +1041,7 @@ bool isPrintableUtf8(const(char)[] s) pure nothrow @nogc
 // Returns a ubyte[] with StorageHeader + StandardHeader + optional ExtendedHeader + payload.
 version (unittest)
 {
+private:
     import std.bitmanip : nativeToBigEndian, nativeToLittleEndian;
 
     // Build a complete DLT message in a ubyte[] for unit testing.
@@ -1250,6 +1437,7 @@ unittest
 
 version (unittest)
 {
+private:
     // Build a non-verbose control message.
     // ctrlType: ControlType.Request (1) or ControlType.Response (2)
     ubyte[] buildControlMsg(uint svcId, ubyte ctrlType, ubyte[] payload,
@@ -1428,6 +1616,7 @@ unittest
 
 version (unittest)
 {
+private:
     //! `value` in the byte order of a message
     ubyte[] bytesOf(T)(T value, bool msbf = true)
     {
@@ -1930,6 +2119,7 @@ unittest
 
 version (unittest)
 {
+private:
     import formats.dlt.header_v2 : BuildV2, ContentInfo, SegmentFrame, dltViewerTestFile;
 
     //! A storage header of version 2
@@ -2107,4 +2297,111 @@ unittest
     BuildV2 b;
     assert(parseDltItem(msg, storageV2("STOR", 0xFF_FFFF_FFFF, 0) ~ b.bytes()));
     assert(msg.timeKind == TimeKind.None, "a time out of range is no time");
+}
+
+// ─── get_log_info ─────────────────────────────────────────────────────────────
+
+version (unittest)
+{
+private:
+    //! A get_log_info response: its options (status), then the data as given
+    string logInfo(ubyte options, const(ubyte)[] data, bool msbf = false)
+    {
+        return payloadOf(control(ServiceID.GetLogInfo, ControlType.Response, [options] ~ data, msbf));
+    }
+
+    ubyte[] id(string s)
+    {
+        ubyte[4] bytes = 0;
+        bytes[0 .. s.length] = cast(const(ubyte)[]) s;
+        return bytes.dup;
+    }
+
+    ubyte[] text(string s, bool msbf = false)
+    {
+        return bytesOf(cast(ushort) s.length, msbf) ~ cast(ubyte[]) s.dup;
+    }
+}
+
+@("parseDltItem: get_log_info of dlt-daemon (the test of dlt-viewer)")
+unittest
+{
+    import std.conv : hexString;
+
+    // Real payload of dlt-daemon, from qdlt/tests/test_dltctrlmsg.cpp
+    enum payload = hexString!("030000000701005359530001004d475200ffff2200436f6e74657874206f66206d61696e"
+        ~ "20646c742073797374656d206d616e616765721200444c542053797374656d204d616e6167657272656d6f");
+    Record r = control(0, ControlType.Response, [], false);
+    r.payload = cast(const(ubyte)[]) payload;
+    assert(payloadOf(r) == "[get_log_info ok] SYS (DLT System Manager): "
+        ~ "MGR level=default trace=default (Context of main dlt system manager)");
+}
+
+@("parseDltItem: get_log_info shows what its options ask for")
+unittest
+{
+    foreach (msbf; [false, true])
+    {
+        ubyte[] count(ushort n) { return bytesOf(n, msbf); }
+
+        // 3: the IDs only
+        assert(logInfo(3, count(2) ~ id("APP1") ~ count(2) ~ id("CTX1") ~ id("CTX2")
+                ~ id("APP2") ~ count(0) ~ cast(ubyte[]) "remo".dup, msbf)
+            == "[get_log_info ok] APP1: CTX1, CTX2; APP2:");
+
+        // 4: with the log level, 5: with the trace status, 6: with both
+        assert(logInfo(4, count(1) ~ id("A") ~ count(2) ~ id("C1") ~ [cast(ubyte) 4]
+                ~ id("C2") ~ [cast(ubyte) 0], msbf)
+            == "[get_log_info ok] A: C1 level=info, C2 level=off");
+        assert(logInfo(5, count(1) ~ id("A") ~ count(1) ~ id("C") ~ [cast(ubyte) 1], msbf)
+            == "[get_log_info ok] A: C trace=on");
+        assert(logInfo(6, count(1) ~ id("A") ~ count(1) ~ id("C") ~ cast(ubyte[])[6, 0], msbf)
+            == "[get_log_info ok] A: C level=verbose trace=off");
+
+        // 7: with the descriptions; an empty one is left out
+        assert(logInfo(7, count(1) ~ id("A") ~ count(2)
+                ~ id("C1") ~ cast(ubyte[])[0xFF, 0xFF] ~ text("first", msbf)
+                ~ id("C2") ~ cast(ubyte[])[1, 0xFF] ~ text("", msbf)
+                ~ text("", msbf), msbf)
+            == "[get_log_info ok] A: C1 level=default trace=default (first), C2 level=fatal trace=default");
+    }
+}
+
+@("parseDltItem: a get_log_info that doesn't parse is shown in hex")
+unittest
+{
+    // One application announced, its context count missing
+    assert(logInfo(4, bytesOf(cast(ushort) 1, false) ~ id("A")) == "[get_log_info ok] 01004100 0000");
+    // Unknown values of level and trace status are shown as numbers
+    assert(logInfo(6, bytesOf(cast(ushort) 1, false) ~ id("A") ~ bytesOf(cast(ushort) 1, false)
+            ~ id("C") ~ cast(ubyte[])[9, 7]) == "[get_log_info ok] A: C level=9 trace=7");
+}
+
+@("parseDltItem: get_log_info data that doesn't match its options is shown in hex")
+unittest
+{
+    // Options 4 announce the log level only, the context has a trace status too
+    const extra = bytesOf(cast(ushort) 1, false) ~ id("A") ~ bytesOf(cast(ushort) 1, false)
+        ~ id("C") ~ cast(ubyte[])[4, 1];
+    assert(logInfo(4, extra) == "[get_log_info ok] 01004100 00000100 43000000 0401");
+
+    // The communication interface may follow, nothing else
+    const remo = bytesOf(cast(ushort) 1, false) ~ id("A") ~ bytesOf(cast(ushort) 0, false);
+    assert(logInfo(4, remo ~ cast(ubyte[]) "remo".dup) == "[get_log_info ok] A:");
+    assert(logInfo(4, remo ~ cast(ubyte[]) "remo!".dup) == "[get_log_info ok] 01004100 00000000 72656D6F 21");
+}
+
+@("parseDltItem: get_log_info with status ok has no options to read its data by")
+unittest
+{
+    const data = bytesOf(cast(ushort) 1, false) ~ id("A") ~ bytesOf(cast(ushort) 0, false);
+    assert(logInfo(0, data) == "[get_log_info ok] 01004100 00000000");
+}
+
+@("parseDltItem: get_log_info shows an empty ID as a dash")
+unittest
+{
+    const data = bytesOf(cast(ushort) 1, false) ~ id("") ~ bytesOf(cast(ushort) 2, false)
+        ~ id("") ~ [cast(ubyte) 4] ~ id("C2") ~ [cast(ubyte) 4];
+    assert(logInfo(4, data) == "[get_log_info ok] -: - level=info, C2 level=info");
 }

@@ -290,15 +290,23 @@ private struct PayloadBuilder(Char) if (isSomeChar!Char)
         }
     }
 
-    void appendAscii(const(char)[] text) pure nothrow @nogc
+    //! `separated`: false joins the text to the previous argument
+    void appendAscii(const(char)[] text, bool separated = true) pure nothrow @nogc
     {
-        appendSeparatorIfNeeded();
+        if (separated)
+            appendSeparatorIfNeeded();
+        else
+            _isFirstArg = false;
         _tail = copyAsMuchAsPossible(text, _tail);
     }
 
-    void appendUtf8(const(char)[] utf8) pure nothrow @nogc
+    //! `separated`: false joins the text to the previous argument
+    void appendUtf8(const(char)[] utf8, bool separated = true) pure nothrow @nogc
     {
-        appendSeparatorIfNeeded();
+        if (separated)
+            appendSeparatorIfNeeded();
+        else
+            _isFirstArg = false;
         _tail = copyUtf8to(utf8, _tail);
     }
 
@@ -1190,6 +1198,22 @@ unittest
         builder.appendAsciiDump(bytes[]);
     }
     assert(msg.payloadText == "[1] |A ...~"w);
+}
+
+@("PayloadBuilder: text can be joined to the previous argument without a separator")
+unittest
+{
+    LogMessage!wchar msg;
+    msg.beginRecord();
+    {
+        auto builder = msg.payloadBuilder();
+        builder.appendAscii("APP", false); // the first one has no separator anyway
+        builder.appendAscii("(");
+        builder.appendUtf8("описание", false);
+        builder.appendAscii("):", false);
+        builder.appendAscii("CTX");
+    }
+    assert(msg.payloadText == "APP (описание): CTX"w);
 }
 
 @("PayloadBuilder: a full buffer keeps what fits and drops the rest")
