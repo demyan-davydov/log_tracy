@@ -42,12 +42,14 @@ header {
 }
 
 #search-message:empty,
-#filter-message:empty {
+#filter-message:empty,
+#dlf-message:empty {
     display: none;
 }
 
 #search-message,
-#filter-message {
+#filter-message,
+#dlf-message {
     color: red;
     padding: 2px 4px;
 }

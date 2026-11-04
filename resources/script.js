@@ -392,7 +392,8 @@ function setupEvents() {
             try {
                 // The filter runs as a search; the reply is an error message or ""
                 const error = Window.this.xcall("loadDlf", fn);
-                $("#filter-message").innerText = error || "";
+                // Its own message: the quick filter keeps its own
+                $("#dlf-message").innerText = error || "";
                 saveQuickFilter();
             } catch (e) {
                 console.error("Failed to load DLF:", e);
@@ -445,7 +446,8 @@ function setupEvents() {
 }
 
 // The quick filter of every open document, as it was left in the panel:
-//   docId -> { values: {column id: value}, message }
+//   docId -> { values: {column id: value}, message, dlfMessage }
+// message is the error of the quick filter, dlfMessage that of Load Filter.
 // The panel is one for all documents: it shows the entry of the active one.
 const quickFilters = new Map();
 let quickFilterDocId = null; // the document the panel shows
@@ -463,7 +465,11 @@ function quickFilterValues() {
 function saveQuickFilter() {
     if (quickFilterDocId === null || !docStatus.has(quickFilterDocId)) return;
     quickFilters.set(quickFilterDocId,
-        { values: quickFilterValues(), message: $("#filter-message").innerText || "" });
+        {
+            values: quickFilterValues(),
+            message: $("#filter-message").innerText || "",
+            dlfMessage: $("#dlf-message").innerText || ""
+        });
 }
 
 function applyFilters() {
@@ -501,7 +507,7 @@ function filterPlaceholder(column) {
 // document or its columns change; empty while no document is open.
 function showQuickFilter(columnsJson) {
     if (quickFilterDocId === activeDocId && quickFilterColumns === columnsJson) return;
-    const entry = quickFilters.get(activeDocId) ?? { values: {}, message: "" };
+    const entry = quickFilters.get(activeDocId) ?? { values: {}, message: "", dlfMessage: "" };
     const columns = activeDocId === null ? [] : JSON.parse(columnsJson);
     const panel = $("#quick-filter");
     // Built from scratch: content() may reuse the inputs of the previous
@@ -518,6 +524,7 @@ function showQuickFilter(columnsJson) {
     for (const input of panel.$$("input"))
         input.value = entry.values[input.getAttribute("column-id")] ?? "";
     $("#filter-message").innerText = entry.message;
+    $("#dlf-message").innerText = entry.dlfMessage;
     quickFilterDocId = activeDocId;
     quickFilterColumns = columnsJson;
 }
