@@ -125,8 +125,31 @@ header {
     white-space: nowrap;
 }
 
+.recent-file-head {
+    flow: horizontal;
+}
+
 .recent-file-name {
+    width: *;
     text-overflow: ellipsis;
+}
+
+/* A file not found stays listed, grayed, with a note */
+.recent-file.missing .recent-file-name {
+    color: var(--text-label);
+}
+
+.recent-file-missing {
+    margin-left: 8dip;
+    font-size: 0.85em;
+    white-space: nowrap;
+    color: var(--text-label);
+}
+
+.placeholder-error {
+    margin: 16dip 10dip 0;
+    color: var(--log-error);
+    text-align: center;
 }
 
 /* Folders have separators: path-ellipsis cuts them in the middle */

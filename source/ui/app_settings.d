@@ -32,11 +32,42 @@ struct FileState
     int scrollPosition;
 }
 
+/// Length of the recent files list
+enum recentFilesMax = 8;
+
+/// Returns the recent files list with `path` on top, without duplicates
+/// (paths are compared normalized, ignoring case where the OS does) and
+/// no longer than recentFilesMax
+string[] withRecentFile(const string[] list, string path)
+{
+    string[] result = list.dup;
+    if (path.length)
+    {
+        path = buildNormalizedPath(absolutePath(path));
+        result = [path] ~ result.filter!(p => filenameCmp(p, path) != 0).array;
+    }
+    return result[0 .. min(result.length, recentFilesMax)];
+}
+
+/// The recent list for the placeholder: [{"path", "exists"}], the newest first
+string recentFilesJson(const string[] list)
+{
+    JSONValue[] items;
+    foreach (path; list)
+    {
+        JSONValue item = ["path": path];
+        item.object["exists"] = JSONValue(exists(path));
+        items ~= item;
+    }
+    return JSONValue(items).toString();
+}
+
 struct AppSettings
 {
     WindowRect windowRect;
     FileState[] files;
     string activeFile;
+    string[] recentFiles; /// files opened recently, the newest first
     string theme;
     int tableFontSize = 100; /// font size of the log tables, % of the normal one
 
@@ -45,6 +76,7 @@ struct AppSettings
         this.windowRect = rhs.windowRect;
         this.files = rhs.files.dup;
         this.activeFile = rhs.activeFile;
+        this.recentFiles = rhs.recentFiles.dup;
         this.theme = rhs.theme;
         this.tableFontSize = rhs.tableFontSize;
     }
@@ -54,6 +86,7 @@ struct AppSettings
         this.windowRect = rhs.windowRect;
         this.files = rhs.files.dup;
         this.activeFile = rhs.activeFile;
+        this.recentFiles = rhs.recentFiles.dup;
         this.theme = rhs.theme;
         this.tableFontSize = rhs.tableFontSize;
     }
@@ -63,6 +96,7 @@ struct AppSettings
         return windowRect == rhs.windowRect &&
             files == rhs.files &&
             activeFile == rhs.activeFile &&
+            recentFiles == rhs.recentFiles &&
             theme == rhs.theme &&
             tableFontSize == rhs.tableFontSize;
     }
@@ -72,6 +106,7 @@ struct AppSettings
         size_t hash = windowRect.hashOf();
         hash = hashOf(files, hash);
         hash = hashOf(activeFile, hash);
+        hash = hashOf(recentFiles, hash);
         hash = hashOf(theme, hash);
         hash = hashOf(tableFontSize, hash);
         return hash;
@@ -91,7 +126,7 @@ static string defaultSettingsPath()
     return buildPath(exeDir, "settings.json");
 }
 
-static toJSON(AppSettings settings)
+static JSONValue toJSON(in AppSettings settings)
 {
     JSONValue j;
     j.object = null; // Clear
@@ -111,6 +146,7 @@ static toJSON(AppSettings settings)
     }
     j.object["files"] = JSONValue(fileArray);
     j.object["activeFile"] = JSONValue(settings.activeFile);
+    j.object["recentFiles"] = JSONValue(settings.recentFiles);
     j.object["theme"] = JSONValue(settings.theme);
     j.object["tableFontSize"] = JSONValue(settings.tableFontSize);
 
@@ -169,6 +205,22 @@ static AppSettings loadSettings(string path = defaultSettingsPath())
             settings.activeFile = j["activeFile"].str;
         }
 
+        if (auto recent = "recentFiles" in j)
+        {
+            // Oldest first, so the newest ends up on top; anything but a path is skipped
+            if (recent.type == JSONType.array)
+                foreach_reverse (val; recent.array)
+                    if (val.type == JSONType.string)
+                        settings.recentFiles = withRecentFile(settings.recentFiles, val.str);
+        }
+        else
+        {
+            // Written before the recent list existed: seed it with the files kept then
+            foreach_reverse (f; settings.files)
+                settings.recentFiles = withRecentFile(settings.recentFiles, f.path);
+            settings.recentFiles = withRecentFile(settings.recentFiles, settings.activeFile);
+        }
+
         if ("theme" in j)
         {
             settings.theme = j["theme"].str;
@@ -192,26 +244,7 @@ void saveSettings(in AppSettings settings, string path = defaultSettingsPath())
 {
     import std.string : replace;
 
-    JSONValue j = ["gui": "dlt-explorer"]; // Dummy init
-    j.object = null; // Clear
-
-    JSONValue r = [
-        "left": settings.windowRect.left, "top": settings.windowRect.top,
-        "width": settings.windowRect.width, "height": settings.windowRect.height
-    ];
-    j.object["windowRect"] = r;
-
-    JSONValue[] fileArray;
-    foreach (f; settings.files)
-    {
-        JSONValue fv = ["path": f.path];
-        fv.object["scrollPosition"] = JSONValue(f.scrollPosition);
-        fileArray ~= fv;
-    }
-    j.object["files"] = JSONValue(fileArray);
-    j.object["activeFile"] = JSONValue(settings.activeFile);
-    j.object["theme"] = JSONValue(settings.theme);
-    j.object["tableFontSize"] = JSONValue(settings.tableFontSize);
+    const j = toJSON(settings);
 
     try
     {
@@ -224,4 +257,112 @@ void saveSettings(in AppSettings settings, string path = defaultSettingsPath())
     {
         writeln("Error saving settings: ", e.msg);
     }
+}
+
+/// Opening a file puts it on top of the recent list, without duplicates
+unittest
+{
+    assert(withRecentFile([], "/a.dlt") == ["/a.dlt"]);
+    assert(withRecentFile(["/a.dlt", "/b.dlt"], "/c.dlt") == ["/c.dlt", "/a.dlt", "/b.dlt"]);
+    assert(withRecentFile(["/a.dlt", "/b.dlt", "/c.dlt"], "/b.dlt") == ["/b.dlt", "/a.dlt", "/c.dlt"]);
+    assert(withRecentFile(["/a.dlt"], "") == ["/a.dlt"]);
+}
+
+/// The recent list keeps the newest recentFilesMax files
+unittest
+{
+    string[] list;
+    foreach (i; 0 .. recentFilesMax + 3)
+        list = withRecentFile(list, "/" ~ i.to!string);
+    assert(list.length == recentFilesMax);
+    assert(list[0] == "/" ~ (recentFilesMax + 2).to!string);
+}
+
+/// The recent list survives a save and a load
+unittest
+{
+    const path = buildPath(tempDir(), "dlt_explorer_settings_recent_test.json");
+    scope (exit) if (exists(path)) remove(path);
+
+    AppSettings settings;
+    settings.recentFiles = ["/new.dlt", "/old.dlt"];
+    saveSettings(settings, path);
+    assert(loadSettings(path).recentFiles == ["/new.dlt", "/old.dlt"]);
+}
+
+/// Settings written before the recent list existed: its files seed the list
+unittest
+{
+    const path = buildPath(tempDir(), "dlt_explorer_settings_migration_test.json");
+    scope (exit) if (exists(path)) remove(path);
+
+    std.file.write(path, `{"activeFile": "/b.dlt",
+        "files": [{"path": "/a.dlt"}, {"path": "/b.dlt"}]}`);
+    assert(loadSettings(path).recentFiles == ["/b.dlt", "/a.dlt"]);
+}
+
+/// Even an empty path leaves no more than recentFilesMax files
+unittest
+{
+    string[] list;
+    foreach (i; 0 .. recentFilesMax + 2)
+        list ~= "/" ~ i.to!string;
+    assert(withRecentFile(list, "").length == recentFilesMax);
+}
+
+/// One file spelled in different ways is one entry
+unittest
+{
+    assert(withRecentFile(["/logs/a.dlt"], "/logs/./x/../a.dlt") == ["/logs/a.dlt"]);
+    assert(withRecentFile([], "a.dlt") == [buildNormalizedPath(absolutePath("a.dlt"))]);
+    version (Windows)
+        assert(withRecentFile([`C:\logs\a.dlt`], "c:/logs/a.dlt") == [`c:\logs\a.dlt`]);
+}
+
+/// A broken recent list doesn't cost the other settings
+unittest
+{
+    const path = buildPath(tempDir(), "dlt_explorer_settings_bad_recent_test.json");
+    scope (exit) if (exists(path)) remove(path);
+
+    std.file.write(path, `{"recentFiles": null, "theme": "dark", "tableFontSize": 120}`);
+    auto settings = loadSettings(path);
+    assert(settings.theme == "dark");
+    assert(settings.tableFontSize == 120);
+    assert(settings.recentFiles == []);
+
+    std.file.write(path, `{"recentFiles": ["/a.dlt", 5, "/b.dlt"], "theme": "dark"}`);
+    settings = loadSettings(path);
+    assert(settings.theme == "dark");
+    assert(settings.recentFiles == ["/a.dlt", "/b.dlt"]);
+}
+
+/// A loaded recent list is cleaned: no duplicates, no empty paths, not too long
+unittest
+{
+    const path = buildPath(tempDir(), "dlt_explorer_settings_dirty_recent_test.json");
+    scope (exit) if (exists(path)) remove(path);
+
+    string[] paths = ["/a.dlt", "", "/a.dlt"];
+    foreach (i; 0 .. recentFilesMax + 2)
+        paths ~= "/" ~ i.to!string;
+    std.file.write(path, JSONValue(["recentFiles": paths]).toString());
+
+    auto list = loadSettings(path).recentFiles;
+    assert(list.length == recentFilesMax);
+    assert(list[0 .. 2] == ["/a.dlt", "/0"]);
+}
+
+/// The placeholder gets every recent file with a mark whether it still exists
+unittest
+{
+    const existing = buildPath(tempDir(), "dlt_explorer_recent_existing_test.dlt");
+    std.file.write(existing, "");
+    scope (exit) remove(existing);
+    const missing = buildPath(tempDir(), "dlt_explorer_recent_missing_test.dlt");
+
+    auto j = parseJSON(recentFilesJson([existing, missing]));
+    assert(j.array.length == 2);
+    assert(j[0]["path"].str == existing && j[0]["exists"].boolean);
+    assert(j[1]["path"].str == missing && !j[1]["exists"].boolean);
 }

@@ -175,24 +175,22 @@ function restoreSettings() {
                 setTheme(settings.theme);
             }
             if (settings.tableFontSize) setTableFontSize(settings.tableFontSize);
-            // Files open at the end of the last session, the active one first
-            const paths = (settings.files || []).map(f => f.path);
-            if (settings.activeFile) paths.unshift(settings.activeFile);
-            for (const path of paths.reverse()) rememberRecentFile(path);
         }
     } catch (e) {
         console.error("Failed to restore settings:", e);
     }
 }
 
-// Recent files shown by the placeholder, most recent first: the files of the
-// last session, then every file open in this one
-const RECENT_FILES_MAX = 8;
-let recentFiles = [];
-
-function rememberRecentFile(path) {
-    if (!path) return;
-    recentFiles = [path, ...recentFiles.filter(p => p !== path)].slice(0, RECENT_FILES_MAX);
+// Recent files shown by the placeholder, the newest first: [{path, exists}].
+// The backend keeps the list: it adds a file once it is opened and saves the
+// list at once. Files not found stay listed (a removed drive may come back).
+function getRecentFiles() {
+    try {
+        return JSON.parse(Window.this.xcall("getRecentFiles") || "[]");
+    } catch (e) {
+        console.error("Failed to get recent files:", e);
+        return [];
+    }
 }
 
 function splitPath(path) {
@@ -209,20 +207,42 @@ function renderPlaceholder() {
             Open a DLT log with <kbd>⌘O</kbd> or <b>+ Open File</b> above
         </div>
     </div>);
-    if (!recentFiles.length) return;
+    const recentFiles = getRecentFiles();
+    if (!recentFiles.length && !openFileError) return;
 
     // Items one by one: append() of JSX is known to work, nested arrays aren't
     placeholder.$(".placeholder-body").append(<div class="recent-files">
         <div class="recent-files-header">Recent files</div>
     </div>);
     const list = placeholder.$(".recent-files");
-    for (const path of recentFiles) {
+    for (const { path, exists } of recentFiles) {
         const { dir, name } = splitPath(path);
-        list.append(<div class="recent-file" path={path} title={path}>
-            <div class="recent-file-name">{name}</div>
+        const item = <div class="recent-file" path={path} title={path}>
+            <div class="recent-file-head">
+                <div class="recent-file-name">{name}</div>
+            </div>
             <div class="recent-file-dir">{dir}</div>
-        </div>);
+        </div>;
+        list.append(item);
+        if (!exists) {
+            const added = list.lastElementChild;
+            added.classList.add("missing");
+            added.$(".recent-file-head").append(<div class="recent-file-missing">File not found</div>);
+        }
     }
+    if (openFileError)
+        placeholder.$(".placeholder-body").append(<div class="placeholder-error">{openFileError}</div>);
+}
+
+// Why the last file failed to open, shown by the placeholder until a file opens
+let openFileError = "";
+
+// Opens a file in a new tab; on failure the placeholder says why
+function openFile(path) {
+    const result = Window.this.xcall("openFile", path);
+    openFileError = typeof result === "string" ? result : ""; // e.g. "Can't open <path> (<reason>)"
+    if (openFileError) console.error(openFileError);
+    if (!activeDocId) renderPlaceholder(); // no document: refresh the list and the message
 }
 
 function setTheme(theme) {
@@ -302,7 +322,7 @@ function openFileAction() {
     });
     if (fn) {
         console.log("File selected:", fn);
-        Window.this.xcall("openFile", fn);
+        openFile(fn);
     }
 }
 
@@ -323,9 +343,7 @@ globalThis.onMenuCommand = function (id) {
 function setupEvents() {
     document.on("click", "#btn-add-tab", openFileAction);
 
-    document.on("click", ".recent-file", (evt, item) => {
-        Window.this.xcall("openFile", item.getAttribute("path"));
-    });
+    document.on("click", ".recent-file", (evt, item) => openFile(item.getAttribute("path")));
 
     // Anchor column: toggles the anchor of the message in both views. Ignored by
     // the backend while an operation runs or at the anchor limit.
@@ -501,7 +519,6 @@ function refreshTabs() {
         docStatus.set(doc.id, { mainView: doc.mainView, searchView: doc.searchView, path: doc.path });
         if (doc.active) activeDocId = doc.id;
     }
-    for (const doc of [...docs].reverse()) rememberRecentFile(doc.path);
 
     // Same documents in the same order (e.g. another tab was activated): the
     // elements are kept, so a tab being pressed or dragged stays in the DOM
