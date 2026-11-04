@@ -2,7 +2,9 @@ module formats.dmesg;
 
 //! Kernel messages as printed by `dmesg` or read from /dev/kmsg, a record per line:
 //!   "[    3.141592] usb 1-1: new device"          time since boot
-//!   "<30>[    3.141592] ..."                        with the priority (dmesg -r, kmsg)
+//!   "<30>[    3.141592] ..."                        with the priority (dmesg -r, /proc/kmsg)
+//!   "6,339,5140900,-;..."                          /dev/kmsg: priority, sequence, usec, flags,
+//!                                                  then dictionary lines starting with a space
 //!   "kern  :err   : [    3.141592] ..."            dmesg -x: facility and level
 //!   "[Tue Nov  3 14:22:01 2026] ..."               dmesg -T: wall-clock time
 //! Lines that don't fit keep their text as the payload.
@@ -12,12 +14,13 @@ import log_core.log_level : LogLevel;
 import log_core.log_message : LogMessage, TimeKind;
 import log_core.text_format;
 import log_core.text_parsing;
-import log_core.syslog_priority : readPriority, severityByName;
+import log_core.syslog_priority : readPriority, severityByName, splitPriority;
 
 //! Field indexes of a dmesg record in LogMessage
 enum DmesgField : ubyte
 {
     Facility, // text: kern, user, daemon... (dmesg -x)
+    Seq, // number: the sequence number of /dev/kmsg
 }
 
 final class DmesgFormat : TextFormat
@@ -28,6 +31,7 @@ final class DmesgFormat : TextFormat
         Decoded, // dmesg -x: facility :level : [seconds since boot]
         WallClock, // dmesg -T: [Www Mmm dd hh:mm:ss yyyy], an optional <level>
         Raw, // dmesg -r, /dev/kmsg: <priority>[seconds since boot], the facility shown
+        Kmsg, // /dev/kmsg: priority,sequence,microseconds,flags;message and dictionary lines
     }
 
     private immutable Variant _variant;
@@ -45,6 +49,12 @@ final class DmesgFormat : TextFormat
         _monotonicColumns[2],
     ];
 
+    private static immutable ColumnInfo[] _kmsgColumns = [
+        _decodedColumns[0], _decodedColumns[1], _decodedColumns[2],
+        ColumnInfo("seq", "Seq", ColumnKind.Integer, DmesgField.Seq, 70),
+        _decodedColumns[3],
+    ];
+
     private static immutable ColumnInfo[] _wallClockColumns = [
         ColumnInfo("time", "Time", ColumnKind.Time, -1, 120, TimeKind.Local),
         _monotonicColumns[1],
@@ -53,7 +63,8 @@ final class DmesgFormat : TextFormat
 
     this(Variant variant) pure nothrow @nogc @safe
     {
-        super(false); // every line has its own header
+        // Every line has its own header, but for the dictionary lines of /dev/kmsg
+        super(variant == Variant.Kmsg);
         _variant = variant;
     }
 
@@ -65,6 +76,12 @@ final class DmesgFormat : TextFormat
     override string name() const pure nothrow @nogc
     {
         return "Kernel log (dmesg)";
+    }
+
+    //! The dictionary lines of /dev/kmsg start with a space
+    protected override bool isRecordStart(const(char)[] line) const nothrow @nogc
+    {
+        return line.length == 0 || line[0] != ' ';
     }
 
     override const(ColumnInfo)[] columns() const pure nothrow @nogc
@@ -79,6 +96,8 @@ final class DmesgFormat : TextFormat
             return _wallClockColumns;
         case Variant.Raw:
             return _decodedColumns; // the same columns: time, facility, level
+        case Variant.Kmsg:
+            return _kmsgColumns;
         }
     }
 
@@ -99,6 +118,8 @@ final class DmesgFormat : TextFormat
         msg.level = line.level;
         if (line.facility.length)
             msg.setText(DmesgField.Facility, line.facility);
+        if (_variant == Variant.Kmsg)
+            msg.setNumber(DmesgField.Seq, cast(long) line.seq);
         auto builder = msg.payloadBuilder();
         builder.appendUtf8(line.message);
         return true;
@@ -117,11 +138,11 @@ final class DmesgDetector : FormatDetector
         size_t withPriority; // of the lines that fit Monotonic
         DmesgLine parsed;
         forEachSampleLine(head, (const(char)[] line) {
-            if (line.length == 0)
-                return;
+            if (line.length == 0 || line[0] == ' ')
+                return; // empty, or a dictionary line of /dev/kmsg
             ++lines;
-            foreach (variant; [DmesgFormat.Variant.Decoded, DmesgFormat.Variant.WallClock,
-                    DmesgFormat.Variant.Monotonic])
+            foreach (variant; [DmesgFormat.Variant.Kmsg, DmesgFormat.Variant.Decoded,
+                    DmesgFormat.Variant.WallClock, DmesgFormat.Variant.Monotonic])
             {
                 if (parseLine(variant, line, parsed))
                 {
@@ -165,6 +186,31 @@ private struct DmesgLine
     const(char)[] facility;
     const(char)[] message;
     bool hasPriority; // the line starts with <priority>
+    ulong seq; // /dev/kmsg
+}
+
+//! "priority,sequence,microseconds,flags[,more];message" of /dev/kmsg
+private bool parseKmsg(const(char)[] s, ref DmesgLine line) pure nothrow @nogc @safe
+{
+    import std.string : indexOf;
+
+    uint priority;
+    string facility;
+    if (!readNumber(s, priority) || !readChar(s, ',') || !splitPriority(priority, line.level, facility))
+        return false;
+    line.facility = facility;
+    line.hasPriority = true;
+
+    ulong microseconds;
+    if (!readNumber64(s, line.seq) || !readChar(s, ',') || !readNumber64(s, microseconds) || !readChar(s, ','))
+        return false;
+    const semicolon = s.indexOf(';');
+    if (semicolon < 0)
+        return false; // the flags and further fields end with ';'
+    line.timeNs = cast(long) microseconds * 1000;
+    line.timeKind = TimeKind.SinceBoot;
+    line.message = s[semicolon + 1 .. $];
+    return true;
 }
 
 //! An optional "<priority>" prefix (log_core.syslog_priority). The kernel's
@@ -240,6 +286,8 @@ private bool parseLine(DmesgFormat.Variant variant, const(char)[] s, out DmesgLi
         if (!readDecodedPrefix(s, line.facility, line.level) || !readMonotonic(s, line.timeNs))
             return false;
         break;
+    case DmesgFormat.Variant.Kmsg:
+        return parseKmsg(s, line);
     case DmesgFormat.Variant.WallClock:
         line.timeKind = TimeKind.Local;
         if (!readLinePriority(s, line) || !readWallClock(s, line.timeNs))
@@ -422,4 +470,53 @@ unittest
     const before = GC.allocatedInCurrentThread;
     detector.detect("dmesg.txt", sample);
     assert(GC.allocatedInCurrentThread - before < 1024, "allocates per line");
+}
+
+@("DmesgFormat /dev/kmsg: priority, sequence number, time and message")
+unittest
+{
+    LogMessage!wchar msg;
+    decodeLine(DmesgFormat.Variant.Kmsg, "6,339,5140900,-;usb 1-1: new device", msg);
+    assert(msg.level == LogLevel.Info && msg.text(DmesgField.Facility) == "kern"w);
+    assert(msg.number(DmesgField.Seq) == 339);
+    assert(msg.timeKind == TimeKind.SinceBoot && msg.timeNs == 5_140_900_000);
+    assert(msg.payloadText == "usb 1-1: new device"w);
+
+    decodeLine(DmesgFormat.Variant.Kmsg, "6,1234567890,12345678901,-;late", msg);
+    assert(msg.number(DmesgField.Seq) == 1_234_567_890 && msg.timeNs == 12_345_678_901_000,
+        "past 9 digits: an hour after boot");
+
+    decodeLine(DmesgFormat.Variant.Kmsg, "30,12,4500000,-,caller=T1;systemd[1]: x", msg);
+    assert(msg.text(DmesgField.Facility) == "daemon"w && msg.payloadText == "systemd[1]: x"w,
+        "fields after the flags are skipped");
+}
+
+@("DmesgFormat /dev/kmsg: the dictionary lines belong to their record")
+unittest
+{
+    auto format = new DmesgFormat(DmesgFormat.Variant.Kmsg);
+    const data = bytes("6,1,100,-;first\n SUBSYSTEM=usb\n DEVICE=c189:1\n6,2,200,-;second\n");
+    size_t[4] offsets;
+    const r = format.scanRecords(data, 0, offsets[], true);
+    assert(r.count == 2 && offsets[1] == data.length - "6,2,200,-;second\n".length);
+
+    LogMessage!wchar msg;
+    assert(format.decode(msg, format.recordAt(data, 0)));
+    assert(msg.payloadText == "first\n SUBSYSTEM=usb\n DEVICE=c189:1"w);
+}
+
+@("DmesgFormat /dev/kmsg: columns, detection, and lines that don't fit")
+unittest
+{
+    string[] ids;
+    foreach (column; new DmesgFormat(DmesgFormat.Variant.Kmsg).columns)
+        ids ~= column.id;
+    assert(ids == ["time", "facility", "level", "seq", "payload"]);
+
+    const d = new DmesgDetector().detect("kmsg", bytes("6,1,100,-;a\n SUBSYSTEM=usb\n4,2,200,-;b\n"));
+    assert(d.score > 0.5f && d.variant == DmesgFormat.Variant.Kmsg);
+
+    LogMessage!wchar msg;
+    decodeLine(DmesgFormat.Variant.Kmsg, "6,x,100,-;bad sequence", msg);
+    assert(msg.timeKind == TimeKind.None && msg.payloadText == "6,x,100,-;bad sequence"w);
 }

@@ -49,12 +49,21 @@ bool readPriority(ref const(char)[] s, out bool present, out LogLevel level, out
         return true; // no prefix
     const(char)[] rest = s[1 .. $];
     uint value;
-    if (!readNumber(rest, value) || !readChar(rest, '>') || value >= facilityNames.length * 8)
+    if (!readNumber(rest, value) || !readChar(rest, '>') || !splitPriority(value, level, facility))
+        return false;
+    present = true;
+    s = rest;
+    return true;
+}
+
+//! @brief Splits a priority number into the level and the facility
+//! @returns false if it is out of range (facility 0..23)
+bool splitPriority(uint value, out LogLevel level, out string facility) pure nothrow @nogc @safe
+{
+    if (value >= facilityNames.length * 8)
         return false;
     level = severityLevel(value & 7);
     facility = facilityNames[value >> 3];
-    present = true;
-    s = rest;
     return true;
 }
 

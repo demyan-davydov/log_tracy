@@ -32,6 +32,23 @@ bool readNumber(ref const(char)[] s, out uint value) pure nothrow @nogc @safe
     return readDigitRun(s, 9, value) > 0;
 }
 
+//! Reads 1 to 18 decimal digits, for values past uint (microseconds since boot)
+bool readNumber64(ref const(char)[] s, out ulong value) pure nothrow @nogc @safe
+{
+    size_t n = 0;
+    ulong result = 0;
+    while (n < s.length && n < 18 && s[n] >= '0' && s[n] <= '9')
+    {
+        result = result * 10 + (s[n] - '0');
+        ++n;
+    }
+    if (n == 0)
+        return false;
+    value = result;
+    s = s[n .. $];
+    return true;
+}
+
 //! Reads the character `c`
 bool readChar(ref const(char)[] s, char c) pure nothrow @nogc @safe
 {
@@ -288,4 +305,16 @@ unittest
 
     s = "2026-11-03T14:22:01-05";
     assert(readIsoDateTime(s, t, zone, offset) && offset == -5 * 3600 * 1_000_000_000L);
+}
+
+@("text parsing: 64-bit numbers")
+unittest
+{
+    const(char)[] s = "12345678901,x";
+    ulong v;
+    assert(readNumber64(s, v) && v == 12_345_678_901 && s == ",x");
+    s = "999999999999999999";
+    assert(readNumber64(s, v) && v == 999_999_999_999_999_999);
+    s = "x";
+    assert(!readNumber64(s, v));
 }
