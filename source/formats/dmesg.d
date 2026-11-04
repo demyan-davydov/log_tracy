@@ -2,7 +2,7 @@ module formats.dmesg;
 
 //! Kernel messages as printed by `dmesg` or read from /dev/kmsg, a record per line:
 //!   "[    3.141592] usb 1-1: new device"          time since boot
-//!   "<3>[    3.141592] ..."                         with the level (kmsg, console)
+//!   "<30>[    3.141592] ..."                        with the priority (dmesg -r, kmsg)
 //!   "kern  :err   : [    3.141592] ..."            dmesg -x: facility and level
 //!   "[Tue Nov  3 14:22:01 2026] ..."               dmesg -T: wall-clock time
 //! Lines that don't fit keep their text as the payload.
@@ -26,6 +26,7 @@ final class DmesgFormat : TextFormat
         Monotonic, // [seconds since boot], an optional <level>
         Decoded, // dmesg -x: facility :level : [seconds since boot]
         WallClock, // dmesg -T: [Www Mmm dd hh:mm:ss yyyy], an optional <level>
+        Raw, // dmesg -r, /dev/kmsg: <priority>[seconds since boot], the facility shown
     }
 
     private immutable Variant _variant;
@@ -75,6 +76,8 @@ final class DmesgFormat : TextFormat
             return _decodedColumns;
         case Variant.WallClock:
             return _wallClockColumns;
+        case Variant.Raw:
+            return _decodedColumns; // the same columns: time, facility, level
         }
     }
 
@@ -110,6 +113,7 @@ final class DmesgDetector : FormatDetector
     {
         size_t lines;
         size_t[DmesgFormat.Variant.max + 1] fits;
+        size_t withPriority; // of the lines that fit Monotonic
         DmesgLine parsed;
         forEachSampleLine(head, (const(char)[] line) {
             if (line.length == 0)
@@ -121,6 +125,8 @@ final class DmesgDetector : FormatDetector
                 if (parseLine(variant, line, parsed))
                 {
                     ++fits[variant];
+                    if (variant == DmesgFormat.Variant.Monotonic && parsed.hasPriority)
+                        ++withPriority;
                     break;
                 }
             }
@@ -136,6 +142,9 @@ final class DmesgDetector : FormatDetector
         const float share = cast(float) fits[best] / lines;
         if (share < minShare)
             return Detection(0);
+        // Most lines with a priority: show the facility too
+        if (best == DmesgFormat.Variant.Monotonic && withPriority * 2 > fits[best])
+            best = DmesgFormat.Variant.Raw;
         return Detection(0.5f + 0.5f * share, cast(int) best);
     }
 
@@ -154,6 +163,7 @@ private struct DmesgLine
     LogLevel level;
     const(char)[] facility;
     const(char)[] message;
+    bool hasPriority; // the line starts with <priority>
 }
 
 //! Kernel level 0..7 (emerg .. debug)
@@ -182,16 +192,27 @@ private bool levelByName(const(char)[] name, out LogLevel level) pure nothrow @n
     return false;
 }
 
-//! An optional "<n>" prefix
-private bool readLevelPrefix(ref const(char)[] s, out LogLevel level) pure nothrow @nogc @safe
+//! Syslog facility names (RFC 5424) by number
+private static immutable string[24] facilityNames = [
+    "kern", "user", "mail", "daemon", "auth", "syslog", "lpr", "news",
+    "uucp", "cron", "authpriv", "ftp", "ntp", "audit", "alert", "clock",
+    "local0", "local1", "local2", "local3", "local4", "local5", "local6", "local7"
+];
+
+//! An optional "<priority>" prefix: facility * 8 + level. The kernel's own
+//! messages have facility 0 (kern); others write to the kernel buffer too,
+//! e.g. systemd as daemon (<30> is daemon.info).
+private bool readPriority(ref const(char)[] s, ref DmesgLine line) pure nothrow @nogc @safe
 {
     if (s.length < 3 || s[0] != '<')
         return true; // no prefix
     const(char)[] rest = s[1 .. $];
     uint value;
-    if (!readNumber(rest, value) || !readChar(rest, '>') || value > 7)
+    if (!readNumber(rest, value) || !readChar(rest, '>') || value >= facilityNames.length * 8)
         return false;
-    level = kernelLevel(value);
+    line.level = kernelLevel(value & 7);
+    line.facility = facilityNames[value >> 3];
+    line.hasPriority = true;
     s = rest;
     return true;
 }
@@ -247,8 +268,9 @@ private bool parseLine(DmesgFormat.Variant variant, const(char)[] s, out DmesgLi
     final switch (variant)
     {
     case DmesgFormat.Variant.Monotonic:
+    case DmesgFormat.Variant.Raw:
         line.timeKind = TimeKind.SinceBoot;
-        if (!readLevelPrefix(s, line.level) || !readMonotonic(s, line.timeNs))
+        if (!readPriority(s, line) || !readMonotonic(s, line.timeNs))
             return false;
         break;
     case DmesgFormat.Variant.Decoded:
@@ -258,7 +280,7 @@ private bool parseLine(DmesgFormat.Variant variant, const(char)[] s, out DmesgLi
         break;
     case DmesgFormat.Variant.WallClock:
         line.timeKind = TimeKind.Local;
-        if (!readLevelPrefix(s, line.level) || !readWallClock(s, line.timeNs))
+        if (!readPriority(s, line) || !readWallClock(s, line.timeNs))
             return false;
         break;
     }
@@ -387,4 +409,55 @@ unittest
 
     assert(detector.detect("x.log", bytes("11-03 14:22:01.123  1234  1250 I Tag: logcat\n")).score == 0);
     assert(detector.detect("x.log", bytes("just some\ntext lines\n")).score == 0);
+}
+
+@("DmesgFormat: a raw priority gives the facility and the level (dmesg -r, /dev/kmsg)")
+unittest
+{
+    LogMessage!wchar msg;
+    decodeLine(DmesgFormat.Variant.Raw, "<30>[    4.500000] systemd[1]: Started x", msg);
+    assert(msg.level == LogLevel.Info, "30 = daemon (3) * 8 + info (6)");
+    assert(msg.text(DmesgField.Facility) == "daemon"w);
+    assert(msg.timeKind == TimeKind.SinceBoot && msg.timeNs == 4 * second + second / 2);
+    assert(msg.payloadText == "systemd[1]: Started x"w);
+
+    decodeLine(DmesgFormat.Variant.Raw, "<3>[    1.000000] disk", msg);
+    assert(msg.level == LogLevel.Error && msg.text(DmesgField.Facility) == "kern"w);
+
+    decodeLine(DmesgFormat.Variant.Raw, "<134>[    1.000000] l", msg);
+    assert(msg.level == LogLevel.Info && msg.text(DmesgField.Facility) == "local0"w);
+
+    // The plain variant reads such lines too instead of keeping them as text
+    decodeLine(DmesgFormat.Variant.Monotonic, "<30>[    4.500000] systemd[1]: x", msg);
+    assert(msg.level == LogLevel.Info && msg.payloadText == "systemd[1]: x"w);
+}
+
+@("DmesgFormat: the raw variant shows the facility")
+unittest
+{
+    string[] ids;
+    foreach (column; new DmesgFormat(DmesgFormat.Variant.Raw).columns)
+        ids ~= column.id;
+    assert(ids == ["time", "facility", "level", "payload"]);
+}
+
+@("DmesgDetector: lines with a priority are the raw variant")
+unittest
+{
+    auto d = new DmesgDetector().detect("x.log",
+        bytes("<6>[    0.000000] Linux version\n<30>[    4.5] systemd[1]: x\n[    5.0] no prefix\n"));
+    assert(d.score > 0.5f && d.variant == DmesgFormat.Variant.Raw, "most lines have a priority");
+}
+
+@("DmesgDetector: takes no memory per sample line")
+unittest
+{
+    import core.memory : GC;
+    import std.array : replicate;
+
+    const sample = bytes("[    0.000000] Linux version 6.1\n".replicate(2000));
+    auto detector = new DmesgDetector();
+    const before = GC.allocatedInCurrentThread;
+    detector.detect("dmesg.txt", sample);
+    assert(GC.allocatedInCurrentThread - before < 1024, "allocates per line");
 }
