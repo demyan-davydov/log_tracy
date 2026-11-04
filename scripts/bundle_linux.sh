@@ -1,4 +1,5 @@
 #!/bin/bash
+cd "$(dirname "$0")/.." || exit 1 # the project root
 APP_NAME="dlt_explorer"
 DIST_DIR="dist_linux"
 

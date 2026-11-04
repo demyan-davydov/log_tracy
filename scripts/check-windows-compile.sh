@@ -3,9 +3,9 @@
 # and its unittests are cross-compiled with ldc2, without linking or running.
 # A full check (link, tests) needs Windows: see test-windows.bat.
 #
-# Usage: ./check-windows-compile.sh
+# Usage: scripts/check-windows-compile.sh
 set -euo pipefail
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.." # the project root
 
 describe() {
     dub describe --compiler=ldc2 --data="$1" --data-list 2>/dev/null

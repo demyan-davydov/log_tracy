@@ -1,4 +1,5 @@
 @echo off
+cd /d "%~dp0.."
 set APP_NAME=dlt_explorer.exe
 set DIST_DIR=dist_windows
 

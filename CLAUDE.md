@@ -15,8 +15,8 @@ Build and test with **ldc2** (`--compiler=ldc2`); the scripts assume it too.
 dub build --compiler=ldc2          # builds ./dlt_explorer
 dub test --compiler=ldc2           # all D unittests ("N modules passed unittests")
 node --test tests/js               # JS unit tests (pure modules such as resources/new-tab.js)
-./check-windows-compile.sh         # from macOS/Linux: cross-compiles app + unittests for Windows x64, no link
-test-windows.bat                   # on Windows: build + unittests
+scripts/check-windows-compile.sh   # from macOS/Linux: cross-compiles app + unittests for Windows x64, no link
+scripts\test-windows.bat           # on Windows: build + unittests
 ```
 
 - The druntime test runner has no filter, and it stops a module's tests at the first failing

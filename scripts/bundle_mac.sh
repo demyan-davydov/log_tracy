@@ -1,4 +1,5 @@
 #!/bin/bash
+cd "$(dirname "$0")/.." || exit 1 # the project root
 APP_NAME="DltExplorer"
 BUNDLE_NAME="$APP_NAME.app"
 
