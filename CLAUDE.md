@@ -94,8 +94,14 @@ register it in `format_registry`. Parsing helpers (numbers, times, dates) live i
 - The table columns, the row cells (`asSciterRow` in `main_window`) and the quick filter panel
   are all built from the format's `ColumnInfo` schema, fetched by the script with
   `xcall("getColumns")`.
-- A row is: anchored, filterMask, view index, message index, then one cell per column. Hex
-  cells are formatted by the backend: 64-bit values don't fit a script number.
+- A row is: anchored, filterMask, view index, message index, level, then one cell per column.
+  - A time cell is `[microseconds, TimeKind]`: it is shown by the kind of the record, not of
+    the column.
+  - Hex cells are formatted by the backend: 64-bit values don't fit a script number.
+  - The level colors the cells of columns with `ColumnInfo.byLevel` (an HTTP status shown as
+    it is).
+  - How a cell shows its value lives in the Sciter-free `resources/cell-format.js`, tested
+    by `tests/js`.
 - Per-document UI state lives in `Map`s keyed by document id in `script.js` (search drafts,
   quick filter values, scroll/selection).
 - The view status shown to the user comes from the state machines `ui/main_view_fsm` and

@@ -1,6 +1,7 @@
 console.log("Loading virtual-dlt-view.js...");
 import { VirtualList } from "virtual-select.js";
 import { VirtualSelect } from "virtual-select.js";
+import { formatTime, formatDuration, levelName, cellClass } from "cell-format.js";
 
 // Columns of the active document, from Window.xcall("getColumns"):
 // [{ id, title, kind, width, timeKind?, unitsPerSecond?, labels? }]
@@ -21,56 +22,18 @@ export function renderHeader() {
     </tr>;
 }
 
-const pad = (value, digits) => String(value).padStart(digits, "0");
-
-// TimeKind of the backend (log_core/log_message), by value
-const timeKinds = ["None", "Absolute", "Local", "LocalNoYear", "SinceBoot"];
-
-// Time cell: [microseconds since the epoch (or since boot), TimeKind] of the
-// record, null if it has no time
-function formatTime(cell) {
-    if (!cell) return "-";
-    const us = cell[0];
-    const timeKind = timeKinds[cell[1]];
-    const seconds = Math.floor(us / 1e6);
-    const fraction = pad(us - seconds * 1e6, 6);
-    if (timeKind === "SinceBoot") return `${seconds}.${fraction}`;
-    if (us === 0) return "-"; // no time recorded
-    const date = new Date(seconds * 1000);
-    // Absolute is a moment, shown in the user's zone; Local* is the wall-clock
-    // time of the source stored as if it were UTC, shown as is
-    const local = timeKind !== "Absolute";
-    const [year, month, dayOfMonth, hours, minutes, secs] = local
-        ? [date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds()]
-        : [date.getFullYear(), date.getMonth(), date.getDate(), date.getHours(), date.getMinutes(), date.getSeconds()];
-    const day = `${pad(month + 1, 2)}/${pad(dayOfMonth, 2)}`;
-    const time = `${pad(hours, 2)}:${pad(minutes, 2)}:${pad(secs, 2)}`;
-    if (timeKind === "LocalNoYear") return `${day} ${time}.${fraction}`;
-    return `${year}/${day} ${time}.${fraction}`;
-}
-
-// Duration cell: a number in 1/unitsPerSecond of a second
-function formatDuration(units, unitsPerSecond) {
-    units = Number(units);
-    if (units === 0) return "-";
-    const digits = Math.round(Math.log10(unitsPerSecond));
-    return `${Math.floor(units / unitsPerSecond)}.${pad(units % unitsPerSecond, digits)}`;
-}
-
-const levelNames = ["", "Fatal", "Error", "Warn", "Info", "Debug", "Verbose"];
 
 // A cell of `column`; `level` (a LogLevel of the record) colors it if the
 // column asks for it (byLevel: an HTTP status shown as it is)
 function renderCell(column, value, level) {
-    const name = column.byLevel ? levelNames[level] : "";
-    const aux = name ? `aux level-${name.toLowerCase()}` : "aux";
+    const aux = cellClass(column, level);
     if (value === null && column.kind !== "Time")
         return <td class={aux}></td>; // the record has no such field
     switch (column.kind) {
         case "Time": return <td class={aux}>{formatTime(value)}</td>;
         case "Level": {
             if (!value) return <td class="aux"></td>; // LogLevel.None: the record has no level
-            const level = levelNames[value] ?? "unknown";
+            const level = levelName(value) || "unknown";
             return <td class={`level-${level.toLowerCase()}`}>{level}</td>;
         }
         case "Payload": return <td selectable>{value}</td>;
