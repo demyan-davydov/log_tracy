@@ -1,4 +1,4 @@
-module log_core.syslog_priority;
+module formats.syslog.priority;
 
 //! The syslog priority shared by the formats that carry it (syslog, the
 //! kernel log): "<priority>" = facility * 8 + severity, RFC 5424.
@@ -43,7 +43,7 @@ private static immutable string[24] facilityNames = [
 //! @returns false if it starts like one but is not valid
 bool readPriority(ref const(char)[] s, out bool present, out LogLevel level, out string facility) pure nothrow @nogc @safe
 {
-    import log_core.text_parsing : readChar, readNumber;
+    import log_core.text.text_parsing : readChar, readNumber;
 
     if (s.length == 0 || s[0] != '<')
         return true; // no prefix

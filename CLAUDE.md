@@ -22,7 +22,7 @@ test-windows.bat                   # on Windows: build + unittests
 - The druntime test runner has no filter, and it stops a module's tests at the first failing
   `unittest` block. To run the tests of one module that doesn't depend on Sciter, compile it on
   its own:
-  `ldc2 -unittest -main -i -preview=in -preview=dip1000 -preview=dtorfields -Isource source/log_core/text_format.d -of=/tmp/t && /tmp/t`
+  `ldc2 -unittest -main -i -preview=in -preview=dip1000 -preview=dtorfields -Isource source/log_core/text/text_format.d -of=/tmp/t && /tmp/t`
 - Keep the `-preview=in/dip1000/dtorfields` flags of `dub.sdl` when compiling by hand.
 - Running the app:
   - `resources/` is read from disk at run time, so a JS/CSS/HTML change needs a restart, not a
@@ -39,8 +39,8 @@ Data flows from bytes to the table like this:
 ByteSource (log_core/byte_source)          bytes of a log, addressed by offset (FileSource = mmap)
   └ LogFormat (log_core/log_format)        splits bytes into records, decodes one into a LogMessage,
        │                                   declares the table columns (ColumnInfo)
-       ├ DltFormat (dlt_core/dlt_format)   binary DLT; parser in dlt_core/dlt_parser
-       └ TextFormat (log_core/text_format) line-based base: multiline records, record length limit
+       ├ DltFormat (formats/dlt/format)    binary DLT; parser in formats/dlt/parser
+       └ TextFormat (log_core/text/...)    line-based base: multiline records, record length limit
             └ formats/*                    PlainTextFormat (fallback), LogcatFormat, ...
 LogIndex (domain/log_index)                offset/filter/search indexes, built on a background thread
 LogDocument (domain/log_document)          a log + its main view and search view, operation events
@@ -49,10 +49,17 @@ MainWindow (ui/main_window)                Sciter window: xcall bridge to the sc
 resources/script.js, virtual-dlt-view.js   tabs, panels, virtual table built from the column schema
 ```
 
+### Where things live
+- `log_core/` holds what doesn't depend on a format (LogMessage, LogFormat, filters,
+  ByteSource), `log_core/text/` the base of the text formats.
+- Every format lives in `formats/`: one module (`formats/logcat.d`), or a package when it has
+  several (`formats/dlt/`, `formats/can/`, `formats/syslog/`). `formats/registry.d` lists them.
+- `domain/` (documents, indexes) knows formats only through `LogFormat` and `detectFormat`.
+
 ### Formats and detection
 - The formats supported now and the ones planned: `docs/formats.md`. Keep it up to date
   when a format or a variant is added.
-- `domain/format_registry.detectFormat` asks every `FormatDetector` for a score on the first
+- `formats/registry.detectFormat` asks every `FormatDetector` for a score on the first
   64 KB and picks the best.
 - Plain text is the low-score fallback; data no detector accepts is refused.
 - A `.dlt` extension alone only decides for binary data.
@@ -62,8 +69,8 @@ resources/script.js, virtual-dlt-view.js   tabs, panels, virtual table built fro
 ### Adding a text format
 Derive from `TextFormat` and implement `decodeText`, `columns` and `name`. Implement
 `isRecordStart` too if continuation lines are glued to their record. Add a `FormatDetector` and
-register it in `format_registry`. Parsing helpers (numbers, times, dates) live in
-`log_core/text_parsing`.
+register it in `formats/registry`. Parsing helpers (numbers, times, dates) live in
+`log_core/text/text_parsing`.
 
 ### LogMessage and LogFilter
 - `LogMessage!wchar` (`log_core/log_message`) is the format-neutral record:
@@ -74,7 +81,7 @@ register it in `format_registry`. Parsing helpers (numbers, times, dates) live i
   allocates nothing.
 - Pass a `LogMessage` by `ref`, never `out`: `out` resets it to `.init` without its destructor
   and leaks the buffer on every decode.
-- DLT fields are read through UFCS accessors in `dlt_core/dlt_fields` (`msg.ecuId`, `msg.appId`, ...).
+- DLT fields are read through UFCS accessors in `formats/dlt/fields` (`msg.ecuId`, `msg.appId`, ...).
 - Filters implement `LogFilter!wchar` (`log_core/log_filter`):
   - **`FieldFilter`** (`log_core/field_filter`) is the quick filter. It is built from the column
     schema and a `{column id: value}` map.

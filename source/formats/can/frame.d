@@ -1,4 +1,4 @@
-module formats.can_frame;
+module formats.can.frame;
 
 //! What the CAN trace formats (candump, Vector ASC) share: the fields of a
 //! frame in LogMessage, its columns, and the data bytes as text.

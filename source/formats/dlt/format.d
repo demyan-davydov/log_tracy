@@ -1,11 +1,11 @@
-module dlt_core.dlt_format;
+module formats.dlt.format;
 
-import dlt_core.dlt_protocol;
-import dlt_core.dlt_parser : parseDltItem;
+import formats.dlt.protocol;
+import formats.dlt.parser : parseDltItem;
 
 import log_core.log_format;
 import log_core.log_message : LogMessage, TimeKind;
-import dlt_core.dlt_fields : DltField;
+import formats.dlt.fields : DltField;
 
 import std.algorithm.comparison : max, min;
 
@@ -513,7 +513,7 @@ unittest
 @("DltFormat.decode: decodes a record with its extended header")
 unittest
 {
-    import dlt_core.dlt_fields;
+    import formats.dlt.fields;
 
     ubyte headerType = StandardHeader.Type.UseExtendedHeader;
     ubyte[ExtendedHeader.sizeof] extHeader;
@@ -554,7 +554,7 @@ unittest
 @("DltFormat columns: the quick filter finds an ID by its trimmed value")
 unittest
 {
-    import dlt_core.dlt_fields : beginDltRecord;
+    import formats.dlt.fields : beginDltRecord;
     import log_core.field_filter : FieldFilter;
 
     auto filter = FieldFilter.fromValues(new DltFormat().columns, ["ecu": "CU7", "app": "APP1"]);

@@ -1,14 +1,14 @@
-module domain.format_registry;
+module formats.registry;
 
 import log_core.log_format;
-import dlt_core.dlt_format : DltDetector;
+import formats.dlt.format : DltDetector;
 import formats.access_log : AccessLogDetector;
-import formats.candump : CandumpDetector;
+import formats.can.candump : CandumpDetector;
 import formats.dmesg : DmesgDetector;
 import formats.logcat : LogcatDetector;
 import formats.plain_text : PlainTextDetector;
-import formats.syslog : SyslogDetector;
-import formats.vector_asc : AscDetector;
+import formats.syslog.syslog : SyslogDetector;
+import formats.can.vector_asc : AscDetector;
 
 import std.algorithm.comparison : min;
 
@@ -58,7 +58,7 @@ private const(FormatDetector)[] detectors()
 @("detectFormat: a DLT file is detected as DLT")
 unittest
 {
-    import dlt_core.dlt_format : DltFormat, buildDltMessage;
+    import formats.dlt.format : DltFormat, buildDltMessage;
 
     auto format = detectFormat("x.dlt", buildDltMessage());
     assert(cast(DltFormat) format !is null);
@@ -81,7 +81,7 @@ unittest
 @("detectFormat: an empty .dlt file is DLT, an empty file of another name is text")
 unittest
 {
-    import dlt_core.dlt_format : DltFormat;
+    import formats.dlt.format : DltFormat;
     import formats.plain_text : PlainTextFormat;
 
     assert(cast(DltFormat) detectFormat("capture.dlt", null) !is null);
@@ -100,7 +100,7 @@ unittest
 @("detectFormat: a syslog file is syslog, not text")
 unittest
 {
-    import formats.syslog : SyslogFormat;
+    import formats.syslog.syslog : SyslogFormat;
 
     auto syslog = cast(const(ubyte)[]) "Nov  3 14:22:01 host sshd[812]: a\nNov  3 14:22:02 host cron[9]: b\n";
     assert(cast(SyslogFormat) detectFormat("syslog", syslog) !is null);
@@ -129,8 +129,8 @@ unittest
 @("detectFormat: CAN traces of candump and Vector ASC")
 unittest
 {
-    import formats.candump : CandumpFormat;
-    import formats.vector_asc : AscFormat;
+    import formats.can.candump : CandumpFormat;
+    import formats.can.vector_asc : AscFormat;
 
     auto candump = cast(const(ubyte)[]) "(1762179721.123456) can0 123#DEADBEEF\n(1762179721.2) can0 7FF#\n";
     assert(cast(CandumpFormat) detectFormat("trace.log", candump) !is null);

@@ -12,8 +12,8 @@ import log_core.log_format : ColumnInfo, ColumnKind;
 import log_core.log_message : TimeKind;
 import domain.log_document;
 
-import dlt_core.dlt_filter_serialization;
-import dlt_core.dlt_filter_record;
+import formats.dlt.filter_serialization;
+import formats.dlt.filter_record;
 import ui.filter_commands : applyQuickFilter, loadDltFilter;
 import domain.search_filter : SearchFilter;
 import ui.main_view_fsm;

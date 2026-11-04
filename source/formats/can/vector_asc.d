@@ -1,4 +1,4 @@
-module formats.vector_asc;
+module formats.can.vector_asc;
 
 //! Vector ASC traces (CANoe, CANalyzer). The header says how to read the lines:
 //!   date Tue Nov 3 02:22:01.123 pm 2026        the start: time = start + offset
@@ -12,12 +12,12 @@ module formats.vector_asc;
 //! events, their text the payload. Without a date the time is the offset from
 //! the start. With "timestamps relative" the offsets are shown as written.
 
-import formats.can_frame;
+import formats.can.frame;
 import log_core.log_format;
 import log_core.log_level : LogLevel;
 import log_core.log_message : LogMessage, TimeKind;
-import log_core.text_format;
-import log_core.text_parsing;
+import log_core.text.text_format;
+import log_core.text.text_parsing;
 
 //! What the header of an ASC file says
 struct AscHeader

@@ -31,7 +31,7 @@ string applyQuickFilter(Document doc, string json)
 //! @brief Loads a .dlf and runs it as the search of the document
 string loadDltFilter(Document doc, string path)
 {
-    import dlt_core.dlt_log_filter : DltLogFilter;
+    import formats.dlt.log_filter : DltLogFilter;
 
     if (!DltLogFilter!wchar.canFilter(doc.format))
         return "DLT filters (.dlf) apply to DLT logs only";
@@ -65,7 +65,7 @@ version (unittest)
 
     private const(ubyte)[] dltContent()
     {
-        import dlt_core.dlt_format : buildDltMessage;
+        import formats.dlt.format : buildDltMessage;
 
         return buildDltMessage("ECU1") ~ buildDltMessage("ECU2");
     }
@@ -97,7 +97,7 @@ unittest
 @("loadDltFilter: DLT documents only, and a file that can't be loaded is reported")
 unittest
 {
-    import dlt_core.dlt_log_filter : DltLogFilter;
+    import formats.dlt.log_filter : DltLogFilter;
     import std.algorithm.searching : canFind;
     import std.file : remove, tempDir;
     import std.path : buildPath;

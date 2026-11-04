@@ -1,12 +1,12 @@
-module dlt_core.dlt_log_filter;
+module formats.dlt.log_filter;
 
 import log_core.log_filter;
 import log_core.log_format : LogFormat;
-import dlt_core.dlt_format : DltFormat;
-import dlt_core.dlt_filter_record;
-import dlt_core.dlt_filter_serialization;
+import formats.dlt.format : DltFormat;
+import formats.dlt.filter_record;
+import formats.dlt.filter_serialization;
 import log_core.log_message;
-import dlt_core.dlt_fields;
+import formats.dlt.fields;
 
 import std.traits : isSomeChar;
 import std.algorithm.iteration : map;
@@ -102,7 +102,7 @@ final class DltLogFilter(CharType) : LogFilter!CharType if (isSomeChar!(CharType
 @("DltLogFilter.canFilter: DLT formats only")
 unittest
 {
-    import dlt_core.dlt_format : DltFormat;
+    import formats.dlt.format : DltFormat;
     import formats.plain_text : PlainTextFormat;
 
     assert(DltLogFilter!wchar.canFilter(new DltFormat()));

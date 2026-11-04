@@ -1,12 +1,12 @@
-module dlt_core.dlt_parser;
+module formats.dlt.parser;
 
-import dlt_core.dlt_protocol;
+import formats.dlt.protocol;
 import std.stdio;
 import std.stdint;
 import std.traits : isSomeChar;
 
 import log_core.log_message;
-import dlt_core.dlt_fields;
+import formats.dlt.fields;
 
 //! @brief DLT Message structure:
 //! [ Storage Header ]        (16 bytes, always in file)

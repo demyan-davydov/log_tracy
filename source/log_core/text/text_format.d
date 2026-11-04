@@ -1,4 +1,4 @@
-module log_core.text_format;
+module log_core.text.text_format;
 
 import log_core.log_format;
 import log_core.log_message : LogMessage;

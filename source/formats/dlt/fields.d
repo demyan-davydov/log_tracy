@@ -1,10 +1,10 @@
-module dlt_core.dlt_fields;
+module formats.dlt.fields;
 
 //! The format fields of a DLT record in a LogMessage, and the DLT view of a
 //! LogMessage: accessors called like members (msg.ecuId) through UFCS.
 
 import log_core.log_message;
-import dlt_core.dlt_protocol : MessageType;
+import formats.dlt.protocol : MessageType;
 
 import std.traits : isSomeChar;
 

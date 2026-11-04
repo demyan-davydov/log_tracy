@@ -12,9 +12,9 @@ module formats.dmesg;
 import log_core.log_format;
 import log_core.log_level : LogLevel;
 import log_core.log_message : LogMessage, TimeKind;
-import log_core.text_format;
-import log_core.text_parsing;
-import log_core.syslog_priority : readPriority, severityByName, splitPriority;
+import log_core.text.text_format;
+import log_core.text.text_parsing;
+import formats.syslog.priority : readPriority, severityByName, splitPriority;
 
 //! Field indexes of a dmesg record in LogMessage
 enum DmesgField : ubyte
@@ -205,7 +205,7 @@ private bool parseKmsg(const(char)[] s, ref DmesgLine line) pure nothrow @nogc @
     return true;
 }
 
-//! An optional "<priority>" prefix (log_core.syslog_priority). The kernel's
+//! An optional "<priority>" prefix (formats.syslog.priority). The kernel's
 //! own messages have facility 0 (kern); others write to the kernel buffer
 //! too, e.g. systemd as daemon (<30> is daemon.info).
 private bool readLinePriority(ref const(char)[] s, ref DmesgLine line) pure nothrow @nogc @safe

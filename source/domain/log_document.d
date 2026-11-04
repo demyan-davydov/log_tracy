@@ -5,12 +5,12 @@ import domain.document_item;
 import domain.document_id;
 
 import log_core.log_message;
-import dlt_core.dlt_fields;
+import formats.dlt.fields;
 import log_core.log_filter;
 
 import domain.index.anchors;
 import domain.log_index;
-import domain.format_registry : detectFormat;
+import formats.registry : detectFormat;
 import log_core.byte_source;
 import log_core.log_format : LogFormat, ColumnInfo;
 import domain.view_status;
@@ -353,7 +353,7 @@ class LogDocument : Document
 
 version (unittest)
 {
-    import dlt_core.dlt_format : buildDltMessage;
+    import formats.dlt.format : buildDltMessage;
 
     private string writeTestDlt(string name, size_t messageCount, const(char)[4] ecuId = "ECU1")
     {
@@ -372,7 +372,7 @@ version (unittest)
     /// Quick filter of the main view by the ECU ID of DLT messages
     private LogFilter!wchar ecuFilter(string ecuId)
     {
-        import dlt_core.dlt_format : DltFormat;
+        import formats.dlt.format : DltFormat;
         import log_core.field_filter : FieldFilter;
 
         return FieldFilter.fromValues(new DltFormat().columns, ["ecu": ecuId]);
@@ -1083,7 +1083,7 @@ version (Posix)
 @("LogDocument: messages after garbage are indexed at their own offset")
 unittest
 {
-    import dlt_core.dlt_format : buildDltMessage;
+    import formats.dlt.format : buildDltMessage;
     import std.file : remove, tempDir, write;
     import std.path : buildPath;
 
@@ -1107,7 +1107,7 @@ unittest
 @("LogDocument: knows the format it was opened with")
 unittest
 {
-    import dlt_core.dlt_format : DltFormat;
+    import formats.dlt.format : DltFormat;
     import std.file : remove;
 
     auto path = writeTestDlt("dlt_document_format.dlt", 3);

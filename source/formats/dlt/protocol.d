@@ -1,4 +1,4 @@
-module dlt_core.dlt_protocol;
+module formats.dlt.protocol;
 
 public import log_core.log_level : LogLevel;
 import std.bitmanip;

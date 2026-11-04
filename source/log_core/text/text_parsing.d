@@ -1,4 +1,4 @@
-module log_core.text_parsing;
+module log_core.text.text_parsing;
 
 //! Small parsers for the headers of text log lines. Each one reads from the
 //! front of `s` and moves it past what it read; on failure `s` may be moved

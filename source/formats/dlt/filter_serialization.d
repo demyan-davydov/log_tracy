@@ -1,7 +1,7 @@
-module dlt_core.dlt_filter_serialization;
+module formats.dlt.filter_serialization;
 
-import dlt_core.dlt_filter_record;
-import dlt_core.dlt_protocol;
+import formats.dlt.filter_record;
+import formats.dlt.protocol;
 import dxml.dom;
 import std.stdio : writeln;
 import std.array : appender;

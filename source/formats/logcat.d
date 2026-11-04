@@ -3,8 +3,8 @@ module formats.logcat;
 import log_core.log_format;
 import log_core.log_level : LogLevel;
 import log_core.log_message : LogMessage, TimeKind;
-import log_core.text_format;
-import log_core.text_parsing;
+import log_core.text.text_format;
+import log_core.text.text_parsing;
 
 //! Field indexes of a logcat record in LogMessage
 enum LogcatField : ubyte

@@ -1,4 +1,4 @@
-module formats.candump;
+module formats.can.candump;
 
 //! Log files of SocketCAN candump -l (can-utils), a frame per line:
 //!   "(1762179721.123456) can0 123#DEADBEEF00112233"   classic CAN, 11-bit ID
@@ -9,12 +9,12 @@ module formats.candump;
 //! The time is a moment (seconds since the epoch); error frames have the
 //! level Error. Lines that don't fit keep their text as the payload.
 
-import formats.can_frame;
+import formats.can.frame;
 import log_core.log_format;
 import log_core.log_level : LogLevel;
 import log_core.log_message : LogMessage, TimeKind;
-import log_core.text_format;
-import log_core.text_parsing;
+import log_core.text.text_format;
+import log_core.text.text_parsing;
 
 final class CandumpFormat : TextFormat
 {

@@ -1,4 +1,4 @@
-module formats.syslog;
+module formats.syslog.syslog;
 
 //! Syslog files, a record per line:
 //!   BSD (RFC 3164), journalctl short: "Nov  3 14:22:01 host sshd[812]: message"
@@ -12,9 +12,9 @@ module formats.syslog;
 import log_core.log_format;
 import log_core.log_level : LogLevel;
 import log_core.log_message : LogMessage, TimeKind;
-import log_core.text_format;
-import log_core.text_parsing;
-import log_core.syslog_priority : readPriority;
+import log_core.text.text_format;
+import log_core.text.text_parsing;
+import formats.syslog.priority : readPriority;
 
 //! Field indexes of a syslog record in LogMessage
 enum SyslogField : ubyte

@@ -1,9 +1,9 @@
-module dlt_core.dlt_filter_record;
+module formats.dlt.filter_record;
 
 import log_core.log_filter;
-import dlt_core.dlt_protocol;
+import formats.dlt.protocol;
 import log_core.log_message;
-import dlt_core.dlt_fields;
+import formats.dlt.fields;
 import std.regex;
 import std.uni : toLower;
 import std.utf : toUTF8, toUTF16, toUTF32;

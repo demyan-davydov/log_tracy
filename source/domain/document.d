@@ -2,7 +2,7 @@ module domain.document;
 
 import log_core.log_message;
 import log_core.log_filter : LogFilter;
-import dlt_core.dlt_protocol : LogLevel, MessageType;
+import formats.dlt.protocol : LogLevel, MessageType;
 
 import domain.document_id;
 import log_core.log_format : ColumnInfo, LogFormat;
