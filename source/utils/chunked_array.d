@@ -9,9 +9,6 @@ module utils.chunked_array;
 //! maxChunks << chunkBits elements
 struct ChunkedArray(T, size_t chunkBits = 16, size_t maxChunks = 1 << 16)
 {
-    import core.sys.posix.sys.mman : mmap, munmap, MAP_ANON, MAP_FAILED, MAP_PRIVATE,
-        PROT_READ, PROT_WRITE;
-
     alias Type = T;
     enum size_t chunkLength = size_t(1) << chunkBits;
     enum size_t maxLength = chunkLength * maxChunks;
@@ -30,7 +27,7 @@ struct ChunkedArray(T, size_t chunkBits = 16, size_t maxChunks = 1 << 16)
     {
         releaseChunks();
         if (_chunks !is null)
-            munmap(_chunks, maxChunks * (T*).sizeof);
+            unmapPages(_chunks, maxChunks * (T*).sizeof);
     }
 
     //! @return false if the array is full or memory can't be taken; unchanged then
@@ -133,17 +130,15 @@ struct ChunkedArray(T, size_t chunkBits = 16, size_t maxChunks = 1 << 16)
             return false;
         if (_chunks is null)
         {
-            void* directory = mmap(null, maxChunks * (T*).sizeof, PROT_READ | PROT_WRITE,
-                MAP_PRIVATE | MAP_ANON, -1, 0);
-            if (directory == MAP_FAILED)
+            void* directory = mapPages(maxChunks * (T*).sizeof);
+            if (directory is null)
                 return false;
             _chunks = cast(T**) directory;
         }
         while (_allocatedChunks * chunkLength < count)
         {
-            void* chunk = mmap(null, chunkLength * T.sizeof, PROT_READ | PROT_WRITE,
-                MAP_PRIVATE | MAP_ANON, -1, 0);
-            if (chunk == MAP_FAILED)
+            void* chunk = mapPages(chunkLength * T.sizeof);
+            if (chunk is null)
                 return false; // the chunks taken so far stay: they are reused
             _chunks[_allocatedChunks++] = cast(T*) chunk;
         }
@@ -153,10 +148,52 @@ struct ChunkedArray(T, size_t chunkBits = 16, size_t maxChunks = 1 << 16)
     private void releaseChunks() nothrow @nogc
     {
         foreach (i; 0 .. _allocatedChunks)
-            munmap(_chunks[i], chunkLength * T.sizeof);
+            unmapPages(_chunks[i], chunkLength * T.sizeof);
         _allocatedChunks = 0;
     }
 }
+
+// ─── Pages ──────────────────────────────────────────────────────────────────
+// Zeroed read-write memory straight from the system: the pages are taken from
+// physical memory only once they are written to.
+
+version (Windows)
+{
+    //! @returns null if the memory can't be taken
+    private void* mapPages(size_t bytes) nothrow @nogc
+    {
+        import core.sys.windows.windows : VirtualAlloc, MEM_COMMIT, MEM_RESERVE, PAGE_READWRITE;
+
+        return VirtualAlloc(null, bytes, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    }
+
+    private void unmapPages(void* pages, size_t bytes) nothrow @nogc
+    {
+        import core.sys.windows.windows : VirtualFree, MEM_RELEASE;
+
+        VirtualFree(pages, 0, MEM_RELEASE); // the whole allocation: the size must be 0
+    }
+}
+else version (Posix)
+{
+    //! @returns null if the memory can't be taken
+    private void* mapPages(size_t bytes) nothrow @nogc
+    {
+        import core.sys.posix.sys.mman : mmap, MAP_ANON, MAP_FAILED, MAP_PRIVATE, PROT_READ, PROT_WRITE;
+
+        void* pages = mmap(null, bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+        return pages == MAP_FAILED ? null : pages;
+    }
+
+    private void unmapPages(void* pages, size_t bytes) nothrow @nogc
+    {
+        import core.sys.posix.sys.mman : munmap;
+
+        munmap(pages, bytes);
+    }
+}
+else
+    static assert(false, "ChunkedArray: no page allocation for this platform");
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
