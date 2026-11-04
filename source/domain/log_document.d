@@ -134,6 +134,11 @@ class LogDocument : Document
         return _index.format.columns;
     }
 
+    override const(LogFormat) format()
+    {
+        return _index.format;
+    }
+
     /*override string sourcePath() const
     {
         return _sourcePath;
@@ -367,6 +372,15 @@ version (unittest)
         auto path = buildPath(tempDir(), name);
         write(path, data);
         return path;
+    }
+
+    /// Quick filter of the main view by the ECU ID of DLT messages
+    private LogFilter!wchar ecuFilter(string ecuId)
+    {
+        import dlt_core.dlt_format : DltFormat;
+        import log_core.field_filter : FieldFilter;
+
+        return FieldFilter.fromValues(new DltFormat().columns, ["ecu": ecuId]);
     }
 
     /// Test filter that accepts all or no messages
@@ -677,7 +691,6 @@ unittest
 @("LogDocument: applyViewFilter filters the main view")
 unittest
 {
-    import dlt_core.dlt_log_filter : quickFilter;
     import std.file : remove;
 
     enum messageCount = 2000;
@@ -692,13 +705,13 @@ unittest
 
     DocumentItem item;
 
-    doc.applyViewFilter(quickFilter!wchar("ECU2", "", "", ""));
+    doc.applyViewFilter(ecuFilter("ECU2"));
     dispatchUntil(doc, () => finished == 2);
     assert(doc.mainView.ready && doc.mainView.isFilterEnabled, "a built filter is applied to the view");
     assert(doc.mainView.itemsCount == 0, "no message has ECU2");
     assert(!doc.mainView.fetchItem(0, item));
 
-    doc.applyViewFilter(quickFilter!wchar("ECU1", "", "", ""));
+    doc.applyViewFilter(ecuFilter("ECU1"));
     dispatchUntil(doc, () => finished == 3);
     assert(doc.mainView.itemsCount == messageCount, "every message has ECU1");
     assert(doc.mainView.fetchItem(messageCount - 1, item) && item.realIndex == messageCount - 1);
@@ -712,7 +725,6 @@ unittest
 @("LogDocument: an ECU ID padded with spaces is found by its trimmed value")
 unittest
 {
-    import dlt_core.dlt_log_filter : quickFilter;
     import std.file : remove;
 
     enum messageCount = 100;
@@ -730,7 +742,7 @@ unittest
     assert(doc.mainView.fetchItem(0, item));
     assert(item._message.ecuId == "CU7"w, "the padding must not be part of the ID");
 
-    doc.applyViewFilter(quickFilter!wchar("CU7", "", "", ""));
+    doc.applyViewFilter(ecuFilter("CU7"));
     dispatchUntil(doc, () => finished == 2);
     assert(doc.mainView.itemsCount == messageCount, "typing the visible ID must find the messages");
 }
@@ -815,7 +827,6 @@ unittest
 @("LogDocument anchors: an anchored message is shown despite the filter and the search")
 unittest
 {
-    import dlt_core.dlt_log_filter : quickFilter;
     import std.file : remove;
 
     enum messageCount = 100;
@@ -825,7 +836,7 @@ unittest
         remove(path);
 
     // The view filter hides every message (they all have ECU1)
-    runAndWait(doc, () => doc.applyViewFilter(quickFilter!wchar("ECU2", "", "", "")));
+    runAndWait(doc, () => doc.applyViewFilter(ecuFilter("ECU2")));
     assert(doc.mainView.itemsCount == 0);
 
     assert(doc.setAnchor(7, true));
@@ -851,7 +862,6 @@ unittest
 @("LogDocument anchors: a new filter keeps the anchors in both views")
 unittest
 {
-    import dlt_core.dlt_log_filter : quickFilter;
     import std.file : remove;
 
     string path;
@@ -860,7 +870,7 @@ unittest
         remove(path);
 
     assert(doc.setAnchor(42, true) && doc.setAnchor(8, true));
-    runAndWait(doc, () => doc.applyViewFilter(quickFilter!wchar("ECU2", "", "", "")));
+    runAndWait(doc, () => doc.applyViewFilter(ecuFilter("ECU2")));
 
     assert(realIndexes(doc.mainView) == [8, 42]);
     assert(realIndexes(doc.searchView) == [8, 42], "the cleared search lists the anchors");
@@ -869,7 +879,6 @@ unittest
 @("LogDocument: a new filter repeats the completed search over the filtered view")
 unittest
 {
-    import dlt_core.dlt_log_filter : quickFilter;
     import std.file : remove;
 
     enum messageCount = 2000;
@@ -882,7 +891,7 @@ unittest
     assert(doc.searchView.itemsCount == messageCount);
 
     auto started = recordStarted(doc);
-    runAndWait(doc, () => doc.applyViewFilter(quickFilter!wchar("ECU2", "", "", "")));
+    runAndWait(doc, () => doc.applyViewFilter(ecuFilter("ECU2")));
     assert(started.operations == [Document.Operation.BuildFilterIndex, Document.Operation.BuildSearchIndex],
         "the search must be repeated after the filter");
     assert(doc.searchView.ready && doc.searchView.itemsCount == 0, "the search runs over the filtered view");
@@ -938,7 +947,6 @@ unittest
 @("LogDocument: cancelling the filter drops the search it would repeat")
 unittest
 {
-    import dlt_core.dlt_log_filter : quickFilter;
     import std.file : remove;
 
     string path;
@@ -950,7 +958,7 @@ unittest
     assert(doc.searchView.ready);
 
     auto started = recordStarted(doc);
-    doc.applyViewFilter(quickFilter!wchar("ECU1", "", "", ""));
+    doc.applyViewFilter(ecuFilter("ECU1"));
     assert(doc.requestCancel(), "a running filter must be cancellable");
     waitIdle(doc);
     assert(started.operations == [Document.Operation.BuildFilterIndex],
@@ -1099,6 +1107,23 @@ unittest
     DocumentItem item;
     assert(doc.mainView.fetchItem(1, item), "the offset points at the message, not the garbage");
     assert(item._message.ecuId == "ECU2"w);
+}
+
+@("LogDocument: knows the format it was opened with")
+unittest
+{
+    import dlt_core.dlt_format : DltFormat;
+    import std.file : remove;
+
+    auto path = writeTestDlt("dlt_document_format.dlt", 3);
+    scope (exit)
+        remove(path);
+    auto doc = new LogDocument(path);
+    scope (exit)
+        doc.destroy();
+
+    assert(cast(const(DltFormat)) doc.format !is null);
+    assert(doc.format.columns is doc.columns);
 }
 
 @("LogDocument: a source too large for the indexes throws instead of crashing")

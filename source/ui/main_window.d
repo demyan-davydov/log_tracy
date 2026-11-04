@@ -14,7 +14,9 @@ import domain.log_document;
 
 import dlt_core.dlt_filter_serialization;
 import dlt_core.dlt_filter_record;
-import dlt_core.dlt_log_filter : DltLogFilter, quickFilter;
+import dlt_core.dlt_log_filter : DltLogFilter;
+import dlt_core.dlt_format : DltFormat;
+import log_core.field_filter : FieldFilter;
 import domain.search_filter : SearchFilter;
 import ui.main_view_fsm;
 import ui.search_view_fsm;
@@ -451,6 +453,13 @@ class MainWindow : SciterWindow
                 {
                     try
                     {
+                        // The records of a .dlf refer to the fields of DLT messages
+                        if (cast(const(DltFormat)) _workspace.current.format is null)
+                        {
+                            resultView = JSONValue(["error": "DLT filters (.dlf) apply to DLT logs only"])
+                                .toString().toUTF16();
+                            return true;
+                        }
                         auto filter = new DltLogFilter!wchar();
                         filter.load(normalizePath(path));
                         _workspace.current.applySearchFilter(filter);
@@ -664,21 +673,18 @@ class MainWindow : SciterWindow
         }
     }
 
-    /// Applies the quick filter of the main view:
-    /// {"ecuId", "appId", "ctxId", "payloadRegex"}, all fields empty resets it.
+    /// Applies the quick filter of the main view: {column id: value} for the
+    /// columns of the active document, all values empty resets it.
     private void onApplyFilter(string json)
     {
         try
         {
-            auto j = parseJSON(json);
-            string field(string key)
-            {
-                auto p = key in j;
-                return p && p.type == JSONType.string ? p.str : "";
-            }
+            string[string] values;
+            foreach (string id, value; parseJSON(json).object)
+                if (value.type == JSONType.string)
+                    values[id] = value.str;
 
-            auto filter = quickFilter!wchar(field("ecuId"), field("appId"), field("ctxId"),
-                field("payloadRegex"));
+            auto filter = FieldFilter.fromValues(_workspace.current.columns, values);
             writeln("Applying view filter: ", filter is null ? "none" : json);
             _workspace.current.applyViewFilter(filter); // null resets the filter
         }

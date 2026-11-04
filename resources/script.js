@@ -390,18 +390,10 @@ function setupEvents() {
         });
         if (fn) {
             try {
+                // The filter runs as a search; a reply is an error only
                 const json = Window.this.xcall("loadDlf", fn);
-                if (json) {
-                    const config = JSON.parse(json);
-                    console.log("Loaded DLF config:", config);
-
-                    $("#filter-ecu").value = config.ecuId || "";
-                    $("#filter-app").value = config.appId || "";
-                    $("#filter-ctx").value = config.ctxId || "";
-                    $("#filter-payload").value = config.payloadRegex || "";
-
-                    applyFilters();
-                }
+                const reply = json ? JSON.parse(json) : null;
+                if (reply?.error) $("#search-message").innerText = reply.error;
             } catch (e) {
                 console.error("Failed to load DLF:", e);
             }
@@ -409,9 +401,8 @@ function setupEvents() {
     });
 
     document.on("click", "#btn-clear-filters", () => {
-        for (const sel of ["#filter-ecu", "#filter-app", "#filter-ctx", "#filter-payload"]) {
-            $(sel).value = "";
-        }
+        for (const input of $$("#quick-filter input"))
+            input.value = "";
         applyFilters();
     });
 
@@ -453,15 +444,40 @@ function setupEvents() {
     });
 }
 
+// {column id: value} of the quick filter, for FieldFilter.fromValues()
 function applyFilters() {
-    const config = {
-        ecuId: $("#filter-ecu").value,
-        appId: $("#filter-app").value,
-        ctxId: $("#filter-ctx").value,
-        payloadRegex: $("#filter-payload").value
-    };
+    const values = {};
+    for (const input of $$("#quick-filter input"))
+        values[input.getAttribute("column-id")] = input.value;
     // The table reloads when the filter operation reports completion
-    Window.this.xcall("applyFilter", JSON.stringify(config));
+    Window.this.xcall("applyFilter", JSON.stringify(values));
+}
+
+// Columns that the quick filter can take a value for, see FieldFilter
+const filterableKinds = new Set(["Text", "Integer", "Hex", "Enum", "Payload"]);
+
+function filterPlaceholder(column) {
+    switch (column.kind) {
+        case "Payload": return "regular expression, e.g. error.*";
+        case "Integer": return "a number";
+        case "Hex": return "a hex number, e.g. 1F";
+        case "Enum": return column.labels.join(", ");
+        default: return "the exact value";
+    }
+}
+
+// The fields of the quick filter for the columns of the active document.
+// Typed values are kept for the columns the new format has too.
+function renderQuickFilter(columns) {
+    const panel = $("#quick-filter");
+    const typed = {};
+    for (const input of $$("#quick-filter input"))
+        typed[input.getAttribute("column-id")] = input.value;
+    panel.content(columns.filter(c => filterableKinds.has(c.kind)).map(c =>
+        <div class="filter-group">
+            <label>{c.kind === "Payload" ? `${c.title} (regex)` : c.title}</label>
+            <input type="text" column-id={c.id} placeholder={filterPlaceholder(c)} value={typed[c.id] ?? ""} />
+        </div>));
 }
 
 // Status of every open document, kept up to date for all documents, not only
@@ -552,7 +568,9 @@ function applyColumns() {
     const json = Window.this.xcall("getColumns");
     if (!json || json === "[]" || json === appliedColumns) return; // none, or unchanged
     appliedColumns = json;
-    setColumns(JSON.parse(json));
+    const columns = JSON.parse(json);
+    setColumns(columns);
+    renderQuickFilter(columns);
     for (const table of $$("table.log-table")) {
         table.$("thead").content(renderHeader());
         const list = table.$("tbody");

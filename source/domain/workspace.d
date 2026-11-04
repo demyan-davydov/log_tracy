@@ -6,7 +6,7 @@ import domain.document_item : DocumentItem;
 import domain.index.anchors;
 
 import log_core.log_filter : LogFilter;
-import log_core.log_format : ColumnInfo;
+import log_core.log_format : ColumnInfo, LogFormat;
 
 import event_bus.event_bus_interface : SignalConsumer, SubscriptionToken;
 import event_bus.event_bus_sync : EventBusSync;
@@ -94,6 +94,11 @@ private class NullDocument : Document
     }
 
     override const(ColumnInfo)[] columns()
+    {
+        return null;
+    }
+
+    override const(LogFormat) format()
     {
         return null;
     }
@@ -451,6 +456,11 @@ unittest
             return null;
         }
 
+        const(LogFormat) format()
+        {
+            return null;
+        }
+
         void applyViewFilter(LogFilter!wchar filter)
         {
         }
@@ -538,6 +548,7 @@ unittest
         DocumentView mainView() { return k_nullDocumentView; }
         DocumentView searchView() { return k_nullDocumentView; }
         const(ColumnInfo)[] columns() { return null; }
+        const(LogFormat) format() { return null; }
         void applyViewFilter(LogFilter!wchar filter) {}
         void applySearchFilter(LogFilter!wchar filter) {}
         bool setAnchor(size_t index, bool value) { return false; }
@@ -594,6 +605,7 @@ unittest
         DocumentView mainView() { return k_nullDocumentView; }
         DocumentView searchView() { return k_nullDocumentView; }
         const(ColumnInfo)[] columns() { return null; }
+        const(LogFormat) format() { return null; }
         void applyViewFilter(LogFilter!wchar filter) {}
         void applySearchFilter(LogFilter!wchar filter) {}
         bool setAnchor(size_t index, bool value) { return false; }
@@ -629,6 +641,7 @@ unittest
         DocumentView mainView() { return k_nullDocumentView; }
         DocumentView searchView() { return k_nullDocumentView; }
         const(ColumnInfo)[] columns() { return null; }
+        const(LogFormat) format() { return null; }
         void applyViewFilter(LogFilter!wchar filter) {}
         void applySearchFilter(LogFilter!wchar filter) {}
         bool setAnchor(size_t index, bool value) { return false; }

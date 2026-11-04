@@ -556,6 +556,20 @@ unittest
     assert(msg.text(0) is null, "a failed decode leaves no stale record");
 }
 
+@("DltFormat columns: the quick filter finds an ID by its trimmed value")
+unittest
+{
+    import dlt_core.dlt_fields : beginDltRecord;
+    import log_core.field_filter : FieldFilter;
+
+    auto filter = FieldFilter.fromValues(new DltFormat().columns, ["ecu": "CU7", "app": "APP1"]);
+    LogMessage!wchar msg;
+    msg.beginDltRecord("CU7 ", "APP1", "CTX1");
+    assert(filter.matches(msg), "the padding is not part of the ID");
+    msg.beginDltRecord("ECU1", "APP1", "CTX1");
+    assert(!filter.matches(msg));
+}
+
 // ─── DltDetector tests ─────────────────────────────────────────────────────
 
 @("DltDetector: a storage header at the start is certain, the extension is a hint")

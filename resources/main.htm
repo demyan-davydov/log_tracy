@@ -68,22 +68,8 @@
     <frameset id="document-views" cols="200px, *">
         <section class="left-panel" id="sidebar">
             <header>Filters</header>
-            <div class="filter-group">
-                <label>ECU ID</label>
-                <input type="text" id="filter-ecu" placeholder="e.g. ECU1" />
-            </div>
-            <div class="filter-group">
-                <label>App ID</label>
-                <input type="text" id="filter-app" placeholder="e.g. APP1" />
-            </div>
-            <div class="filter-group">
-                <label>Context ID</label>
-                <input type="text" id="filter-ctx" placeholder="e.g. CTX1" />
-            </div>
-            <div class="filter-group">
-                <label>Payload Regex</label>
-                <input type="text" id="filter-payload" placeholder="e.g. error.*" />
-            </div>
+            <!-- a field per column of the format: renderQuickFilter() in script.js -->
+            <div id="quick-filter"></div>
             <div class="filter-actions">
                 <button id="btn-dlf">Load Filter</button>
                 <button id="btn-clear-filters">Clear All</button>
