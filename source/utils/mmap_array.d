@@ -5,7 +5,6 @@ import core.sys.posix.unistd;
 
 // todo: import std.experimental.allocator.mmap_allocator : MmapAllocator;
 
-@nogc:
 
 //! Array that stores data in memory mapped file.
 struct MmapArray(T)
@@ -16,41 +15,53 @@ struct MmapArray(T)
 
     alias Type = T;
 
-    private void alloc(size_t capacity) @nogc
+    //! @return false if the memory can't be mapped: the array is empty then,
+    //! with no capacity
+    private bool alloc(size_t capacity) nothrow @nogc
     {
-        _capacity = capacity;
-        auto bytes = _capacity * T.sizeof;
+        _data = null;
+        _capacity = 0;
+        _length = 0;
+        if (capacity > size_t.max / T.sizeof)
+            return false;
 
         void* ptr = mmap(
             null,
-            bytes,
+            capacity * T.sizeof,
             PROT_READ | PROT_WRITE,
             MAP_PRIVATE | MAP_ANON,
             -1,
             0
         );
-
-        assert(ptr != MAP_FAILED);
+        if (ptr == MAP_FAILED)
+            return false;
 
         _data = cast(T*) ptr;
-        _length = 0;
+        _capacity = capacity;
+        return true;
     }
 
-    this(size_t maxElements) @nogc
+    //! @throws Exception if that much memory can't be mapped
+    this(size_t maxElements)
     {
-        alloc(maxElements);
+        if (!alloc(maxElements))
+            throw new Exception("not enough address space for an index of this file");
     }
 
     ~this() @nogc
     {
-        munmap(_data, _capacity * T.sizeof);
+        if (_data)
+            munmap(_data, _capacity * T.sizeof);
     }
 
     //! Unmap file to free memory and reallocate it.
+    //! If the memory can't be mapped again, the capacity becomes 0: appends fail.
     void clear() @nogc
     {
-        munmap(_data, _capacity * T.sizeof);
-        alloc(_capacity);
+        const capacity = _capacity;
+        if (_data)
+            munmap(_data, _capacity * T.sizeof);
+        alloc(capacity);
     }
 
     //! Append element to array.
@@ -159,4 +170,13 @@ unittest
     assert(a.length == 2 && a[0] == 1 && a[1] == 2);
     assert(!a.removeAt(2), "out of range");
     assert(a.insertAt(2, 9) && a[2] == 9, "insert at the end");
+}
+
+@("MmapArray: a capacity that can't be mapped throws instead of asserting")
+unittest
+{
+    import std.exception : assertThrown;
+
+    assertThrown!Exception(MmapArray!ulong(1UL << 50)); // 8 PB: more than the address space
+    assertThrown!Exception(MmapArray!ulong(size_t.max / 4), "the size in bytes overflows");
 }

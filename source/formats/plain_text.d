@@ -41,8 +41,14 @@ final class PlainTextDetector : FormatDetector
     //! Low: any more specific format that fits wins
     enum float fallbackScore = 0.05f;
 
+    //! An empty file: below a format's extension hint (e.g. ".dlt"), so a
+    //! capture that has not been written yet keeps its format
+    enum float emptyScore = 0.03f;
+
     override Detection detect(string path, const(ubyte)[] head) const
     {
+        if (head.length == 0)
+            return Detection(emptyScore);
         return Detection(looksLikeText(head) ? fallbackScore : 0);
     }
 

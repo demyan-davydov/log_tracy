@@ -4,38 +4,32 @@ module log_core.text_parsing;
 //! front of `s` and moves it past what it read; on failure `s` may be moved
 //! partly, the caller gives up on the line then. No allocation.
 
-//! Reads exactly `digits` decimal digits
-bool readDigits(ref const(char)[] s, size_t digits, out uint value) pure nothrow @nogc @safe
+//! Reads up to `maxDigits` (at most 9) decimal digits
+//! @returns the number of digits read
+private size_t readDigitRun(ref const(char)[] s, size_t maxDigits, out uint value) pure nothrow @nogc @safe
 {
-    if (s.length < digits)
-        return false;
+    size_t n = 0;
     uint result = 0;
-    foreach (c; s[0 .. digits])
+    while (n < s.length && n < maxDigits && s[n] >= '0' && s[n] <= '9')
     {
-        if (c < '0' || c > '9')
-            return false;
-        result = result * 10 + (c - '0');
+        result = result * 10 + (s[n] - '0');
+        ++n;
     }
     value = result;
-    s = s[digits .. $];
-    return true;
+    s = s[n .. $];
+    return n;
+}
+
+//! Reads exactly `digits` decimal digits (at most 9)
+bool readDigits(ref const(char)[] s, size_t digits, out uint value) pure nothrow @nogc @safe
+{
+    return readDigitRun(s, digits, value) == digits;
 }
 
 //! Reads 1 to 9 decimal digits
 bool readNumber(ref const(char)[] s, out uint value) pure nothrow @nogc @safe
 {
-    size_t n = 0;
-    uint result = 0;
-    while (n < s.length && n < 9 && s[n] >= '0' && s[n] <= '9')
-    {
-        result = result * 10 + (s[n] - '0');
-        ++n;
-    }
-    if (n == 0)
-        return false;
-    value = result;
-    s = s[n .. $];
-    return true;
+    return readDigitRun(s, 9, value) > 0;
 }
 
 //! Reads the character `c`
@@ -61,19 +55,13 @@ bool skipSpaces(ref const(char)[] s) pure nothrow @nogc @safe
 //! @returns nanoseconds
 bool readFraction(ref const(char)[] s, out uint nanoseconds) pure nothrow @nogc @safe
 {
-    size_t n = 0;
-    uint result = 0;
-    while (n < s.length && n < 9 && s[n] >= '0' && s[n] <= '9')
-    {
-        result = result * 10 + (s[n] - '0');
-        ++n;
-    }
+    uint value;
+    const n = readDigitRun(s, 9, value);
     if (n == 0)
         return false;
     foreach (_; n .. 9)
-        result *= 10;
-    nanoseconds = result;
-    s = s[n .. $];
+        value *= 10;
+    nanoseconds = value;
     return true;
 }
 
@@ -98,7 +86,8 @@ bool readTimeOfDay(ref const(char)[] s, out long nanoseconds) pure nothrow @nogc
 }
 
 //! Days since 1970-01-01 of a date of the proleptic Gregorian calendar
-//! (H. Hinnant's days_from_civil)
+//! (H. Hinnant's days_from_civil). Not std.datetime's Date.dayOfGregorianCal:
+//! the Date constructor throws, and the callers are nothrow @nogc.
 long daysFromCivil(int year, uint month, uint day) pure nothrow @nogc @safe
 {
     year -= month <= 2;
@@ -112,13 +101,9 @@ long daysFromCivil(int year, uint month, uint day) pure nothrow @nogc @safe
 //! @returns true if the date exists
 bool isValidDate(int year, uint month, uint day) pure nothrow @nogc @safe
 {
-    if (month < 1 || month > 12 || day < 1)
-        return false;
-    static immutable ubyte[12] daysIn = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-    if (day > daysIn[month - 1])
-        return false;
-    const bool leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
-    return month != 2 || day <= 28 || leap;
+    import std.datetime.date : valid;
+
+    return month <= 12 && day <= 31 && valid!"days"(year, month, day);
 }
 
 //! Nanoseconds since the epoch of a date and a time of day, as if in UTC

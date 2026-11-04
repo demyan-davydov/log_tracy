@@ -10,7 +10,8 @@ import core.stdc.string : memchr;
 //! A record is a line. A multiline format glues the lines that don't start a
 //! record (a stack trace, a continued message) to the record before them; a
 //! record is cut at a line boundary once it is longer than maxRecordLength,
-//! so a file that doesn't fit the format still has records of bounded size.
+//! and a line longer than that is cut into records of that size at most, so
+//! any data has records of bounded size.
 //! The first line of the data always starts a record.
 abstract class TextFormat : LogFormat
 {
@@ -80,27 +81,56 @@ abstract class TextFormat : LogFormat
     //! break), or 0 if it is not complete yet (only without final_)
     private size_t recordEnd(const(ubyte)[] data, size_t start, bool final_) const nothrow @nogc
     {
-        size_t newline = findNewline(data, start);
-        if (newline == notFound)
+        const first = lineEnd(data, start);
+        if (first == tooLong)
+            return cutLine(data, start);
+        if (first == incomplete)
             return final_ ? data.length : 0;
-        size_t end = newline + 1;
+        size_t end = first;
         if (!_multiline)
             return end;
 
         while (end < data.length && end - start < maxRecordLength)
         {
-            newline = findNewline(data, end);
-            if (newline == notFound && !final_)
+            const next = lineEnd(data, end);
+            if (next == incomplete && !final_)
                 return 0; // can't tell yet whether the line starts a record
-            const lineEnd = newline == notFound ? data.length : newline;
-            if (isRecordStart(withoutLineBreak(cast(const(char)[]) data[end .. lineEnd])))
+            if (next == tooLong)
+                return end; // a line that long is a record of its own
+            const lineStop = next == incomplete ? data.length : next;
+            if (isRecordStart(withoutLineBreak(cast(const(char)[]) data[end .. lineStop])))
                 return end;
-            end = newline == notFound ? data.length : newline + 1;
+            end = lineStop;
         }
         if (end == data.length && !final_)
             return 0; // the next lines may continue the record
         return end;
     }
+}
+
+private enum size_t incomplete = size_t.max; // lineEnd(): the data ends first
+private enum size_t tooLong = size_t.max - 1; // lineEnd(): longer than maxRecordLength
+
+//! @returns the end of the line starting at `start` (after its line break),
+//! `incomplete` or `tooLong`. Looks at maxRecordLength bytes at most.
+private size_t lineEnd(const(ubyte)[] data, size_t start) nothrow @nogc
+{
+    const limit = start + TextFormat.maxRecordLength < data.length
+        ? start + TextFormat.maxRecordLength : data.length;
+    const newline = findNewline(data[0 .. limit], start);
+    if (newline != notFound)
+        return newline + 1;
+    return limit == data.length ? incomplete : tooLong;
+}
+
+//! @returns where a line too long for a record is cut: maxRecordLength bytes
+//! after `start`, moved back to the start of a UTF-8 character
+private size_t cutLine(const(ubyte)[] data, size_t start) pure nothrow @nogc @safe
+{
+    size_t cut = start + TextFormat.maxRecordLength;
+    while (cut > start + 1 && (data[cut] & 0xC0) == 0x80)
+        --cut;
+    return cut;
 }
 
 private enum size_t notFound = size_t.max;
@@ -113,12 +143,13 @@ private size_t findNewline(const(ubyte)[] data, size_t from) nothrow @nogc
     return p is null ? notFound : p - data.ptr;
 }
 
-//! @returns `text` without its trailing "\n" or "\r\n"
+//! @returns `text` without its trailing line break: "\n" and the "\r"s
+//! before it ("\r\r\n" comes from an old `adb shell` on Windows)
 const(char)[] withoutLineBreak(const(char)[] text) pure nothrow @nogc @safe
 {
     if (text.length && text[$ - 1] == '\n')
         text = text[0 .. $ - 1];
-    if (text.length && text[$ - 1] == '\r')
+    while (text.length && text[$ - 1] == '\r')
         text = text[0 .. $ - 1];
     return text;
 }
@@ -296,4 +327,44 @@ unittest
     const(char)[][] lines;
     forEachSampleLine(bytes("a\r\nb\ncut"), (const(char)[] line) { lines ~= line; });
     assert(lines == ["a", "b"], "the last line may be cut by the sample");
+}
+
+@("TextFormat: a line longer than maxRecordLength is cut at a character boundary")
+unittest
+{
+    import std.array : replicate;
+
+    enum max = TextFormat.maxRecordLength;
+    // "é" takes 2 bytes, starting at odd offsets: a cut at max bytes would split one
+    const string data = "#" ~ "é".replicate(max + max / 4); // ~2.5 * max, no line break
+
+    foreach (multiline; [false, true])
+    {
+        auto format = new HashFormat(multiline);
+        auto offsets = scanAll(format, bytes(data));
+        assert(offsets.length == 3, "a long line is several records");
+        foreach (i, offset; offsets)
+        {
+            assert((data[offset] & 0xC0) != 0x80, "a record starts at a character");
+            const record = format.recordAt(bytes(data), offset);
+            assert(record.length <= max);
+            const next = i + 1 < offsets.length ? offsets[i + 1] : data.length;
+            assert(offset + record.length == next, "recordAt agrees with the scan");
+        }
+    }
+
+    // In a stream, the cut parts are complete before the line break arrives
+    size_t[4] found;
+    const r = new HashFormat(false).scanRecords(bytes(data), 0, found[], false);
+    assert(r.count == 2, "the last part may still grow");
+}
+
+@("TextFormat: every carriage return before the line break is dropped")
+unittest
+{
+    auto format = new HashFormat(false);
+    auto data = bytes("#a\r\r\n#b\n");
+    LogMessage!wchar msg;
+    assert(format.decode(msg, format.recordAt(data, 0)));
+    assert(msg.payloadText == "#a"w);
 }

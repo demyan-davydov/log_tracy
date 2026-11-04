@@ -67,3 +67,13 @@ unittest
         "the content wins over the extension");
     assertThrown(detectFormat("x.bin", cast(const(ubyte)[])[0x01, 0x00, 0x02]));
 }
+
+@("detectFormat: an empty .dlt file is DLT, an empty file of another name is text")
+unittest
+{
+    import dlt_core.dlt_format : DltFormat;
+    import formats.plain_text : PlainTextFormat;
+
+    assert(cast(DltFormat) detectFormat("capture.dlt", null) !is null);
+    assert(cast(PlainTextFormat) detectFormat("notes.log", null) !is null);
+}

@@ -85,7 +85,12 @@ final class LogcatFormat : TextFormat
         msg.beginRecord();
 
         LogcatLine line;
-        const bool parsed = _variant == Variant.Brief ? parseBrief(text, line) : parseThreadtime(text, line);
+        bool parsed = _variant == Variant.Brief ? parseBrief(text, line) : parseThreadtime(text, line);
+        // The Time column shows the year or not for the whole file: a line of
+        // the other variant would get a wrong or a made-up year
+        if (parsed && _variant != Variant.Brief
+            && (line.timeKind == TimeKind.Local) != (_variant == Variant.ThreadtimeYear))
+            parsed = false;
         if (!parsed)
         {
             auto builder = msg.payloadBuilder();
@@ -276,7 +281,10 @@ private bool parseBrief(const(char)[] s, out LogcatLine line) pure nothrow @nogc
         while (tagEnd > 0 && s[tagEnd - 1] == ' ')
             --tagEnd;
         line.tag = s[0 .. tagEnd];
-        line.message = i + 3 <= s.length ? s[i + 3 .. $] : s[$ .. $];
+        size_t messageStart = i + 2; // after "):"
+        if (messageStart < s.length && s[messageStart] == ' ')
+            ++messageStart;
+        line.message = s[messageStart .. $];
         return true;
     }
     return false;
@@ -370,4 +378,28 @@ unittest
 
     assert(detector.detect("x.log", bytes("just some\ntext lines\n")).score == 0);
     assert(detector.detect("x.log", bytes("Nov  3 14:22:01 host app[1]: syslog\n")).score == 0);
+}
+
+@("LogcatFormat brief: a message right after the colon keeps its first character")
+unittest
+{
+    auto format = new LogcatFormat(LogcatFormat.Variant.Brief);
+    LogMessage!wchar msg;
+    assert(decodeLine(format, "I/Tag( 123):started", msg));
+    assert(msg.payloadText == "started"w);
+}
+
+@("LogcatFormat threadtime: a line of the other variant is kept as text, not given a made-up year")
+unittest
+{
+    LogMessage!wchar msg;
+
+    auto withYear = new LogcatFormat(LogcatFormat.Variant.ThreadtimeYear);
+    assert(decodeLine(withYear, "11-03 14:22:01.123  1  2 I T: x", msg));
+    assert(msg.timeKind == TimeKind.None, "no year 2000 in a file with years");
+    assert(msg.payloadText == "11-03 14:22:01.123  1  2 I T: x"w);
+
+    auto noYear = new LogcatFormat(LogcatFormat.Variant.Threadtime);
+    assert(decodeLine(noYear, "2026-11-03 14:22:01.123  1  2 I T: x", msg));
+    assert(msg.timeKind == TimeKind.None);
 }
