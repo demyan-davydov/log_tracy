@@ -1,10 +1,11 @@
 module formats.dlt.parser;
 
-//! Decodes a DLT record (protocol version 1) into a LogMessage: the headers,
-//! the arguments of a verbose message, the services of a control message and
-//! the message ID and data of a non-verbose one.
+//! Decodes a DLT record (protocol version 1 or 2) into a LogMessage: the
+//! headers, the arguments of a verbose message, the services of a control
+//! message and the message ID and data of a non-verbose one.
 
 import formats.dlt.protocol;
+import formats.dlt.header_v2;
 import std.stdio;
 import std.stdint;
 import std.traits : isSomeChar;
@@ -12,16 +13,16 @@ import std.traits : isSomeChar;
 import log_core.log_message;
 import formats.dlt.fields;
 
-//! @brief DLT Message structure:
-//! [ Storage Header ]        (16 bytes, always in file)
+//! @brief DLT Message structure (protocol version 1, see header_v2 for version 2):
+//! [ Storage Header ]        (in files: 16 bytes in version 1, 14 + ECU ID in version 2)
 //! [ Standard Header ]       (minimum 4 bytes)
 //! [ Extra Header Fields ]   (up to 12 bytes, depends on 'StandardHeader.headerType', always big-endian)
 //! [ Extended Header ]       (if 'StandardHeader.headerType' has 'UseExtendedHeader' flag)
 //! [ Payload ]               (byte order depends on 'StandardHeader.isBigEndian()')
 
+//! The headers of a protocol version 1 message, after its storage header
 struct LogItemHeaders
 {
-    const(StorageHeader)* storage;
     const(StandardHeader)* standard;
     const(ExtendedHeader)* extended;
     const(ubyte)[] payload; // after the message ID when the record has one
@@ -37,19 +38,11 @@ struct LogItemHeaders
     uint32_t extraTimestamp;
 }
 
-LogItemHeaders findHeaders(const(ubyte)[] data, bool hasStorageHeader = true) pure nothrow @nogc
+//! Finds the headers of the protocol version 1 message at the start of `data`
+//! (no storage header): `standard` is null if it is too short
+LogItemHeaders findHeaders(const(ubyte)[] data) pure nothrow @nogc
 {
     LogItemHeaders headers;
-
-    if (hasStorageHeader)
-    {
-        if (data.length < StorageHeader.sizeof)
-            return headers; // invalid
-
-        headers.storage = cast(const(StorageHeader)*) data.ptr;
-
-        data = data[StorageHeader.sizeof .. $];
-    }
 
     if (data.length < StandardHeader.sizeof)
         return headers; // invalid (no standard header)
@@ -112,8 +105,24 @@ LogItemHeaders findHeaders(const(ubyte)[] data, bool hasStorageHeader = true) pu
 bool parseDltItem(Char)(ref LogMessage!Char msg, const(ubyte)[] data, bool hasStorageHeader = true) nothrow @nogc
         if (isSomeChar!Char)
 {
-    const LogItemHeaders headers = findHeaders(data, hasStorageHeader);
+    StorageInfo storage;
+    const(ubyte)[] message = data;
+    if (hasStorageHeader)
+    {
+        storage = readStorageHeader(data);
+        if (storage.size == 0)
+        {
+            msg.clear();
+            return false;
+        }
+        message = data[storage.size .. $];
+    }
 
+    const ubyte version_ = protocolVersion(message);
+    if (version_ == 2)
+        return decodeV2(msg, storage, message);
+
+    const LogItemHeaders headers = findHeaders(message);
     if (headers.standard is null)
     {
         msg.clear();
@@ -122,17 +131,16 @@ bool parseDltItem(Char)(ref LogMessage!Char msg, const(ubyte)[] data, bool hasSt
 
     const bool msbf = headers.standard.isBigEndian();
 
-    const ubyte protocolVersion = headers.standard.getVersion();
-    if (protocolVersion > 1) // 0 is written by old loggers
+    if (version_ > 2) // 0 is written by old loggers
     {
         // Only the storage header is known: the rest has another layout
-        auto builder = msg.beginDltRecord(headers.storage ? headers.storage.ecuId[] : "", "", "");
-        setStorageTime(msg, headers);
+        auto builder = msg.beginDltRecord(storage.ecuId, "", "");
+        setStorageTime(msg, storage);
         msg.level = LogLevel.None;
 
         ShortText!48 text;
         text.add("[DLT protocol version ");
-        text.add(protocolVersion);
+        text.add(version_);
         text.add(" is not supported]");
         builder.appendAscii(text.text);
         return true;
@@ -141,8 +149,8 @@ bool parseDltItem(Char)(ref LogMessage!Char msg, const(ubyte)[] data, bool hasSt
     // ── ECU ID ──────────────────────────────────────────────────────────────
     // The ECU of the message itself wins over the one of the storage header:
     // a logger behind a gateway is stored with the ECU of the gateway
-    const char[] ecuId = headers.standard.withEcuId || headers.storage is null
-        ? headers.extraEcuId : headers.storage.ecuId;
+    const char[] ecuId = headers.standard.withEcuId || storage.size == 0
+        ? headers.extraEcuId[] : storage.ecuId;
 
     // ── AppId / CtxId / level / type ────────────────────────────────────────
     const(char)[] appId = "-";
@@ -162,7 +170,7 @@ bool parseDltItem(Char)(ref LogMessage!Char msg, const(ubyte)[] data, bool hasSt
     auto builder = msg.beginDltRecord(ecuId, appId, ctxId);
 
     // ── scalar metadata ─────────────────────────────────────────────────────
-    setStorageTime(msg, headers);
+    setStorageTime(msg, storage);
     msg.setNumber(DltField.Counter, headers.standard.messageCounter);
     if (headers.standard.withTimestamp)
         msg.setNumber(DltField.Timestamp, headers.extraTimestamp);
@@ -177,21 +185,124 @@ bool parseDltItem(Char)(ref LogMessage!Char msg, const(ubyte)[] data, bool hasSt
     if (headers.extended && headers.extended.messageInfo.isVerbose())
         decodeArguments(builder, headers.payload, headers.extended.numberOfArguments, msbf);
     else if (headers.extended && msgType == MessageType.Control)
-        decodeControl(builder, headers, msbf);
+        decodeControl(builder, headers.messageId,
+            headers.extended.messageInfo.messageTypeInfo(), headers.payload, msbf);
     else
-        decodeNonVerbose(builder, headers);
+        decodeNonVerbose(builder, headers.hasMessageId, headers.messageId, headers.payload);
 
     // builder destructor calls storePayload() automatically
     return true;
 }
 
-//! Sets the time of the storage header, if the record has one
-private void setStorageTime(Char)(ref LogMessage!Char msg, ref const LogItemHeaders headers) nothrow @nogc
+//! Decodes a message of protocol version 2 (no storage header in `message`).
+//! Its payload is little-endian: dlt-viewer reads it so, the protocol doesn't say.
+private bool decodeV2(Char)(ref LogMessage!Char msg, ref const StorageInfo storage,
+    const(ubyte)[] message) nothrow @nogc
 {
-    if (headers.storage is null)
+    HeaderV2 h;
+    if (readHeaderV2(message, h) != HeaderV2Status.ok)
+    {
+        auto builder = msg.beginDltRecord(storage.ecuId, "", "");
+        setStorageTime(msg, storage);
+        msg.level = LogLevel.None;
+        builder.appendAscii("[invalid DLT version 2 header]");
+        return true;
+    }
+
+    auto builder = msg.beginDltRecord(h.hasEcuId ? h.ecuId : storage.ecuId,
+        h.hasAppContextId ? h.appId : "-", h.hasAppContextId ? h.ctxId : "-");
+
+    setStorageTime(msg, storage);
+    msg.setNumber(DltField.Counter, h.counter);
+    if (h.hasTimestamp)
+    {
+        long utc;
+        if (h.sinceStartup) // in the 0.1 ms of version 1
+            msg.setNumber(DltField.Timestamp, h.seconds * 10_000 + h.nanoseconds / 100_000);
+        else if ((h.seconds != 0 || h.nanoseconds != 0) && toTimeNs(h.seconds, h.nanoseconds, utc))
+        {
+            // The time of the message wins over the time it was stored, as in
+            // dlt-viewer; a logger that leaves it at zero keeps the stored time
+            msg.timeNs = utc;
+            msg.timeKind = TimeKind.Absolute;
+        }
+    }
+    if (h.hasSessionId)
+        msg.setNumber(DltField.SessionId, h.sessionId);
+    msg.level = h.hasMessageInfo ? h.messageInfo.logLevel() : LogLevel.None;
+    if (h.hasMessageInfo)
+        msg.setNumber(DltField.Type, h.messageInfo.messageType());
+    if (h.hasMessageId)
+        msg.messageId = h.messageId;
+
+    enum bool msbf = false;
+    const(ubyte)[] payload = message[h.size .. h.length <= message.length ? h.length : $];
+
+    if (h.segmented)
+    {
+        appendSegment(builder, h);
+        return true;
+    }
+
+    final switch (h.content)
+    {
+    case ContentInfo.Verbose:
+        decodeArguments(builder, payload, h.numberOfArguments, msbf);
+        break;
+    case ContentInfo.NonVerbose:
+        decodeNonVerbose(builder, true, h.messageId, payload);
+        break;
+    case ContentInfo.Control:
+        uint serviceId = 0;
+        if (payload.length >= 4)
+        {
+            serviceId = readValue!uint(payload[0 .. 4], msbf);
+            msg.messageId = serviceId;
+            payload = payload[4 .. $];
+        }
+        decodeControl(builder, serviceId, h.messageInfo.messageTypeInfo(), payload, msbf);
+        break;
+    }
+    return true;
+}
+
+//! Appends the frame of a segmented version 2 message, as dlt-viewer shows it
+private void appendSegment(Builder)(ref Builder builder, ref const HeaderV2 h) nothrow @nogc
+{
+    ShortText!64 text;
+    text.add("Segmentation: ");
+    switch (h.segmentFrame)
+    {
+    case SegmentFrame.First:
+        text.add("First Frame with total length ");
+        text.add(h.segmentTotalLength);
+        break;
+    case SegmentFrame.Consecutive:
+        text.add("Consecutive Frame number ");
+        text.add(h.segmentNumber);
+        break;
+    case SegmentFrame.Last:
+        text.add("Last Frame");
+        break;
+    case SegmentFrame.Abort:
+        text.add("Abort Frame with abort reason ");
+        text.add(h.segmentAbortReason);
+        break;
+    default:
+        text.add("Frame of type ");
+        text.add(h.segmentFrame);
+        break;
+    }
+    builder.appendAscii(text.text);
+}
+
+//! Sets the time of the storage header, if the record has one
+private void setStorageTime(Char)(ref LogMessage!Char msg, ref const StorageInfo storage) nothrow @nogc
+{
+    long timeNs;
+    if (storage.size == 0 || !toTimeNs(storage.seconds, storage.nanoseconds, timeNs))
         return;
-    msg.timeNs = headers.storage.nativeSeconds * 1_000_000_000L
-        + headers.storage.nativeMicroseconds * 1000L;
+    msg.timeNs = timeNs;
     msg.timeKind = TimeKind.Absolute;
 }
 
@@ -487,17 +598,17 @@ float halfToFloat(ushort half) pure nothrow @nogc
 
 //! Appends the message ID of a non-verbose message, if its payload is long
 //! enough to hold one, and its data as a hex dump
-private void decodeNonVerbose(Builder)(ref Builder builder, ref const LogItemHeaders headers) nothrow @nogc
+private void decodeNonVerbose(Builder)(ref Builder builder, bool hasMessageId, uint messageId,
+    const(ubyte)[] data) nothrow @nogc
 {
-    if (headers.hasMessageId)
+    if (hasMessageId)
     {
         ShortText!16 label;
         label.add("[");
-        label.add(headers.messageId);
+        label.add(messageId);
         label.add("]");
         builder.appendAscii(label.text);
     }
-    const data = headers.payload;
     if (data.length == 0)
         return;
     builder.appendHex(cast(const(char)[]) data);
@@ -505,12 +616,11 @@ private void decodeNonVerbose(Builder)(ref Builder builder, ref const LogItemHea
 }
 
 //! Appends a control message: "[service status]" and what the service answered
-private void decodeControl(Builder)(ref Builder builder, ref const LogItemHeaders headers,
-    bool msbf) nothrow @nogc
+//! `controlType` is the MTIN of the message, `data` follows the service ID.
+private void decodeControl(Builder)(ref Builder builder, uint serviceId, ubyte controlType,
+    const(ubyte)[] data, bool msbf) nothrow @nogc
 {
-    const uint serviceId = headers.messageId;
-    const ubyte controlType = headers.extended.messageInfo.messageTypeInfo();
-    const(ubyte)[] p = headers.payload; // after the service ID
+    const(ubyte)[] p = data;
 
     ShortText!64 label;
     label.add("[");
@@ -1693,12 +1803,12 @@ unittest
     assert(msg.ecuId == "STOR");
 }
 
-@("parseDltItem: a record of another protocol version is not decoded")
+@("parseDltItem: a record of an unknown protocol version is not decoded")
 unittest
 {
     Record r = verbose(argument(u32, bytesOf(7u)), 1);
-    r.protocolVersion = 2;
-    assert(payloadOf(r) == "[DLT protocol version 2 is not supported]");
+    r.protocolVersion = 3;
+    assert(payloadOf(r) == "[DLT protocol version 3 is not supported]");
 
     r.protocolVersion = 0; // written by old loggers
     assert(payloadOf(r) == "7");
@@ -1790,11 +1900,11 @@ unittest
     assert(payloadOf(r) == "4101 |A.");
 }
 
-@("parseDltItem: a record of another protocol version has no fields of version 1")
+@("parseDltItem: a record of an unknown protocol version has no fields of version 1")
 unittest
 {
     Record r = verbose(argument(u32, bytesOf(7u)), 1);
-    r.protocolVersion = 2;
+    r.protocolVersion = 3;
     r.ecuId = "WEID";
     r.withSessionId = true;
     r.withTimestamp = true;
@@ -1814,4 +1924,187 @@ unittest
 unittest
 {
     assert(payloadOf(control(ServiceID.Marker, ControlType.Response, [2])) == "[marker error]");
+}
+
+// ─── Protocol version 2 ───────────────────────────────────────────────────────
+
+version (unittest)
+{
+    import formats.dlt.header_v2 : BuildV2, ContentInfo, SegmentFrame, dltViewerTestFile;
+
+    //! A storage header of version 2
+    ubyte[] storageV2(const(char)[] ecuId, ulong seconds, uint nanoseconds)
+    {
+        ubyte[] bytes = cast(ubyte[]) "DLT\x02".dup;
+        bytes ~= bytesOf(nanoseconds, false);
+        bytes ~= bytesOf(seconds, false)[0 .. 5];
+        bytes ~= cast(ubyte) ecuId.length;
+        return bytes ~ cast(const(ubyte)[]) ecuId;
+    }
+
+    //! The decoded payload text of a version 2 message without storage header
+    string payloadV2(const BuildV2 b)
+    {
+        LogMessage!char msg;
+        assert(parseDltItem(msg, b.bytes(), false));
+        return msg.payloadText.idup;
+    }
+}
+
+@("parseDltItem v2: the test file of dlt-viewer")
+unittest
+{
+    LogMessage!char msg;
+    assert(parseDltItem(msg, dltViewerTestFile, false));
+    assert(msg.ecuId == "ECU1" && msg.appId == "logd" && msg.ctxId == "RBUF");
+    assert(msg.type == MessageType.Log && msg.level == LogLevel.Info);
+    assert(msg.counter == 1);
+    assert(msg.payloadText == "Start logging after ECU startup");
+    // 2 s and 874416044 ns since startup, in 0.1 ms
+    assert(msg.hasField(DltField.Timestamp) && msg.relativeTimestamp_10000 == 28_744);
+    assert(msg.timeKind == TimeKind.None, "no storage header, no time of day");
+}
+
+@("parseDltItem v2: the storage header gives the time and the ECU the message lacks")
+unittest
+{
+    LogMessage!char msg;
+    const storage = storageV2("STOR", 1_700_000_000, 5_000);
+
+    assert(parseDltItem(msg, storage ~ dltViewerTestFile));
+    assert(msg.ecuId == "ECU1", "the ECU of the message wins");
+    assert(msg.timeKind == TimeKind.Absolute);
+    assert(msg.timeNs == 1_700_000_000_000_005_000);
+
+    BuildV2 b;
+    assert(parseDltItem(msg, storage ~ b.bytes()));
+    assert(msg.ecuId == "STOR");
+    assert(msg.appId == "-" && msg.ctxId == "-", "no application and context IDs");
+}
+
+@("parseDltItem v2: a UTC timestamp is the time of the message")
+unittest
+{
+    BuildV2 b;
+    b.seconds = 1_800_000_000;
+    b.nanoseconds = 250_000_000; // bit 31 clear: UTC
+
+    LogMessage!char msg;
+    assert(parseDltItem(msg, storageV2("STOR", 1_700_000_000, 0) ~ b.bytes()));
+    assert(msg.timeKind == TimeKind.Absolute);
+    assert(msg.timeNs == 1_800_000_000_250_000_000);
+    assert(!msg.hasField(DltField.Timestamp), "not a time since startup");
+}
+
+@("parseDltItem v2: IDs, session ID and arguments")
+unittest
+{
+    BuildV2 b;
+    b.ecuId = "ECU12";
+    b.appId = "APP";
+    b.ctxId = "CONTEXT";
+    b.withSessionId = true;
+    b.sessionId = 77;
+    b.messageInfo = 1 | LogLevel.Warn << 4;
+    b.numberOfArguments = 2;
+    b.payload = argument(u32, bytesOf(7u, false), false)
+        ~ argument(TypeInfoFlags.TypeString, bytesOf(cast(ushort) 3, false) ~ cast(ubyte[]) "ok\0".dup, false);
+
+    LogMessage!char msg;
+    assert(parseDltItem(msg, b.bytes(), false));
+    assert(msg.ecuId == "ECU12" && msg.appId == "APP" && msg.ctxId == "CONTEXT");
+    assert(msg.sessionId == 77);
+    assert(msg.level == LogLevel.Warn);
+    assert(msg.payloadText == "7 ok");
+}
+
+@("parseDltItem v2: a non-verbose message has its message ID in the header")
+unittest
+{
+    BuildV2 b;
+    b.content = ContentInfo.NonVerbose;
+    b.messageId = 1234;
+    b.payload = [0x41, 0x01];
+
+    LogMessage!char msg;
+    assert(parseDltItem(msg, b.bytes(), false));
+    assert(msg.messageId == 1234);
+    assert(msg.payloadText == "[1234] 4101 |A.");
+    assert(msg.level == LogLevel.None && !msg.hasField(DltField.Type), "no message info");
+}
+
+@("parseDltItem v2: a control message")
+unittest
+{
+    BuildV2 b;
+    b.content = ContentInfo.Control;
+    b.messageInfo = ControlType.Response << 4 | MessageType.Control << 1;
+    b.payload = bytesOf(cast(uint) ServiceID.GetSoftwareVersion, false) ~ [cast(ubyte) 0]
+        ~ bytesOf(3u, false) ~ cast(ubyte[]) "v1\0".dup;
+
+    LogMessage!char msg;
+    assert(parseDltItem(msg, b.bytes(), false));
+    assert(msg.type == MessageType.Control && msg.messageId == ServiceID.GetSoftwareVersion);
+    assert(msg.payloadText == "[get_software_version ok] v1");
+}
+
+@("parseDltItem v2: a segmented message shows its frame instead of arguments")
+unittest
+{
+    BuildV2 b;
+    b.numberOfArguments = 1;
+    b.payload = argument(u32, bytesOf(7u, false), false);
+
+    b.segmentation = [cast(ubyte) SegmentFrame.First] ~ bytesOf(1000UL);
+    assert(payloadV2(b) == "Segmentation: First Frame with total length 1000");
+    b.segmentation = [cast(ubyte) SegmentFrame.Consecutive] ~ bytesOf(5u);
+    assert(payloadV2(b) == "Segmentation: Consecutive Frame number 5");
+    b.segmentation = [cast(ubyte) SegmentFrame.Last];
+    assert(payloadV2(b) == "Segmentation: Last Frame");
+    b.segmentation = [cast(ubyte) SegmentFrame.Abort, 9];
+    assert(payloadV2(b) == "Segmentation: Abort Frame with abort reason 9");
+}
+
+@("parseDltItem v2: an invalid header is shown as such")
+unittest
+{
+    auto bytes = dltViewerTestFile.dup;
+    bytes[0] |= 0x03; // CNTI 3 is reserved
+
+    LogMessage!char msg;
+    assert(parseDltItem(msg, storageV2("STOR", 1, 0) ~ bytes));
+    assert(msg.ecuId == "STOR");
+    assert(msg.payloadText == "[invalid DLT version 2 header]");
+}
+
+@("parseDltItem v2: an empty or impossible UTC timestamp keeps the time of the storage header")
+unittest
+{
+    LogMessage!char msg;
+    const storage = storageV2("STOR", 1_700_000_000, 5_000);
+
+    BuildV2 empty; // the logger left TMSP at zero
+    assert(parseDltItem(msg, storage ~ empty.bytes()));
+    assert(msg.timeNs == 1_700_000_000_000_005_000);
+
+    BuildV2 huge;
+    huge.seconds = 0xFF_FFFF_FFFF; // beyond the range of the time
+    assert(parseDltItem(msg, storage ~ huge.bytes()));
+    assert(msg.timeNs == 1_700_000_000_000_005_000);
+}
+
+@("parseDltItem: corrupt storage header times don't wrap")
+unittest
+{
+    LogMessage!char msg;
+
+    Record r = verbose([], 0);
+    auto bytes = r.bytes();
+    bytes[8 .. 12] = bytesOf(5_242_880u, false); // microseconds beyond a second
+    assert(parseDltItem(msg, bytes));
+    assert(msg.timeNs == 1000 * 1_000_000_000L + 5_242_880_000L);
+
+    BuildV2 b;
+    assert(parseDltItem(msg, storageV2("STOR", 0xFF_FFFF_FFFF, 0) ~ b.bytes()));
+    assert(msg.timeKind == TimeKind.None, "a time out of range is no time");
 }

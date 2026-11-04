@@ -44,6 +44,70 @@ align(1) struct StorageHeader
 //! @brief Mark for beginning of DLT message
 enum ubyte[4] DLT_PATTERN = ['D', 'L', 'T', '\01'];
 
+//! The storage header of either version, as read from a file
+struct StorageInfo
+{
+    size_t size; // 0: no storage header
+    ulong seconds; // since the Unix epoch
+    ulong nanoseconds; // more than a second in a corrupt header
+    const(char)[] ecuId;
+}
+
+//! Converts a time to nanoseconds since the epoch.
+//! @returns false if it doesn't fit (a corrupt or garbage time)
+bool toTimeNs(ulong seconds, ulong nanoseconds, out long timeNs) pure nothrow @nogc
+{
+    enum ulong perSecond = 1_000_000_000;
+    if (nanoseconds > long.max || seconds > (long.max - nanoseconds) / perSecond)
+        return false;
+    timeNs = cast(long)(seconds * perSecond + nanoseconds);
+    return true;
+}
+
+//! @returns true if `data` starts with the pattern of a storage header,
+//! "DLT" and the version: 1 (16 bytes) or 2 (14 bytes and the ECU ID)
+bool startsWithStoragePattern(const(ubyte)[] data) pure nothrow @nogc
+{
+    return data.length >= 4 && data[0 .. 3] == DLT_PATTERN[0 .. 3] && (data[3] == 1 || data[3] == 2);
+}
+
+//! Reads the storage header at the start of `data`.
+//! Version 1: pattern, seconds (4), microseconds (4), ECU ID (4), little-endian.
+//! Version 2: pattern, nanoseconds (4), seconds (5), ECU ID length (1), ECU ID.
+//! @returns size 0 if there is none or it is cut
+StorageInfo readStorageHeader(const(ubyte)[] data) pure nothrow @nogc
+{
+    StorageInfo info;
+    if (!startsWithStoragePattern(data))
+        return info;
+
+    static uint uint32(const(ubyte)[] bytes) pure nothrow @nogc
+    {
+        return std.bitmanip.littleEndianToNative!uint(bytes[0 .. 4]);
+    }
+
+    if (data[3] == 1)
+    {
+        if (data.length < StorageHeader.sizeof)
+            return info;
+        info.seconds = uint32(data[4 .. 8]);
+        info.nanoseconds = uint32(data[8 .. 12]) * 1000UL;
+        info.ecuId = cast(const(char)[]) data[12 .. 16];
+        info.size = StorageHeader.sizeof;
+        return info;
+    }
+
+    enum fixedSize = 14;
+    if (data.length < fixedSize || data.length < fixedSize + data[13])
+        return info;
+    info.nanoseconds = uint32(data[4 .. 8]);
+    foreach_reverse (b; data[8 .. 13]) // 40 bits, little-endian
+        info.seconds = info.seconds << 8 | b;
+    info.ecuId = cast(const(char)[]) data[fixedSize .. fixedSize + data[13]];
+    info.size = fixedSize + data[13];
+    return info;
+}
+
 //! @brief Fixed part of the Standard Header (4 bytes)
 //! @note Byte order is always big-endian
 align(1) struct StandardHeader
@@ -621,4 +685,45 @@ unittest
     assert(peekMessageId(msgF.ptr) == 0x12345678);
 
     writeln("DLT Core Tests Passed.");
+}
+
+@("readStorageHeader: version 1")
+unittest
+{
+    StorageHeader header;
+    header.pattern = cast(char[4]) DLT_PATTERN;
+    header.nativeSeconds = 1_700_000_000;
+    header.nativeMicroseconds = 123_456;
+    header.ecuId = "ECU1";
+    const bytes = (cast(const(ubyte)*) &header)[0 .. StorageHeader.sizeof];
+
+    const info = readStorageHeader(bytes);
+    assert(info.size == 16);
+    assert(info.seconds == 1_700_000_000 && info.nanoseconds == 123_456_000);
+    assert(info.ecuId == "ECU1");
+    assert(readStorageHeader(bytes[0 .. 15]).size == 0, "cut");
+}
+
+@("readStorageHeader: version 2 has nanoseconds, 40-bit seconds and an ECU ID of any length")
+unittest
+{
+    ubyte[] bytes = cast(ubyte[]) "DLT\x02".dup;
+    bytes ~= [0x15, 0xCD, 0x5B, 0x07]; // 123456789 ns, little-endian
+    bytes ~= [0x00, 0xF1, 0x53, 0x65, 0x01]; // 0x016553F100 s, little-endian
+    bytes ~= 5;
+    bytes ~= cast(ubyte[]) "ECU12".dup;
+    bytes ~= [0xAA, 0xBB]; // the message
+
+    const info = readStorageHeader(bytes);
+    assert(info.size == 19);
+    assert(info.nanoseconds == 123_456_789);
+    assert(info.seconds == 0x01_6553_F100);
+    assert(info.ecuId == "ECU12");
+    assert(startsWithStoragePattern(bytes));
+
+    assert(readStorageHeader(bytes[0 .. 18]).size == 0, "cut ECU ID");
+    assert(readStorageHeader(bytes[0 .. 13]).size == 0, "cut before the ECU ID length");
+    bytes[3] = 3;
+    assert(readStorageHeader(bytes).size == 0, "unknown version");
+    assert(!startsWithStoragePattern(bytes));
 }
