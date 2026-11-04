@@ -8,15 +8,17 @@ import domain.workspace;
 import domain.document_id;
 import domain.document;
 import domain.document_item;
-import domain.dlt_document;
+import log_core.log_format : ColumnInfo, ColumnKind;
+import log_core.log_message : TimeKind;
+import domain.log_document;
 
-import dlt_core.dlt_filter_serialization;
-import dlt_core.dlt_filter_record;
-import dlt_core.dlt_log_filter : DltLogFilter, quickFilter;
+import formats.dlt.filter_serialization;
+import formats.dlt.filter_record;
+import ui.filter_commands : applyQuickFilter, loadDltFilter;
 import domain.search_filter : SearchFilter;
 import ui.main_view_fsm;
 import ui.search_view_fsm;
-import dlt_core.log_filter : LogFilter;
+import log_core.log_filter : LogFilter;
 
 import sciter.types;
 import sciter.behavior;
@@ -282,7 +284,9 @@ class MainWindow : SciterWindow
         }
         if (eventName == "applyFilter"w)
         {
-            onApplyFilter(asString());
+            const error = applyQuickFilter(_workspace.current, asString().toUTF8);
+            if (error.length)
+                writeln("Error applying filter: ", error);
             return true;
         }
         if (eventName == "tab-clicked"w)
@@ -360,9 +364,12 @@ class MainWindow : SciterWindow
             if (method == "getMainViewItem")
             {
                 const int index = getParamInt(0);
+                // null if there is no such row (any more): the view changed, the file is lost
                 DocumentItem docItem;
-                const auto res = _workspace.current.mainView.fetchItem(index, docItem);
-                resultView.set(asSciterArray(index, docItem));
+                if (_workspace.current.mainView.fetchItem(index, docItem))
+                    resultView.set(asSciterRow(index, docItem, _workspace.current.columns));
+                else
+                    resultView.set(SciterValue.makeNull());
 
                 return true;
             }
@@ -376,9 +383,11 @@ class MainWindow : SciterWindow
             if (method == "getSearchViewItem")
             {
                 const int index = getParamInt(0);
-                DocumentItem docItem;
-                const auto res = _workspace.current.searchView.fetchItem(index, docItem);
-                resultView.set(asSciterArray(index, docItem));
+                DocumentItem docItem; // null if there is no such row, as above
+                if (_workspace.current.searchView.fetchItem(index, docItem))
+                    resultView.set(asSciterRow(index, docItem, _workspace.current.columns));
+                else
+                    resultView.set(SciterValue.makeNull());
 
                 return true;
             }
@@ -418,9 +427,15 @@ class MainWindow : SciterWindow
             }
             if (method == "applyFilter")
             {
+                // applyFilter(json) -> error message, "" when the filter was applied
                 string json = getParamString(0);
                 if (!json.empty)
-                    onApplyFilter(json);
+                {
+                    const error = applyQuickFilter(_workspace.current, json);
+                    if (error.length)
+                        writeln("Error applying filter: ", error);
+                    resultView = error.toUTF16();
+                }
                 return true;
             }
             if (method == "onTabClicked")
@@ -432,33 +447,21 @@ class MainWindow : SciterWindow
             }
             if (method == "loadDlf")
             {
+                // loadDlf(path) -> error message, "" when the search was started
                 string path = getParamString(0);
                 if (!path.empty)
                 {
-                    try
-                    {
-                        auto filter = new DltLogFilter!wchar();
-                        filter.load(normalizePath(path));
-                        _workspace.current.applySearchFilter(filter);
-                        // @todo: return filter info to UI
-                        /*
-                        if (filters.length > 0)
-                        {
-                            auto f = filters[0];
-                            JSONValue j = [
-                                "ecuId": f.ecuId.value,
-                                "appId": f.applicationId.value.asString(),
-                                "ctxId": f.contextId.value.asString(),
-                                "payloadRegex": f.payloadText.value.asString()
-                            ];
-                            resultView = j.toString().toUTF16();
-                        }*/
-                    }
-                    catch (Exception e)
-                    {
-                        writeln("Error loading DLF: ", e.msg);
-                    }
+                    const error = loadDltFilter(_workspace.current, normalizePath(path));
+                    if (error.length)
+                        writeln("Error loading DLF: ", error);
+                    resultView = error.toUTF16();
                 }
+                return true;
+            }
+            if (method == "getColumns")
+            {
+                // Columns of the active document, [] if there is none
+                resultView = columnsJson(_workspace.current.columns).toUTF16();
                 return true;
             }
             if (method == "getWorkspaceInfo")
@@ -589,7 +592,7 @@ class MainWindow : SciterWindow
             // Timings: both steps run on the UI thread and may block on a disk
             // that has just been reconnected or removed
             const openStart = MonoTime.currTime;
-            auto fresh = new DltDocument(path);
+            auto fresh = new LogDocument(path);
             const openTime = MonoTime.currTime - openStart;
 
             const destroyStart = MonoTime.currTime;
@@ -627,7 +630,7 @@ class MainWindow : SciterWindow
         try
         {
             writeln("Creating new document: ", path);
-            auto newDoc = new DltDocument(path);
+            auto newDoc = new LogDocument(path);
             auto docId = _workspace.addDocument(newDoc, path);
             addDocumentUi(docId);
             _workspace.setCurrent(docId);
@@ -666,30 +669,6 @@ class MainWindow : SciterWindow
         catch (Exception e)
         {
             writeln("Error loading fibex: ", e.msg);
-        }
-    }
-
-    /// Applies the quick filter of the main view:
-    /// {"ecuId", "appId", "ctxId", "payloadRegex"}, all fields empty resets it.
-    private void onApplyFilter(string json)
-    {
-        try
-        {
-            auto j = parseJSON(json);
-            string field(string key)
-            {
-                auto p = key in j;
-                return p && p.type == JSONType.string ? p.str : "";
-            }
-
-            auto filter = quickFilter!wchar(field("ecuId"), field("appId"), field("ctxId"),
-                field("payloadRegex"));
-            writeln("Applying view filter: ", filter is null ? "none" : json);
-            _workspace.current.applyViewFilter(filter); // null resets the filter
-        }
-        catch (Exception e)
-        {
-            writeln("Error applying filter: ", e.msg);
         }
     }
 
@@ -850,42 +829,125 @@ class MainWindow : SciterWindow
     }
 }
 
-SciterValue asSciterArray(int index, ref const(DocumentItem) item)
+//! @brief The text of a hex cell: all 64 bits, as typed into the quick filter
+//! (FieldFilter reads FFFFFFFFFFFFFFFF as -1). A script number would round
+//! values above 2^53 and show -1 as "-1".
+string hexCellText(long value) pure
 {
-    /** 
-     size_t index;
-    ulong offset;
-    ushort length;
-    ulong timestamp;
-    string ecu;
-    string appId;
-    string ctxId;
-    LogLevel level;
-    MessageType type;
-    uint messageId;
-    string payload;
- */
+    import std.format : format;
 
-    // index, time, timestamp(rel), ecuId, appId, ctxId, level, type, (messageId), payload
+    return format("%X", cast(ulong) value);
+}
 
-    SciterValue array = SciterValue.makeArray(
-        item.anchored, //
-        item.filterMask, //
-        index,
-        item.realIndex, //
-        item.timestampSeconds, //
-        item.timestampMicroseconds, //
-        item.relativeTimestamp_10000, //
-        item.ecuId, //
-        item.appId, //
-        item.ctxId, //
-        cast(int) item.level, //
-        cast(int) item.type, //
-        item.messageId, //
-        item.payload //
+@("hexCellText: the 64 bits in upper case hex")
+unittest
+{
+    assert(hexCellText(0x1F) == "1F");
+    assert(hexCellText(0) == "0");
+    assert(hexCellText(-1) == "FFFFFFFFFFFFFFFF");
+    assert(hexCellText(0x1234_5678_9ABC_DEF1) == "123456789ABCDEF1", "no rounding above 2^53");
+}
 
-        
+//! @brief A row of the log table: anchored, filterMask, view index, message
+//! index, level, then a cell per column (see virtual-dlt-view.js). The level
+//! colors the cells of the columns that ask for it (ColumnInfo.byLevel).
+SciterValue asSciterRow(int index, ref const(DocumentItem) item, const(ColumnInfo)[] columns)
+{
+    enum fixedCells = 5;
+    const msg = &item.message();
 
-    );
-    return array;
+    SciterValue row = SciterValue.makeArrayWithSize(fixedCells + columns.length);
+    auto cells = AsArrayView(row);
+    cells.opIndex(0, item.anchored);
+    cells.opIndex(1, item.filterMask);
+    cells.opIndex(2, index);
+    cells.opIndex(3, cast(double) item.realIndex);
+    cells.opIndex(4, cast(int) msg.level);
+
+    foreach (i, ref column; columns)
+    {
+        const cell = fixedCells + i;
+        if (column.isField && !msg.hasField(column.field))
+        {
+            SciterValue none = SciterValue.makeNull(); // e.g. a line without a header
+            cells.opIndex(cell, none);
+            continue;
+        }
+        final switch (column.kind)
+        {
+        case ColumnKind.Time:
+            // [microseconds, TimeKind]: the kind of this record, the column's
+            // is only the usual one. Microseconds are exact in a double (a
+            // script number) for 285 years.
+            if (msg.timeKind == TimeKind.None)
+            {
+                SciterValue none = SciterValue.makeNull();
+                cells.opIndex(cell, none);
+            }
+            else
+            {
+                SciterValue time = SciterValue.makeArray(cast(double)(msg.timeNs / 1000), cast(int) msg.timeKind);
+                cells.opIndex(cell, time);
+            }
+            break;
+        case ColumnKind.Level:
+            cells.opIndex(cell, cast(int) msg.level);
+            break;
+        case ColumnKind.Payload:
+            cells.opIndex(cell, msg.payloadText);
+            break;
+        case ColumnKind.Text:
+            cells.opIndex(cell, msg.text(column.field));
+            break;
+        case ColumnKind.Hex:
+            cells.opIndex(cell, hexCellText(msg.number(column.field)));
+            break;
+        case ColumnKind.Integer:
+        case ColumnKind.Duration:
+        case ColumnKind.Enum:
+            cells.opIndex(cell, cast(double) msg.number(column.field));
+            break;
+        }
+    }
+    return row;
+}
+
+//! @brief The columns as JSON for the script (see virtual-dlt-view.js)
+string columnsJson(const(ColumnInfo)[] columns)
+{
+    import std.conv : to;
+
+    JSONValue[] result;
+    foreach (ref column; columns)
+    {
+        JSONValue c = [
+            "id": JSONValue(column.id),
+            "title": JSONValue(column.title),
+            "kind": JSONValue(column.kind.to!string),
+            "width": JSONValue(column.width),
+        ];
+        if (column.kind == ColumnKind.Time)
+            c["timeKind"] = JSONValue(column.timeKind.to!string);
+        if (column.kind == ColumnKind.Duration)
+            c["unitsPerSecond"] = JSONValue(column.unitsPerSecond);
+        if (column.kind == ColumnKind.Enum)
+            c["labels"] = JSONValue(column.labels);
+        if (column.byLevel)
+            c["byLevel"] = JSONValue(true);
+        result ~= c;
+    }
+    return JSONValue(result).toString();
+}
+
+@("columnsJson: a column colored by the level says so")
+unittest
+{
+    import std.algorithm.searching : canFind;
+
+    const json = columnsJson([
+        ColumnInfo("status", "Status", ColumnKind.Integer, 0, 50, TimeKind.None, 0, null, true),
+        ColumnInfo("bytes", "Bytes", ColumnKind.Integer, 1, 70),
+    ]);
+    assert(json.canFind(`"byLevel":true`), json);
+    assert(json.count(`"byLevel"`) == 1, "only for the flagged column");
 }

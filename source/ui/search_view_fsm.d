@@ -4,7 +4,7 @@
 //!
 //! The search runs over the main view: while the file loads or a filter
 //! rebuilds the main view there is no result to show, and the document repeats
-//! the search after the filter (see DltDocument.applyViewFilter).
+//! the search after the filter (see LogDocument.applyViewFilter).
 //!
 //! Input: the operation events of the document and SearchCancelPressed.
 //! Output: SearchViewModel shown through SearchViewSink, and requests to the

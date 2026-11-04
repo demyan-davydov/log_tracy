@@ -1,5 +1,6 @@
-module dlt_core.dlt_protocol;
+module formats.dlt.protocol;
 
+public import log_core.log_level : LogLevel;
 import std.bitmanip;
 
 //! @brief DLT Message structure:
@@ -142,16 +143,6 @@ enum MessageType : ubyte
     AppTrace = 0x01, //< Application trace message type
     NwTrace = 0x02, //< Network trace message type
     Control = 0x03, //< Control message type
-}
-
-enum LogLevel : ubyte
-{
-    Fatal = 0x1,
-    Error = 0x2,
-    Warn = 0x3,
-    Info = 0x4,
-    Debug = 0x5,
-    Verbose = 0x6
 }
 
 enum AppTraceType : ubyte

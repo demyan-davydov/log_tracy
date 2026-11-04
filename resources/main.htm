@@ -68,26 +68,14 @@
     <frameset id="document-views" cols="200px, *">
         <section class="left-panel" id="sidebar">
             <header>Filters</header>
-            <div class="filter-group">
-                <label>ECU ID</label>
-                <input type="text" id="filter-ecu" placeholder="e.g. ECU1" />
-            </div>
-            <div class="filter-group">
-                <label>App ID</label>
-                <input type="text" id="filter-app" placeholder="e.g. APP1" />
-            </div>
-            <div class="filter-group">
-                <label>Context ID</label>
-                <input type="text" id="filter-ctx" placeholder="e.g. CTX1" />
-            </div>
-            <div class="filter-group">
-                <label>Payload Regex</label>
-                <input type="text" id="filter-payload" placeholder="e.g. error.*" />
-            </div>
+            <!-- a field per column of the format: showQuickFilter() in script.js -->
+            <div id="quick-filter"></div>
+            <div id="filter-message"></div>
             <div class="filter-actions">
                 <button id="btn-dlf">Load Filter</button>
                 <button id="btn-clear-filters">Clear All</button>
             </div>
+            <div id="dlf-message"></div>
 
             <header class="sidebar-section">Decoding</header>
             <div class="filter-actions">
@@ -102,7 +90,7 @@
                     <!-- Status views: see .status-view in tab-content.css -->
                     <div id="loading-container" class="status-view" style="display:none;">
                         <div class="status-body">
-                            <div id="doc-load-status" class="status-title">Loading DLT file...</div>
+                            <div id="doc-load-status" class="status-title">Loading file...</div>
                             <progress id="doc-load-progress" value="0" max="100"></progress>
                             <div id="doc-load-detail" class="status-detail"></div>
                             <div class="status-actions">
@@ -123,16 +111,10 @@
                     </div>
                     <table class="log-table main-view" fixed-layout="true">
                         <thead>
+                            <!-- the columns of the format: applyColumns() in script.js -->
                             <tr>
                                 <th width="20px">⚓</th>
                                 <th width="80px">Index</th>
-                                <th width="120px">Time</th>
-                                <th width="150px">Timestamp</th>
-                                <th width="60px">EcuId</th>
-                                <th width="60px">AppId</th>
-                                <th width="60px">CtxId</th>
-                                <th width="60px">Type</th>
-                                <th width="60px">Level</th>
                                 <th width="*">Payload</th>
                             </tr>
                         </thead>
@@ -163,16 +145,10 @@
                 </div>
                 <table class="log-table search-view" fixed-layout="true">
                     <thead>
+                        <!-- the columns of the format: applyColumns() in script.js -->
                         <tr>
                             <th width="20px">⚓</th>
                             <th width="80px">Index</th>
-                            <th width="120px">Time</th>
-                            <th width="150px">Timestamp</th>
-                            <th width="60px">EcuId</th>
-                            <th width="60px">AppId</th>
-                            <th width="60px">CtxId</th>
-                            <th width="60px">Type</th>
-                            <th width="60px">Level</th>
                             <th width="*">Payload</th>
                         </tr>
                     </thead>

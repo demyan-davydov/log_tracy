@@ -1,11 +1,11 @@
 module domain.document;
 
-import dlt_core.dlt_source;
-import dlt_core.decoded_message;
-import dlt_core.log_filter : LogFilter;
-import dlt_core.dlt_protocol : LogLevel, MessageType;
+import log_core.log_message;
+import log_core.log_filter : LogFilter;
+import formats.dlt.protocol : LogLevel, MessageType;
 
 import domain.document_id;
+import log_core.log_format : ColumnInfo, LogFormat;
 import domain.document_item;
 import domain.index.anchors;
 
@@ -66,6 +66,16 @@ interface Document
     DocumentView mainView();
 
     DocumentView searchView();
+
+    //! The format of the document, null if there is none
+    const(LogFormat) format();
+
+    //! Columns of the log table, as declared by the format of the document
+    final const(ColumnInfo)[] columns()
+    {
+        const f = format();
+        return f is null ? null : f.columns;
+    }
 
     //string sourcePath() const nothrow @nogc;
 

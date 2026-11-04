@@ -41,11 +41,15 @@ header {
     /* Sciter flex unit */
 }
 
-#search-message:empty {
+#search-message:empty,
+#filter-message:empty,
+#dlf-message:empty {
     display: none;
 }
 
-#search-message {
+#search-message,
+#filter-message,
+#dlf-message {
     color: red;
     padding: 2px 4px;
 }

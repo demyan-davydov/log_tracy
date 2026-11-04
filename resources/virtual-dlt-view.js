@@ -1,6 +1,49 @@
 console.log("Loading virtual-dlt-view.js...");
 import { VirtualList } from "virtual-select.js";
 import { VirtualSelect } from "virtual-select.js";
+import { formatTime, formatDuration, levelName, cellClass } from "cell-format.js";
+
+// Columns of the active document, from Window.xcall("getColumns"):
+// [{ id, title, kind, width, timeKind?, unitsPerSecond?, labels? }]
+let columns = [];
+
+// Sets the columns the rows are rendered with; the table header is rebuilt by
+// the caller (see renderHeader)
+export function setColumns(newColumns) {
+    columns = newColumns;
+}
+
+// The header row of a log table for the current columns
+export function renderHeader() {
+    return <tr>
+        <th width="20px">⚓</th>
+        <th width="80px">Index</th>
+        {columns.map(c => <th width={c.width ? `${c.width}px` : "*"}>{c.title}</th>)}
+    </tr>;
+}
+
+
+// A cell of `column`; `level` (a LogLevel of the record) colors it if the
+// column asks for it (byLevel: an HTTP status shown as it is)
+function renderCell(column, value, level) {
+    const aux = cellClass(column, level);
+    if (value === null && column.kind !== "Time")
+        return <td class={aux}></td>; // the record has no such field
+    switch (column.kind) {
+        case "Time": return <td class={aux}>{formatTime(value)}</td>;
+        case "Level": {
+            if (!value) return <td class="aux"></td>; // LogLevel.None: the record has no level
+            const level = levelName(value) || "unknown";
+            return <td class={`level-${level.toLowerCase()}`}>{level}</td>;
+        }
+        case "Payload": return <td selectable>{value}</td>;
+        case "Integer": return <td class={aux}>{String(value)}</td>;
+        case "Hex": return <td class={aux}>{value}</td>; // formatted by the backend: all 64 bits
+        case "Duration": return <td class={aux}>{formatDuration(value, column.unitsPerSecond)}</td>;
+        case "Enum": return <td class={aux}>{column.labels?.[value] ?? "unknown"}</td>;
+        default: return <td class={aux}>{value}</td>; // Text
+    }
+}
 
 // select with virtual data source
 export class VirtualDltTBody extends VirtualSelect {
@@ -28,117 +71,36 @@ export class VirtualDltTBody extends VirtualSelect {
 
     // View index (position in the current table) - mandatory for Shift-selection and Arrows
     indexOf(item) {
-        return item[2]; // idx_viewIndex is 2
+        return item?.[2]; // idx_viewIndex is 2; null: no such row
     }
 
     // Stable global record index - identifier for the logic (Set)
     keyOf(item) {
-        return item[3]; // idx_absolute_index is 3
+        return item?.[3]; // idx_absolute_index is 3
     }
 
 
-    /*renderItem(item, isCurrent, isSelected) {
-        return <tr state-current={isCurrent} state-checked={isSelected}>
-            <td>{item.index}</td>
-            <td>{item.offset}</td>
-            <td>{item.timestamp}</td>
-            <td>{item.ecu}</td>
-            <td>{item.appId}</td>
-            <td>{item.ctxId}</td>
-            <td>{item.length}</td>
-            <td>{item.type}</td>
-            <td class={`level-${item.level.toLowerCase()}`}>{item.level}</td>
-            <td>{item.payload}</td>
-        </tr>
-    }*/
-
     renderItem(item, isCurrent, isSelected) {
-        if (isCurrent || isSelected) {
-            console.log("--- renderItem called for item:", item[3], "isCurrent:", isCurrent, "isSelected:", isSelected);
-        }
+        // No such row (any more): the backend returns null, e.g. the view just
+        // changed. An empty row keeps the rows in place until the next render.
+        if (!item) return <tr />;
 
-        //
         const currentKey = this.currentItem ? this.indexOf(this.currentItem) : null;
         isCurrent = currentKey !== null && this.indexOf(item) === currentKey;
         isSelected = this.selectedKeys?.has(this.keyOf(item)) ?? false;
 
-        if (isCurrent || isSelected) {
-            console.log("--- [2] renderItem called for item:", item[3], "isCurrent:", isCurrent, "isSelected:", isSelected);
-        }
-
-        // Array layout from D backend asSciterArray(index, DocumentItem):
+        // Row layout from D backend asSciterRow(): the fixed cells, then a
+        // cell per column of the document (see setColumns)
         const idx_anchor = 0;
-        const idx_filterMask = 1;
         const idx_viewIndex = 2;
         const idx_absolute_index = 3;
-        const idx_timestamp_seconds = 4;
-        const idx_timestamp_microseconds = 5;
-        const idx_rel_timestamp_10000 = 6;
-        const idx_ecuId = 7;
-        const idx_appId = 8;
-        const idx_ctxId = 9;
-        const idx_level = 10;
-        const idx_type = 11;
-        const idx_messageId = 12;
-        const idx_payload = 13;
-
-        const timestamp = function (seconds, microseconds) {
-            seconds = Number(seconds);
-            microseconds = Number(microseconds);
-            if (seconds === 0 && microseconds === 0) return "-";
-            const date = new Date(seconds * 1000);
-            const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const day = String(date.getDate()).padStart(2, '0');
-            const hour = String(date.getHours()).padStart(2, '0');
-            const minute = String(date.getMinutes()).padStart(2, '0');
-            const second = String(date.getSeconds()).padStart(2, '0');
-            const us = String(microseconds).padStart(3, '0');
-            return `${year}/${month}/${day} ${hour}:${minute}:${second}.${us}`;
-        }(item[idx_timestamp_seconds], item[idx_timestamp_microseconds]);
-
-        const relTimestamp = function (timeUnits) {
-            timeUnits = Number(timeUnits);
-            if (timeUnits === 0) return "-";
-            // DLT relative time is basically in 0.1ms units
-            const second = Math.floor(timeUnits / 10000);
-            const fraction = String(timeUnits % 10000).padStart(4, '0');
-            return `${second}.${fraction}`;
-        }(item[idx_rel_timestamp_10000]);
-
-        const logLevel = function (levelAsInt) {
-            switch (levelAsInt) {
-                case 0x1: return "Fatal";
-                case 0x2: return "Error";
-                case 0x3: return "Warn";
-                case 0x4: return "Info";
-                case 0x5: return "Debug";
-                case 0x6: return "Verbose";
-                default: return "unknown";
-            }
-        }(item[idx_level]);
-
-        const messageType = function (typeAsInt) {
-            switch (typeAsInt) {
-                case 0x0: return "LOG";
-                case 0x1: return "APP";
-                case 0x2: return "NW";
-                case 0x3: return "CTRL";
-                default: return "unknown";
-            }
-        }(item[idx_type]);
+        const idx_level = 4; // LogLevel of the record: colors the columns with byLevel
+        const idx_firstColumn = 5;
 
         return <tr state-current={isCurrent} state-checked={isSelected} view-index={item[idx_viewIndex]}>
             <td class="anchor" has-anchor={item[idx_anchor] ? "true" : "false"} msg-index={item[idx_absolute_index]}></td>
-            <td>{item[idx_absolute_index]}</td>
-            <td>{timestamp}</td>
-            <td>{relTimestamp}</td>
-            <td>{item[idx_ecuId]}</td>
-            <td>{item[idx_appId]}</td>
-            <td>{item[idx_ctxId]}</td>
-            <td>{messageType}</td>
-            <td class={logLevel}>{logLevel}</td>
-            <td selectable>{item[idx_payload]}</td>
+            <td class="aux">{item[idx_absolute_index]}</td>
+            {columns.map((column, i) => renderCell(column, item[idx_firstColumn + i], item[idx_level]))}
         </tr>
     }
 

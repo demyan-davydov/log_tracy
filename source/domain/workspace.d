@@ -5,7 +5,8 @@ import domain.document_id;
 import domain.document_item : DocumentItem;
 import domain.index.anchors;
 
-import dlt_core.log_filter : LogFilter;
+import log_core.log_filter : LogFilter;
+import log_core.log_format : LogFormat;
 
 import event_bus.event_bus_interface : SignalConsumer, SubscriptionToken;
 import event_bus.event_bus_sync : EventBusSync;
@@ -90,6 +91,11 @@ private class NullDocument : Document
     override DocumentView searchView()
     {
         return k_nullDocumentView;
+    }
+
+    override const(LogFormat) format()
+    {
+        return null;
     }
 
     override void applyViewFilter(LogFilter!wchar filter)
@@ -455,6 +461,11 @@ unittest
             return k_nullDocumentView;
         }
 
+        const(LogFormat) format()
+        {
+            return null;
+        }
+
         void applyViewFilter(LogFilter!wchar filter)
         {
         }
@@ -541,6 +552,7 @@ unittest
         void dispatchEvents() { bus.dispatch(); }
         DocumentView mainView() { return k_nullDocumentView; }
         DocumentView searchView() { return k_nullDocumentView; }
+        const(LogFormat) format() { return null; }
         void applyViewFilter(LogFilter!wchar filter) {}
         void applySearchFilter(LogFilter!wchar filter) {}
         bool setAnchor(size_t index, bool value) { return false; }
@@ -596,6 +608,7 @@ unittest
         void dispatchEvents() {}
         DocumentView mainView() { return k_nullDocumentView; }
         DocumentView searchView() { return k_nullDocumentView; }
+        const(LogFormat) format() { return null; }
         void applyViewFilter(LogFilter!wchar filter) {}
         void applySearchFilter(LogFilter!wchar filter) {}
         bool setAnchor(size_t index, bool value) { return false; }
@@ -630,6 +643,7 @@ unittest
         void dispatchEvents() { bus.dispatch(); }
         DocumentView mainView() { return k_nullDocumentView; }
         DocumentView searchView() { return k_nullDocumentView; }
+        const(LogFormat) format() { return null; }
         void applyViewFilter(LogFilter!wchar filter) {}
         void applySearchFilter(LogFilter!wchar filter) {}
         bool setAnchor(size_t index, bool value) { return false; }
@@ -660,6 +674,14 @@ unittest
     assert(lost == [id], "the new document is forwarded under the same id");
 }
 
+@("Workspace: without a document there is no format and no columns")
+unittest
+{
+    auto ws = new Workspace();
+    assert(ws.current.format is null);
+    assert(ws.current.columns is null);
+}
+
 @("Workspace.findBySourcePath finds the document of a file, however it is spelled")
 unittest
 {
@@ -678,6 +700,7 @@ unittest
         void importAnchors(const(size_t[]) anchors) {}
         bool requestCancel() { return false; }
         bool sourceLost() { return false; }
+        const(LogFormat) format() { return null; }
     }
 
     auto ws = new Workspace();

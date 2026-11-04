@@ -1,16 +1,18 @@
-module domain.dlt_document;
+module domain.log_document;
 
 import domain.document;
 import domain.document_item;
 import domain.document_id;
 
-import dlt_core.dlt_source;
-import dlt_core.dlt_log_filter;
-import dlt_core.decoded_message;
-import dlt_core.log_filter;
+import log_core.log_message;
+import formats.dlt.fields;
+import log_core.log_filter;
 
 import domain.index.anchors;
-import domain.dlt_index;
+import domain.log_index;
+import formats.registry : detectFormat;
+import log_core.byte_source;
+import log_core.log_format : LogFormat, ColumnInfo;
 import domain.view_status;
 
 import utils.lock_guard;
@@ -22,7 +24,8 @@ import std.parallelism : Task, TaskPool;
 import std.typecons : scoped, Unique, Proxy;
 import std.meta : AliasSeq;
 
-class DltDocument : Document
+//! A log document: a log of any format with its main and search views
+class LogDocument : Document
 {
     private MainDocumentView _mainView;
     private SearchDocumentView _searchView;
@@ -36,7 +39,7 @@ class DltDocument : Document
     private EventBusAsync _events; // must outlive _index: its worker publishes here
     private ViewStatus _mainStatus = ViewStatus(ViewStatus.State.NotReady); // offset index not built yet
     private ViewStatus _searchStatus; // Ready: empty search result until a search runs
-    private DltIndex _index;
+    private LogIndex _index;
 
     //! A filter request waiting for the background slot. Only the latest
     //! request of each kind is kept; `filter` may be null (reset).
@@ -55,7 +58,19 @@ class DltDocument : Document
 
     this() @disable;
 
+    //! @brief Opens the file and detects its format
+    //! @throws Exception if the file can't be opened or its format is unknown
     this(string path)
+    {
+        auto source = new FileSource(path);
+        scope (failure)
+            source.close();
+        this(path, source, detectFormat(path, source.data));
+    }
+
+    //! @param path - shown to the user
+    //! @param source - owned by the document from now on
+    this(string path, ByteSource source, LogFormat format)
     {
         _events = new EventBusAsync();
         // Subscribed before anyone else: views are updated before external
@@ -68,7 +83,7 @@ class DltDocument : Document
             _running = Operation.None;
             startPending();
         });
-        _index = DltIndex(path, _events); // starts BuildOffsetIndex
+        _index = LogIndex(source, format, _events); // starts BuildOffsetIndex
         _running = Operation.BuildOffsetIndex;
         _sourcePath = path;
         _mainView = new MainDocumentView();
@@ -112,6 +127,11 @@ class DltDocument : Document
     override DocumentView searchView()
     {
         return _searchView;
+    }
+
+    override const(LogFormat) format()
+    {
+        return _index.format;
     }
 
     /*override string sourcePath() const
@@ -333,7 +353,7 @@ class DltDocument : Document
 
 version (unittest)
 {
-    import dlt_core.dlt_source : buildDltMessage;
+    import formats.dlt.format : buildDltMessage;
 
     private string writeTestDlt(string name, size_t messageCount, const(char)[4] ecuId = "ECU1")
     {
@@ -349,6 +369,15 @@ version (unittest)
         return path;
     }
 
+    /// Quick filter of the main view by the ECU ID of DLT messages
+    private LogFilter!wchar ecuFilter(string ecuId)
+    {
+        import formats.dlt.format : DltFormat;
+        import log_core.field_filter : FieldFilter;
+
+        return FieldFilter.fromValues(new DltFormat().columns, ["ecu": ecuId]);
+    }
+
     /// Test filter that accepts all or no messages
     private final class ConstFilter : LogFilter!wchar
     {
@@ -361,12 +390,12 @@ version (unittest)
             _result = result;
         }
 
-        bool matches(scope ref const(DecodedMessage!wchar) item) const
+        bool matches(scope ref const(LogMessage!wchar) item) const
         {
             return _result;
         }
 
-        Nullable!uint matchIndex(scope ref const(DecodedMessage!wchar) item) const
+        Nullable!uint matchIndex(scope ref const(LogMessage!wchar) item) const
         {
             return _result ? Nullable!uint(0) : Nullable!uint.init;
         }
@@ -397,7 +426,7 @@ version (unittest)
     }
 }
 
-@("DltDocument: opening reports Started, Progress, Finished in order")
+@("LogDocument: opening reports Started, Progress, Finished in order")
 unittest
 {
     import std.file : remove;
@@ -407,7 +436,7 @@ unittest
     scope (exit)
         remove(path);
 
-    auto doc = new DltDocument(path);
+    auto doc = new LogDocument(path);
 
     string[] log;
     float lastProgress = -1;
@@ -444,7 +473,7 @@ unittest
     assert(countOnFinish == messageCount);
 }
 
-@("DltDocument: destroy while indexing cancels and joins the worker")
+@("LogDocument: destroy while indexing cancels and joins the worker")
 unittest
 {
     import std.file : remove;
@@ -454,13 +483,13 @@ unittest
     scope (exit)
         remove(path);
 
-    auto doc = new DltDocument(path);
+    auto doc = new LogDocument(path);
     const start = MonoTime.currTime;
     destroy(doc); // must cancel the running BuildOffsetIndex, not wait for it or crash
     assert(MonoTime.currTime - start < 1.seconds, "destroy must not wait for indexing to complete");
 }
 
-@("DltDocument: each view has its own state and progress")
+@("LogDocument: each view has its own state and progress")
 unittest
 {
     import std.file : remove;
@@ -469,7 +498,7 @@ unittest
     scope (exit)
         remove(path);
 
-    auto doc = new DltDocument(path);
+    auto doc = new LogDocument(path);
     assert(doc.mainView.state == DocumentView.State.NotReady, "nothing delivered yet");
     assert(doc.searchView.ready, "search view starts Ready with an empty result");
 
@@ -489,7 +518,7 @@ unittest
     assert(doc.mainView.ready && doc.mainView.progress == 1.0f, "main view must not change");
 }
 
-@("DltDocument: a search requested while loading waits for the load, latest request wins")
+@("LogDocument: a search requested while loading waits for the load, latest request wins")
 unittest
 {
     import std.file : remove;
@@ -499,7 +528,7 @@ unittest
     scope (exit)
         remove(path);
 
-    auto doc = new DltDocument(path);
+    auto doc = new LogDocument(path);
     string[] log;
     doc.events.subscribe((const OperationStarted e) {
         import std.conv : to;
@@ -524,7 +553,7 @@ unittest
     assert(doc.searchView.itemsCount == messageCount, "the latest (match-all) search must have run");
 }
 
-@("DltDocument: a new search cancels the running one and replaces it")
+@("LogDocument: a new search cancels the running one and replaces it")
 unittest
 {
     import std.algorithm : count;
@@ -535,7 +564,7 @@ unittest
     scope (exit)
         remove(path);
 
-    auto doc = new DltDocument(path);
+    auto doc = new LogDocument(path);
     string[] log;
     doc.events.subscribe((const OperationStarted e) {
         import std.conv : to;
@@ -560,7 +589,7 @@ unittest
     assert(doc.searchView.itemsCount == messageCount, "the result must be the latest search's");
 }
 
-@("DltDocument: requestCancel stops a running search")
+@("LogDocument: requestCancel stops a running search")
 unittest
 {
     import std.file : remove;
@@ -569,7 +598,7 @@ unittest
     scope (exit)
         remove(path);
 
-    auto doc = new DltDocument(path);
+    auto doc = new LogDocument(path);
     OperationFinished[] finished;
     doc.events.subscribe((const OperationFinished e) { finished ~= e; });
     dispatchUntil(doc, () => doc.mainView.ready);
@@ -589,7 +618,7 @@ unittest
     assert(!doc.requestCancel(), "nothing left to cancel");
 }
 
-@("DltDocument: requestCancel drops pending requests but not the file load")
+@("LogDocument: requestCancel drops pending requests but not the file load")
 unittest
 {
     import std.file : remove;
@@ -599,7 +628,7 @@ unittest
     scope (exit)
         remove(path);
 
-    auto doc = new DltDocument(path);
+    auto doc = new LogDocument(path);
     Document.Operation[] started;
     OperationFinished[] finished;
     doc.events.subscribe((const OperationStarted e) { started ~= e.operation; });
@@ -619,7 +648,7 @@ unittest
     assert(doc.mainView.ready && doc.mainView.itemsCount == messageCount);
 }
 
-@("DltDocument: resetFilter (null filter) clears the result instead of crashing")
+@("LogDocument: resetFilter (null filter) clears the result instead of crashing")
 unittest
 {
     import std.file : remove;
@@ -629,7 +658,7 @@ unittest
     scope (exit)
         remove(path);
 
-    auto doc = new DltDocument(path);
+    auto doc = new LogDocument(path);
     OperationFinished[] finished;
     doc.events.subscribe((const OperationFinished e) { finished ~= e; });
     dispatchUntil(doc, () => finished.length == 1); // file loaded
@@ -654,10 +683,9 @@ unittest
     assert(doc.mainView.itemsCount == messageCount, "all messages are visible");
 }
 
-@("DltDocument: applyViewFilter filters the main view")
+@("LogDocument: applyViewFilter filters the main view")
 unittest
 {
-    import dlt_core.dlt_log_filter : quickFilter;
     import std.file : remove;
 
     enum messageCount = 2000;
@@ -665,20 +693,20 @@ unittest
     scope (exit)
         remove(path);
 
-    auto doc = new DltDocument(path);
+    auto doc = new LogDocument(path);
     size_t finished;
     doc.events.subscribe((const OperationFinished e) { ++finished; });
     dispatchUntil(doc, () => finished == 1);
 
     DocumentItem item;
 
-    doc.applyViewFilter(quickFilter!wchar("ECU2", "", "", ""));
+    doc.applyViewFilter(ecuFilter("ECU2"));
     dispatchUntil(doc, () => finished == 2);
     assert(doc.mainView.ready && doc.mainView.isFilterEnabled, "a built filter is applied to the view");
     assert(doc.mainView.itemsCount == 0, "no message has ECU2");
     assert(!doc.mainView.fetchItem(0, item));
 
-    doc.applyViewFilter(quickFilter!wchar("ECU1", "", "", ""));
+    doc.applyViewFilter(ecuFilter("ECU1"));
     dispatchUntil(doc, () => finished == 3);
     assert(doc.mainView.itemsCount == messageCount, "every message has ECU1");
     assert(doc.mainView.fetchItem(messageCount - 1, item) && item.realIndex == messageCount - 1);
@@ -689,10 +717,9 @@ unittest
     assert(!doc.mainView.isFilterEnabled && doc.mainView.itemsCount == messageCount);
 }
 
-@("DltDocument: an ECU ID padded with spaces is found by its trimmed value")
+@("LogDocument: an ECU ID padded with spaces is found by its trimmed value")
 unittest
 {
-    import dlt_core.dlt_log_filter : quickFilter;
     import std.file : remove;
 
     enum messageCount = 100;
@@ -701,16 +728,16 @@ unittest
     scope (exit)
         remove(path);
 
-    auto doc = new DltDocument(path);
+    auto doc = new LogDocument(path);
     size_t finished;
     doc.events.subscribe((const OperationFinished e) { ++finished; });
     dispatchUntil(doc, () => finished == 1);
 
     DocumentItem item;
     assert(doc.mainView.fetchItem(0, item));
-    assert(item._decodedMessage.ecuId == "CU7"w, "the padding must not be part of the ID");
+    assert(item._message.ecuId == "CU7"w, "the padding must not be part of the ID");
 
-    doc.applyViewFilter(quickFilter!wchar("CU7", "", "", ""));
+    doc.applyViewFilter(ecuFilter("CU7"));
     dispatchUntil(doc, () => finished == 2);
     assert(doc.mainView.itemsCount == messageCount, "typing the visible ID must find the messages");
 }
@@ -718,17 +745,17 @@ unittest
 version (unittest)
 {
     /// Opens a test document and waits until it is loaded
-    private DltDocument openLoaded(string name, size_t messageCount, out string path)
+    private LogDocument openLoaded(string name, size_t messageCount, out string path)
     {
         path = writeTestDlt(name, messageCount);
-        auto doc = new DltDocument(path);
+        auto doc = new LogDocument(path);
         dispatchUntil(doc, () => doc.mainView.ready);
         return doc;
     }
 
     /// Runs a filter/search request and waits until the document is idle:
     /// a filter may be followed by the search it repeats
-    private void runAndWait(DltDocument doc, void delegate() request)
+    private void runAndWait(LogDocument doc, void delegate() request)
     {
         request();
         waitIdle(doc);
@@ -737,7 +764,7 @@ version (unittest)
     /// Waits until no operation runs or waits for its turn. The next request
     /// starts from the Finished handler of the previous one, during the same
     /// dispatch, so an idle slot after a dispatch means nothing is left.
-    private void waitIdle(DltDocument doc)
+    private void waitIdle(LogDocument doc)
     {
         dispatchUntil(doc, () => doc._running == Document.Operation.None);
     }
@@ -748,7 +775,7 @@ version (unittest)
         Document.Operation[] operations;
     }
 
-    private StartedLog recordStarted(DltDocument doc)
+    private StartedLog recordStarted(LogDocument doc)
     {
         auto log = new StartedLog;
         doc.events.subscribe((const OperationStarted e) { log.operations ~= e.operation; });
@@ -768,7 +795,7 @@ version (unittest)
     }
 }
 
-@("DltDocument anchors: listed in the empty search view and marked in rows")
+@("LogDocument anchors: listed in the empty search view and marked in rows")
 unittest
 {
     import std.file : remove;
@@ -792,10 +819,9 @@ unittest
     assert(doc.mainView.fetchItem(5, item) && !item.anchored);
 }
 
-@("DltDocument anchors: an anchored message is shown despite the filter and the search")
+@("LogDocument anchors: an anchored message is shown despite the filter and the search")
 unittest
 {
-    import dlt_core.dlt_log_filter : quickFilter;
     import std.file : remove;
 
     enum messageCount = 100;
@@ -805,7 +831,7 @@ unittest
         remove(path);
 
     // The view filter hides every message (they all have ECU1)
-    runAndWait(doc, () => doc.applyViewFilter(quickFilter!wchar("ECU2", "", "", "")));
+    runAndWait(doc, () => doc.applyViewFilter(ecuFilter("ECU2")));
     assert(doc.mainView.itemsCount == 0);
 
     assert(doc.setAnchor(7, true));
@@ -828,10 +854,9 @@ unittest
     assert(doc.mainView.itemsCount == messageCount);
 }
 
-@("DltDocument anchors: a new filter keeps the anchors in both views")
+@("LogDocument anchors: a new filter keeps the anchors in both views")
 unittest
 {
-    import dlt_core.dlt_log_filter : quickFilter;
     import std.file : remove;
 
     string path;
@@ -840,16 +865,15 @@ unittest
         remove(path);
 
     assert(doc.setAnchor(42, true) && doc.setAnchor(8, true));
-    runAndWait(doc, () => doc.applyViewFilter(quickFilter!wchar("ECU2", "", "", "")));
+    runAndWait(doc, () => doc.applyViewFilter(ecuFilter("ECU2")));
 
     assert(realIndexes(doc.mainView) == [8, 42]);
     assert(realIndexes(doc.searchView) == [8, 42], "the cleared search lists the anchors");
 }
 
-@("DltDocument: a new filter repeats the completed search over the filtered view")
+@("LogDocument: a new filter repeats the completed search over the filtered view")
 unittest
 {
-    import dlt_core.dlt_log_filter : quickFilter;
     import std.file : remove;
 
     enum messageCount = 2000;
@@ -862,7 +886,7 @@ unittest
     assert(doc.searchView.itemsCount == messageCount);
 
     auto started = recordStarted(doc);
-    runAndWait(doc, () => doc.applyViewFilter(quickFilter!wchar("ECU2", "", "", "")));
+    runAndWait(doc, () => doc.applyViewFilter(ecuFilter("ECU2")));
     assert(started.operations == [Document.Operation.BuildFilterIndex, Document.Operation.BuildSearchIndex],
         "the search must be repeated after the filter");
     assert(doc.searchView.ready && doc.searchView.itemsCount == 0, "the search runs over the filtered view");
@@ -872,7 +896,7 @@ unittest
         "the search follows the reset of the filter as well");
 }
 
-@("DltDocument: a search running when the filter changes is repeated after the filter")
+@("LogDocument: a search running when the filter changes is repeated after the filter")
 unittest
 {
     import std.algorithm : count;
@@ -895,7 +919,7 @@ unittest
     assert(doc.searchView.ready && doc.searchView.itemsCount == messageCount);
 }
 
-@("DltDocument: a cancelled search is not repeated by a new filter")
+@("LogDocument: a cancelled search is not repeated by a new filter")
 unittest
 {
     import std.file : remove;
@@ -915,10 +939,9 @@ unittest
     assert(started.operations == [Document.Operation.BuildFilterIndex], "the user cancelled the search");
 }
 
-@("DltDocument: cancelling the filter drops the search it would repeat")
+@("LogDocument: cancelling the filter drops the search it would repeat")
 unittest
 {
-    import dlt_core.dlt_log_filter : quickFilter;
     import std.file : remove;
 
     string path;
@@ -930,14 +953,14 @@ unittest
     assert(doc.searchView.ready);
 
     auto started = recordStarted(doc);
-    doc.applyViewFilter(quickFilter!wchar("ECU1", "", "", ""));
+    doc.applyViewFilter(ecuFilter("ECU1"));
     assert(doc.requestCancel(), "a running filter must be cancellable");
     waitIdle(doc);
     assert(started.operations == [Document.Operation.BuildFilterIndex],
         "there is nothing to search in until the view is filtered");
 }
 
-@("DltDocument anchors: can't be changed while an operation runs")
+@("LogDocument anchors: can't be changed while an operation runs")
 unittest
 {
     import std.file : remove;
@@ -946,7 +969,7 @@ unittest
     scope (exit)
         remove(path);
 
-    auto doc = new DltDocument(path);
+    auto doc = new LogDocument(path);
     assert(!doc.setAnchor(1, true), "not while the file loads");
     dispatchUntil(doc, () => doc.mainView.ready);
 
@@ -960,7 +983,7 @@ unittest
     assert(doc.setAnchor(1, true), "allowed again once the search is done");
 }
 
-@("DltDocument anchors: the limit is enforced silently")
+@("LogDocument anchors: the limit is enforced silently")
 unittest
 {
     import domain.index.anchors : Anchors;
@@ -992,7 +1015,7 @@ version (Posix)
         assert(truncate(path.toStringz, 0) == 0);
     }
 
-    @("DltDocument: a lost file is reported once and the document stops working")
+    @("LogDocument: a lost file is reported once and the document stops working")
     unittest
     {
         import std.file : remove;
@@ -1023,7 +1046,7 @@ version (Posix)
         assert(!doc.setAnchor(5, true));
     }
 
-    @("DltDocument: losing the file while loading fails the load")
+    @("LogDocument: losing the file while loading fails the load")
     unittest
     {
         import std.file : remove;
@@ -1032,7 +1055,7 @@ version (Posix)
         scope (exit)
             remove(path);
 
-        auto doc = new DltDocument(path);
+        auto doc = new LogDocument(path);
         bool truncated, lost;
         OperationFinished finished;
         bool done;
@@ -1051,16 +1074,16 @@ version (Posix)
 
         assert(truncated);
         assert(finished.result == OperationFinished.Result.Failed, "the load can't complete");
-        assert(finished.error == DltIndex.sourceLostMessage);
+        assert(finished.error == LogIndex.sourceLostMessage);
         assert(lost, "SourceLost is published");
         assert(doc.mainView.state == DocumentView.State.Error);
     }
 }
 
-@("DltDocument: messages after garbage are indexed at their own offset")
+@("LogDocument: messages after garbage are indexed at their own offset")
 unittest
 {
-    import dlt_core.dlt_source : buildDltMessage;
+    import formats.dlt.format : buildDltMessage;
     import std.file : remove, tempDir, write;
     import std.path : buildPath;
 
@@ -1072,21 +1095,38 @@ unittest
     scope (exit)
         remove(path);
 
-    auto doc = new DltDocument(path);
+    auto doc = new LogDocument(path);
     dispatchUntil(doc, () => doc.mainView.ready);
     assert(doc.mainView.itemsCount == 2);
 
     DocumentItem item;
     assert(doc.mainView.fetchItem(1, item), "the offset points at the message, not the garbage");
-    assert(item._decodedMessage.ecuId == "ECU2"w);
+    assert(item._message.ecuId == "ECU2"w);
 }
 
-@("DltDocument: opening a missing file throws instead of crashing")
+@("LogDocument: knows the format it was opened with")
+unittest
+{
+    import formats.dlt.format : DltFormat;
+    import std.file : remove;
+
+    auto path = writeTestDlt("dlt_document_format.dlt", 3);
+    scope (exit)
+        remove(path);
+    auto doc = new LogDocument(path);
+    scope (exit)
+        doc.destroy();
+
+    assert(cast(const(DltFormat)) doc.format !is null);
+    assert(doc.format.columns is doc.columns);
+}
+
+@("LogDocument: opening a missing file throws instead of crashing")
 unittest
 {
     import std.exception : assertThrown;
 
     // The constructor fails before the background slot is constructed; the
     // field destructors run on the unconstructed slot and must cope with it
-    assertThrown(new DltDocument("/nonexistent/dlt_document_missing.dlt"));
+    assertThrown(new LogDocument("/nonexistent/dlt_document_missing.dlt"));
 }

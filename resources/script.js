@@ -1,5 +1,5 @@
 import { $, $$ } from "@sciter";
-import { VirtualDltTBody, VirtualMainViewTBody, VirtualSearchViewTBody } from "virtual-dlt-view.js";
+import { VirtualDltTBody, VirtualMainViewTBody, VirtualSearchViewTBody, setColumns, renderHeader } from "virtual-dlt-view.js";
 import {
     noNewTab, plusAction, openNewTab, activateNewTab, activateDocument,
     closeNewTab, documentOpened, documentsCounted, showsPlaceholder,
@@ -213,7 +213,7 @@ function renderPlaceholder() {
     placeholder.content(<div class="placeholder-body">
         <div class="placeholder-title">{title}</div>
         <div class="placeholder-hint">
-            <button class="inline-button" id="btn-placeholder-open">Open</button> a DLT log with <kbd>⌘O</kbd>
+            <button class="inline-button" id="btn-placeholder-open">Open</button> a log with <kbd>⌘O</kbd>
         </div>
     </div>);
     const recentFiles = getRecentFiles();
@@ -339,7 +339,7 @@ function openSettingsAction() {
 function openFileAction() {
     const fn = Window.this.selectFile({
         mode: "open",
-        filter: "DLT Files (*.dlt)|*.dlt|All Files (*.*)|*.*"
+        filter: "Log Files (*.dlt;*.log;*.txt)|*.dlt;*.log;*.txt|DLT Files (*.dlt)|*.dlt|Text Logs (*.log;*.txt)|*.log;*.txt|All Files (*.*)|*.*"
     });
     if (fn) {
         console.log("File selected:", fn);
@@ -439,18 +439,11 @@ function setupEvents() {
         });
         if (fn) {
             try {
-                const json = Window.this.xcall("loadDlf", fn);
-                if (json) {
-                    const config = JSON.parse(json);
-                    console.log("Loaded DLF config:", config);
-
-                    $("#filter-ecu").value = config.ecuId || "";
-                    $("#filter-app").value = config.appId || "";
-                    $("#filter-ctx").value = config.ctxId || "";
-                    $("#filter-payload").value = config.payloadRegex || "";
-
-                    applyFilters();
-                }
+                // The filter runs as a search; the reply is an error message or ""
+                const error = Window.this.xcall("loadDlf", fn);
+                // Its own message: the quick filter keeps its own
+                $("#dlf-message").innerText = error || "";
+                saveQuickFilter();
             } catch (e) {
                 console.error("Failed to load DLF:", e);
             }
@@ -458,9 +451,8 @@ function setupEvents() {
     });
 
     document.on("click", "#btn-clear-filters", () => {
-        for (const sel of ["#filter-ecu", "#filter-app", "#filter-ctx", "#filter-payload"]) {
-            $(sel).value = "";
-        }
+        for (const input of $$("#quick-filter input"))
+            input.value = "";
         applyFilters();
     });
 
@@ -516,15 +508,88 @@ function setupEvents() {
     });
 }
 
+// The quick filter of every open document, as it was left in the panel:
+//   docId -> { values: {column id: value}, message, dlfMessage }
+// message is the error of the quick filter, dlfMessage that of Load Filter.
+// The panel is one for all documents: it shows the entry of the active one.
+const quickFilters = new Map();
+let quickFilterDocId = null; // the document the panel shows
+let quickFilterColumns = null; // JSON of the columns the panel was built for
+
+// {column id: value} typed in the panel, for FieldFilter.fromValues()
+function quickFilterValues() {
+    const values = {};
+    for (const input of $$("#quick-filter input"))
+        values[input.getAttribute("column-id")] = input.value;
+    return values;
+}
+
+// Remembers the panel as the quick filter of the document it shows
+function saveQuickFilter() {
+    if (quickFilterDocId === null || !docStatus.has(quickFilterDocId)) return;
+    quickFilters.set(quickFilterDocId,
+        {
+            values: quickFilterValues(),
+            message: $("#filter-message").innerText || "",
+            dlfMessage: $("#dlf-message").innerText || ""
+        });
+}
+
 function applyFilters() {
-    const config = {
-        ecuId: $("#filter-ecu").value,
-        appId: $("#filter-app").value,
-        ctxId: $("#filter-ctx").value,
-        payloadRegex: $("#filter-payload").value
-    };
-    // The table reloads when the filter operation reports completion
-    Window.this.xcall("applyFilter", JSON.stringify(config));
+    // A change event fired while switching tabs belongs to the document the
+    // panel still shows, not to the active one: only remember its values
+    if (quickFilterDocId !== activeDocId) {
+        saveQuickFilter();
+        return;
+    }
+    // Returns an error message (e.g. not a number) or "" when applied; on an
+    // error the document keeps its previous filter. The table reloads when the
+    // filter operation reports completion.
+    const json = JSON.stringify(quickFilterValues());
+    console.log("applyFilter for doc", activeDocId, json);
+    const error = Window.this.xcall("applyFilter", json);
+    $("#filter-message").innerText = error ? `Filter error: ${error}` : "";
+    saveQuickFilter();
+}
+
+// Columns that the quick filter can take a value for, see FieldFilter
+const filterableKinds = new Set(["Text", "Integer", "Hex", "Enum", "Payload"]);
+
+function filterPlaceholder(column) {
+    switch (column.kind) {
+        case "Payload": return "regular expression, e.g. error.*";
+        case "Integer": return "a number";
+        case "Hex": return "a hex number, e.g. 1F";
+        case "Enum": return column.labels.join(", ");
+        default: return "the exact value";
+    }
+}
+
+// Shows the quick filter of the active document: a field per filterable
+// column, with the values the document was left with. Rebuilt only when the
+// document or its columns change; empty while no document is open.
+function showQuickFilter(columnsJson) {
+    if (quickFilterDocId === activeDocId && quickFilterColumns === columnsJson) return;
+    const entry = quickFilters.get(activeDocId) ?? { values: {}, message: "", dlfMessage: "" };
+    const columns = activeDocId === null ? [] : JSON.parse(columnsJson);
+    const panel = $("#quick-filter");
+    // Built from scratch: content() may reuse the inputs of the previous
+    // document, whose current value then stays while only the value attribute
+    // changes (the field looks empty until focused)
+    panel.clear();
+    // One by one: append() takes a single node
+    for (const c of columns.filter(c => filterableKinds.has(c.kind)))
+        panel.append(<div class="filter-group">
+            <label>{c.kind === "Payload" ? `${c.title} (regex)` : c.title}</label>
+            <input type="text" column-id={c.id} placeholder={filterPlaceholder(c)} />
+        </div>);
+    // The current value of a field, as for the search input (showSearchDraft)
+    for (const input of panel.$$("input"))
+        input.value = entry.values[input.getAttribute("column-id")] ?? "";
+    $("#filter-message").innerText = entry.message;
+    $("#dlf-message").innerText = entry.dlfMessage;
+    quickFilterDocId = activeDocId;
+    quickFilterColumns = columnsJson;
 }
 
 // Status of every open document, kept up to date for all documents, not only
@@ -568,12 +633,14 @@ function refreshTabs() {
     newTab = documentsCounted(newTab, docCount);
 
     saveSearchDraft(); // the controls may be about to show another document
+    saveQuickFilter(); // so may the quick filter
     docStatus.clear();
     activeDocId = null;
     for (const doc of docs) {
         docStatus.set(doc.id, { mainView: doc.mainView, searchView: doc.searchView, path: doc.path });
         if (doc.active) activeDocId = doc.id;
     }
+    showQuickFilter(applyColumns());
 
     // Same documents in the same order (e.g. another tab was activated): the
     // elements are kept, so a tab being pressed or dragged stays in the DOM
@@ -612,11 +679,32 @@ function refreshTabs() {
         if (!docStatus.has(docId)) committedSearches.delete(docId); // closed
     for (const docId of searchDrafts.keys())
         if (!docStatus.has(docId)) searchDrafts.delete(docId);
+    for (const docId of quickFilters.keys())
+        if (!docStatus.has(docId)) quickFilters.delete(docId);
 
     updateViewMode();
     updateSearchViewMode();
     showSearchDraft();
     updateSearchPending();
+}
+
+// The columns of the log tables follow the format of the active document.
+// The tables are rebuilt only when they change: switching between documents of
+// the same format keeps them as they are.
+// @returns the JSON of the columns of the active document, "[]" if none
+let appliedColumns = null; // JSON of the columns the tables show
+function applyColumns() {
+    const json = Window.this.xcall("getColumns") || "[]";
+    if (json === "[]" || json === appliedColumns) return json; // none, or unchanged
+    appliedColumns = json;
+    setColumns(JSON.parse(json));
+    for (const table of $$("table.log-table")) {
+        table.$("thead").content(renderHeader());
+        const list = table.$("tbody");
+        list.componentUpdate?.();
+        list.refreshVisibleRows?.(); // rows on screen get the new cells
+    }
+    return json;
 }
 
 // The New Tab element: after all the document tabs while open
@@ -827,8 +915,8 @@ function finishTabDrag(moved) {
 
 // Texts of the main view statuses other than the table and the lost file
 const mainViewTexts = {
-    loadingFile: (vm) => `Loading DLT file... ${percent(vm.progress)}%`,
-    loadFailed: () => "Failed to load DLT file",
+    loadingFile: (vm) => `Loading file... ${percent(vm.progress)}%`,
+    loadFailed: () => "Failed to load the file",
     filtering: (vm) => `Filtering... ${percent(vm.progress)}%`,
     filterCancelled: () => "Filter cancelled",
     filterFailed: () => "Filter failed",

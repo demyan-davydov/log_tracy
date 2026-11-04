@@ -110,43 +110,8 @@
     opacity: 0.3;
 }
 
-.log-table>tbody>tr>td:nth-child(2) {
-    font-family: 'Courier New', Courier, monospace;
-    font-size: 80%;
-    text-align: right;
-}
-
-.log-table>tbody>tr>td:nth-child(3) {
-    font-family: 'Courier New', Courier, monospace;
-    font-size: 80%;
-    text-align: right;
-}
-
-.log-table>tbody>tr>td:nth-child(4) {
-    font-family: 'Courier New', Courier, monospace;
-    font-size: 80%;
-    text-align: right;
-}
-
-.log-table>tbody>tr>td:nth-child(5) {
-    font-family: 'Courier New', Courier, monospace;
-    font-size: 80%;
-    text-align: right;
-}
-
-.log-table>tbody>tr>td:nth-child(6) {
-    font-family: 'Courier New', Courier, monospace;
-    font-size: 80%;
-    text-align: right;
-}
-
-.log-table>tbody>tr>td:nth-child(7) {
-    font-family: 'Courier New', Courier, monospace;
-    font-size: 80%;
-    text-align: right;
-}
-
-.log-table>tbody>tr>td:nth-child(8) {
+/* Auxiliary columns (index, time, IDs...): see renderCell() in virtual-dlt-view.js */
+.log-table>tbody>tr>td.aux {
     font-family: 'Courier New', Courier, monospace;
     font-size: 80%;
     text-align: right;

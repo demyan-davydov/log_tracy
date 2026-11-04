@@ -113,6 +113,9 @@ else version (linux)
 
 version (Windows)
 {
+    // Only what the Sciter API uses: this module has its own BOOL, UINT...
+    public import core.sys.windows.windef : HWND, HINSTANCE, HDC, WPARAM, LPARAM, LRESULT;
+
     version (WINDOWLESS)
     {
         alias HWINDOW = void*;

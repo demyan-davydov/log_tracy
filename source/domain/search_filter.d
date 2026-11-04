@@ -1,7 +1,7 @@
 module domain.search_filter;
 
-import dlt_core.log_filter;
-import dlt_core.decoded_message;
+import log_core.log_filter;
+import log_core.log_message;
 
 import std.regex : Regex, regex, matchFirst;
 import std.typecons : Nullable;
@@ -17,7 +17,7 @@ final class SearchFilter : LogFilter!wchar
         bool caseInsensitive;
     }
 
-    alias Message = DecodedMessage!wchar;
+    alias Message = LogMessage!wchar;
 
     private Rule[] _rules;
 
@@ -121,10 +121,11 @@ final class SearchFilter : LogFilter!wchar
 
 version (unittest)
 {
-    private DecodedMessage!wchar messageWithPayload(string payload)
+    private LogMessage!wchar messageWithPayload(string payload)
     {
-        DecodedMessage!wchar msg;
-        auto builder = msg.setupPayload("ECU1", "APP1", "CTX1");
+        LogMessage!wchar msg;
+        msg.beginRecord();
+        auto builder = msg.payloadBuilder();
         builder.appendAscii(payload);
         builder.storePayload();
         return msg;
