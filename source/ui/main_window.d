@@ -392,13 +392,20 @@ class MainWindow : SciterWindow
                 string path = getParamString(0);
                 if (!path.empty)
                 {
-                    // The id of the new document, or why the file can't be opened
+                    // The id of the new document, or why the file can't be
+                    // opened: {"path" (as in the recent list), "error"}
                     string error;
-                    auto id = onFileSelected(normalizePath(path), error);
+                    path = normalizePath(path);
+                    auto id = onFileSelected(path, error);
                     if (id.isValid)
+                    {
                         resultView = id.toInt();
+                    }
                     else
-                        resultView = error.toUTF16();
+                    {
+                        JSONValue failure = ["path": recentFilePath(path), "error": error];
+                        resultView = failure.toString().toUTF16();
+                    }
                 }
                 return true;
             }
@@ -621,12 +628,13 @@ class MainWindow : SciterWindow
         {
             writeln("Error opening file: ", e.msg);
             error = e.msg;
+            rememberRecentFile(path); // listed on top with the reason, to retry or see
             return DocumentId.init;
         }
     }
 
-    /// Puts the opened file on top of the recent list and saves it at once,
-    /// so the list survives a crash and the placeholder shows it right away
+    /// Puts the file opened (or tried) on top of the recent list and saves it
+    /// at once, so the list survives a crash and the placeholder shows it right away
     private void rememberRecentFile(string path)
     {
         auto recentFiles = withRecentFile(_settings.recentFiles, path);

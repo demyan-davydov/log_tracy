@@ -35,6 +35,12 @@ struct FileState
 /// Length of the recent files list
 enum recentFilesMax = 8;
 
+/// The spelling of `path` in the recent list: absolute and normalized
+string recentFilePath(string path)
+{
+    return buildNormalizedPath(absolutePath(path));
+}
+
 /// Returns the recent files list with `path` on top, without duplicates
 /// (paths are compared normalized, ignoring case where the OS does) and
 /// no longer than recentFilesMax
@@ -43,7 +49,7 @@ string[] withRecentFile(const string[] list, string path)
     string[] result = list.dup;
     if (path.length)
     {
-        path = buildNormalizedPath(absolutePath(path));
+        path = recentFilePath(path);
         result = [path] ~ result.filter!(p => filenameCmp(p, path) != 0).array;
     }
     return result[0 .. min(result.length, recentFilesMax)];
@@ -365,4 +371,11 @@ unittest
     assert(j.array.length == 2);
     assert(j[0]["path"].str == existing && j[0]["exists"].boolean);
     assert(j[1]["path"].str == missing && !j[1]["exists"].boolean);
+}
+
+/// A path is stored in the recent list the way recentFilePath() spells it
+unittest
+{
+    assert(recentFilePath("/logs/./x/../a.dlt") == "/logs/a.dlt");
+    assert(withRecentFile([], "/logs/./x/../a.dlt") == [recentFilePath("/logs/./x/../a.dlt")]);
 }

@@ -1,5 +1,10 @@
 import { $, $$ } from "@sciter";
 import { VirtualDltTBody, VirtualMainViewTBody, VirtualSearchViewTBody } from "virtual-dlt-view.js";
+import {
+    noNewTab, plusAction, openNewTab, activateNewTab, activateDocument,
+    closeNewTab, documentAdded, documentsCounted, showsPlaceholder,
+    shownDocument, fileFailed, failureReason
+} from "new-tab.js";
 
 globalThis.VirtualDltTBody = VirtualDltTBody;
 globalThis.VirtualMainViewTBody = VirtualMainViewTBody;
@@ -12,6 +17,8 @@ let tableFontSize = 100;
 // shown or the content of the shown one changes (dataVersion of the ready view).
 // shownDataVersion is null while the view isn't the table.
 let shownDocId = null;
+// The placeholder rendered last: "start", "newTab", null while a document is shown
+let shownPlaceholder = null;
 let shownDataVersion = null;
 // State of the table of each document when another one was shown:
 //   docId -> { dataVersion, index, selection }, index is the first visible row,
@@ -198,17 +205,19 @@ function splitPath(path) {
     return { dir: path.slice(0, cut + 1), name: path.slice(cut + 1) };
 }
 
-// Fills the placeholder shown while no document is open
+// Fills the placeholder: the start screen while no document is open, the
+// content of the New Tab otherwise
 function renderPlaceholder() {
     const placeholder = $("#empty-placeholder");
+    const title = newTab.active ? "Open a file" : "No file open";
     placeholder.content(<div class="placeholder-body">
-        <div class="placeholder-title">No file open</div>
+        <div class="placeholder-title">{title}</div>
         <div class="placeholder-hint">
-            Open a DLT log with <kbd>⌘O</kbd> or <b>+ Open File</b> above
+            <button class="inline-button" id="btn-placeholder-open">Open</button> a DLT log with <kbd>⌘O</kbd>
         </div>
     </div>);
     const recentFiles = getRecentFiles();
-    if (!recentFiles.length && !openFileError) return;
+    if (!recentFiles.length) return;
 
     // Items one by one: append() of JSX is known to work, nested arrays aren't
     placeholder.$(".placeholder-body").append(<div class="recent-files">
@@ -224,25 +233,37 @@ function renderPlaceholder() {
             <div class="recent-file-dir">{dir}</div>
         </div>;
         list.append(item);
-        if (!exists) {
-            const added = list.lastElementChild;
-            added.classList.add("missing");
-            added.$(".recent-file-head").append(<div class="recent-file-missing">File not found</div>);
+        const added = list.lastElementChild;
+        const failed = openFailure && openFailure.path === path;
+        if (failed || !exists) {
+            added.classList.add(failed ? "failed" : "missing");
+            added.$(".recent-file-head").append(<div class="recent-file-note">
+                {failed ? "Failed to open" : "File not found"}
+            </div>);
         }
+        if (failed)
+            added.append(<div class="recent-file-error">{failureReason(openFailure.error)}</div>);
     }
-    if (openFileError)
-        placeholder.$(".placeholder-body").append(<div class="placeholder-error">{openFileError}</div>);
 }
 
-// Why the last file failed to open, shown by the placeholder until a file opens
-let openFileError = "";
+// The file that failed to open last: { path (as in the recent list), error },
+// shown under its item in the recent files until a file opens or "+" is pressed
+let openFailure = null;
 
-// Opens a file in a new tab; on failure the placeholder says why
+// Opens a file in a new tab. On failure the backend puts it on top of the
+// recent files, and the placeholder (brought up if needed) shows why.
 function openFile(path) {
     const result = Window.this.xcall("openFile", path);
-    openFileError = typeof result === "string" ? result : ""; // e.g. "Can't open <path> (<reason>)"
-    if (openFileError) console.error(openFileError);
-    if (!activeDocId) renderPlaceholder(); // no document: refresh the list and the message
+    if (typeof result !== "string") return; // the id of the document: opened
+    try {
+        openFailure = JSON.parse(result);
+    } catch (e) {
+        openFailure = { path, error: result };
+    }
+    console.error("Can't open", path, ":", openFailure.error);
+    newTab = fileFailed(newTab, docCount);
+    shownPlaceholder = null; // render it again, with the failure
+    refreshTabs();
 }
 
 function setTheme(theme) {
@@ -341,7 +362,17 @@ globalThis.onMenuCommand = function (id) {
 };
 
 function setupEvents() {
-    document.on("click", "#btn-add-tab", openFileAction);
+    document.on("click", "#btn-add-tab", () => {
+        if (plusAction(docCount) === "openDialog") {
+            openFileAction();
+            return;
+        }
+        newTab = openNewTab();
+        openFailure = null; // a fresh start
+        shownPlaceholder = null; // render it again, without the failure
+        refreshTabs();
+    });
+    document.on("click", "#btn-placeholder-open", openFileAction);
 
     document.on("click", ".recent-file", (evt, item) => openFile(item.getAttribute("path")));
 
@@ -438,7 +469,12 @@ function setupEvents() {
     // A tab is activated on mousedown (as in browsers) and can then be dragged;
     // click only handles the close button
     document.on("click", ".tab .tab-close", function (evt, close) {
-        closeTab(close.parentElement.id);
+        if (close.parentElement.id === NEW_TAB_ID) {
+            newTab = closeNewTab();
+            refreshTabs();
+        } else {
+            closeTab(close.parentElement.id);
+        }
         return true;
     });
 
@@ -448,8 +484,17 @@ function setupEvents() {
         if (evt.buttons & 6) return;
         if (evt.target.classList.contains("tab-close")) return;
         if (tabDrag) return; // the previous drop is still settling
+        if (tab.id === NEW_TAB_ID) { // stays the last one: not dragged
+            if (newTab.active) return true; // shown already
+            newTab = activateNewTab(newTab);
+            refreshTabs();
+            return true;
+        }
         const docId = parseInt(tab.id);
+        const leavingNewTab = newTab.active;
+        newTab = activateDocument(newTab);
         if (docId !== activeDocId) switchTab(docId); // keeps the tab elements
+        else if (leavingNewTab) refreshTabs(); // the document is shown again
         beginTabDrag(tab, evt.clientX);
         return true; // no text selection
     });
@@ -490,7 +535,15 @@ function applyFilters() {
 // view> }, see source/ui/main_view_fsm.d and source/ui/search_view_fsm.d.
 // Snapshot comes from getWorkspaceInfo in refreshTabs().
 const docStatus = new Map();
-let activeDocId = null;
+let activeDocId = null; // active in the backend; hidden while the New Tab is shown
+let docCount = 0;
+
+// The New Tab (see new-tab.js): the last tab of the strip while open
+const NEW_TAB_ID = "new-tab";
+let newTab = noNewTab;
+
+// The tabs of the documents, without the New Tab
+const DOC_TABS = `#tabs-container > .tab:not(#${NEW_TAB_ID})`;
 
 function findTab(docId) {
     return $(`#tabs-container > .tab[id="${docId}"]`);
@@ -511,6 +564,8 @@ function refreshTabs() {
     if (!info) return;
     const docs = JSON.parse(info);
     const container = $("#tabs-container");
+    docCount = docs.length;
+    newTab = documentsCounted(newTab, docCount);
 
     saveSearchDraft(); // the controls may be about to show another document
     docStatus.clear();
@@ -522,28 +577,32 @@ function refreshTabs() {
 
     // Same documents in the same order (e.g. another tab was activated): the
     // elements are kept, so a tab being pressed or dragged stays in the DOM
-    let tabs = [...$$("#tabs-container > .tab")];
+    let tabs = [...$$(DOC_TABS)];
     const sameTabs = tabs.length === docs.length
         && tabs.every((tab, i) => parseInt(tab.id) === docs[i].id);
     if (!sameTabs) {
         // The + button is kept: it animates between its two looks
         for (const tab of tabs) tab.remove();
-        for (const doc of docs)
+        const newTabElement = $(`#${NEW_TAB_ID}`); // kept, after the documents
+        for (const doc of docs) {
             container.append(<div class="tab" id={doc.id}>
                 <span class="tab-sep"></span>
                 <span class="tab-name"></span>
                 <span class="tab-close">×</span>
             </div>);
-        tabs = [...$$("#tabs-container > .tab")];
+            if (newTabElement) container.insertBefore(container.lastElementChild, newTabElement);
+        }
+        tabs = [...$$(DOC_TABS)];
     }
     updateAddTabButton(docs.length === 0);
     docs.forEach((doc, i) => {
         const tab = tabs[i];
-        if (doc.active) tab.classList.add("active");
+        if (doc.active && !newTab.active) tab.classList.add("active");
         else tab.classList.remove("active");
         tab.$(".tab-name").textContent = doc.name;
         applyTabStatus(tab, docStatus.get(doc.id));
     });
+    renderNewTab();
 
     for (const docId of mainViewStates.keys())
         if (!docStatus.has(docId)) mainViewStates.delete(docId); // closed
@@ -560,8 +619,28 @@ function refreshTabs() {
     updateSearchPending();
 }
 
+// The New Tab element: after all the document tabs while open
+function renderNewTab() {
+    const container = $("#tabs-container");
+    let tab = $(`#${NEW_TAB_ID}`);
+    if (!newTab.open) {
+        if (tab) tab.remove();
+        return;
+    }
+    if (!tab) {
+        container.append(<div class="tab" id={NEW_TAB_ID}>
+            <span class="tab-sep"></span>
+            <span class="tab-name">New Tab</span>
+            <span class="tab-close">×</span>
+        </div>);
+        tab = container.lastElementChild;
+    }
+    if (newTab.active) tab.classList.add("active");
+    else tab.classList.remove("active");
+}
+
 // The + button: "+ Open File" while no document is open, a small round "+"
-// in the corner of the tab strip otherwise (the label then is its tooltip)
+// in the corner of the tab strip otherwise, opening the New Tab
 function updateAddTabButton(wide) {
     const button = $("#btn-add-tab");
     if (wide) {
@@ -569,7 +648,7 @@ function updateAddTabButton(wide) {
         button.removeAttribute("title");
     } else {
         button.classList.remove("wide");
-        button.setAttribute("title", "Open File (⌘O)");
+        button.setAttribute("title", "New Tab");
     }
 }
 
@@ -658,7 +737,7 @@ function measureTabSeparator(tab, tabRect) {
 }
 
 function beginTabDrag(tab, clientX) {
-    const tabs = [...$$("#tabs-container > .tab")];
+    const tabs = [...$$(DOC_TABS)];
     const rects = tabs.map(t => t.getBoundingClientRect());
     const from = tabs.indexOf(tab);
     if (from < 0) return;
@@ -818,14 +897,16 @@ function updateViewMode() {
     const loading = getLoadingContainer();
     const empty = $("#empty-placeholder");
     const lostView = $("#source-lost");
-    const status = docStatus.get(activeDocId);
+    // The document shown: none while the placeholder is (the New Tab too)
+    const docId = shownDocument(newTab, docCount, activeDocId);
+    const status = docStatus.get(docId);
     const vm = status ? status.mainView : null;
 
     // Leaving the table of another document: the rows on screen are still its own
-    if (shownDocId !== null && shownDocId !== activeDocId && shownDataVersion !== null)
+    if (shownDocId !== null && shownDocId !== docId && shownDataVersion !== null)
         saveListState(getMainViewList(), mainViewStates, shownDocId, shownDataVersion);
 
-    // No document: the placeholder replaces all the panels, the filters too
+    // No document shown: the placeholder replaces all the panels, the filters too
     empty.style.display = vm ? "none" : "flex";
     $("#document-views").style.display = vm ? "" : "none";
 
@@ -835,26 +916,31 @@ function updateViewMode() {
     };
 
     if (!vm) {
-        renderPlaceholder();
+        // Rendered on entering it only: not on every event of a hidden
+        // document, which would rebuild the list under the mouse
+        const mode = newTab.active ? "newTab" : "start";
+        if (shownPlaceholder !== mode) renderPlaceholder();
+        shownPlaceholder = mode;
         shownDocId = null;
         shownDataVersion = null;
         return;
     }
 
+    shownPlaceholder = null;
     if (vm.status !== "sourceLost") $("#source-lost-error").innerText = "";
 
     if (vm.status === "ready") {
         showOnly(table);
-        if (activeDocId !== shownDocId) {
-            console.log("View update: doc", activeDocId, "content", vm.dataVersion);
-            const saved = savedListState(mainViewStates, activeDocId, vm.dataVersion);
+        if (docId !== shownDocId) {
+            console.log("View update: doc", docId, "content", vm.dataVersion);
+            const saved = savedListState(mainViewStates, docId, vm.dataVersion);
             getMainViewList().restoreSelection(saved ? saved.selection : null);
             reloadLogTable(saved ? saved.index : "start");
         } else if (vm.dataVersion !== shownDataVersion) {
-            console.log("View update: content", vm.dataVersion, "of doc", activeDocId);
+            console.log("View update: content", vm.dataVersion, "of doc", docId);
             reloadLogTable();
         }
-        shownDocId = activeDocId;
+        shownDocId = docId;
         shownDataVersion = vm.dataVersion;
         return;
     }
@@ -867,7 +953,7 @@ function updateViewMode() {
         showStatus({ status: "#doc-load-status", progress: "#doc-load-progress",
             detail: "#doc-load-detail", cancel: "#btn-cancel-load" }, vm, mainViewTexts, mainViewDetails);
     }
-    shownDocId = activeDocId;
+    shownDocId = docId;
     shownDataVersion = null; // the next table is reloaded, whatever its dataVersion
 }
 
@@ -939,7 +1025,7 @@ globalThis.onSearchViewChanged = function (docId, json) {
     const tab = findTab(docId);
     if (tab) applyTabStatus(tab, status);
 
-    if (docId === activeDocId) updateSearchViewMode();
+    if (docId === shownDocument(newTab, docCount, activeDocId)) updateSearchViewMode();
 };
 
 // Native: the main view of a document shows something else now.
@@ -956,11 +1042,13 @@ globalThis.onMainViewChanged = function (docId, json) {
     const tab = findTab(docId);
     if (tab) applyTabStatus(tab, status);
 
-    if (docId === activeDocId) updateViewMode();
+    if (docId === shownDocument(newTab, docCount, activeDocId)) updateViewMode();
 };
 
 globalThis.onDocumentAdded = function (docId) {
     console.log("Native: onDocumentAdded (int)", docId);
+    newTab = documentAdded(newTab); // opened from the New Tab: takes its place
+    openFailure = null;
     refreshTabs(); // the table reloads when the file is loaded
 };
 
