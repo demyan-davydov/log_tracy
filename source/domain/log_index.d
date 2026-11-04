@@ -1,10 +1,9 @@
-module domain.dlt_index;
+module domain.log_index;
 
-import dlt_core.dlt_log_filter;
 import log_core.log_message;
 import log_core.log_filter;
-import dlt_core.dlt_source;
-import dlt_core.dlt_parser : parseDltItem;
+import log_core.log_format;
+import log_core.byte_source;
 
 import domain.index.offset_index;
 import domain.index.filter_index;
@@ -20,6 +19,7 @@ import utils.lock_guard;
 
 import std.typecons;
 import std.parallelism;
+import std.algorithm.comparison : min;
 
 import core.atomic : atomicLoad, atomicStore;
 import core.stdc.stdint : uint16_t, uint32_t;
@@ -32,7 +32,7 @@ import core.sync.mutex : Mutex;
 alias Filter = LogFilter!wchar;
 alias Message = LogMessage!wchar;
 
-//! @brief Holds DLT file data and its associated indexes.
+//! @brief Holds the data of a log and its indexes.
 //! Responsible for:
 //!   * Creating and maintaining indexes,
 //!   * Updating indexes in the background and
@@ -40,13 +40,13 @@ alias Message = LogMessage!wchar;
 //!
 //! @brief This struct is not thread-safe. It is assumed that all access occurs
 //! from the GUI thread only. It does, however, provide safe background index updates
-//! and concurrent read access to the DLT file content.
-struct DltIndex
+//! and concurrent read access to the log content.
+struct LogIndex
 {
-    private alias Scoped(T) = typeof(scoped!T(string.init, bool.init));
     private alias ScopedMutex = typeof(scoped!Mutex());
 
-    private Scoped!DltSourceFile _source; // file with source data
+    private ByteSource _source; // log data, owned: closed by the destructor
+    private LogFormat _format; // splits the data into records and decodes them
     private OffsetIndex _offsetIndex; // indecies of messages in the source file
     private FilterIndex _filterIndex; // indecies of messages that match the filter
     private SearchIndex _searchIndex; // indecies of messages that match the search
@@ -92,15 +92,15 @@ struct DltIndex
 
     @disable this(this); // copy constructor is disabled
 
-    this(string path, SignalProducer events)
+    this(ByteSource source, LogFormat format, SignalProducer events)
     {
         _events = events;
-
-        _source = scoped!DltSourceFile(path);
+        _source = source;
+        _format = format;
 
         // Upper bound of the message count: indexes are never full. Anonymous
         // mmap commits pages lazily, so unused capacity costs address space only.
-        const size_t capacity = _source.overallLength / DltSourceRange.minMessageLength + 1;
+        const size_t capacity = _source.data.length / _format.minRecordLength + 1;
         _offsetIndex = OffsetIndex(capacity);
         _filterIndex = FilterIndex(capacity);
         _searchIndex = SearchIndex(capacity);
@@ -118,6 +118,14 @@ struct DltIndex
         // _source would go before _backgroundSlot joins the worker that uses
         // them. Stop the worker explicitly first.
         _backgroundSlot.shutdown();
+        if (_source !is null) // null if the owner failed before constructing it
+            _source.close();
+    }
+
+    //! The format of the log
+    const(LogFormat) format() const pure nothrow @nogc
+    {
+        return _format;
     }
 
     void cancelCurrentOperation()
@@ -267,8 +275,17 @@ struct DltIndex
             fileOffset = _offsetIndex[msgIndex];
         }
         Message msg;
-        parseDltItem!wchar(msg, _source.getMessage(fileOffset.offset), _source.hasStorageHeader);
+        if (!decodeAt(msg, fileOffset.offset))
+            return false;
         return filter.matches(msg);
+    }
+
+    //! @brief Decodes the record at `offset` of the data
+    //! @return false if there is no valid record there
+    private bool decodeAt(ref Message msg, size_t offset) nothrow @nogc
+    {
+        const data = _source.data;
+        return _format.decode(msg, _format.recordAt(data, offset));
     }
 
     void enableFilter(bool enable)
@@ -296,34 +313,29 @@ struct DltIndex
             _searchIndex.isReady = false;
         }
 
-        auto range = _source.range();
+        const data = _source.data;
+        size_t pos = 0;
 
-        while (range.hasNext)
+        while (pos < data.length)
         {
             if (ctx.cancelled)
                 return false;
             enforceSourceAvailable();
 
+            size_t[bunchSize] offsets;
+            const found = _format.scanRecords(data, pos, offsets[], true);
+            assert(found.next > pos || found.count > 0, "scanning must make progress");
+            pos = found.next;
+
             OffsetIndex.Type[bunchSize] tempIndex;
-            size_t n = 0; // items written into tempIndex this batch
-
-            while (n < bunchSize && range.hasNext)
-            {
-                const auto msg = range.pop();
-                if (msg.length == 0)
-                    break;
-                // Start of the message itself: pop() skips garbage before it,
-                // and getMessage() expects the offset of a header
-                const size_t msgStart = range.offset - msg.length;
-
-                tempIndex[n++].offset = msgStart;
-            }
+            foreach (i; 0 .. found.count)
+                tempIndex[i].offset = offsets[i];
 
             synchronized (cast(Mutex)_mutex)
             {
-                if (!_offsetIndex.append(tempIndex[0 .. n])) // only populated slice
+                if (!_offsetIndex.append(tempIndex[0 .. found.count]))
                     throw new Exception("offset index overflow");
-                progress.report(cast(float)(range.offset) / range.overallLength);
+                progress.report(cast(float) pos / data.length);
             }
         }
 
@@ -374,11 +386,12 @@ struct DltIndex
             return isAnchoredMsg || filter.matches(msg);
         };
 
-        uint32_t messageIndex = 0;
+        // The offset index is complete and doesn't change while this runs
+        const size_t indexLen = _offsetIndex.length;
         Message parsedMsg;
-        auto range = _source.range();
+        size_t pos = 0;
 
-        while (range.hasNext)
+        while (pos < indexLen)
         {
             if (ctx.cancelled)
             {
@@ -386,29 +399,27 @@ struct DltIndex
             }
             enforceSourceAvailable();
 
+            const size_t batchEnd = min(pos + bunchSize, indexLen);
             FilterIndex.Type[bunchSize] tempIndex;
             size_t n = 0; // items written into tempIndex this batch
 
-            while (n < bunchSize && range.hasNext)
+            for (size_t i = pos; i < batchEnd; ++i)
             {
-                const auto msg = range.pop();
-                if (msg.length == 0)
-                    break;
+                if (!decodeAt(parsedMsg, _offsetIndex[i].offset))
+                    continue;
 
-                parseDltItem!wchar(parsedMsg, msg, range.hasStorageHeader);
-
-                if (isMatched(parsedMsg, messageIndex))
-                    tempIndex[n++] = messageIndex;
-
-                ++messageIndex;
+                if (isMatched(parsedMsg, i))
+                    tempIndex[n++] = cast(FilterIndex.Type) i;
             }
 
             synchronized (cast(Mutex)_mutex)
             {
                 if (!_filterIndex.append(tempIndex[0 .. n])) // only matched entries
                     throw new Exception("filter index overflow");
-                progress.report(cast(float)(range.offset) / range.overallLength);
+                progress.report(cast(float) batchEnd / indexLen);
             }
+
+            pos = batchEnd;
         }
 
         enforceSourceAvailable(); // the last batch may have read zeros
@@ -453,7 +464,6 @@ struct DltIndex
 
         // Build a read-only list of file offsets to iterate over
         const size_t indexLen = _viewIsFiltered ? _filterIndex.length : _offsetIndex.length;
-        const bool hasStorageHeader = _source.hasStorageHeader;
 
         Message parsedMsg;
         SearchIndex.Type[bunchSize] tempIndex;
@@ -476,10 +486,8 @@ struct DltIndex
             for (size_t i = pos; i < batchEnd; ++i)
             {
                 const uint32_t globalIndex = _viewIsFiltered ? _filterIndex[i] : cast(uint32_t) i;
-                const auto fileOffset = _offsetIndex[globalIndex];
-                const auto msgBytes = _source.getMessage(fileOffset.offset);
-
-                parseDltItem!wchar(parsedMsg, msgBytes, hasStorageHeader);
+                if (!decodeAt(parsedMsg, _offsetIndex[globalIndex].offset))
+                    continue;
 
                 if (isMatched(parsedMsg, globalIndex))
                 {
@@ -540,10 +548,9 @@ struct DltIndex
             fileOffset = _offsetIndex[index];
         }
 
-        const auto msgBytes = _source.getMessage(fileOffset.offset);
-        parseDltItem!wchar(item._message, msgBytes, _source.hasStorageHeader);
-        if (_source.lost)
-            return false; // the message was read as zeros
+        const bool decoded = decodeAt(item._message, fileOffset.offset);
+        if (!decoded || _source.lost)
+            return false; // no record there: e.g. the file was read as zeros
         item.realIndex = index;
         item.filterMask = fileOffset.filterMask;
         item.searchMask = 0;
@@ -582,10 +589,9 @@ struct DltIndex
             fileOffset = _offsetIndex[globalIndex];
         }
 
-        const auto msgBytes = _source.getMessage(fileOffset.offset);
-        parseDltItem!wchar(item._message, msgBytes, _source.hasStorageHeader);
-        if (_source.lost)
-            return false; // the message was read as zeros
+        const bool decoded = decodeAt(item._message, fileOffset.offset);
+        if (!decoded || _source.lost)
+            return false; // no record there: e.g. the file was read as zeros
         item.realIndex = globalIndex;
         item.filterMask = fileOffset.filterMask;
         item.searchMask = 0;

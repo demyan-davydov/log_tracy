@@ -8,7 +8,7 @@ import domain.workspace;
 import domain.document_id;
 import domain.document;
 import domain.document_item;
-import domain.dlt_document;
+import domain.log_document;
 
 import dlt_core.dlt_filter_serialization;
 import dlt_core.dlt_filter_record;
@@ -601,7 +601,7 @@ class MainWindow : SciterWindow
             // Timings: both steps run on the UI thread and may block on a disk
             // that has just been reconnected or removed
             const openStart = MonoTime.currTime;
-            auto fresh = new DltDocument(path);
+            auto fresh = new LogDocument(path);
             const openTime = MonoTime.currTime - openStart;
 
             const destroyStart = MonoTime.currTime;
@@ -628,7 +628,7 @@ class MainWindow : SciterWindow
         try
         {
             writeln("Creating new document: ", path);
-            auto newDoc = new DltDocument(path);
+            auto newDoc = new LogDocument(path);
             auto docId = _workspace.addDocument(newDoc, path);
             addDocumentUi(docId);
             _workspace.setCurrent(docId);

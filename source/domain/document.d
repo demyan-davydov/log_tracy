@@ -1,6 +1,5 @@
 module domain.document;
 
-import dlt_core.dlt_source;
 import log_core.log_message;
 import log_core.log_filter : LogFilter;
 import dlt_core.dlt_protocol : LogLevel, MessageType;
