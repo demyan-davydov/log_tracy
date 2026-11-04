@@ -6,6 +6,7 @@ import {
     shownDocument, fileFailed, failureReason
 } from "new-tab.js";
 import { lastUsedText } from "recent-time.js";
+import { clampShift, dragTarget, settleShift } from "drag-order.js";
 
 globalThis.VirtualDltTBody = VirtualDltTBody;
 globalThis.VirtualMainViewTBody = VirtualMainViewTBody;
@@ -339,16 +340,23 @@ globalThis.getSearchViewList = function () {
     return list;
 }
 
+// The Settings dialog; Save applies all its sections at once
 function openSettingsAction() {
     const result = Window.this.modal({
         url: "settings.htm",
         alignment: "center",
-        parameters: { theme: currentTheme, tableFontSize }
+        parameters: {
+            theme: currentTheme, tableFontSize,
+            columns: JSON.parse(Window.this.xcall("getColumnSettings") || "null")
+        }
     });
-    if (result && result.theme) {
-        setTheme(result.theme);
+    if (!result) return; // Cancel
+    if (result.theme) setTheme(result.theme);
+    if (result.tableFontSize) setTableFontSize(result.tableFontSize);
+    if (result.columnLayouts) {
+        Window.this.xcall("setColumnLayouts", JSON.stringify(result.columnLayouts));
+        applyColumns(); // the tables show the columns as arranged now
     }
-    if (result && result.tableFontSize) setTableFontSize(result.tableFontSize);
 }
 
 function openFileAction() {
@@ -546,7 +554,8 @@ function setupEvents() {
         // (4) bits are the same in DOM and in Sciter (PROP_/MIDDLE_MOUSE_BUTTON)
         if (evt.buttons & 6) return;
         if (evt.target.classList.contains("tab-close")) return;
-        if (tabDrag) return; // the previous drop is still settling
+        if (tabDrag?.settling) return; // the previous drop is still settling
+        if (tabDrag) finishTabDrag(false); // released outside the window: the press is dropped
         if (tab.id === NEW_TAB_ID) { // stays the last one: not dragged
             if (newTab.active) return true; // shown already
             newTab = activateNewTab(newTab);
@@ -784,13 +793,14 @@ function refreshTabs() {
     updateSearchPending();
 }
 
-// The columns of the log tables follow the format of the active document.
-// The tables are rebuilt only when they change: switching between documents of
-// the same format keeps them as they are.
-// @returns the JSON of the columns of the active document, "[]" if none
+// The columns of the log tables follow the format of the active document, as
+// the layout of the format in Settings arranges them. The tables are rebuilt
+// only when they change: switching between documents of the same format keeps
+// them as they are.
+// @returns the JSON of the columns of the tables, "[]" if no document
 let appliedColumns = null; // JSON of the columns the tables show
 function applyColumns() {
-    const json = Window.this.xcall("getColumns") || "[]";
+    const json = Window.this.xcall("getTableColumns") || "[]";
     if (json === "[]" || json === appliedColumns) return json; // none, or unchanged
     appliedColumns = json;
     setColumns(JSON.parse(json));
@@ -842,7 +852,7 @@ function closeTab(docId) {
 // it will land; on drop it slides into that place and the workspace order is
 // updated. No tooltips while a tab is held: they would cover the strip
 // (see TabTooltip).
-// tabDrag: { tab, tabs, rects, from, to, startX, dx, minDx, maxDx, sep,
+// tabDrag: { tab, tabs, rects, spans, from, to, startX, dx, sep,
 //            markerOrigin, active, settling, refreshPending }, null when no
 //            tab is held.
 const TAB_DRAG_THRESHOLD = 4; // px of mouse movement before a press becomes a drag
@@ -915,10 +925,8 @@ function beginTabDrag(tab, clientX) {
     if (from < 0) return;
     tabDrag = {
         tab, tabs, rects, from, to: from,
+        spans: rects.map(r => ({ start: r.left, end: r.right })), // see drag-order.js
         startX: clientX, dx: 0,
-        // the tab stays within the strip
-        minDx: rects[0].left - rects[from].left,
-        maxDx: rects[rects.length - 1].right - rects[from].right,
         sep: measureTabSeparator(tabs[0], rects[0]), markerOrigin: null,
         active: false, settling: false, refreshPending: false
     };
@@ -937,25 +945,12 @@ function moveTabDrag(clientX) {
         for (const t of d.tabs) if (t !== d.tab) t.classList.add("shifting");
         $("#tabs-container").append(<div id="tab-drop-marker"></div>);
     }
-    d.dx = Math.max(d.minDx, Math.min(d.maxDx, dx));
+    d.dx = clampShift(d.spans, d.from, dx); // the tab stays within the strip
     setTabShift(d.tab, d.dx);
 
-    // The tab takes the place of every tab whose middle its leading edge has
-    // passed (with equal widths, the strip end is exactly the middle of the
-    // last tab, hence the non-strict comparison)
-    const r = d.rects[d.from];
-    const width = r.right - r.left;
-    const left = r.left + d.dx, right = r.right + d.dx;
-    let to = d.from;
-    for (let i = 0; i < d.tabs.length; i++) {
-        if (i === d.from) continue;
-        const ri = d.rects[i];
-        const middle = (ri.left + ri.right) / 2;
-        let shift = 0;
-        if (i > d.from && right >= middle) { shift = -width; to++; }
-        else if (i < d.from && left <= middle) { shift = width; to--; }
-        setTabShift(d.tabs[i], shift);
-    }
+    // The tab takes the place of every tab whose middle its leading edge has passed
+    const { to, shifts } = dragTarget(d.spans, d.from, d.dx);
+    d.tabs.forEach((t, i) => { if (i !== d.from) setTabShift(t, shifts[i]); });
     d.to = to;
     showTabDropMarker(d);
 }
@@ -968,14 +963,9 @@ function endTabDrag() {
         return;
     }
     // Slide into the free place, then commit the new order
-    let target = 0;
-    if (d.to > d.from)
-        target = d.rects[d.to].right - d.rects[d.from].right;
-    else if (d.to < d.from)
-        target = d.rects[d.to].left - d.rects[d.from].left;
     d.settling = true;
     d.tab.classList.add("settling");
-    setTabShift(d.tab, target);
+    setTabShift(d.tab, settleShift(d.spans, d.from, d.to));
     setTimeout(() => finishTabDrag(d.to !== d.from), TAB_SETTLE_MS);
 }
 

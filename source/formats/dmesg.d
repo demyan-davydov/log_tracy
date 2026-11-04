@@ -131,6 +131,16 @@ final class DmesgFormat : TextFormat
 
 final class DmesgDetector : FormatDetector
 {
+    override const(int)[] variants() const pure nothrow
+    {
+        import std.traits : EnumMembers;
+
+        int[] all;
+        foreach (variant; EnumMembers!(DmesgFormat.Variant))
+            all ~= variant;
+        return all;
+    }
+
     override FormatInfo info() const pure nothrow @nogc
     {
         return dmesgFormatInfo;

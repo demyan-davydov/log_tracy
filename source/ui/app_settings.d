@@ -12,6 +12,7 @@ import formats.registry : formatInfo;
 import log_core.filter_file : ruleFromJson, rulesToJson;
 import log_core.rule_filter : FilterRule;
 import log_core.log_format : FormatChoice, FormatInfo;
+import log_core.column_layout : ColumnState;
 
 struct WindowRect
 {
@@ -221,6 +222,124 @@ string recentFilesJson(const RecentFile[] list, const string[] openPaths = null)
     return JSONValue(items).toString();
 }
 
+/// The layouts of the columns chosen by the user, by FormatInfo.id: one
+/// for all the logs of a format. A format without one shows its columns as
+/// they are.
+alias ColumnLayouts = ColumnState[][string];
+
+/// A copy of layouts
+ColumnLayouts copyOf(const ColumnLayouts layouts)
+{
+    ColumnLayouts copy;
+    foreach (id, layout; layouts)
+        copy[id] = layout.dup;
+    return copy;
+}
+
+/// The layouts as settings.json and the Settings dialog have them:
+/// {format id: [{"id", "visible"}]}
+JSONValue columnLayoutsToJson(const ColumnLayouts layouts)
+{
+    JSONValue j = parseJSON("{}");
+    foreach (id, layout; layouts)
+        j.object[id] = JSONValue(layout.map!(c => JSONValue([
+            "id": JSONValue(c.id), "visible": JSONValue(c.visible)
+        ])).array);
+    return j;
+}
+
+/// Reads layouts written by columnLayoutsToJson(); an entry that isn't a
+/// layout, and a column that isn't one, are skipped
+ColumnLayouts columnLayoutsFromJson(const JSONValue json)
+{
+    ColumnLayouts layouts;
+    if (json.type != JSONType.object)
+        return layouts;
+    foreach (formatId, layout; json.object)
+    {
+        if (layout.type != JSONType.array)
+            continue;
+        ColumnState[] columns;
+        foreach (ref column; layout.array)
+        {
+            if (column.type != JSONType.object)
+                continue;
+            const id = "id" in column;
+            if (id is null || id.type != JSONType.string)
+                continue;
+            const visible = "visible" in column; // shown without the key
+            columns ~= ColumnState(id.str, visible is null || visible.type != JSONType.false_);
+        }
+        layouts[formatId] = columns;
+    }
+    return layouts;
+}
+
+/// Returns `layouts` with those of the Settings dialog (`json`, as
+/// columnLayoutsToJson() writes them) in place of theirs. A layout that
+/// shows the columns as they are without one is dropped: a column the format
+/// gets later is then shown at its place.
+ColumnLayouts withColumnLayouts(const ColumnLayouts layouts, const(char)[] json)
+{
+    import formats.registry : formatColumns;
+    import log_core.column_layout : isDefaultLayout, movableIds;
+
+    ColumnLayouts result = copyOf(layouts);
+    ColumnLayouts changed;
+    try
+        changed = columnLayoutsFromJson(parseJSON(json));
+    catch (JSONException)
+        return result;
+    foreach (formatId, layout; changed)
+    {
+        if (isDefaultLayout(layout, movableIds(formatColumns(formatId))))
+            result.remove(formatId);
+        else
+            result[formatId] = layout;
+    }
+    return result;
+}
+
+/// What the Columns section of the Settings dialog shows: {"current": the
+/// format to show first, "formats": [{"id", "name", "payload": the title of
+/// the last column, "defaults": [ids in the order of the format], "columns":
+/// [{"id", "title", "visible"}] as `layouts` arrange them}]}. Only the formats
+/// that have columns to arrange (more than Payload) are listed.
+string columnSettingsJson(const ColumnLayouts layouts, string currentFormat)
+{
+    import formats.registry : formatColumns, formatInfos;
+    import log_core.column_layout : fullLayout, movableIds;
+    import log_core.log_format : ColumnKind;
+
+    JSONValue[] formats;
+    foreach (info; formatInfos())
+    {
+        const columns = formatColumns(info.id);
+        const ids = movableIds(columns);
+        if (ids.length == 0)
+            continue;
+        const layout = info.id in layouts;
+        JSONValue[] shown;
+        foreach (state; fullLayout(ids, layout is null ? null : *layout))
+        {
+            const at = columns.countUntil!(c => c.id == state.id);
+            if (at < 0)
+                continue; // the format has it no more
+            shown ~= JSONValue([
+                "id": JSONValue(state.id), "title": JSONValue(columns[at].title),
+                "visible": JSONValue(state.visible)
+            ]);
+        }
+        auto payload = columns.filter!(c => c.kind == ColumnKind.Payload);
+        formats ~= JSONValue([
+            "id": JSONValue(info.id), "name": JSONValue(info.name),
+            "payload": JSONValue(payload.empty ? "" : payload.front.title),
+            "defaults": JSONValue(ids), "columns": JSONValue(shown),
+        ]);
+    }
+    return JSONValue(["current": JSONValue(currentFormat), "formats": JSONValue(formats)]).toString();
+}
+
 struct AppSettings
 {
     WindowRect windowRect;
@@ -229,6 +348,7 @@ struct AppSettings
     RecentFile[] recentFiles; /// files opened recently, the newest first
     string theme;
     int tableFontSize = 100; /// font size of the log tables, % of the normal one
+    ColumnLayouts columnLayouts; /// the columns of the log tables, by format
 
     this(ref return scope const AppSettings rhs)
     {
@@ -238,6 +358,7 @@ struct AppSettings
         this.recentFiles = copyOf(rhs.recentFiles);
         this.theme = rhs.theme;
         this.tableFontSize = rhs.tableFontSize;
+        this.columnLayouts = copyOf(rhs.columnLayouts);
     }
 
     void opAssign(const AppSettings rhs)
@@ -248,6 +369,7 @@ struct AppSettings
         this.recentFiles = copyOf(rhs.recentFiles);
         this.theme = rhs.theme;
         this.tableFontSize = rhs.tableFontSize;
+        this.columnLayouts = copyOf(rhs.columnLayouts);
     }
 
     bool opEquals(const ref AppSettings rhs) const
@@ -257,7 +379,8 @@ struct AppSettings
             activeFile == rhs.activeFile &&
             recentFiles == rhs.recentFiles &&
             theme == rhs.theme &&
-            tableFontSize == rhs.tableFontSize;
+            tableFontSize == rhs.tableFontSize &&
+            columnLayouts == rhs.columnLayouts;
     }
 
     size_t toHash() const @safe nothrow
@@ -268,6 +391,8 @@ struct AppSettings
         hash = hashOf(recentFiles, hash);
         hash = hashOf(theme, hash);
         hash = hashOf(tableFontSize, hash);
+        foreach (id, layout; columnLayouts) // in no order: summed
+            hash += hashOf(layout, hashOf(id));
         return hash;
     }
 }
@@ -328,6 +453,8 @@ static JSONValue toJSON(in AppSettings settings)
     j.object["recentFiles"] = JSONValue(recentArray);
     j.object["theme"] = JSONValue(settings.theme);
     j.object["tableFontSize"] = JSONValue(settings.tableFontSize);
+    if (settings.columnLayouts.length)
+        j.object["columnLayouts"] = columnLayoutsToJson(settings.columnLayouts);
 
     return j;
 }
@@ -484,6 +611,9 @@ static AppSettings loadSettings(string path = defaultSettingsPath())
         {
             settings.tableFontSize = j["tableFontSize"].integer.to!int;
         }
+
+        if (const layouts = "columnLayouts" in j)
+            settings.columnLayouts = columnLayoutsFromJson(*layouts);
 
     }
     catch (Exception e)
@@ -800,4 +930,78 @@ unittest
     auto changed = withFilters(list, "/a.log", []);
     assert(changed[1].path == "/a.log" && changed[1].filters.length == 0, "in place");
     assert(withFilters(list, "/c.log", filters.dup) == list, "a file not in the list isn't added");
+}
+
+/// The layouts of the columns survive a save and a load; broken entries are skipped
+unittest
+{
+    const path = buildPath(tempDir(), "dlt_explorer_settings_columns_test.json");
+    scope (exit) if (exists(path)) remove(path);
+
+    AppSettings settings;
+    settings.columnLayouts["dlt"] = [ColumnState("level"), ColumnState("time", false)];
+    settings.columnLayouts["logcat"] = [ColumnState("tag", false)];
+    saveSettings(settings, path);
+    assert(loadSettings(path).columnLayouts == settings.columnLayouts);
+
+    std.file.write(path, `{"columnLayouts": {"dlt": [{"id": "app"}, {"id": 5}, "x",
+        {"id": "ctx", "visible": false}], "logcat": 7}, "theme": "dark"}`);
+    settings = loadSettings(path);
+    assert(settings.theme == "dark");
+    assert(settings.columnLayouts == ["dlt": [ColumnState("app"), ColumnState("ctx", false)]],
+        "a column without an id and a layout that isn't one are skipped; shown without the key");
+
+    std.file.write(path, `{"columnLayouts": [1, 2], "theme": "dark"}`);
+    settings = loadSettings(path);
+    assert(settings.theme == "dark" && settings.columnLayouts is null);
+}
+
+/// The layouts of the dialog replace those of their formats; a default one is dropped
+unittest
+{
+    import formats.dlt.format : dltFormatInfo;
+    import formats.registry : formatColumns;
+    import log_core.column_layout : movableIds;
+
+    ColumnLayouts layouts;
+    layouts["dlt"] = [ColumnState("level")];
+    layouts["logcat"] = [ColumnState("tag", false)];
+
+    auto changed = withColumnLayouts(layouts, `{"dlt": [{"id": "app", "visible": false}]}`);
+    assert(changed == ["dlt": [ColumnState("app", false)], "logcat": [ColumnState("tag", false)]]);
+    assert(layouts["dlt"] == [ColumnState("level")], "a copy");
+
+    auto defaults = movableIds(formatColumns(dltFormatInfo.id)).map!(id => JSONValue(["id": id])).array;
+    changed = withColumnLayouts(layouts, `{"dlt": ` ~ JSONValue(defaults).toString() ~ `}`);
+    assert("dlt" !in changed, "the default layout is no layout");
+    assert(withColumnLayouts(layouts, "not json") == layouts);
+}
+
+/// The dialog gets the formats with columns to arrange, as their layouts arrange them
+unittest
+{
+    import formats.logcat : logcatFormatInfo;
+    import formats.plain_text : plainTextFormatInfo;
+
+    ColumnLayouts layouts;
+    layouts[logcatFormatInfo.id] = [ColumnState("tag", false), ColumnState("time"), ColumnState("gone")];
+    auto j = parseJSON(columnSettingsJson(layouts, logcatFormatInfo.id));
+    assert(j["current"].str == logcatFormatInfo.id);
+
+    const(JSONValue)* logcat;
+    foreach (ref f; j["formats"].array)
+    {
+        assert(f["id"].str != plainTextFormatInfo.id, "nothing to arrange in plain text");
+        if (f["id"].str == logcatFormatInfo.id)
+            logcat = &f;
+    }
+    assert(logcat !is null);
+    assert((*logcat)["name"].str == logcatFormatInfo.name);
+    assert((*logcat)["payload"].str == "Message");
+    assert((*logcat)["defaults"].array.map!(v => v.str).array == ["time", "pid", "tid", "level", "tag"]);
+    const columns = (*logcat)["columns"].array;
+    assert(columns.map!(c => c["id"].str).array == ["tag", "time", "pid", "tid", "level"],
+        "a column the format doesn't have any more isn't listed");
+    assert(columns[0]["title"].str == "Tag" && !columns[0]["visible"].boolean);
+    assert(columns[1]["visible"].boolean);
 }

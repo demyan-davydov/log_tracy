@@ -10,7 +10,8 @@ import formats.plain_text : PlainTextDetector;
 import formats.syslog.syslog : SyslogDetector;
 import formats.can.vector_asc : AscDetector;
 
-import std.algorithm.comparison : min;
+import std.algorithm : canFind, countUntil, filter, map, min;
+import std.array : array;
 
 //! Bytes from the start of the data the detectors look at
 enum size_t detectionHeadSize = 64 * 1024;
@@ -69,6 +70,44 @@ FormatInfo formatInfo(string id)
         if (detector.info.id == id)
             return detector.info;
     return FormatInfo.init;
+}
+
+//! @returns every format this build has, in the order of detection
+FormatInfo[] formatInfos()
+{
+    FormatInfo[] all;
+    foreach (detector; detectors())
+        all ~= detector.info;
+    return all;
+}
+
+//! @brief The columns of the format with the id: those of all its variants,
+//! each once, in the order of the format, Payload last.
+//! @returns null if no format has the id
+const(ColumnInfo)[] formatColumns(string id)
+{
+    import log_core.column_layout : mergeOrder, movableIds;
+
+    foreach (detector; detectors())
+    {
+        if (detector.info.id != id)
+            continue;
+        const(ColumnInfo)[] all; // the first one of each id
+        string[] order; // of the movable ones
+        const(ColumnInfo)[] payload;
+        foreach (variant; detector.variants())
+        {
+            const columns = detector.create(variant, null).columns;
+            foreach (ref column; columns)
+                if (!all.canFind!(c => c.id == column.id))
+                    all ~= column;
+            if (payload is null)
+                payload = columns.filter!(c => c.kind == ColumnKind.Payload).array;
+            order = mergeOrder(order, movableIds(columns));
+        }
+        return order.map!(o => all[all.countUntil!(c => c.id == o)]).array ~ payload;
+    }
+    return null;
 }
 
 private const(FormatDetector)[] detectors()
@@ -248,4 +287,75 @@ unittest
         assert(formatInfo(info.id) == info);
     }
     assert(formatInfo("no-such-format") == FormatInfo.init);
+}
+
+@("formatInfos: every format, each once")
+unittest
+{
+    import std.algorithm : canFind, map;
+    import std.array : array;
+    import formats.dlt.format : dltFormatInfo;
+    import formats.plain_text : plainTextFormatInfo;
+
+    const ids = formatInfos().map!(f => f.id).array;
+    assert(ids.canFind(dltFormatInfo.id));
+    assert(ids.canFind(plainTextFormatInfo.id));
+    assert(ids.length == detectors().length);
+}
+
+@("formatColumns: the columns of all the variants of a format, Payload last")
+unittest
+{
+    import std.algorithm : count, map;
+    import std.array : array;
+    import formats.logcat : logcatFormatInfo;
+    import formats.syslog.syslog : syslogFormatInfo;
+
+    // Brief has no time and no thread: the columns of Threadtime are kept in their place
+    assert(formatColumns(logcatFormatInfo.id).map!(c => c.id).array
+            == ["time", "pid", "tid", "level", "tag", "payload"]);
+
+    const syslog = formatColumns(syslogFormatInfo.id).map!(c => c.id).array;
+    assert(syslog[$ - 1] == "payload");
+    foreach (id; ["time", "host", "app", "pid", "msgid", "level", "data"])
+        assert(syslog.count(id) == 1, id);
+
+    assert(formatColumns("no-such-format") is null);
+}
+
+@("formatColumns: every format has Payload last, and its ids are unique")
+unittest
+{
+    import std.algorithm : count, map;
+    import log_core.log_format : ColumnKind;
+
+    foreach (info; formatInfos())
+    {
+        const columns = formatColumns(info.id);
+        assert(columns.length && columns[$ - 1].kind == ColumnKind.Payload, info.id);
+        foreach (column; columns)
+            assert(columns.map!(c => c.id).count(column.id) == 1, info.id ~ ": " ~ column.id);
+    }
+}
+
+@("formatColumns: the variants of a format agree on the order of their common columns")
+unittest
+{
+    import std.algorithm : countUntil;
+    import std.conv : to;
+    import log_core.column_layout : movableIds;
+
+    // One layout serves all the variants: a variant that ordered two columns
+    // the other way would get them reordered by the default layout
+    foreach (detector; detectors())
+    {
+        const order = movableIds(formatColumns(detector.info.id));
+        foreach (variant; detector.variants())
+        {
+            const ids = movableIds(detector.create(variant, null).columns);
+            foreach (i; 1 .. ids.length)
+                assert(order.countUntil(ids[i - 1]) < order.countUntil(ids[i]),
+                    detector.info.id ~ " variant " ~ variant.to!string ~ ": " ~ ids[i - 1] ~ ", " ~ ids[i]);
+        }
+    }
 }

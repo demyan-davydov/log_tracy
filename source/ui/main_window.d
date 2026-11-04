@@ -9,6 +9,7 @@ import domain.document_id;
 import domain.document;
 import domain.document_item;
 import log_core.log_format : ColumnInfo, ColumnKind, FormatChoice;
+import log_core.column_layout : arrangeColumns;
 import log_core.log_message : TimeKind;
 import domain.log_document;
 
@@ -121,6 +122,11 @@ class MainWindow : SciterWindow
     private AppSettings _settings;
     private Workspace _workspace;
     private DocumentUi[DocumentId] _documentUis;
+    // The columns the tables show for the columns of a format (see
+    // tableColumns()): a row is built with them, so they are kept
+    private const(ColumnInfo)[] _tableColumnsOf;
+    private const(ColumnInfo)[] _tableColumns;
+    private string _tableColumnsFormat; // the id of the format of _tableColumnsOf
 
     this(AppSettings settings)
     {
@@ -394,7 +400,7 @@ class MainWindow : SciterWindow
                 // null if there is no such row (any more): the view changed, the file is lost
                 DocumentItem docItem;
                 if (_workspace.current.mainView.fetchItem(index, docItem))
-                    resultView.set(asSciterRow(index, docItem, _workspace.current.columns));
+                    resultView.set(asSciterRow(index, docItem, tableColumns()));
                 else
                     resultView.set(SciterValue.makeNull());
 
@@ -412,7 +418,7 @@ class MainWindow : SciterWindow
                 const int index = getParamInt(0);
                 DocumentItem docItem; // null if there is no such row, as above
                 if (_workspace.current.searchView.fetchItem(index, docItem))
-                    resultView.set(asSciterRow(index, docItem, _workspace.current.columns));
+                    resultView.set(asSciterRow(index, docItem, tableColumns()));
                 else
                     resultView.set(SciterValue.makeNull());
 
@@ -532,8 +538,31 @@ class MainWindow : SciterWindow
             }
             if (method == "getColumns")
             {
-                // Columns of the active document, [] if there is none
+                // All the columns of the active document (the rules may test
+                // any of them), [] if there is none
                 resultView = columnsJson(_workspace.current.columns).toUTF16();
+                return true;
+            }
+            if (method == "getTableColumns")
+            {
+                // The columns the tables of the active document show, [] if there is none
+                resultView = columnsJson(tableColumns()).toUTF16();
+                return true;
+            }
+            if (method == "getColumnSettings")
+            {
+                // The Columns section of the Settings dialog, the format of
+                // the active document first
+                const current = formatChoiceOf(_workspace.current).id;
+                resultView = columnSettingsJson(_settings.columnLayouts, current).toUTF16();
+                return true;
+            }
+            if (method == "setColumnLayouts")
+            {
+                // Saved by the Settings dialog: {format id: [{"id", "visible"}]}
+                _settings.columnLayouts = withColumnLayouts(_settings.columnLayouts, getParamString(0));
+                _tableColumnsOf = null; // arranged again
+                saveSettings();
                 return true;
             }
             if (method == "getWorkspaceInfo")
@@ -637,6 +666,23 @@ class MainWindow : SciterWindow
         }
 
         return false;
+    }
+
+    /// The columns the tables of the current document show: those of its
+    /// format as the layout of the format arranges them
+    private const(ColumnInfo)[] tableColumns()
+    {
+        const columns = _workspace.current.columns;
+        const formatId = formatChoiceOf(_workspace.current).id;
+        // Two formats may share their columns, not their layouts
+        if (_tableColumnsOf is null || _tableColumnsOf !is columns || _tableColumnsFormat != formatId)
+        {
+            const layout = formatId in _settings.columnLayouts;
+            _tableColumns = arrangeColumns(columns, layout is null ? null : *layout);
+            _tableColumnsOf = columns;
+            _tableColumnsFormat = formatId;
+        }
+        return _tableColumns;
     }
 
     /// The format a document was opened with; unset for a document without one

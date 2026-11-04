@@ -134,9 +134,16 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
   for future streaming sources (growing file, serial port), so keep that contract.
 
 ### UI side
-- The table columns, the row cells (`asSciterRow` in `main_window`) and the quick filter panel
-  are all built from the format's `ColumnInfo` schema, fetched by the script with
-  `xcall("getColumns")`.
+- The table columns and the row cells (`asSciterRow` in `main_window`) are built from the
+  format's `ColumnInfo` schema as the user's layout of that format arranges it
+  (`log_core/column_layout`, `AppSettings.columnLayouts` by format id, edited in the Columns
+  section of Settings): `xcall("getTableColumns")`. The rule editor gets all the columns of the
+  format: `xcall("getColumns")`.
+  - Index (not a format column) stays first and Payload last; the others can be moved and
+    hidden. A layout is one per format id, for all its variants: `formats/registry.formatColumns`
+    gives the columns of all of them.
+  - Dragging to reorder (tabs, columns in Settings) shares the Sciter-free
+    `resources/drag-order.js`.
 - A row is: anchored, filterMask, view index, message index, level, then one cell per column.
   - A time cell is `[microseconds, TimeKind]`: it is shown by the kind of the record, not of
     the column.

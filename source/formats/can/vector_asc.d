@@ -113,6 +113,14 @@ final class AscFormat : TextFormat
 
 final class AscDetector : FormatDetector
 {
+    override const(int)[] variants() const pure nothrow
+    {
+        // One, whatever the variant. The columns depend on the header (a start
+        // date or not), but only by the kind and the width of the time: the
+        // ids and the titles, all a layout needs, are the same
+        return [0];
+    }
+
     override FormatInfo info() const pure nothrow @nogc
     {
         return ascFormatInfo;

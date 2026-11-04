@@ -1,31 +1,356 @@
-<html window-width="400" window-height="370">
+<html window-width="920" window-height="440">
+
+<!-- The Settings dialog, opened modal by openSettingsAction() in script.js.
+     Its sections are listed on the left; Save applies all of them at once.
+     Parameters: { theme, tableFontSize, columns (as getColumnSettings gives
+     them, see column-settings.js) }.
+     Closes with { theme, tableFontSize, columnLayouts }, or null on Cancel. -->
 
 <head>
     <title>Settings</title>
     <style id="theme-style" src="theme-light.css" />
     <style src="style.css" />
+    <style src="table.css" />
+    <style>
+        html, body { background: var(--bg-main); color: var(--text-main); }
+        body { flow: vertical; }
+        #layout { size: *; flow: horizontal; }
+
+        /* The sections, as tabs on the left */
+        #sections {
+            width: 170dip; height: *;
+            flow: vertical; border-spacing: 2dip;
+            padding: 12dip 8dip;
+            background: var(--bg-sidebar);
+            border-right: 1px solid var(--border-color);
+        }
+        .section-tab {
+            padding: 6dip 10dip;
+            border-radius: 6dip;
+            cursor: pointer;
+            white-space: nowrap;
+            color: var(--text-main);
+        }
+        .section-tab:hover { background: var(--bg-tab-hover); }
+        .section-tab.active { background: var(--btn-primary-bg); color: var(--btn-primary-text); }
+
+        main { size: *; overflow-y: auto; padding: 16dip 20dip; }
+        .section { flow: vertical; border-spacing: 12dip; }
+        .section:not(.active) { display: none; }
+        .section-title { font-size: 1.25em; font-weight: 600; }
+        .hint { color: var(--text-label); font-size: 0.9em; }
+
+        .setting-group { margin-bottom: 0; }
+        .setting-group select { width: *; } /* not 100% + padding: within the section */
+
+        /* Columns: a strip of column headers as the log table shows them
+           (table.css), Index first, the movable ones, Payload last taking the
+           rest; under each header the checkbox that shows it. A header is
+           both .column-header-row and .column-header: the row of a table has
+           the background, its cells the rest */
+        #column-strip {
+            width: *;
+            flow: horizontal;
+            border: 1px solid var(--border-color);
+            background: var(--bg-main);
+            white-space: nowrap;
+        }
+        #column-list {
+            position: relative; /* for #column-drop-marker */
+            flow: horizontal;
+            overflow: visible;
+        }
+        .column-cell {
+            position: relative; /* z-index of the dragged one: above the others */
+            flow: vertical;
+            background: var(--bg-main);
+        }
+        .column-cell.payload { width: *; }
+        /* The border of the strip ends the last one */
+        .column-cell.payload > .column-header,
+        .column-cell.payload > .visibility { border-right: none; }
+        .column-cell > .column-header { display: block; }
+        .column-cell > .visibility {
+            flow: horizontal;
+            padding: 4dip 0;
+            border-right: 1px solid var(--border-color);
+        }
+        .column-cell > .visibility > input { margin: 0 *; } /* centered */
+        .column-cell.movable > .column-header { cursor: move; }
+        .column-cell.movable > .column-header:hover { background: var(--bg-tab-hover); }
+        /* A hidden column: its header faded, as if it weren't there */
+        .column-cell.hidden-column > .column-header { opacity: 0.4; }
+        .column-cell.fixed > .column-header { color: var(--text-label); }
+
+        /* Dragging a column, as a tab is dragged (see script.js) */
+        .column-cell.shifting { transition: transform cubic-out 150ms; }
+        .column-cell.dragging {
+            z-index: 10;
+            box-shadow: 0 1dip 6dip rgba(0, 0, 0, 0.25);
+        }
+        .column-cell.dragging.settling { transition: transform cubic-out 150ms; }
+        #column-drop-marker {
+            /* left/top/height are set by showDropMarker(): on the edge of the place the column lands on */
+            display: none;
+            position: absolute;
+            width: 2dip;
+            border-radius: 1dip;
+            background: var(--btn-primary-bg);
+            z-index: 5; /* below the dragged column */
+        }
+
+        #columns-footer { flow: horizontal; vertical-align: middle; }
+        #btn-reset-columns { margin-left: *; }
+        #btn-reset-columns:disabled { opacity: 0.4; cursor: default; }
+
+        /* Cancel and Save on the right, as in dialogs of the system */
+        footer > button#btn-cancel { margin-left: *; }
+    </style>
     <script type="module">
-        import { $ } from "@sciter";
+        import { $, $$ } from "@sciter";
+        import { toggleColumn, moveColumn, resetColumns, isDefaultLayout, layoutsOf, initialFormat, formatLabel } from "column-settings.js";
+        import { clampShift, dragTarget, settleShift } from "drag-order.js";
+
+        // Without parameters (opened on its own to look at it): a sample DLT log
+        const params = Window.this.parameters || {
+            theme: "light", tableFontSize: 100, columns: {
+                current: "dlt", formats: [{
+                    id: "dlt", name: "DLT", payload: "Payload",
+                    defaults: ["time", "timestamp", "counter", "ecu", "app", "ctx", "session", "type", "level", "msgid"],
+                    columns: [["time", "Time"], ["timestamp", "Timestamp"], ["counter", "Count"], ["ecu", "EcuId"],
+                        ["app", "AppId"], ["ctx", "CtxId"], ["session", "SessionId"], ["type", "Type"],
+                        ["level", "Level"], ["msgid", "MsgId"]].map(([id, title]) => ({ id, title, visible: id !== "session" }))
+                }, {
+                    id: "logcat", name: "Android logcat", payload: "Message",
+                    defaults: ["time", "pid", "tid", "level", "tag"],
+                    columns: [["time", "Time"], ["pid", "PID"], ["tid", "TID"], ["level", "Level"], ["tag", "Tag"]]
+                        .map(([id, title]) => ({ id, title, visible: true }))
+                }]
+            }
+        };
+
+        // ── Sections ─────────────────────────────────────────────────────────
+
+        function setClass(element, name, on) {
+            if (on) element.classList.add(name);
+            else element.classList.remove(name);
+        }
+
+        function showSection(id) {
+            for (const tab of $$(".section-tab"))
+                setClass(tab, "active", tab.getAttribute("section") === id);
+            for (const section of $$(".section"))
+                setClass(section, "active", section.id === id);
+        }
+
+        document.on("click", ".section-tab", (evt, tab) => {
+            showSection(tab.getAttribute("section"));
+            return true;
+        });
+
+        // ── Columns ──────────────────────────────────────────────────────────
+
+        // The formats with columns to arrange, edited here until Save
+        let formats = params.columns?.formats || [];
+        const currentFormat = params.columns?.current || ""; // of the active document
+        let shown = initialFormat(formats, currentFormat);
+
+        function renderFormats() {
+            const select = $("select#column-format");
+            select.innerHTML = "";
+            formats.forEach((f, i) => select.append(<option value={String(i)}>{formatLabel(f, currentFormat)}</option>));
+            if (shown >= 0) select.value = String(shown);
+        }
+
+        function renderColumns() {
+            const list = $("#column-list");
+            list.innerHTML = "";
+            const format = formats[shown];
+            if (!format) return;
+            $("#last-column-title").textContent = format.payload || "Payload";
+            format.columns.forEach((c, i) => {
+                list.append(<div class={c.visible ? "column-cell movable" : "column-cell movable hidden-column"} index={String(i)}>
+                    <div class="column-header-row column-header">{c.title}</div>
+                    <div class="visibility"><input type="checkbox" /></div>
+                </div>);
+                list.lastElementChild.$("input").value = c.visible; // not by the attribute: see CLAUDE.md
+            });
+            $("#btn-reset-columns").state.disabled = isDefaultLayout(format);
+        }
+
+        // Replaces the format at `index` (the one shown by default)
+        function setFormat(format, index = shown) {
+            formats = formats.map((f, i) => i === index ? format : f);
+        }
+
+        function setShownFormat(format) {
+            setFormat(format);
+            renderColumns();
+        }
+
+        document.on("change", "select#column-format", (evt, select) => {
+            shown = parseInt(select.value);
+            renderColumns();
+        });
+
+        document.on("click", "#btn-reset-columns", () => {
+            setShownFormat(resetColumns(formats[shown]));
+            return true;
+        });
+
+        // The checkbox under a header shows and hides its column
+        document.on("change", ".column-cell.movable input[type=checkbox]", (evt, box) => {
+            const cell = box.parentElement.parentElement;
+            setShownFormat(toggleColumn(formats[shown], formats[shown].columns[parseInt(cell.getAttribute("index"))].id));
+            return true;
+        });
+
+        // The strip has the font size of the log tables, as Appearance sets it
+        function applyTableFontSize() {
+            $("#column-strip").style.fontSize = `${parseInt($("select#table-font-size").value) || 100}%`;
+        }
+
+        document.on("change", "select#table-font-size", applyTableFontSize);
+
+        // ── Dragging a column ────────────────────────────────────────────────
+        // As a tab is dragged (script.js), by its header: the column follows
+        // the mouse within the strip, the columns it passes slide aside, a
+        // marker shows where it will land; on drop it slides into that place.
+        // Index and Payload are outside the list: nothing moves past them.
+        // columnDrag: { cell, cells, rects, spans, format (its index), from, to,
+        //               startX, dx, markerOrigin, active, settling }, null when
+        //               no column is held.
+        const DRAG_THRESHOLD = 4; // px of mouse movement before a press becomes a drag
+        const SETTLE_MS = 160;    // a bit longer than the .settling transition
+        let columnDrag = null;
+
+        function setCellShift(cell, dx) {
+            cell.style.transform = dx ? `translate(${dx}px, 0)` : "";
+        }
+
+        document.on("mousedown", ".column-cell.movable > .column-header", (evt, header) => {
+            if (evt.buttons & 6) return; // only the left button
+            if (columnDrag?.settling) return; // the previous drop is still settling
+            if (columnDrag) { // released outside the dialog: the press is dropped
+                columnDrag = null;
+                renderColumns(); // the columns without shifts
+                return true; // the header pressed is a new element now
+            }
+            beginColumnDrag(header.parentElement, evt.clientX);
+            return true; // no text selection
+        });
+
+        document.on("mousemove", (evt) => {
+            if (columnDrag) moveColumnDrag(evt.clientX);
+        });
+
+        document.on("mouseup", () => {
+            if (columnDrag) endColumnDrag();
+        });
+
+        function beginColumnDrag(cell, clientX) {
+            const cells = [...$$("#column-list > .column-cell")];
+            const rects = cells.map(c => c.getBoundingClientRect());
+            const from = cells.indexOf(cell);
+            if (from < 0) return;
+            columnDrag = {
+                cell, cells, rects, format: shown, from, to: from,
+                spans: rects.map(r => ({ start: r.left, end: r.right })),
+                startX: clientX, dx: 0, markerOrigin: null,
+                active: false, settling: false
+            };
+        }
+
+        function moveColumnDrag(clientX) {
+            const d = columnDrag;
+            if (d.settling) return;
+            const dx = clientX - d.startX;
+            if (!d.active) {
+                if (Math.abs(dx) < DRAG_THRESHOLD) return;
+                d.active = true;
+                d.cell.classList.add("dragging");
+                for (const c of d.cells) if (c !== d.cell) c.classList.add("shifting");
+                $("#column-list").append(<div id="column-drop-marker"></div>);
+            }
+            d.dx = clampShift(d.spans, d.from, dx);
+            setCellShift(d.cell, d.dx);
+            const { to, shifts } = dragTarget(d.spans, d.from, d.dx);
+            d.cells.forEach((c, i) => { if (i !== d.from) setCellShift(c, shifts[i]); });
+            d.to = to;
+            showDropMarker(d);
+        }
+
+        function endColumnDrag() {
+            const d = columnDrag;
+            if (d.settling) return;
+            if (!d.active) { // a click on a header: nothing to do
+                columnDrag = null;
+                return;
+            }
+            // The new order is kept at once (a Save or another format chosen
+            // while the column slides keeps it); the strip is rebuilt after the slide
+            if (d.to !== d.from) setFormat(moveColumn(formats[d.format], d.from, d.to), d.format);
+            d.settling = true;
+            d.cell.classList.add("settling");
+            setCellShift(d.cell, settleShift(d.spans, d.from, d.to));
+            setTimeout(() => {
+                columnDrag = null;
+                renderColumns();
+            }, SETTLE_MS);
+        }
+
+        // The marker is on the edge of the place the column lands on, as that
+        // of the tabs, the whole height of the strip; hidden while the column
+        // would stay where it was. Its origin is calibrated on the first show
+        // (absolute offsets are inside the border).
+        function showDropMarker(d) {
+            const marker = $("#column-drop-marker");
+            if (!marker) return;
+            if (d.to === d.from) {
+                marker.style.display = "none";
+                return;
+            }
+            marker.style.display = "block";
+            if (!d.markerOrigin) {
+                marker.style.left = "0px";
+                marker.style.top = "0px";
+                const r = marker.getBoundingClientRect();
+                d.markerOrigin = { left: r.left, top: r.top, width: r.right - r.left };
+            }
+            const cell = d.rects[d.from];
+            const edge = d.to > d.from ? d.rects[d.to].right : d.rects[d.to].left;
+            marker.style.left = `${edge - d.markerOrigin.width / 2 - d.markerOrigin.left}px`;
+            marker.style.top = `${cell.top - d.markerOrigin.top}px`;
+            marker.style.height = `${cell.bottom - cell.top}px`;
+        }
+
+        // ── The dialog ───────────────────────────────────────────────────────
 
         document.on("ready", () => {
-            // Mock load settings
-            const settings = Window.this.parameters || { theme: "light" };
-
-            // Apply passed theme immediately
-            if (settings.theme === "dark") {
+            if (params.theme === "dark") {
                 $("#theme-style").attributes["src"] = "theme-dark.css";
                 $("select#theme").value = "dark";
             } else {
                 $("select#theme").value = "light";
             }
-            $("select#table-font-size").value = String(settings.tableFontSize || 100);
+            $("select#table-font-size").value = String(params.tableFontSize || 100);
+            applyTableFontSize();
+            if (formats.length) {
+                renderFormats();
+                renderColumns();
+            } else {
+                $("#columns-content").style.display = "none";
+                $("#no-columns").style.display = "block";
+            }
+            showSection(Window.this.parameters ? "appearance" : "columns");
         });
 
         $("#btn-save").on("click", () => {
-            const theme = $("select#theme").value;
-            const tableFontSize = parseInt($("select#table-font-size").value);
-            // Return result to caller
-            Window.this.close({ theme, tableFontSize });
+            Window.this.close({
+                theme: $("select#theme").value,
+                tableFontSize: parseInt($("select#table-font-size").value),
+                columnLayouts: formats.length ? layoutsOf(formats) : null,
+            });
         });
 
         $("#btn-cancel").on("click", () => {
@@ -34,32 +359,64 @@
     </script>
 </head>
 
-
 <body>
-    <header>Application Settings</header>
-    <main>
-        <div class="setting-group">
-            <label>Theme</label>
-            <select id="theme">
-                <option value="light">Light</option>
-                <option value="dark">Dark</option>
-            </select>
-        </div>
-        <div class="setting-group">
-            <label>Log table font size</label>
-            <select id="table-font-size">
-                <option value="80">80%</option>
-                <option value="90">90%</option>
-                <option value="100">100%</option>
-                <option value="110">110%</option>
-                <option value="125">125%</option>
-                <option value="150">150%</option>
-                <option value="175">175%</option>
-                <option value="200">200%</option>
-            </select>
-        </div>
-        <!-- Add more settings here -->
-    </main>
+    <div id="layout">
+        <nav id="sections">
+            <div class="section-tab active" section="appearance">Appearance</div>
+            <div class="section-tab" section="columns">Columns</div>
+        </nav>
+        <main>
+            <div class="section active" id="appearance">
+                <div class="section-title">Appearance</div>
+                <div class="setting-group">
+                    <label>Theme</label>
+                    <select id="theme">
+                        <option value="light">Light</option>
+                        <option value="dark">Dark</option>
+                    </select>
+                </div>
+                <div class="setting-group">
+                    <label>Log table font size</label>
+                    <select id="table-font-size">
+                        <option value="80">80%</option>
+                        <option value="90">90%</option>
+                        <option value="100">100%</option>
+                        <option value="110">110%</option>
+                        <option value="125">125%</option>
+                        <option value="150">150%</option>
+                        <option value="175">175%</option>
+                        <option value="200">200%</option>
+                    </select>
+                </div>
+            </div>
+            <div class="section" id="columns">
+                <div class="section-title">Columns</div>
+                <div class="hint">The columns of the log tables, the same for every log of a format.
+                    Drag a header to move its column, untick it to hide the column.</div>
+                <div id="columns-content" style="flow: vertical; border-spacing: 12dip;">
+                    <div class="setting-group">
+                        <label>Format</label>
+                        <select id="column-format"></select>
+                    </div>
+                    <div id="column-strip">
+                        <div class="column-cell fixed" title="Always first">
+                            <div class="column-header-row column-header">Index</div>
+                            <div class="visibility"><input type="checkbox" checked disabled /></div>
+                        </div>
+                        <div id="column-list"></div>
+                        <div class="column-cell fixed payload" title="Always last">
+                            <div class="column-header-row column-header" id="last-column-title">Payload</div>
+                            <div class="visibility"><input type="checkbox" checked disabled /></div>
+                        </div>
+                    </div>
+                    <div id="columns-footer">
+                        <button id="btn-reset-columns">Reset to Default</button>
+                    </div>
+                </div>
+                <div class="hint" id="no-columns" style="display: none;">No format has columns to arrange.</div>
+            </div>
+        </main>
+    </div>
     <footer>
         <button id="btn-cancel">Cancel</button>
         <button id="btn-save" class="primary">Save</button>

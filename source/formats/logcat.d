@@ -104,6 +104,16 @@ final class LogcatFormat : TextFormat
 
 final class LogcatDetector : FormatDetector
 {
+    override const(int)[] variants() const pure nothrow
+    {
+        import std.traits : EnumMembers;
+
+        int[] all;
+        foreach (variant; EnumMembers!(LogcatFormat.Variant))
+            all ~= variant;
+        return all;
+    }
+
     override FormatInfo info() const pure nothrow @nogc
     {
         return logcatFormatInfo;

@@ -115,4 +115,8 @@ interface FormatDetector
 
     //! Creates the format for a detected variant
     LogFormat create(int variant, const(ubyte)[] head) const;
+
+    //! Every variant create() takes: the columns of a format are those of
+    //! all its variants (the layout of the columns is kept per format)
+    const(int)[] variants() const pure nothrow;
 }
