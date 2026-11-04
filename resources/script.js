@@ -16,6 +16,8 @@ let shownDataVersion = null;
 //   selection comes from VirtualDltTBody.saveSelection().
 // Restored only for the same content (dataVersion), otherwise the table starts over.
 const mainViewStates = new Map();
+// The same for the search results of each document
+const searchViewStates = new Map();
 
 document.on("ready", function () {
     console.log("Starting DLT Explorer UI...");
@@ -73,16 +75,82 @@ function initApp() {
 }
 
 // Search panel: a text or regex query over the payload of the active document.
-// The search runs on Enter or the Search button, and again when a mode switch
-// changes, so the result always matches what the controls show.
+// The query (text and modes) is committed only by Enter or the Search button;
+// editing the controls doesn't touch the results, the panel just shows that
+// what's typed isn't what the results were found by (updateSearchPending).
+// Both the controls and the committed query belong to the document: switching
+// tabs puts the document's own draft into the controls (showSearchDraft).
+//   docId -> { query, isRegex, ignoreCase } of the search shown in the document
+const committedSearches = new Map();
+//   docId -> { query, isRegex, ignoreCase, message } as last left in the controls
+const searchDrafts = new Map();
+// The document whose draft the controls show
+let searchControlsDocId = null;
+
+const emptySearch = { query: "", isRegex: false, ignoreCase: false };
+
+function searchControls() {
+    return {
+        query: $("#search-input").value || "",
+        isRegex: $("#search-regex").state.checked,
+        ignoreCase: $("#search-ignore-case").state.checked
+    };
+}
+
+// Whether the controls differ from the search committed in the active document.
+// Without a query the modes don't matter: there's nothing they would change.
+function isSearchPending() {
+    if (activeDocId === null) return false;
+    const typed = searchControls();
+    const shown = committedSearches.get(activeDocId) || emptySearch;
+    if (typed.query !== shown.query) return true;
+    return typed.query !== "" && (typed.isRegex !== shown.isRegex || typed.ignoreCase !== shown.ignoreCase);
+}
+
+function updateSearchPending() {
+    const toolbar = $(".search-toolbar");
+    const button = $("#btn-search");
+    if (isSearchPending()) {
+        toolbar.classList.add("pending");
+        button.classList.add("primary");
+    } else {
+        toolbar.classList.remove("pending");
+        button.classList.remove("primary");
+    }
+}
+
+// Remembers the controls as the draft of the document they belong to
+function saveSearchDraft() {
+    if (searchControlsDocId === null || !docStatus.has(searchControlsDocId)) return;
+    searchDrafts.set(searchControlsDocId,
+        { ...searchControls(), message: $("#search-message").innerText || "" });
+}
+
+// Fills the controls with the draft of the active document (empty for a new one)
+function showSearchDraft() {
+    if (searchControlsDocId === activeDocId) return;
+    const draft = searchDrafts.get(activeDocId) || { ...emptySearch, message: "" };
+    $("#search-input").value = draft.query;
+    $("#search-regex").state.checked = draft.isRegex;
+    $("#search-ignore-case").state.checked = draft.ignoreCase;
+    $("#search-message").innerText = draft.message;
+    searchControlsDocId = activeDocId;
+}
+
 function initSearch() {
     const runSearch = () => {
-        const query = $("#search-input").value || "";
-        const isRegex = $("#search-regex").state.checked;
-        const ignoreCase = $("#search-ignore-case").state.checked;
-        // Returns an error message (e.g. an invalid regex) or "" when started
-        const error = Window.this.xcall("startSearch", query, isRegex, ignoreCase);
+        const typed = searchControls();
+        // Returns an error message (e.g. an invalid regex) or "" when started;
+        // on an error the document keeps its previous search
+        const error = Window.this.xcall("startSearch", typed.query, typed.isRegex, typed.ignoreCase);
         $("#search-message").innerText = error ? `Search error: ${error}` : "";
+        if (!error && activeDocId !== null) committedSearches.set(activeDocId, typed);
+        saveSearchDraft();
+        updateSearchPending();
+    };
+    const onEdited = () => {
+        saveSearchDraft();
+        updateSearchPending();
     };
 
     document.on("keydown", "#search-input", (evt) => {
@@ -92,9 +160,8 @@ function initSearch() {
         }
     });
     document.on("click", "#btn-search", runSearch);
-    document.on("change", "#search-regex, #search-ignore-case", () => {
-        if ($("#search-input").value) runSearch();
-    });
+    document.on("input", "#search-input", onEdited);
+    document.on("change", "#search-input, #search-regex, #search-ignore-case", onEdited);
 }
 
 function restoreSettings() {
@@ -413,6 +480,7 @@ function refreshTabs() {
     const docs = JSON.parse(info);
     const container = $("#tabs-container");
 
+    saveSearchDraft(); // the controls may be about to show another document
     docStatus.clear();
     activeDocId = null;
     for (const doc of docs) {
@@ -448,9 +516,17 @@ function refreshTabs() {
 
     for (const docId of mainViewStates.keys())
         if (!docStatus.has(docId)) mainViewStates.delete(docId); // closed
+    for (const docId of searchViewStates.keys())
+        if (!docStatus.has(docId)) searchViewStates.delete(docId);
+    for (const docId of committedSearches.keys())
+        if (!docStatus.has(docId)) committedSearches.delete(docId); // closed
+    for (const docId of searchDrafts.keys())
+        if (!docStatus.has(docId)) searchDrafts.delete(docId);
 
     updateViewMode();
     updateSearchViewMode();
+    showSearchDraft();
+    updateSearchPending();
 }
 
 // The + button: "+ Open File" while no document is open, a small round "+"
@@ -679,20 +755,29 @@ function percent(progress) {
     return Math.round(progress * 100);
 }
 
-// Remembers the scroll and the selection of the table of `docId`; call while
-// it still shows that document
-function saveMainViewState(docId, dataVersion) {
-    const list = getMainViewList();
+// Remembers in `states` the scroll and the selection of `list` for `docId`;
+// call while the list still shows that document
+function saveListState(list, states, docId, dataVersion) {
     const index = list?.vlist?.firstVisibleItemIndex;
     if (typeof index === "number")
-        mainViewStates.set(docId, { dataVersion, index, selection: list.saveSelection() });
+        states.set(docId, { dataVersion, index, selection: list.saveSelection() });
 }
 
-// Returns: the state to restore when the table shows `docId` again, null if
+// Returns: the state to restore when the list shows `docId` again, null if
 // it wasn't shown before or its content has changed since
-function savedMainViewState(docId, dataVersion) {
-    const saved = mainViewStates.get(docId);
+function savedListState(states, docId, dataVersion) {
+    const saved = states.get(docId);
     return saved && saved.dataVersion === dataVersion ? saved : null;
+}
+
+// Reloads the rows of `list` after its data changed. scrollTo: null keeps the
+// scroll position, "start" scrolls to the top, a number scrolls to that row
+function reloadList(list, scrollTo = null) {
+    if (scrollTo === "start") list.scrollTo(0, 0);
+    // Carried out by the render that componentUpdate() posts, see VirtualList.navigateTarget
+    if (scrollTo !== null) list.navigateTarget = scrollTo;
+    list.componentUpdate();
+    list.refreshVisibleRows(); // the rows may show other messages now
 }
 
 // Renders the main view of the active document as its machine shows it, or
@@ -707,7 +792,7 @@ function updateViewMode() {
 
     // Leaving the table of another document: the rows on screen are still its own
     if (shownDocId !== null && shownDocId !== activeDocId && shownDataVersion !== null)
-        saveMainViewState(shownDocId, shownDataVersion);
+        saveListState(getMainViewList(), mainViewStates, shownDocId, shownDataVersion);
 
     // No document: the placeholder replaces all the panels, the filters too
     empty.style.display = vm ? "none" : "flex";
@@ -731,7 +816,7 @@ function updateViewMode() {
         showOnly(table);
         if (activeDocId !== shownDocId) {
             console.log("View update: doc", activeDocId, "content", vm.dataVersion);
-            const saved = savedMainViewState(activeDocId, vm.dataVersion);
+            const saved = savedListState(mainViewStates, activeDocId, vm.dataVersion);
             getMainViewList().restoreSelection(saved ? saved.selection : null);
             reloadLogTable(saved ? saved.index : "start");
         } else if (vm.dataVersion !== shownDataVersion) {
@@ -778,16 +863,22 @@ function updateSearchViewMode() {
     const loading = $("#search-loading-container");
     const status = docStatus.get(activeDocId);
     const vm = status ? status.searchView : { status: "ready", canCancel: false, dataVersion: null };
+    const searchList = getSearchViewList();
+
+    // Leaving the results of another document: the rows on screen are still its own
+    if (searchList && shownSearchDocId !== null && shownSearchDocId !== activeDocId
+            && shownSearchDataVersion !== null)
+        saveListState(searchList, searchViewStates, shownSearchDocId, shownSearchDataVersion);
 
     if (vm.status === "ready") {
         table.style.display = "block";
         loading.style.display = "none";
-        if (activeDocId !== shownSearchDocId || vm.dataVersion !== shownSearchDataVersion) {
-            const searchList = getSearchViewList();
-            if (searchList) {
-                searchList.componentUpdate();
-                searchList.refreshVisibleRows(); // the rows may show other results now
-            }
+        if (searchList && activeDocId !== shownSearchDocId) {
+            const saved = savedListState(searchViewStates, activeDocId, vm.dataVersion);
+            searchList.restoreSelection(saved ? saved.selection : null);
+            reloadList(searchList, saved ? saved.index : "start");
+        } else if (searchList && vm.dataVersion !== shownSearchDataVersion) {
+            reloadList(searchList);
         }
         shownSearchDocId = activeDocId;
         shownSearchDataVersion = vm.dataVersion;
@@ -855,11 +946,7 @@ globalThis.reloadLogTable = function (scrollTo = null) {
     const logList = getMainViewList();
     if (logList) {
         console.log("Reloading log table", scrollTo !== null ? `(scroll to ${scrollTo})` : "");
-        if (scrollTo === "start") logList.scrollTo(0, 0);
-        logList.componentUpdate();
-        logList.refreshVisibleRows(); // the rows may show other messages now
-        // Posted after the navigation that render() may post when the number of items changes
-        if (typeof scrollTo === "number") logList.post(() => logList.vlist?.navigateTo(scrollTo));
+        reloadList(logList, scrollTo);
 
         // Print DOM tree of the table after a short delay so vlist has time to render
         /*setTimeout(() => {

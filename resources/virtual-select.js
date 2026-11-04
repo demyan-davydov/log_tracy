@@ -1,5 +1,10 @@
 export class VirtualList extends Element {
     currentItem = null; // item, one of items
+    // Where the next render() scrolls to: a row number, "start" or "end"; null
+    // keeps the scroll. render() runs posted by componentUpdate(), so a
+    // navigation posted next to componentUpdate() would come before the one
+    // render() posts itself and be overridden by it: set this instead.
+    navigateTarget = null;
     selectedItems;// TODO: = new WeakSet();
     styleSet;
     props;
@@ -43,11 +48,21 @@ export class VirtualList extends Element {
         const lastVisibleIndex = firstIndex + this.vlist.lastVisibleItem?.elementIndex;
 
         const totalItems = this.totalItems();
+        // ?? null: field initializers don't run for elements bound by CSS `prototype:`
+        const target = this.navigateTarget ?? null;
+        this.navigateTarget = null;
 
         if (this.vlist.itemsTotal != totalItems) { // number of items reduced, update scroll
             // The rendered rows belong to the old data set: drop them before the
             // navigation below requests the new ones, otherwise vlist keeps them
             this.clear();
+            if (target !== null) {
+                this.post(() => {
+                    this.vlist?.navigateTo(target);
+                });
+                return this.renderList([]); // render empty list and request the asked navigation
+            }
+
             if (firstVisibleIndex == 0) {
                 this.post(() => {
                     this.vlist?.navigate("start");
@@ -75,6 +90,10 @@ export class VirtualList extends Element {
             if (item) list.push(this.renderItem(item, item === currentItem, selectedItems?.has(item)));
         }
 
+        if (target !== null)
+            this.post(() => {
+                this.vlist?.navigateTo(target);
+            });
         return this.renderList(list);
     }
 

@@ -26,6 +26,14 @@ header {
 
 .search-toolbar {
     vertical-align: middle;
+    padding: 4px;
+    margin-bottom: 0;
+    transition: background-color linear 150ms;
+}
+
+/* The typed query isn't the one the results were found by (not committed yet) */
+.search-toolbar.pending {
+    background: var(--bg-search-pending);
 }
 
 #search-input {
