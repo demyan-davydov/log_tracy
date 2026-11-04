@@ -4,6 +4,9 @@ import log_core.log_format;
 import log_core.log_message : LogMessage;
 import log_core.text.text_format;
 
+//! How the user and the settings know PlainTextFormat
+enum FormatInfo plainTextFormatInfo = FormatInfo("text", "Plain text", "TXT");
+
 //! Any text: a record per line, only the payload. The fallback for text that
 //! no other format recognises.
 final class PlainTextFormat : TextFormat
@@ -19,7 +22,7 @@ final class PlainTextFormat : TextFormat
 
     override string name() const pure nothrow @nogc
     {
-        return "Text";
+        return plainTextFormatInfo.name;
     }
 
     override const(ColumnInfo)[] columns() const pure nothrow @nogc
@@ -38,6 +41,11 @@ final class PlainTextFormat : TextFormat
 
 final class PlainTextDetector : FormatDetector
 {
+    override FormatInfo info() const pure nothrow @nogc
+    {
+        return plainTextFormatInfo;
+    }
+
     //! Low: any more specific format that fits wins
     enum float fallbackScore = 0.05f;
 

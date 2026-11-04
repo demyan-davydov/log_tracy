@@ -23,6 +23,9 @@ enum DmesgField : ubyte
     Seq, // number: the sequence number of /dev/kmsg
 }
 
+//! How the user and the settings know DmesgFormat
+enum FormatInfo dmesgFormatInfo = FormatInfo("dmesg", "Kernel log (dmesg)", "KRN");
+
 final class DmesgFormat : TextFormat
 {
     enum Variant
@@ -75,7 +78,7 @@ final class DmesgFormat : TextFormat
 
     override string name() const pure nothrow @nogc
     {
-        return "Kernel log (dmesg)";
+        return dmesgFormatInfo.name;
     }
 
     //! The dictionary lines of /dev/kmsg start with a space
@@ -128,6 +131,11 @@ final class DmesgFormat : TextFormat
 
 final class DmesgDetector : FormatDetector
 {
+    override FormatInfo info() const pure nothrow @nogc
+    {
+        return dmesgFormatInfo;
+    }
+
     override Detection detect(string path, const(ubyte)[] head) const
     {
         size_t lines;
@@ -164,7 +172,9 @@ final class DmesgDetector : FormatDetector
 
     override LogFormat create(int variant, const(ubyte)[] head) const
     {
-        return new DmesgFormat(cast(DmesgFormat.Variant) variant);
+        import std.conv : to;
+
+        return new DmesgFormat(variant.to!(DmesgFormat.Variant)); // throws for a variant it has not
     }
 }
 

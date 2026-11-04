@@ -25,6 +25,9 @@ enum AccessLogField : ubyte
     Agent, // text: Combined
 }
 
+//! How the user and the settings know AccessLogFormat
+enum FormatInfo accessLogFormatInfo = FormatInfo("access-log", "Web server access log", "WEB");
+
 final class AccessLogFormat : TextFormat
 {
     enum Variant
@@ -43,7 +46,7 @@ final class AccessLogFormat : TextFormat
 
     override string name() const pure nothrow @nogc
     {
-        return "Web server access log";
+        return accessLogFormatInfo.name;
     }
 
     override const(ColumnInfo)[] columns() const pure nothrow @nogc
@@ -114,6 +117,11 @@ private static immutable ColumnInfo[] combinedColumns = commonColumns[0 .. $ - 1
 
 final class AccessLogDetector : FormatDetector
 {
+    override FormatInfo info() const pure nothrow @nogc
+    {
+        return accessLogFormatInfo;
+    }
+
     override Detection detect(string path, const(ubyte)[] head) const
     {
         size_t lines, common, combined;
@@ -135,7 +143,9 @@ final class AccessLogDetector : FormatDetector
 
     override LogFormat create(int variant, const(ubyte)[] head) const
     {
-        return new AccessLogFormat(cast(AccessLogFormat.Variant) variant);
+        import std.conv : to;
+
+        return new AccessLogFormat(variant.to!(AccessLogFormat.Variant)); // throws for a variant it has not
     }
 }
 

@@ -8,7 +8,7 @@ import domain.workspace;
 import domain.document_id;
 import domain.document;
 import domain.document_item;
-import log_core.log_format : ColumnInfo, ColumnKind;
+import log_core.log_format : ColumnInfo, ColumnKind, FormatChoice;
 import log_core.log_message : TimeKind;
 import domain.log_document;
 
@@ -567,6 +567,13 @@ class MainWindow : SciterWindow
         return false;
     }
 
+    /// The format a document was opened with; unset for a document without one
+    private static FormatChoice formatChoiceOf(const Document document)
+    {
+        auto log = cast(const LogDocument) document;
+        return log is null ? FormatChoice.init : log.formatChoice;
+    }
+
     /// Reopens the file of a document whose source was lost, in the same tab.
     /// Returns: an error message for the UI (e.g. the disk is still missing),
     /// or "" if the document was replaced by a freshly opened one
@@ -574,12 +581,14 @@ class MainWindow : SciterWindow
     {
         DocumentId docId;
         string path;
+        FormatChoice choice; // reopened in the format it had, not detected again
         foreach (item; _workspace.documents)
         {
             if (item.docId.toInt() == id)
             {
                 docId = item.docId;
                 path = item.sourcePath;
+                choice = formatChoiceOf(item.document);
             }
         }
         if (!docId.isValid)
@@ -592,7 +601,7 @@ class MainWindow : SciterWindow
             // Timings: both steps run on the UI thread and may block on a disk
             // that has just been reconnected or removed
             const openStart = MonoTime.currTime;
-            auto fresh = new LogDocument(path);
+            auto fresh = new LogDocument(path, choice);
             const openTime = MonoTime.currTime - openStart;
 
             const destroyStart = MonoTime.currTime;
@@ -622,7 +631,7 @@ class MainWindow : SciterWindow
         if (existing.isValid)
         {
             _workspace.setCurrent(existing);
-            rememberRecentFile(path);
+            rememberRecentFile(RecentFile(path, formatChoiceOf(_workspace.doc(existing))));
             callScript("onDocumentOpened", existing.toInt());
             return existing;
         }
@@ -630,11 +639,12 @@ class MainWindow : SciterWindow
         try
         {
             writeln("Creating new document: ", path);
-            auto newDoc = new LogDocument(path);
+            // Opened the way it was last time: the format may have been chosen by hand
+            auto newDoc = new LogDocument(path, savedFormat(_settings.recentFiles, path));
             auto docId = _workspace.addDocument(newDoc, path);
             addDocumentUi(docId);
             _workspace.setCurrent(docId);
-            rememberRecentFile(path);
+            rememberRecentFile(RecentFile(path, newDoc.formatChoice));
             callScript("onDocumentOpened", docId.toInt());
             return docId;
         }
@@ -642,16 +652,16 @@ class MainWindow : SciterWindow
         {
             writeln("Error opening file: ", e.msg);
             error = e.msg;
-            rememberRecentFile(path); // listed on top with the reason, to retry or see
+            rememberRecentFile(RecentFile(path)); // listed on top with the reason (and its format), to retry or see
             return DocumentId.init;
         }
     }
 
     /// Puts the file opened (or tried) on top of the recent list and saves it
     /// at once, so the list survives a crash and the placeholder shows it right away
-    private void rememberRecentFile(string path)
+    private void rememberRecentFile(RecentFile file)
     {
-        auto recentFiles = withRecentFile(_settings.recentFiles, path);
+        auto recentFiles = withRecentFile(_settings.recentFiles, file);
         if (recentFiles == _settings.recentFiles)
             return; // e.g. the file on top opened again: nothing to save
         _settings.recentFiles = recentFiles;

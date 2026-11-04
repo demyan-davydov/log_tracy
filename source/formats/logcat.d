@@ -14,6 +14,9 @@ enum LogcatField : ubyte
     Tag, // text
 }
 
+//! How the user and the settings know LogcatFormat
+enum FormatInfo logcatFormatInfo = FormatInfo("logcat", "Android logcat", "ADB");
+
 //! Output of Android `adb logcat`, a record per line:
 //!   threadtime (default): "11-03 14:22:01.123  1234  1250 I Tag     : message"
 //!                         "2026-11-03 14:22:01.123 ..." with -v year
@@ -60,7 +63,7 @@ final class LogcatFormat : TextFormat
 
     override string name() const pure nothrow @nogc
     {
-        return "Android logcat";
+        return logcatFormatInfo.name;
     }
 
     override const(ColumnInfo)[] columns() const pure nothrow @nogc
@@ -101,6 +104,11 @@ final class LogcatFormat : TextFormat
 
 final class LogcatDetector : FormatDetector
 {
+    override FormatInfo info() const pure nothrow @nogc
+    {
+        return logcatFormatInfo;
+    }
+
     override Detection detect(string path, const(ubyte)[] head) const
     {
         size_t lines, threadtime, brief;
@@ -127,7 +135,9 @@ final class LogcatDetector : FormatDetector
 
     override LogFormat create(int variant, const(ubyte)[] head) const
     {
-        return new LogcatFormat(cast(LogcatFormat.Variant) variant);
+        import std.conv : to;
+
+        return new LogcatFormat(variant.to!(LogcatFormat.Variant)); // throws for a variant it has not
     }
 }
 

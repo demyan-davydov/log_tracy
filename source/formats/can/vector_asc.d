@@ -28,6 +28,9 @@ struct AscHeader
     long startNs; // the start, as written (no zone)
 }
 
+//! How the user and the settings know AscFormat
+enum FormatInfo ascFormatInfo = FormatInfo("vector-asc", "CAN trace (Vector ASC)", "ASC");
+
 final class AscFormat : TextFormat
 {
     private immutable AscHeader _header;
@@ -45,7 +48,7 @@ final class AscFormat : TextFormat
 
     override string name() const pure nothrow @nogc
     {
-        return "CAN trace (Vector ASC)";
+        return ascFormatInfo.name;
     }
 
     private static immutable ColumnInfo[] _localColumns = canColumns(TimeKind.Local, true);
@@ -110,6 +113,11 @@ final class AscFormat : TextFormat
 
 final class AscDetector : FormatDetector
 {
+    override FormatInfo info() const pure nothrow @nogc
+    {
+        return ascFormatInfo;
+    }
+
     override Detection detect(string path, const(ubyte)[] head) const
     {
         bool hasBase, hasDate;

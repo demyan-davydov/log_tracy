@@ -82,9 +82,33 @@ struct Detection
     int variant; // format-specific, passed to FormatDetector.create()
 }
 
+//! What the user and the settings know a format by
+struct FormatInfo
+{
+    string id; // stable, saved in the settings: never change it
+    string name; // shown to the user, e.g. "Android logcat"
+    string shortName; // three capital letters, e.g. "ADB": the badge of a file
+}
+
+//! The format a file was opened with, to open it the same way again:
+//! the detector (FormatInfo.id) and the variant it created
+struct FormatChoice
+{
+    string id; // empty: none, the format is to be detected
+    int variant;
+
+    bool isSet() const pure nothrow @nogc @safe
+    {
+        return id.length != 0;
+    }
+}
+
 //! Recognises one log format by the start of the data
 interface FormatDetector
 {
+    //! The format this detector recognises
+    FormatInfo info() const pure nothrow @nogc;
+
     //! @param path - name of the source, a hint only (its extension)
     //! @param head - the first bytes of the data
     Detection detect(string path, const(ubyte)[] head) const;

@@ -188,7 +188,8 @@ function restoreSettings() {
     }
 }
 
-// Recent files shown by the placeholder, the newest first: [{path, exists}].
+// Recent files shown by the placeholder, the newest first:
+// [{path, exists, format: {shortName, name} if the file was opened before}].
 // The backend keeps the list: it adds a file once it is opened and saves the
 // list at once. Files not found stay listed (a removed drive may come back).
 function getRecentFiles() {
@@ -224,13 +225,20 @@ function renderPlaceholder() {
         <div class="recent-files-header">Recent files</div>
     </div>);
     const list = placeholder.$(".recent-files");
-    for (const { path, exists } of recentFiles) {
+    for (const { path, exists, format } of recentFiles) {
         const { dir, name } = splitPath(path);
+        // The badge of the format the file opens in; an empty one keeps the names aligned
+        const badge = format
+            ? <div class="recent-file-badge" title={format.name}>{format.shortName}</div>
+            : <div class="recent-file-badge empty"></div>;
         const item = <div class="recent-file" path={path} title={path}>
-            <div class="recent-file-head">
-                <div class="recent-file-name">{name}</div>
+            {badge}
+            <div class="recent-file-text">
+                <div class="recent-file-head">
+                    <div class="recent-file-name">{name}</div>
+                </div>
+                <div class="recent-file-dir">{dir}</div>
             </div>
-            <div class="recent-file-dir">{dir}</div>
         </div>;
         list.append(item);
         const added = list.lastElementChild;
@@ -242,7 +250,7 @@ function renderPlaceholder() {
             </div>);
         }
         if (failed)
-            added.append(<div class="recent-file-error">{failureReason(openFailure.error)}</div>);
+            added.$(".recent-file-text").append(<div class="recent-file-error">{failureReason(openFailure.error)}</div>);
     }
 }
 

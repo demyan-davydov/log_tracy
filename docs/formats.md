@@ -2,15 +2,17 @@
 
 Формат определяется по началу файла (детекторы в `source/formats/registry.d`). Если ни один формат не подходит, текст открывается как plain text, а бинарные данные не открываются. Каждый формат задает свои колонки таблицы и поля быстрого фильтра.
 
+Файл из списка недавних открывается в том формате, в котором его открывали в прошлый раз (формат и вариант сохраняются в настройках), без повторного определения; формат определяется заново, только если он не сохранен или эта сборка не может его создать (неизвестный формат, неверный вариант). Рядом с файлом в списке показывается значок формата из трех букв, полное имя — в подсказке.
+
 ## Supported
-- **DLT** (бинарный): с storage header (файлы DLT)
-- **Plain text**: запасной формат, запись = строка
-- **Android logcat**: `threadtime` (с годом `-v year` и без), `brief`
-- **Kernel log (dmesg)**: обычный вывод (время от загрузки), `<priority>` (`dmesg -r`, `/proc/kmsg`), `dmesg -x` (facility и level по имени), `dmesg -T` (время по часам), `/dev/kmsg` (`priority,seq,usec,flags;message` со строками словаря)
-- **Syslog**: BSD / RFC 3164 и journalctl `short`/`short-precise`, ISO (rsyslog, journalctl `short-iso`, с поясом и без), RFC 5424 (MSGID, structured data); `<priority>` дает уровень
-- **Web server access log**: Common Log Format и Combined (nginx по умолчанию); HTTP-статус показывается как есть, его класс (5xx/4xx) дает уровень и цвет ячейки
-- **CAN trace, candump `-l`** (SocketCAN): CAN, 29-bit ID, Remote, CAN FD, error frames
-- **CAN trace, Vector ASC**: шапка (`base hex|dec`, `date`, `timestamps`), CAN, Remote, CAN FD (с символьным именем и без), ErrorFrame, прочие события
+- **DLT** (`DLT`, бинарный): с storage header (файлы DLT)
+- **Plain text** (`TXT`): запасной формат, запись = строка
+- **Android logcat** (`ADB`): `threadtime` (с годом `-v year` и без), `brief`
+- **Kernel log (dmesg)** (`KRN`): обычный вывод (время от загрузки), `<priority>` (`dmesg -r`, `/proc/kmsg`), `dmesg -x` (facility и level по имени), `dmesg -T` (время по часам), `/dev/kmsg` (`priority,seq,usec,flags;message` со строками словаря)
+- **Syslog** (`SYS`): BSD / RFC 3164 и journalctl `short`/`short-precise`, ISO (rsyslog, journalctl `short-iso`, с поясом и без), RFC 5424 (MSGID, structured data); `<priority>` дает уровень
+- **Web server access log** (`WEB`): Common Log Format и Combined (nginx по умолчанию); HTTP-статус показывается как есть, его класс (5xx/4xx) дает уровень и цвет ячейки
+- **CAN trace, candump `-l`** (`CAN`, SocketCAN): CAN, 29-bit ID, Remote, CAN FD, error frames
+- **CAN trace, Vector ASC** (`ASC`): шапка (`base hex|dec`, `date`, `timestamps`), CAN, Remote, CAN FD (с символьным именем и без), ErrorFrame, прочие события
 
 ## Planned
 - **DLT**: декодирование non-verbose сообщений через FIBEX; DLT без storage header (по serial и TCP) для потоков
