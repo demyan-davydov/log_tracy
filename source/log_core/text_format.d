@@ -2,6 +2,7 @@ module log_core.text_format;
 
 import log_core.log_format;
 import log_core.log_message : LogMessage;
+static import log_core.log_message;
 
 import core.stdc.string : memchr;
 
@@ -15,8 +16,9 @@ import core.stdc.string : memchr;
 //! The first line of the data always starts a record.
 abstract class TextFormat : LogFormat
 {
-    //! A record longer than this is cut at its next line
-    enum size_t maxRecordLength = 64 * 1024;
+    //! A record longer than this is cut at its next line, a line longer than
+    //! this is cut into records of this size (see log_core.log_message)
+    enum size_t maxRecordLength = log_core.log_message.maxRecordLength;
 
     //! The most bytes scanRecords() looks at before returning control
     enum size_t maxScanBytes = 1024 * 1024;
@@ -367,4 +369,13 @@ unittest
     LogMessage!wchar msg;
     assert(format.decode(msg, format.recordAt(data, 0)));
     assert(msg.payloadText == "#a"w);
+}
+
+@("TextFormat: a record of maxRecordLength fits in the buffer of a message")
+unittest
+{
+    // A UTF-8 byte makes at most one UTF-16 character: a buffer of that many
+    // characters holds the text of any record
+    assert(LogMessage!wchar.capacity >= TextFormat.maxRecordLength,
+        "longer records would be cut when decoded");
 }

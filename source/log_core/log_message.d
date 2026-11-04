@@ -6,6 +6,11 @@ import std.ascii : isPrintable, isASCII;
 import std.algorithm : copy, min;
 import log_core.log_level : LogLevel;
 
+//! The longest record a format produces, in bytes: a longer text line is cut
+//! into records of this size. The buffer of a LogMessage holds the text of
+//! such a record whole, so raising this raises both.
+enum size_t maxRecordLength = 64 * 1024;
+
 //! What the time of a record means.
 enum TimeKind : ubyte
 {
@@ -35,8 +40,9 @@ struct LogMessage(Char) if (isSomeChar!Char)
     //! Most fields a format can have
     enum maxFields = 8;
 
-    //! Characters for the fields and the payload of one record
-    enum capacity = 16 * 1024 + 1024;
+    //! Characters for the fields and the payload of one record: a record of
+    //! maxRecordLength bytes (at most as many characters) and room for the fields
+    enum capacity = maxRecordLength + 1024;
 
     private LinearAllocator!Char _allocator;
 

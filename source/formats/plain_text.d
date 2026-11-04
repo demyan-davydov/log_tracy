@@ -79,3 +79,18 @@ unittest
     assert(detector.detect("x.txt", cast(const(ubyte)[]) "some text\n").score == PlainTextDetector.fallbackScore);
     assert(detector.detect("x.bin", cast(const(ubyte)[])[1, 0, 2]).score == 0);
 }
+
+@("PlainTextFormat: a line of the maximum record length is decoded whole")
+unittest
+{
+    import std.array : replicate;
+
+    const line = "a".replicate(TextFormat.maxRecordLength - 1) ~ "\n";
+    auto format = new PlainTextFormat();
+    const record = format.recordAt(cast(const(ubyte)[]) line, 0);
+    assert(record.length == line.length, "one record");
+
+    LogMessage!wchar msg;
+    assert(format.decode(msg, record));
+    assert(msg.payloadText.length == TextFormat.maxRecordLength - 1, "no text is cut");
+}
