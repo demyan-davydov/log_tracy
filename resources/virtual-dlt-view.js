@@ -52,7 +52,7 @@ function renderCell(column, value) {
         case "Time": return <td class="aux">{formatTime(value, column.timeKind)}</td>;
         case "Level": {
             const level = levelNames[value] ?? "unknown";
-            return <td class={level}>{level}</td>;
+            return <td class={`level-${level.toLowerCase()}`}>{level}</td>;
         }
         case "Payload": return <td selectable>{value}</td>;
         case "Integer": return <td class="aux">{String(value)}</td>;
