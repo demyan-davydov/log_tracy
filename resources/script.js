@@ -476,7 +476,9 @@ function applyFilters() {
     // Returns an error message (e.g. not a number) or "" when applied; on an
     // error the document keeps its previous filter. The table reloads when the
     // filter operation reports completion.
-    const error = Window.this.xcall("applyFilter", JSON.stringify(quickFilterValues()));
+    const json = JSON.stringify(quickFilterValues());
+    console.log("applyFilter for doc", activeDocId, json);
+    const error = Window.this.xcall("applyFilter", json);
     $("#filter-message").innerText = error ? `Filter error: ${error}` : "";
     saveQuickFilter();
 }
@@ -501,11 +503,20 @@ function showQuickFilter(columnsJson) {
     if (quickFilterDocId === activeDocId && quickFilterColumns === columnsJson) return;
     const entry = quickFilters.get(activeDocId) ?? { values: {}, message: "" };
     const columns = activeDocId === null ? [] : JSON.parse(columnsJson);
-    $("#quick-filter").content(columns.filter(c => filterableKinds.has(c.kind)).map(c =>
-        <div class="filter-group">
+    const panel = $("#quick-filter");
+    // Built from scratch: content() may reuse the inputs of the previous
+    // document, whose current value then stays while only the value attribute
+    // changes (the field looks empty until focused)
+    panel.clear();
+    // One by one: append() takes a single node
+    for (const c of columns.filter(c => filterableKinds.has(c.kind)))
+        panel.append(<div class="filter-group">
             <label>{c.kind === "Payload" ? `${c.title} (regex)` : c.title}</label>
-            <input type="text" column-id={c.id} placeholder={filterPlaceholder(c)} value={entry.values[c.id] ?? ""} />
-        </div>));
+            <input type="text" column-id={c.id} placeholder={filterPlaceholder(c)} />
+        </div>);
+    // The current value of a field, as for the search input (showSearchDraft)
+    for (const input of panel.$$("input"))
+        input.value = entry.values[input.getAttribute("column-id")] ?? "";
     $("#filter-message").innerText = entry.message;
     quickFilterDocId = activeDocId;
     quickFilterColumns = columnsJson;
