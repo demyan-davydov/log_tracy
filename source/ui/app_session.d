@@ -666,14 +666,6 @@ version (unittest)
         FormatChoice lastChoice() { return records.lastChoice; }
     }
 
-    private string[] paths(const RecentFile[] list)
-    {
-        string[] result;
-        foreach (ref file; list)
-            result ~= file.path;
-        return result;
-    }
-
     private string[] namesOf(const ScriptCall[] calls)
     {
         string[] names;
@@ -690,7 +682,7 @@ unittest
     const result = f.session.openFile("/logs/a.log");
     assert(result.docId.isValid && result.failureJson is null);
     assert(f.session.doc(result.docId) is f.docOf("/logs/a.log"));
-    assert(f.session.settings.recentFiles.paths == ["/logs/a.log"]);
+    assert(f.session.settings.recentFiles.pathsOf == ["/logs/a.log"]);
 
     const calls = f.session.takeScriptCalls();
     assert(calls.length >= 1 && calls[0] == ScriptCall("onDocumentOpened", cast(int) result.docId.toInt()));
@@ -706,7 +698,7 @@ unittest
     const failure = parseJSON(result.failureJson);
     assert(failure["path"].str == "/logs/missing.log");
     assert(failure["error"].str == "no such file");
-    assert(f.session.settings.recentFiles.paths == ["/logs/missing.log"]);
+    assert(f.session.settings.recentFiles.pathsOf == ["/logs/missing.log"]);
     assert(!namesOf(f.session.takeScriptCalls()).canFind("onDocumentOpened"));
 }
 
@@ -755,11 +747,11 @@ unittest
     auto f = Fixture.make();
     const id = f.session.openFile("/logs/a.log").docId;
     f.session.openFile("/logs/b.log");
-    assert(paths(f.session.settings.recentFiles) == ["/logs/b.log", "/logs/a.log"]);
+    assert(pathsOf(f.session.settings.recentFiles) == ["/logs/b.log", "/logs/a.log"]);
 
     f.session.closeTab(cast(int) id.toInt());
     assert(!f.session.findDocument(cast(int) id.toInt()).isValid);
-    assert(paths(f.session.settings.recentFiles) == ["/logs/a.log", "/logs/b.log"], "used now: on top");
+    assert(pathsOf(f.session.settings.recentFiles) == ["/logs/a.log", "/logs/b.log"], "used now: on top");
     assert(f.session.takeScriptCalls().length, "the views of b are still told");
 }
 
@@ -776,7 +768,7 @@ unittest
     f.session.saveSettings(`{"theme": "dark"}`);
     assert(f.writes.length == 1, "both changes in one write");
     assert(f.writes[0].theme == "dark", "the state of the script is merged in");
-    assert(paths(f.writes[0].recentFiles) == ["/logs/b.log", "/logs/a.log"]);
+    assert(pathsOf(f.writes[0].recentFiles) == ["/logs/b.log", "/logs/a.log"]);
     assert(!f.session.settingsDue, "written: nothing changed since");
 }
 
@@ -787,11 +779,11 @@ unittest
     f.session.openFile("/logs/a.log");
     const closed = f.session.openFile("/logs/c.log").docId;
     f.session.closeTab(cast(int) closed.toInt());
-    assert(paths(f.session.settings.recentFiles) == ["/logs/c.log", "/logs/a.log"]);
+    assert(pathsOf(f.session.settings.recentFiles) == ["/logs/c.log", "/logs/a.log"]);
 
     f.session.saveOnClose(`{"tableFontSize": 120}`);
     assert(f.writes.length == 1 && f.writes[0].tableFontSize == 120);
-    assert(paths(f.writes[0].recentFiles) == ["/logs/a.log", "/logs/c.log"],
+    assert(pathsOf(f.writes[0].recentFiles) == ["/logs/a.log", "/logs/c.log"],
         "the open files were used until now");
 }
 
