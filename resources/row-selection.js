@@ -140,15 +140,20 @@ export class RowSelection {
 
 // The text of the selected rows for the clipboard, one row per line, in the
 // order of the view. rowText(index) gives the text of a row, null if the view
-// doesn't have it (any more): it is skipped. The text stops before the row that
-// would make it longer than `limit` characters.
-// Returns { text, copied: rows in the text, total: rows selected, truncated:
-// true if rows were left out for the limit }.
-export function selectedText(selection, rowText, limit) {
+// doesn't have it (any more): it is skipped. Positions from `rowCount` (the
+// rows of the view) on are not read. The text stops before the row that would
+// make it longer than `limit` characters.
+// Returns { text, copied: rows in the text, total: rows selected in the view,
+// truncated: true if rows were left out for the limit }.
+export function selectedText(selection, rowText, limit, rowCount = Infinity) {
     const lines = [];
     let length = 0;
     let full = false;
-    for (const [first, last] of selection.ranges) {
+    let total = 0;
+    for (const [first, rangeLast] of selection.ranges) {
+        if (first >= rowCount) break;
+        const last = Math.min(rangeLast, rowCount - 1);
+        total += last - first + 1;
         for (let index = first; index <= last && !full; ++index) {
             const line = rowText(index);
             if (line === null || line === undefined) continue;
@@ -159,9 +164,8 @@ export function selectedText(selection, rowText, limit) {
                 length += added;
             }
         }
-        if (full) break;
     }
-    return { text: lines.join("\n"), copied: lines.length, total: selection.count, truncated: full };
+    return { text: lines.join("\n"), copied: lines.length, total, truncated: full };
 }
 
 // The first row to show so that the row `position` is near the top of a view

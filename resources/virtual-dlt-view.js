@@ -46,8 +46,10 @@ function renderCell(column, value, level) {
     return <td class={cellClass(column, level)}>{text}</td>;
 }
 
-// Cmd+click toggles a row on macOS, where Ctrl+click opens the context menu
+// Cmd+click toggles a row on macOS, where Ctrl+click opens the context menu:
+// it comes as a left press with Ctrl, which must not select like a click
 const toggleKey = env.PLATFORM === "OSX" ? "metaKey" : "ctrlKey";
+const contextClickKey = env.PLATFORM === "OSX" ? "ctrlKey" : null;
 
 // select with virtual data source
 export class VirtualDltTBody extends VirtualSelect {
@@ -125,7 +127,8 @@ export class VirtualDltTBody extends VirtualSelect {
     // The text of the selected rows for the clipboard, at most `limit`
     // characters: { text, copied, total, truncated }, see selectedText()
     selectedRowsText(limit) {
-        return selectedText(this.selection, (index) => itemText(this.itemAt(index), columns), limit);
+        return selectedText(this.selection, (index) => itemText(this.itemAt(index), columns), limit,
+            this.totalItems());
     }
 
     // A press of the left button selects (Shift: a range, Cmd/Ctrl: one more
@@ -134,6 +137,7 @@ export class VirtualDltTBody extends VirtualSelect {
     // the event is not consumed.
     ["on mousedown"](evt) {
         if (evt.buttons & 6) return; // right (2) or middle (4) button
+        if (contextClickKey && evt[contextClickKey]) return; // the context menu, see contextmenu
         if (evt.target.closest("td.anchor")) return; // toggles the anchor only
         const viewIndex = this.viewIndexOf(evt.target);
         if (viewIndex === null) return;
@@ -232,7 +236,8 @@ export class VirtualDltTBody extends VirtualSelect {
 
 // Selecting rows by dragging: { list, y (clientY of the mouse), timer }, null
 // while no drag. The document passes the mouse moves and the release
-// (moveRowDrag, endRowDrag); outside the list a timer scrolls it.
+// (moveRowDrag, endRowDrag); while the mouse is above or below the list a
+// timer scrolls it, timer is null otherwise.
 let rowDrag = null;
 
 // The list captures the mouse while dragging: the release comes to it even
@@ -242,7 +247,21 @@ function beginRowDrag(list, toggle, y) {
     endRowDrag();
     list.selection.beginDrag({ toggle });
     list.state.capture(true);
-    rowDrag = { list, y, timer: setInterval(autoScrollRowDrag, 16) };
+    rowDrag = { list, y, timer: null };
+}
+
+// Runs the auto-scroll timer while the mouse is above or below the list
+function updateAutoScroll() {
+    const box = rowDrag.list.getBoundingClientRect();
+    const outside = rowDrag.y < box.top || rowDrag.y >= box.bottom;
+    if (outside && !rowDrag.timer) {
+        rowDrag.tickTime = Date.now();
+        rowDrag.pixels = 0;
+        rowDrag.timer = setInterval(autoScrollRowDrag, 16);
+    } else if (!outside && rowDrag.timer) {
+        clearInterval(rowDrag.timer);
+        rowDrag.timer = null;
+    }
 }
 
 // A mouse move of the document: selects up to the row under the mouse
@@ -253,6 +272,7 @@ export function moveRowDrag(evt) {
     // button state, so only mouseup ends the drag there.
     if (!(evt.buttons & 1) && insideWindow(evt)) return endRowDrag();
     rowDrag.y = evt.clientY;
+    updateAutoScroll();
     const { list } = rowDrag;
     const viewIndex = list.viewIndexAt(evt.clientY);
     if (viewIndex === null || viewIndex === list.selection.current) return;
@@ -269,7 +289,7 @@ function insideWindow(evt) {
 
 export function endRowDrag() {
     if (!rowDrag) return;
-    clearInterval(rowDrag.timer);
+    if (rowDrag.timer) clearInterval(rowDrag.timer);
     rowDrag.list.state.capture(false);
     rowDrag = null;
 }
@@ -279,18 +299,15 @@ export function endRowDrag() {
 // row at that edge
 function autoScrollRowDrag() {
     const now = Date.now();
-    const elapsed = Math.min(100, now - (rowDrag.tickTime ?? now)); // ms; a stalled tick doesn't jump
+    const elapsed = Math.min(100, now - rowDrag.tickTime); // ms; a stalled tick doesn't jump
     rowDrag.tickTime = now;
     const { list, y } = rowDrag;
     const box = list.getBoundingClientRect();
     const up = y < box.top;
     const distance = up ? box.top - y : y > box.bottom ? y - box.bottom : 0;
-    if (distance === 0 || !list.vlist) {
-        rowDrag.pixels = 0;
-        return;
-    }
+    if (distance === 0 || !list.vlist) return; // the next move stops the timer
     // Whole pixels only: the fraction is kept for the next tick
-    rowDrag.pixels = (rowDrag.pixels ?? 0) + autoScrollSpeed(distance) * elapsed / 1000;
+    rowDrag.pixels += autoScrollSpeed(distance) * elapsed / 1000;
     const pixels = Math.floor(rowDrag.pixels);
     if (pixels === 0) return;
     rowDrag.pixels -= pixels;

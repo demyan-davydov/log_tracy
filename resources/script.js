@@ -485,9 +485,13 @@ function setupEvents() {
         if (evt.target.closest("td.anchor")) return; // toggles the anchor only
         const msgIndex = Number(row.$("td.anchor")?.getAttribute("msg-index"));
         if (!Number.isFinite(msgIndex)) return;
+        // Only into a main view that shows its rows: while it is rebuilt the
+        // positions belong to the content being replaced
+        if (docStatus.get(activeDocId)?.mainView?.status !== "ready") return;
+        const list = getMainViewList();
+        if (!list) return;
         const position = Window.this.xcall("getMainViewPosition", msgIndex);
         if (position === null || position === undefined) return;
-        const list = getMainViewList();
         list.selection.moveTo(position);
         list.navigateTarget = scrollTarget(position, list.visibleRowCount());
         list.componentUpdate();

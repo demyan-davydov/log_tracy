@@ -204,3 +204,13 @@ test("dragging past the edge scrolls at a steady speed near it, then faster up t
     assert.ok(autoScrollSpeed(nearDistance + 1) > minSpeed && autoScrollSpeed(nearDistance + 1) < minSpeed + 2 * acceleration,
         "no jump at the threshold");
 });
+
+test("rows past the end of the view are neither read nor counted", () => {
+    const selection = new RowSelection();
+    click(selection, 2);
+    click(selection, 1_000_000_000, { shift: true });
+    let read = 0;
+    const result = selectedText(selection, (i) => { ++read; return `r${i}`; }, 1000, 5);
+    assert.deepEqual(result, { text: "r2\nr3\nr4", copied: 3, total: 3, truncated: false });
+    assert.equal(read, 3);
+});
