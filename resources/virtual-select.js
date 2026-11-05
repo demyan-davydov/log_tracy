@@ -1,5 +1,7 @@
 // A list that renders only the items on screen (behavior: virtual-list). The
 // selection lives in the subclasses (see VirtualDltTBody).
+import { navigationPast } from "./list-navigation.js";
+
 export class VirtualList extends Element {
     // Where the next render() scrolls to: a row number, "start" or "end"; null
     // keeps the scroll. render() runs posted by componentUpdate(), so a
@@ -45,6 +47,7 @@ export class VirtualList extends Element {
             // navigation below requests the new ones, otherwise vlist keeps them
             this.clear();
             if (target !== null) {
+                // No rows rendered: the target comes from outside the window
                 this.post(() => {
                     this.vlist?.navigateTo(target);
                 });
@@ -79,9 +82,27 @@ export class VirtualList extends Element {
 
         if (target !== null)
             this.post(() => {
-                this.vlist?.navigateTo(target);
+                this.navigateToTop(target, totalItems);
             });
         return this.renderList(list);
+    }
+
+    // Scrolls so that the row `target` (or "start", "end") is the first on
+    // screen, of `total` rows: a row vlist.navigateTo() would leave below the
+    // top is first navigated past, see navigationPast()
+    navigateToTop(target, total) {
+        const vlist = this.vlist;
+        if (!vlist) return;
+        const firstBuffer = vlist.firstBufferIndex;
+        const firstItem = vlist.firstVisibleItem;
+        const past = navigationPast(target, {
+            firstVisible: firstItem ? firstBuffer + firstItem.elementIndex : null,
+            lastBuffer: vlist.lastBufferIndex,
+            total,
+            windowSize: vlist.slidingWindowSize,
+        });
+        if (past !== null) vlist.navigateTo(past);
+        vlist.navigateTo(target);
     }
 
     // scroll down
