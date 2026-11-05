@@ -2,7 +2,7 @@
 // Run: node --test tests/js
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { setCatalog, tr, trc, trn, trParts, format, pseudoize, pseudoLocale } from "../../resources/i18n/i18n.js";
+import { setCatalog, currentCatalog, tr, trc, trn, trParts, format, pseudoize, pseudoLocale } from "../../resources/i18n/i18n.js";
 
 const ru = {
     locale: "ru",
@@ -114,4 +114,12 @@ test("parts: the translation split around its parameters, the values put in as t
 
 test("parts: an unknown parameter stays as written, no empty strings", () => {
     assert.deepEqual(trParts("{a}{b} and {c}", { a: 1, b: 2 }), [1, 2, " and {c}"]);
+});
+
+test("the catalog in use, to hand to a dialog", () => {
+    const ru = { locale: "ru", messages: {} };
+    setCatalog(ru);
+    assert.equal(currentCatalog(), ru);
+    setCatalog(null);
+    assert.equal(currentCatalog(), null);
 });

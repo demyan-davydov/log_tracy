@@ -23,6 +23,10 @@ export function setCatalog(next) {
     catalog = next;
 }
 
+// The catalog translated by now, null: english; a dialog has scripts of its own, it is
+// handed this one (setCatalog there)
+export const currentCatalog = () => catalog;
+
 // `text` with its {name} parameters put in from the own fields of `args`; an unknown one stays
 // as written.
 export function format(text, args) {

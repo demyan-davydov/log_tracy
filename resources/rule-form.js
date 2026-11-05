@@ -11,6 +11,7 @@
 //   Enum           { on, value }         a label
 // The conditions a row can't show (on a column this log doesn't have, a
 // second one on a column) are kept as they are.
+import { tr } from "./i18n/i18n.js";
 
 const editableKinds = new Set(["Text", "Payload", "Integer", "Hex", "Enum", "Level"]);
 export const levelNames = ["fatal", "error", "warn", "info", "debug", "verbose"];
@@ -139,12 +140,18 @@ export function conditionsFromRows(rows, columns, kept) {
     return conditions.concat(kept);
 }
 
-// A kept condition in words, for the editor
+// A kept condition in words of the language of the interface, for the editor; a check this
+// editor doesn't know is said as it is
 export function describeCondition(c) {
-    const anyCase = c.ignoreCase ? " (any case)" : "";
-    if (c.check === "range") return `${c.column} from ${c.min} to ${c.max}`;
-    const value = typeof c.value === "string" ? `"${c.value}"` : String(c.value);
-    return `${c.column} ${c.check} ${value}${anyCase}`;
+    if (c.check === "range") return tr("{column} from {min} to {max}", { column: c.column, min: c.min, max: c.max });
+    // A text in quotes, those of the translation; a number as it is
+    const text = typeof c.value === "string";
+    const args = { column: c.column, value: String(c.value) };
+    const condition = c.check === "equals" ? (text ? tr('{column} equals "{value}"', args) : tr("{column} equals {value}", args))
+        : c.check === "contains" ? tr('{column} contains "{value}"', args)
+        : c.check === "regex" ? tr('{column} regex "{value}"', args)
+        : text ? `${c.column} ${c.check} "${c.value}"` : `${c.column} ${c.check} ${c.value}`;
+    return c.ignoreCase ? tr("{condition} (any case)", { condition }) : condition;
 }
 
 // The errors of the conditions (as conditionsFromRows gives them, in that

@@ -80,6 +80,8 @@
         import { editableColumns, rowsFromRule, conditionsFromRows, describeCondition, errorsOfRows, levelNames } from "rule-form.js";
         import * as platform from "platform.js";
         import { applyTheme } from "theme.js";
+        import { setCatalog, tr, trc } from "i18n/i18n.js";
+        import { translateTree } from "i18n/dom.js";
 
         const params = platform.dialogParameters() || {};
         // Without parameters (opened on its own to look at it): a sample log
@@ -92,11 +94,12 @@
             { id: "msgid", title: "MsgId", kind: "Integer" },
             { id: "payload", title: "Payload", kind: "Payload" },
         ];
-        const rule = params.rule || { name: "New Rule", kind: "include", enabled: true, conditions: [] };
+        setCatalog(params.catalog || null);
+        const rule = params.rule || { name: tr("New Rule"), kind: "include", enabled: true, conditions: [] };
         const editable = editableColumns(columns);
         let kept = [];
 
-        const checkTitles = { equals: "is", contains: "contains", regex: "matches regex" };
+        const checkTitles = { equals: trc("check", "is"), contains: trc("check", "contains"), regex: trc("check", "matches regex") };
 
         // The controls of a row by their role, for a column of its kind
         function renderRow(column) {
@@ -115,13 +118,13 @@
                         // Only what a number of the column is made of can be typed:
                         // digits, hex digits and the x of 0x in a hex column
                         const filter = column.kind === "Hex" ? "0~9a~fA~FxX" : "0~9";
-                        return [<input type="text" role="from" filter={filter} />, <span>to</span>,
+                        return [<input type="text" role="from" filter={filter} />, <span>{trc("range", "to")}</span>,
                             <input type="text" role="to" filter={filter} />];
                     }
                     case "Level":
                         return [
                             <select class="level" role="from">{levelNames.map(l => <option value={l}>{l}</option>)}</select>,
-                            <span>to</span>,
+                            <span>{trc("range", "to")}</span>,
                             <select class="level" role="to">{levelNames.map(l => <option value={l}>{l}</option>)}</select>
                         ];
                     case "Enum":
@@ -135,7 +138,7 @@
                 <div class="row">
                     <div class="label"><label><input type="checkbox" role="on" />{column.title}</label></div>
                     <div class="value">{value}</div>
-                    <div class="options">{textual ? <label title="Ignore case"><input type="checkbox" role="ignoreCase" /> Aa</label> : []}</div>
+                    <div class="options">{textual ? <label title={tr("Ignore case")}><input type="checkbox" role="ignoreCase" /> Aa</label> : []}</div>
                 </div>
                 <div class="row-error"></div>
             </div>;
@@ -175,7 +178,7 @@
             kept.forEach((condition, i) => {
                 list.append(<div class="kept">
                     <span class="text">{describeCondition(condition)}</span>
-                    <span class="kept-remove" index={i} title="Remove this condition">×</span>
+                    <span class="kept-remove" index={i} title={tr("Remove this condition")}>×</span>
                 </div>);
                 list.append(<div class="row-error kept-error" index={i}></div>);
             });
@@ -207,7 +210,7 @@
             const blocked = (!!result.error || errors.blocking) && rule.enabled;
             $("#btn-ok").state.disabled = blocked;
             $("#ok-hint").innerText = blocked
-                ? "Fix the marked conditions, or switch the rule off to keep it as it is" : "";
+                ? tr("Fix the marked conditions, or switch the rule off to keep it as it is") : "";
         }
 
         function read() {
@@ -224,7 +227,8 @@
 
         document.on("ready", () => {
             if (params.theme === "dark") applyTheme("dark");
-            platform.setDialogTitle(params.title || "Filter Rule");
+            translateTree(document);
+            platform.setDialogTitle(params.title || tr("Filter Rule"));
             const conditions = $("#conditions");
             for (const column of editable) conditions.append(renderRow(column));
 
@@ -280,27 +284,27 @@
         <div id="rule-error"></div>
 
         <div class="row">
-            <div class="label"><label><input type="checkbox" id="enabled" /> Active</label></div>
+            <div class="label"><label><input type="checkbox" id="enabled" /> <span data-tr="Active"></span></label></div>
         </div>
         <div class="row">
-            <div class="label">Name</div>
+            <div class="label" data-tr="Name"></div>
             <div class="value"><input type="text" id="name" /></div>
         </div>
 
         <div class="group">
             <div class="row">
-                <div class="label group-title">Type</div>
+                <div class="label group-title" data-tr="Type"></div>
                 <div class="value radios">
-                    <label><input type="radio" name="kind" value="include" /> Include (positive)</label>
-                    <label><input type="radio" name="kind" value="exclude" /> Exclude (negative)</label>
-                    <label><input type="radio" name="kind" value="marker" /> Marker</label>
+                    <label><input type="radio" name="kind" value="include" /> <span data-tr="Include (positive)"></span></label>
+                    <label><input type="radio" name="kind" value="exclude" /> <span data-tr="Exclude (negative)"></span></label>
+                    <label><input type="radio" name="kind" value="marker" /> <span data-tr="Marker"></span></label>
                 </div>
             </div>
         </div>
 
         <div class="group">
             <div class="row">
-                <div class="label group-title"><label><input type="checkbox" id="has-color" /> Color</label></div>
+                <div class="label group-title"><label><input type="checkbox" id="has-color" /> <span data-tr="Color"></span></label></div>
                 <!-- The color input of Sciter: a swatch, the value and a picker -->
                 <div class="value"><input type="color" id="color" /></div>
             </div>
@@ -320,21 +324,20 @@
         </div>
 
         <div class="separator"></div>
-        <div class="section-title">Conditions: all checked ones must match</div>
+        <div class="section-title" data-tr="Conditions: all checked ones must match"></div>
         <div id="conditions"></div>
-        <div class="hint">Numbers: an empty "to" is a single value; hex columns take hex digits.
-            Regular expressions are found anywhere in the text.</div>
+        <div class="hint" data-tr="Numbers: an empty &quot;to&quot; is a single value; hex columns take hex digits. Regular expressions are found anywhere in the text."></div>
 
         <div id="kept-section">
-            <div class="section-title">Other conditions, kept as they are</div>
-            <div class="hint">On columns this log doesn't have (they aren't applied), or a second one on a column.</div>
+            <div class="section-title" data-tr="Other conditions, kept as they are"></div>
+            <div class="hint" data-tr="On columns this log doesn't have (they aren't applied), or a second one on a column."></div>
             <div id="kept"></div>
         </div>
     </main>
     <footer>
         <span id="ok-hint"></span>
-        <button id="btn-cancel">Cancel</button>
-        <button id="btn-ok" class="primary">OK</button>
+        <button id="btn-cancel" data-tr="Cancel"></button>
+        <button id="btn-ok" class="primary" data-tr="OK"></button>
     </footer>
 </body>
 

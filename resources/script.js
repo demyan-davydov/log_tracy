@@ -14,7 +14,7 @@ import * as platform from "platform.js";
 import { applyTheme } from "theme.js";
 import { showMenuBar } from "menu-bar.js";
 import { shortcutTextOf } from "menu-shortcuts.js";
-import { pseudoLocale, setCatalog, tr, trParts } from "i18n/i18n.js";
+import { currentCatalog, pseudoLocale, setCatalog, tr, trParts } from "i18n/i18n.js";
 import { translateTree } from "i18n/dom.js";
 import { fileFilter, allFiles } from "file-types.js";
 import { requestedLocale } from "i18n/languages.js";
@@ -66,7 +66,6 @@ globalThis.VirtualSearchViewTBody = VirtualSearchViewTBody;
 
 let currentTheme = "light";
 let currentLanguage = ""; // the setting: a BCP 47 tag, "": the language of the system
-let currentCatalog = null; // of the translations the texts are in, null: english
 // Font size of the log tables, % of the normal one (Settings)
 let tableFontSize = 100;
 // The state of the window (window-state.js): the documents, the New Tab, the
@@ -265,10 +264,9 @@ function setLanguage(setting) {
     const { language, country } = platform.systemLanguage();
     const locale = requestedLocale(setting, language, country);
     const catalog = backend.useLanguage(locale); // the menu of the backend too
-    currentCatalog = locale === pseudoLocale ? { locale, messages: {} } : catalog;
     currentLanguage = setting;
-    setCatalog(currentCatalog);
-    console.log("Language set to:", setting || "system", "->", currentCatalog?.locale ?? "en");
+    setCatalog(locale === pseudoLocale ? { locale, messages: {} } : catalog);
+    console.log("Language set to:", setting || "system", "->", currentCatalog()?.locale ?? "en");
     translateTree(document); // what is built once: the markup, the skeletons of the panels
     if (!menuSetUp) return; // starting: the rest is rendered in this language anyway
     // Rendered already: anew, in this language
@@ -292,7 +290,7 @@ function setTableFontSize(percent) {
 function openSettingsAction() {
     const result = platform.showModal("settings.htm", {
         theme: currentTheme, tableFontSize,
-        language: currentLanguage, languages: backend.languages(), catalog: currentCatalog,
+        language: currentLanguage, languages: backend.languages(), catalog: currentCatalog(),
         columns: backend.columnSettings()
     });
     if (!result) return; // Cancel

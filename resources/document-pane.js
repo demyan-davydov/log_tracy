@@ -13,7 +13,7 @@ import { noSearch, runSearch, searchMessage, searchPending, editRule } from "pan
 import { ruleColors } from "rule-colors.js";
 import { scrollTarget } from "row-selection.js";
 import { noTable, tableStep } from "pane-state.js";
-import { tr } from "i18n/i18n.js";
+import { currentCatalog, tr } from "i18n/i18n.js";
 import { translateTree } from "i18n/dom.js";
 import { fileFilter, allFiles } from "file-types.js";
 
@@ -490,6 +490,7 @@ export class DocumentPane {
         if (!values) return false;
         const open = (values, error) => platform.showModal("rule-editor.htm", {
             title: rule < 0 ? tr("New Rule") : tr("Edit Rule"), theme: this.host.theme(), rule: values, error,
+            catalog: currentCatalog(),
             columns: backend.columns(docId),
             // What is wrong with the rule, while it is edited: the editor
             // marks it at once instead of being reopened with the error
