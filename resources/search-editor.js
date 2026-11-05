@@ -8,7 +8,7 @@
 import * as env from "@env";
 import {
     moveCaret, moveTo, typeInGap, typeBarInChip, deleteInGap, searchChips,
-    sameQuery, assignColors, selection, extendCaret, selectChipsFrom, selectTo, selectAll, selectedChips, deleteSelection, insertChips,
+    sameQuery, assignColors, historyIndex, selection, extendCaret, selectChipsFrom, selectTo, selectAll, selectedChips, deleteSelection, insertChips,
 } from "search-editing.js";
 import { formatQuery, parseQuery, makeChip } from "search-query.js";
 import { EditHistory } from "edit-history.js";
@@ -24,11 +24,16 @@ export class SearchEditor {
     // @param checkRegex(pattern, ignoreCase) -> error message, "" for a valid regex
     // @param onEdited() - the chips changed
     // @param onCommit() - Enter: run the search
-    constructor(root, { checkRegex, onEdited, onCommit }) {
+    // @param history() -> the queries searched in the document, the latest first
+    // @param historyButton - the button that shows them; it owns the history popup
+    constructor(root, { checkRegex, onEdited, onCommit, history, historyButton }) {
         this.root = root;
         this.checkRegexBy = checkRegex;
         this.onEdited = onEdited;
         this.onCommit = onCommit;
+        this.historyOf = history ?? (() => []);
+        this.historyButton = historyButton ?? null;
+        this.historyPopup = null; // {element, queries, current} while the history is shown
         this.state = { chips: [], pos: { gap: 0 } };
         this.history = new EditHistory(); // the undo steps of the chips shown
         this.regexErrors = new Map(); // "ignoreCase\0pattern" -> error
@@ -37,6 +42,7 @@ export class SearchEditor {
         this.blinkTimer = null; // while the caret between chips is shown
         this.drag = null; // a mouse selection: {anchor} from a gap, {chip, left} from inside a chip
         this.bind();
+        this.bindHistoryButton();
         this.render();
     }
 
@@ -46,6 +52,7 @@ export class SearchEditor {
     // Shows other chips (another document), the caret after the last one
     // @param history - the undo steps of those chips (EditHistory), a new one if not given
     setChips(chips, history = null) {
+        this.closeHistory({ refocus: false }); // it holds the queries of the document shown before
         this.history = history ?? new EditHistory();
         this.state = { chips: assignColors(chips.map(c => ({ ...c })), matchColorCount), pos: { gap: chips.length } };
         this.entryText = null;
@@ -259,6 +266,10 @@ export class SearchEditor {
     }
 
     onKeyDown(evt) {
+        if (this.historyPopup) {
+            const handled = this.onHistoryKey(evt);
+            if (handled !== null) return handled;
+        }
         const inGap = this.state.pos.gap !== undefined;
         const mod = isMac() ? evt.altKey : evt.ctrlKey;
         const line = isMac() && evt.metaKey;
@@ -277,6 +288,10 @@ export class SearchEditor {
         switch (evt.code) {
             case "ArrowLeft": key = line ? (inGap ? "home" : "wordLeft") : mod ? "wordLeft" : "left"; break;
             case "ArrowRight": key = line ? (inGap ? "end" : "wordRight") : mod ? "wordRight" : "right"; break;
+            case "ArrowDown":
+                if (evt.shiftKey || evt.altKey || evt.ctrlKey || evt.metaKey) return false;
+                this.openHistory();
+                return true;
             case "Home": key = "home"; break;
             case "End": key = "end"; break;
             case "Enter":
@@ -375,6 +390,117 @@ export class SearchEditor {
         this.render();
         this.onEdited?.();
         this.placeFocus();
+    }
+
+    // ---- the search history ----
+
+    // The history popup is owned by its button, as Sciter's own samples do it:
+    // the button knows whether its popup is shown (state.ownspopup), the events
+    // of the popup (clicks on its items, its dismissal) come up to the button.
+    bindHistoryButton() {
+        const button = this.historyButton;
+        if (!button) return;
+        // the popup is a child of its owner, as in the samples; filled on each show
+        button.append(<popup class="search-history"></popup>);
+        this.historyElement = button.lastElementChild;
+        // a press on the button shows the list, or hides it
+        button.on("mousedown", () => {
+            if (button.state.ownspopup) this.closeHistory();
+            else this.openHistory();
+            return true; // the focus stays in the editor
+        });
+        button.on("click", ".history-item", (evt, item) => {
+            this.takeHistory(parseInt(item.getAttribute("data-query")));
+            return true;
+        });
+        button.on("mousemove", ".history-item", (evt, item) => {
+            this.markHistory(parseInt(item.getAttribute("data-query")));
+        });
+        // Sciter hides the popup by itself on a press outside it or when the
+        // application loses the focus (a tooltip of the button comes here too:
+        // the history is gone only if the button owns no popup any more)
+        button.on("popupdismissed", () => {
+            if (!button.state.ownspopup) this.historyPopup = null;
+        });
+    }
+
+    // Shows the queries searched in the document under the editor: the arrows
+    // go through them, Enter or a click takes one, Esc closes the list
+    openHistory() {
+        const button = this.historyButton;
+        if (!button) return true;
+        if (this.historyPopup || button.state.ownspopup) return this.closeHistory();
+        this.placeFocus();
+        const queries = this.historyOf();
+        const items = queries.map((query, i) =>
+            <div class="history-item" data-query={i}>
+                {assignColors(query, matchColorCount).map(chip =>
+                    <span class={`history-chip ${matchColorClass(chip.color)}`}>
+                        {chip.isRegex ? <span class="history-flag">.*</span> : ""}
+                        {chip.ignoreCase ? <span class="history-flag">Aa</span> : ""}
+                        <span class={chip.isRegex ? "history-text regex" : "history-text"}>{chip.text}</span>
+                    </span>)}
+            </div>);
+        // under the editor, as wide as it, wherever the button is
+        const [x, y, width, height] = this.root.state.box("xywh", "border", "window");
+        const element = this.historyElement;
+        element.innerHTML = "";
+        if (queries.length) for (const item of items) element.append(item);
+        else element.append(<div class="history-empty">No searches in this file yet</div>);
+        element.style.width = `${width}px`;
+        button.popup(element, { popupAt: 7, x, y: y + height }); // returns a PopupWindow, not the element
+        this.historyPopup = { element, queries, current: -1 };
+        if (queries.length) this.markHistory(0);
+        return true;
+    }
+
+    // @param refocus - give the focus back to the editor (not when it went elsewhere)
+    closeHistory({ refocus = true } = {}) {
+        const popup = this.historyPopup;
+        this.historyPopup = null;
+        if (!popup) return true;
+        popup.element.state.popup = false;
+        if (refocus) this.placeFocus();
+        return true;
+    }
+
+    markHistory(i) {
+        const popup = this.historyPopup;
+        if (!popup || i < 0) return;
+        popup.current = i;
+        const items = popup.element.$$(".history-item");
+        items.forEach((item, k) => item.classList.toggle("current", k === i));
+        items[i]?.scrollIntoView();
+    }
+
+    // The query taken from the history replaces the whole query: an undo step;
+    // it isn't searched until Enter
+    takeHistory(i) {
+        const query = this.historyPopup?.queries[i];
+        // the query first: closing the list comes from an event of the list itself
+        if (query) this.go({ chips: query.map(chip => makeChip(chip.text, chip)), pos: { gap: query.length } });
+        this.closeHistory();
+    }
+
+    // A key while the history is shown.
+    // @returns true if handled, null for a key the editor handles as usual
+    onHistoryKey(evt) {
+        const popup = this.historyPopup;
+        switch (evt.code) {
+            case "ArrowDown":
+            case "ArrowUp":
+                this.markHistory(historyIndex(popup.current, popup.queries.length,
+                    evt.code === "ArrowDown" ? "down" : "up"));
+                return true;
+            case "Enter":
+                if (popup.current >= 0) this.takeHistory(popup.current);
+                else this.closeHistory();
+                return true;
+            case "Escape":
+                return this.closeHistory();
+        }
+        this.closeHistory(); // any other key closes the list and edits the query as usual
+        return null;
     }
 
     // Cmd/Ctrl+A: inside a chip its text first, then every chip
@@ -563,6 +689,8 @@ export class SearchEditor {
 
     onFocusLeft() {
         if (this.root.state.focus || this.root.$(":focus")) return;
+        // the list itself may have the focus (a click on it)
+        if (this.historyPopup) this.closeHistory({ refocus: false }); // the focus stays where it went
         const pos = this.state.pos;
         if (pos.gap === undefined) {
             const next = moveTo(this.syncedState(), { gap: pos.chip + 1 });

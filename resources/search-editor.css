@@ -112,6 +112,53 @@
     background: var(--btn-default-hover);
 }
 
+/* The search history: the queries of the document under the editor */
+popup.search-history {
+    flow: vertical;
+    max-height: 20em;
+    overflow-y: auto;
+    padding: 2dip;
+    background: var(--bg-input);
+    border: 1dip solid var(--border-input);
+    border-radius: 3dip;
+}
+
+popup.search-history > .history-empty {
+    padding: 3dip 6dip;
+    color: var(--text-label);
+}
+
+popup.search-history > .history-item {
+    flow: horizontal-wrap;
+    border-spacing: 4dip;
+    padding: 3dip 4dip;
+    border-radius: 2dip;
+    cursor: default;
+}
+
+popup.search-history > .history-item.current {
+    background: var(--chip-selected);
+}
+
+popup.search-history .history-chip {
+    flow: horizontal;
+    padding: 0 4dip;
+    white-space: pre;
+    border: 1dip solid var(--chip-border);
+    border-radius: 3dip;
+}
+
+popup.search-history .history-flag {
+    font-size: 0.8em;
+    color: var(--border-focus);
+    padding-right: 3dip;
+    vertical-align: middle;
+}
+
+popup.search-history .history-text.regex {
+    font-family: monospace;
+}
+
 #chip-search-message:empty {
     display: none;
 }

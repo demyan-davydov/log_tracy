@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { makeChip } from "../../resources/search-query.js";
 import {
     moveCaret, moveTo, typeInGap, typeBarInChip, deleteInGap, searchChips,
-    sameQuery, assignColors, selection, extendCaret, selectChipsFrom, selectTo, selectAll, selectedChips, insertChips,
+    sameQuery, assignColors, historyIndex, selection, extendCaret, selectChipsFrom, selectTo, selectAll, selectedChips, insertChips,
 } from "../../resources/search-editing.js";
 
 const text = (t, ignoreCase = false) => makeChip(t, { ignoreCase });
@@ -228,4 +228,15 @@ test("typeBarInChip: the chip split off is a new chip, without the color", () =>
 
 test("sameQuery: the colors are no part of the query", () => {
     assert.equal(sameQuery([colored("a", 1)], [colored("a", 2)]), true);
+});
+
+// ---- the search history ----
+
+test("historyIndex: the arrows go through the queries and stop at the ends", () => {
+    assert.equal(historyIndex(-1, 3, "down"), 0, "the first arrow down takes the latest query");
+    assert.equal(historyIndex(0, 3, "down"), 1);
+    assert.equal(historyIndex(2, 3, "down"), 2);
+    assert.equal(historyIndex(2, 3, "up"), 1);
+    assert.equal(historyIndex(0, 3, "up"), 0);
+    assert.equal(historyIndex(-1, 0, "down"), -1, "an empty history");
 });

@@ -239,6 +239,8 @@ function initChipSearch() {
             updateChipPending();
         },
         onCommit: runChipSearch,
+        history: () => JSON.parse(Window.this.xcall("getSearchHistory") || "[]"),
+        historyButton: $("#btn-chip-history"),
     });
     document.on("click", "#btn-chip-search", () => {
         chipEditor.closeChip();

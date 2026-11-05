@@ -16,7 +16,7 @@ import domain.log_document;
 
 import ui.filter_commands : DocumentFilters;
 import log_core.search_filter : checkRegex, SearchFilter;
-import ui.search_chips : chipsFromJson;
+import ui.search_chips : chipsFromJson, chipsToJson;
 import ui.main_view_fsm;
 import ui.search_view_fsm;
 import log_core.log_filter : LogFilter;
@@ -558,10 +558,8 @@ class MainWindow : SciterWindow
                 {
                     // The sets are copies kept in the settings of the file:
                     // remembered at once, as the recent list is
-                    foreach (item; _workspace.documents)
-                        if (item.docId == _workspace.currentId)
-                            _settings.recentFiles = withFilters(_settings.recentFiles,
-                                item.sourcePath, ui.filters.saved());
+                    if (auto path = currentSourcePath())
+                        _settings.recentFiles = withFilters(_settings.recentFiles, path, ui.filters.saved());
                     saveSettings();
                 }
                 resultView = error.toUTF16();
@@ -653,6 +651,16 @@ class MainWindow : SciterWindow
             {
                 // startChipSearch(chipsJson) -> error message, "" on success; no chips clear the search
                 resultView = onStartChipSearch(getParamString(0)).toUTF16();
+                return true;
+            }
+            if (method == "getSearchHistory")
+            {
+                // getSearchHistory() -> [[chips]] of the active document, the latest first
+                JSONValue[] queries;
+                if (auto path = currentSourcePath())
+                    foreach (query; savedSearches(_settings.recentFiles, path))
+                        queries ~= chipsToJson(query);
+                resultView = JSONValue(queries).toString().toUTF16();
                 return true;
             }
             if (method == "checkRegex")
@@ -881,8 +889,21 @@ class MainWindow : SciterWindow
         try
         {
             // An invalid regex throws here, before any background work starts
-            auto filter = SearchFilter.fromChips(chipsFromJson(chipsJson));
+            const chips = chipsFromJson(chipsJson);
+            auto filter = SearchFilter.fromChips(chips);
             _workspace.current.applySearchFilter(filter); // null clears the search
+            // the history of the file, remembered at once as its filters are
+            // (the latest query again changes nothing: no write of the settings then)
+            if (filter !is null)
+                if (auto path = currentSourcePath())
+                {
+                    const searches = savedSearches(_settings.recentFiles, path);
+                    if (searches.length == 0 || searches[0] != chips)
+                    {
+                        _settings.recentFiles = withSearch(_settings.recentFiles, path, chips);
+                        saveSettings();
+                    }
+                }
             return "";
         }
         catch (Exception e)
@@ -890,6 +911,15 @@ class MainWindow : SciterWindow
             writeln("Error starting search: ", e.msg);
             return e.msg;
         }
+    }
+
+    /// Returns: the path of the active document, null without one
+    private string currentSourcePath()
+    {
+        foreach (item; _workspace.documents)
+            if (item.docId == _workspace.currentId)
+                return item.sourcePath;
+        return null;
     }
 
     private void onTabClicked(string id)

@@ -191,3 +191,14 @@ export function insertChips(state, chips) {
         pos: { gap: at + chips.length },
     };
 }
+
+// ---- the search history ----
+
+// The query an arrow key ("up", "down") goes to in the history list: the first
+// arrow down takes the latest one, the arrows stop at the ends.
+// @param current - the index of the query marked now, -1 for none
+// @returns the index to mark, -1 if the history is empty
+export function historyIndex(current, count, key) {
+    if (count === 0) return -1;
+    return key === "down" ? Math.min(current + 1, count - 1) : Math.max(current - 1, 0);
+}
