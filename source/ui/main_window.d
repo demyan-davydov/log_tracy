@@ -9,12 +9,12 @@ import domain.document_id;
 import domain.document;
 import domain.document_item;
 import log_core.log_format : ColumnInfo, ColumnKind, FormatChoice;
-import log_core.column_layout : arrangeColumns;
 import log_core.log_message : LogMessage, TimeKind;
 import log_core.rule_filter : RuleId;
 import domain.log_document;
 
 import ui.filter_commands : DocumentFilters;
+import ui.table_columns : TableColumns;
 import log_core.search_filter : checkRegex, MatchRange, SearchFilter;
 import ui.search_chips : chipsFromJson, chipsToJson;
 import ui.main_view_fsm;
@@ -136,16 +136,14 @@ class MainWindow : SciterWindow
     private AppSettings _settings;
     private Workspace _workspace;
     private DocumentUi[DocumentId] _documentUis;
-    // The columns the tables show for the columns of a format (see
-    // tableColumns()): a row is built with them, so they are kept
-    private const(ColumnInfo)[] _tableColumnsOf;
-    private const(ColumnInfo)[] _tableColumns;
-    private string _tableColumnsFormat; // the id of the format of _tableColumnsOf
+    // The columns the tables show for each format, see tableColumns()
+    private TableColumns _tableColumns;
 
     this(AppSettings settings)
     {
         _settings = settings;
         _workspace = new Workspace();
+        _tableColumns = new TableColumns();
 
         import sciter.capi.def;
 
@@ -391,6 +389,10 @@ class MainWindow : SciterWindow
                 }
                 return result.toUTF8().idup;
             };
+            // The document a call is about: its id is the first parameter of
+            // every call of a document (the views, filters and search of a tab);
+            // an id of no open document gives the null document, with no rows
+            auto docParam = () => findDocumentId(getParamInt(0));
 
             if (method == "saveAppState")
             {
@@ -404,17 +406,21 @@ class MainWindow : SciterWindow
             }
             if (method == "getMainViewCount")
             {
-                const int count = cast(int) _workspace.current.mainView.itemsCount();
+                // getMainViewCount(docId)
+                const int count = cast(int) _workspace.doc(docParam()).mainView.itemsCount();
                 resultView = count;
                 return true;
             }
             if (method == "getMainViewItem")
             {
-                const int index = getParamInt(0);
+                // getMainViewItem(docId, index)
+                const docId = docParam();
+                auto doc = _workspace.doc(docId);
+                const int index = getParamInt(1);
                 // null if there is no such row (any more): the view changed, the file is lost
                 DocumentItem docItem;
-                if (_workspace.current.mainView.fetchItem(index, docItem))
-                    resultView.set(asSciterRow(index, docItem, tableColumns(), ruleOf(docItem)));
+                if (doc.mainView.fetchItem(index, docItem))
+                    resultView.set(asSciterRow(index, docItem, tableColumns(doc), ruleOf(docId, docItem)));
                 else
                     resultView.set(SciterValue.makeNull());
 
@@ -422,13 +428,13 @@ class MainWindow : SciterWindow
             }
             if (method == "getMainViewPosition")
             {
-                // getMainViewPosition(messageIndex) -> its row in the main view,
-                // null if the view doesn't show it
+                // getMainViewPosition(docId, messageIndex) -> its row in the main
+                // view, null if the view doesn't show it
                 // The row sends message indexes as doubles (see asSciterRow)
                 double msgIndex = -1;
-                if (params.argc > 0)
+                if (params.argc > 1)
                 {
-                    SciterValueConstView valueView = SciterValueConstView(&params.argv[0]);
+                    SciterValueConstView valueView = SciterValueConstView(&params.argv[1]);
                     int asInt;
                     if (valueView.tryGet(asInt))
                         msgIndex = asInt;
@@ -436,7 +442,7 @@ class MainWindow : SciterWindow
                         valueView.tryGet(msgIndex);
                 }
                 size_t position;
-                if (msgIndex >= 0 && _workspace.current.mainView.positionOf(cast(size_t) msgIndex, position))
+                if (msgIndex >= 0 && _workspace.doc(docParam()).mainView.positionOf(cast(size_t) msgIndex, position))
                     resultView = cast(int) position;
                 else
                     resultView.set(SciterValue.makeNull());
@@ -444,21 +450,24 @@ class MainWindow : SciterWindow
             }
             if (method == "getSearchViewCount")
             {
-                const int count = cast(int) _workspace.current.searchView.itemsCount();
-                //writeln("getLogCount: ", count, " for doc: ", _workspace.currentId.toString());
+                // getSearchViewCount(docId)
+                const int count = cast(int) _workspace.doc(docParam()).searchView.itemsCount();
                 resultView = count;
                 return true;
             }
             if (method == "getSearchViewItem")
             {
-                const int index = getParamInt(0);
+                // getSearchViewItem(docId, index)
+                const docId = docParam();
+                auto doc = _workspace.doc(docId);
+                const int index = getParamInt(1);
                 DocumentItem docItem; // null if there is no such row, as above
-                if (_workspace.current.searchView.fetchItem(index, docItem))
+                if (doc.searchView.fetchItem(index, docItem))
                 {
                     // the fragments the chips found, after the cells (main view rows have none)
-                    auto ui = _documentUis.get(_workspace.currentId, null);
+                    auto ui = _documentUis.get(docId, null);
                     const search = ui is null ? null : ui.searchShown;
-                    resultView.set(asSciterRow(index, docItem, tableColumns(), ruleOf(docItem),
+                    resultView.set(asSciterRow(index, docItem, tableColumns(doc), ruleOf(docId, docItem),
                         true, search is null ? null : search.matchRanges(docItem.message())));
                 }
                 else
@@ -507,32 +516,33 @@ class MainWindow : SciterWindow
                     onTabClicked(tabId);
                 return true;
             }
-            // The filter sets of the active document; the commands return a
-            // message for the user (an error, or what was lost), "" if none
+            // The filter sets of a document, its id first; the commands return
+            // a message for the user (an error, or what was lost), "" if none
             if (method == "getFilters")
             {
-                // {canFilter, canDlf, sets: [...]}, see DocumentFilters.toJson
-                auto ui = _documentUis.get(_workspace.currentId, null);
+                // getFilters(docId) -> {canFilter, canDlf, sets: [...]}, see DocumentFilters.toJson
+                auto ui = _documentUis.get(docParam(), null);
                 resultView = (ui is null ? `{"canFilter":false,"canDlf":false,"sets":[]}`
                         : ui.filters.toJson().toString()).toUTF16();
                 return true;
             }
             if (method == "getFilterRule")
             {
-                // getFilterRule(set, rule) -> the fields of DlfFilter, null if
-                // there is no such rule; rule -1: a new one
-                auto ui = _documentUis.get(_workspace.currentId, null);
-                const rule = getParamInt(1);
+                // getFilterRule(docId, set, rule) -> the fields of DlfFilter,
+                // null if there is no such rule; rule -1: a new one
+                auto ui = _documentUis.get(docParam(), null);
+                const rule = getParamInt(2);
                 resultView = (ui is null ? "null" : rule < 0 ? DocumentFilters.newRuleJson().toString()
-                        : ui.filters.ruleJson(getParamInt(0), rule).toString()).toUTF16();
+                        : ui.filters.ruleJson(getParamInt(1), rule).toString()).toUTF16();
                 return true;
             }
             if (method == "checkFilterRule")
             {
-                // checkFilterRule(rule json) -> {error, conditions: [...]}, see DocumentFilters.checkRule
-                auto ui = _documentUis.get(_workspace.currentId, null);
+                // checkFilterRule(docId, rule json) -> {error, conditions: [...]},
+                // see DocumentFilters.checkRule
+                auto ui = _documentUis.get(docParam(), null);
                 resultView = (ui is null ? `{"error":"","conditions":[]}`
-                        : ui.filters.checkRule(getParamString(0)).toString()).toUTF16();
+                        : ui.filters.checkRule(getParamString(1)).toString()).toUTF16();
                 return true;
             }
             if (method == "loadFilterFile" || method == "newFilterSet" || method == "exportFilterSet"
@@ -540,36 +550,38 @@ class MainWindow : SciterWindow
                 || method == "enableFilterRule" || method == "addFilterRule"
                 || method == "updateFilterRule" || method == "removeFilterRule")
             {
-                auto ui = _documentUis.get(_workspace.currentId, null);
+                // <command>(docId, <its parameters>)
+                const docId = docParam();
+                auto ui = _documentUis.get(docId, null);
                 if (ui is null)
                     return true;
                 string error;
                 if (method == "loadFilterFile")
-                    error = ui.filters.loadFile(normalizePath(getParamString(0)));
+                    error = ui.filters.loadFile(normalizePath(getParamString(1)));
                 else if (method == "newFilterSet")
                     error = ui.filters.newSet();
                 else if (method == "exportFilterSet")
-                    error = ui.filters.exportSet(getParamInt(0), normalizePath(getParamString(1)));
+                    error = ui.filters.exportSet(getParamInt(1), normalizePath(getParamString(2)));
                 else if (method == "addFilterRule")
-                    error = ui.filters.addRule(getParamInt(0), getParamString(1));
+                    error = ui.filters.addRule(getParamInt(1), getParamString(2));
                 else if (method == "updateFilterRule")
-                    error = ui.filters.updateRule(getParamInt(0), getParamInt(1), getParamString(2));
+                    error = ui.filters.updateRule(getParamInt(1), getParamInt(2), getParamString(3));
                 else if (method == "removeFilterRule")
-                    error = ui.filters.removeRule(getParamInt(0), getParamInt(1));
+                    error = ui.filters.removeRule(getParamInt(1), getParamInt(2));
 
                 else if (method == "removeFilterSet")
-                    error = ui.filters.remove(getParamInt(0));
+                    error = ui.filters.remove(getParamInt(1));
                 else if (method == "enableFilterSet")
-                    error = ui.filters.enableSet(getParamInt(0), getParamBool(1));
+                    error = ui.filters.enableSet(getParamInt(1), getParamBool(2));
                 else
-                    error = ui.filters.enableRule(getParamInt(0), getParamInt(1), getParamBool(2));
+                    error = ui.filters.enableRule(getParamInt(1), getParamInt(2), getParamBool(3));
                 if (error.length)
                     writeln(method, ": ", error);
                 else
                 {
                     // The sets are copies kept in the settings of the file:
                     // remembered at once, as the recent list is
-                    if (auto path = currentSourcePath())
+                    if (auto path = sourcePathOf(docId))
                         _settings.recentFiles = withFilters(_settings.recentFiles, path, ui.filters.saved());
                     saveSettings();
                 }
@@ -578,15 +590,16 @@ class MainWindow : SciterWindow
             }
             if (method == "getColumns")
             {
-                // All the columns of the active document (the rules may test
-                // any of them), [] if there is none
-                resultView = columnsJson(_workspace.current.columns).toUTF16();
+                // getColumns(docId): all the columns of the document (the rules
+                // may test any of them), [] if there is none
+                resultView = columnsJson(_workspace.doc(docParam()).columns).toUTF16();
                 return true;
             }
             if (method == "getTableColumns")
             {
-                // The columns the tables of the active document show, [] if there is none
-                resultView = columnsJson(tableColumns()).toUTF16();
+                // getTableColumns(docId): the columns the tables of the document
+                // show, [] if there is none
+                resultView = columnsJson(tableColumns(_workspace.doc(docParam()))).toUTF16();
                 return true;
             }
             if (method == "getColumnSettings")
@@ -601,7 +614,7 @@ class MainWindow : SciterWindow
             {
                 // Saved by the Settings dialog: {format id: [{"id", "visible"}]}
                 _settings.columnLayouts = withColumnLayouts(_settings.columnLayouts, getParamString(0));
-                _tableColumnsOf = null; // arranged again
+                _tableColumns.reset(); // arranged again
                 saveSettings();
                 return true;
             }
@@ -625,10 +638,11 @@ class MainWindow : SciterWindow
             }
             if (method == "setAnchor")
             {
-                // setAnchor(messageIndex, value) -> true if changed; false while an
-                // operation is running or at the anchor limit (nothing changes then)
-                const index = getParamInt(0);
-                resultView = index >= 0 && _workspace.current.setAnchor(cast(size_t) index, getParamBool(1));
+                // setAnchor(docId, messageIndex, value) -> true if changed; false
+                // while an operation is running or at the anchor limit (nothing
+                // changes then)
+                const index = getParamInt(1);
+                resultView = index >= 0 && _workspace.doc(docParam()).setAnchor(cast(size_t) index, getParamBool(2));
                 return true;
             }
             if (method == "cancelMainView")
@@ -651,15 +665,16 @@ class MainWindow : SciterWindow
             }
             if (method == "startChipSearch")
             {
-                // startChipSearch(chipsJson) -> error message, "" on success; no chips clear the search
-                resultView = onStartChipSearch(getParamString(0)).toUTF16();
+                // startChipSearch(docId, chipsJson) -> error message, "" on
+                // success; no chips clear the search
+                resultView = onStartChipSearch(docParam(), getParamString(1)).toUTF16();
                 return true;
             }
             if (method == "getSearchHistory")
             {
-                // getSearchHistory() -> [[chips]] of the active document, the latest first
+                // getSearchHistory(docId) -> [[chips]] of the document, the latest first
                 JSONValue[] queries;
-                if (auto path = currentSourcePath())
+                if (auto path = sourcePathOf(docParam()))
                     foreach (query; savedSearches(_settings.recentFiles, path))
                         queries ~= chipsToJson(query);
                 resultView = JSONValue(queries).toString().toUTF16();
@@ -721,27 +736,17 @@ class MainWindow : SciterWindow
         return false;
     }
 
-    /// The columns the tables of the current document show: those of its
-    /// format as the layout of the format arranges them
-    private const(ColumnInfo)[] tableColumns()
+    /// The columns the tables of `document` show: those of its format as the
+    /// layout of the format arranges them
+    private const(ColumnInfo)[] tableColumns(Document document)
     {
-        const columns = _workspace.current.columns;
-        const formatId = formatChoiceOf(_workspace.current).id;
-        // Two formats may share their columns, not their layouts
-        if (_tableColumnsOf is null || _tableColumnsOf !is columns || _tableColumnsFormat != formatId)
-        {
-            const layout = formatId in _settings.columnLayouts;
-            _tableColumns = arrangeColumns(columns, layout is null ? null : *layout);
-            _tableColumnsOf = columns;
-            _tableColumnsFormat = formatId;
-        }
-        return _tableColumns;
+        return _tableColumns.of(document.columns, formatChoiceOf(document).id, _settings.columnLayouts);
     }
 
-    /// The first filter rule with a color of the current document a record of it matches
-    private RuleId ruleOf(ref const(DocumentItem) item)
+    /// The first filter rule with a color of the document a record of it matches
+    private RuleId ruleOf(DocumentId docId, ref const(DocumentItem) item)
     {
-        auto ui = _documentUis.get(_workspace.currentId, null);
+        auto ui = _documentUis.get(docId, null);
         return ui is null ? RuleId.init : ui.ruleOf(item.message);
     }
 
@@ -866,9 +871,9 @@ class MainWindow : SciterWindow
         }
     }
 
-    /// Starts the search for the chips of the search editor in the active document.
+    /// Starts the search for the chips of the search editor in the document.
     /// Returns: an error message for the UI, or "" if the search was started
-    private string onStartChipSearch(string chipsJson)
+    private string onStartChipSearch(DocumentId docId, string chipsJson)
     {
         writeln("startChipSearch request: ", chipsJson);
         try
@@ -876,13 +881,15 @@ class MainWindow : SciterWindow
             // An invalid regex throws here, before any background work starts
             const chips = chipsFromJson(chipsJson);
             auto filter = SearchFilter.fromChips(chips);
-            _workspace.current.applySearchFilter(filter); // null clears the search
-            if (auto ui = _documentUis.get(_workspace.currentId, null))
+            if (!docId.isValid)
+                return "the document is not open";
+            _workspace.doc(docId).applySearchFilter(filter); // null clears the search
+            if (auto ui = _documentUis.get(docId, null))
                 ui.searchShown = filter;
             // the history of the file, remembered at once as its filters are
             // (the latest query again changes nothing: no write of the settings then)
             if (filter !is null)
-                if (auto path = currentSourcePath())
+                if (auto path = sourcePathOf(docId))
                 {
                     const searches = savedSearches(_settings.recentFiles, path);
                     if (searches.length == 0 || searches[0] != chips)
@@ -900,11 +907,11 @@ class MainWindow : SciterWindow
         }
     }
 
-    /// Returns: the path of the active document, null without one
-    private string currentSourcePath()
+    /// Returns: the path of the document, null if it isn't open
+    private string sourcePathOf(DocumentId docId)
     {
         foreach (item; _workspace.documents)
-            if (item.docId == _workspace.currentId)
+            if (item.docId == docId)
                 return item.sourcePath;
         return null;
     }

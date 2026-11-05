@@ -6,37 +6,8 @@ import { cellClass, cellText, itemText, rowLayout, matchPieces } from "cell-form
 import { matchColorClass } from "match-colors.js";
 import { RowSelection, selectedText, autoScrollSpeed } from "row-selection.js";
 
-// Columns the tables of the active document show, from Window.xcall("getTableColumns"):
-// [{ id, title, kind, width, timeKind?, unitsPerSecond?, labels? }]
-let columns = [];
-
-// Sets the columns the rows are rendered with; the table header is rebuilt by
-// the caller (see renderHeader)
-export function setColumns(newColumns) {
-    columns = newColumns;
-}
-
-// The colors of the filter rules of the active document by rule id (see
-// rule-colors.js): a row shows the color of the rule it refers to
-let ruleColorById = new Map();
-
-// Sets the colors of the rules; the rows on screen are refreshed by the caller
-export function setRuleColors(colors) {
-    ruleColorById = colors;
-}
-
-// The match colors of the chips of the search the results of the active
-// document were found by, by the place of the chip in that query: a fragment
-// of a chip is shown in its color (see matchPieces)
-let matchColorByChip = [];
-
-// Sets them; the rows on screen are refreshed by the caller
-export function setMatchColors(colors) {
-    matchColorByChip = colors;
-}
-
-// The header row of a log table for the current columns
-export function renderHeader() {
+// The header row of a log table for `columns`
+function renderHeader(columns) {
     return <tr>
         <th width="20px">⚓</th>
         <th width="80px">Index</th>
@@ -48,7 +19,8 @@ export function renderHeader() {
 // A cell of `column`; `level` (a LogLevel of the record) colors it if the
 // column asks for it (byLevel: an HTTP status shown as it is). `matches` are
 // what the search chips found in the payload (rows of the search results only).
-function renderCell(column, value, level, matches) {
+// `matchColors` are those of the chips by their place in the query.
+function renderCell(column, value, level, matches, matchColors) {
     const text = cellText(column, value);
     if (column.kind === "Level") {
         if (!value) return <td class="aux"></td>; // LogLevel.None: the record has no level
@@ -59,7 +31,7 @@ function renderCell(column, value, level, matches) {
         // script and the backend differ for a moment: matchPieces checks it
         if (!Array.isArray(matches) || matches.length === 0) return <td selectable>{text}</td>;
         return <td selectable>{matchPieces(text, matches).map(piece => {
-            const color = piece.chip === null ? undefined : matchColorByChip[piece.chip];
+            const color = piece.chip === null ? undefined : matchColors[piece.chip];
             // no color known for the chip: plain text rather than another chip's color
             return color === undefined ? piece.text : <span class={`match ${matchColorClass(color)}`}>{piece.text}</span>;
         })}</td>;
@@ -73,24 +45,52 @@ const toggleKey = env.PLATFORM === "OSX" ? "metaKey" : "ctrlKey";
 const contextClickKey = env.PLATFORM === "OSX" ? "ctrlKey" : null;
 
 // select with virtual data source
+// The rows show the document `docId` (set by the script) with what the script
+// gives each table: its columns, the colors of the rules of the document and,
+// for the search results, the match colors of the chips.
 export class VirtualDltTBody extends VirtualSelect {
+    // The columns the rows show, from Window.xcall("getTableColumns"):
+    // [{ id, title, kind, width, timeKind?, unitsPerSecond?, labels? }].
+    // Getters with defaults: field initializers don't run for the tbody bound
+    // by CSS `prototype:`.
+    get columns() {
+        return this._columns ?? [];
+    }
+
+    // Sets the columns and rebuilds the header of the table; the rows on
+    // screen are refreshed by the caller
+    setColumns(columns) {
+        this._columns = columns;
+        this.parentElement?.$("thead")?.content(renderHeader(columns));
+    }
+
+    // The colors of the filter rules of the document by rule id (see
+    // rule-colors.js): a row shows the color of the rule it refers to
+    get ruleColors() {
+        return this._ruleColors ?? new Map();
+    }
+
+    // Sets them; the rows on screen are refreshed by the caller
+    set ruleColors(colors) {
+        this._ruleColors = colors;
+    }
+
+    // The match colors of the chips of the search the rows were found by, by
+    // the place of the chip in that query: a fragment of a chip is shown in its
+    // color (see matchPieces). Rows of the main view have no fragments.
+    get matchColors() {
+        return this._matchColors ?? [];
+    }
+
+    set matchColors(colors) {
+        this._matchColors = colors;
+    }
+
     // The selected rows by view index (see row-selection.js). Created on first
     // use: field initializers and this() don't run for the tbody bound by CSS
     // `prototype:`.
     get selection() {
         return this._selection ??= new RowSelection();
-    }
-
-    // The selection, to be restored by restoreSelection() while the list shows
-    // the same content: it refers to positions in the view
-    saveSelection() {
-        return this.selection.copy();
-    }
-
-    // Restores a selection from saveSelection(); null clears the selection.
-    // Takes effect on the next render of the rows.
-    restoreSelection(selection) {
-        this._selection = selection ? selection.copy() : new RowSelection();
     }
 
     // Nothing is selected or current any more: the view shows other rows now
@@ -112,7 +112,9 @@ export class VirtualDltTBody extends VirtualSelect {
         const viewIndex = item[rowLayout.viewIndex];
         const selection = this.selection;
         // The color of the rule is set on the row, table.css shows it on the Index cell
-        const ruleColor = ruleColorById.get(item[rowLayout.rule]); // undefined: no rule, or no color
+        const ruleColor = this.ruleColors.get(item[rowLayout.rule]); // undefined: no rule, or no color
+        const columns = this.columns;
+        const matchColors = this.matchColors;
         // row-current/row-selected are attributes: a "state-" prefix in JSX
         // sets a runtime state (:current, :checked) instead, see updateRowStates()
         return <tr row-current={selection.current === viewIndex ? "true" : "false"}
@@ -121,7 +123,7 @@ export class VirtualDltTBody extends VirtualSelect {
             <td class="anchor" has-anchor={item[rowLayout.anchored] ? "true" : "false"} msg-index={item[rowLayout.messageIndex]}></td>
             <td class="aux">{item[rowLayout.messageIndex]}</td>
             {columns.map((column, i) => renderCell(column, item[rowLayout.firstColumn + i], item[rowLayout.level],
-                item[rowLayout.matches(columns.length)]))}
+                item[rowLayout.matches(columns.length)], matchColors))}
         </tr>
     }
 
@@ -149,7 +151,7 @@ export class VirtualDltTBody extends VirtualSelect {
     // The text of the selected rows for the clipboard, at most `limit`
     // characters: { text, copied, total, truncated }, see selectedText()
     selectedRowsText(limit) {
-        return selectedText(this.selection, (index) => itemText(this.itemAt(index), columns), limit,
+        return selectedText(this.selection, (index) => itemText(this.itemAt(index), this.columns), limit,
             this.totalItems());
     }
 
@@ -340,32 +342,33 @@ function autoScrollRowDrag() {
     list.updateRowStates();
 }
 
+// The rows of the main view of the document `docId` (set by the script; null:
+// no document, no rows)
 export class VirtualMainViewTBody extends VirtualDltTBody {
     this(props) {
         super.this(props);
     }
 
     itemAt(at) {
-        return Window.this.xcall("getMainViewItem", at);
+        return this.docId == null ? null : Window.this.xcall("getMainViewItem", this.docId, at);
     }
 
     totalItems() {
-        const totalLogs = Window.this.xcall("getMainViewCount");
-        return totalLogs;
+        return this.docId == null ? 0 : Window.this.xcall("getMainViewCount", this.docId);
     }
 }
 
+// The rows of the search view of the document `docId`, as above
 export class VirtualSearchViewTBody extends VirtualDltTBody {
     this(props) {
         super.this(props);
     }
 
     itemAt(at) {
-        return Window.this.xcall("getSearchViewItem", at);
+        return this.docId == null ? null : Window.this.xcall("getSearchViewItem", this.docId, at);
     }
 
     totalItems() {
-        const totalLogs = Window.this.xcall("getSearchViewCount");
-        return totalLogs;
+        return this.docId == null ? 0 : Window.this.xcall("getSearchViewCount", this.docId);
     }
 }

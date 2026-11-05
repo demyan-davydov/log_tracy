@@ -159,11 +159,11 @@ popup.search-history .history-text.regex {
     font-family: monospace;
 }
 
-#chip-search-message:empty {
+.chip-search-message:empty {
     display: none;
 }
 
-#chip-search-message {
+.chip-search-message {
     color: red;
     padding: 2px 4px;
 }
