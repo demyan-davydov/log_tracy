@@ -49,16 +49,24 @@ ByteSource (log_core/byte_source)          bytes of a log, addressed by offset (
 LogIndex (domain/log_index)                offset/filter/search indexes, built on a background thread
 LogDocument (domain/log_document)          a log + its main view and search view, operation events
 Workspace (domain/workspace)               open documents, the current one
-MainWindow (ui/main_window)                Sciter window: xcall bridge to the script
-resources/script.js, document-pane.js     tabs; a panel per document (filters, tables, search)
+AppSession (ui/app_session)                what the calls of the script do: files, tabs, views,
+                                           search, filters, settings (Sciter-free, tested)
+MainWindow (ui/main_window)                Sciter window: xcall bridge to the session, table rows
+resources/script.js, tabs.js             the window: tabs, placeholder, settings, backend callbacks
+resources/document-pane.js                 a panel per document (filters, tables, search)
 resources/virtual-dlt-view.js              virtual table built from the column schema
 ```
 
-The script asks the backend through `Window.this.xcall(name, ...)` (handled in
-`MainWindow.handleEvent`); the backend tells the script what changed by `callScript` of a global
-function (`onMainViewChanged(docId, json)`, `onSearchViewChanged`, `onDocumentOpened`, ...). Those
-are sent from `onIdle()` (`flushViews`), after the document events of the indexing thread were
-dispatched on the UI thread, never from inside an `xcall`.
+The script asks the backend through `resources/backend.js`, one function per
+`Window.this.xcall(name, ...)` (read in `MainWindow.handleEvent`, done by `AppSession`): a new
+call gets its function there, the script calls nothing else; the backend tells the script what changed by
+`callScript` of a global function (`onMainViewChanged(docId, json)`, `onSearchViewChanged`,
+`onDocumentOpened`, ...). The session only queues those calls; `MainWindow.onIdle()` sends them
+(`takeScriptCalls`) after the document events of the indexing thread were dispatched on the UI
+thread, never from inside an `xcall`. The settings are likewise only marked changed: the next
+`onIdle()` writes them (`settingsDue`), with the script's `getAppState()` merged in.
+`saveAppState` on closing writes them at once; from then on the script is not called any more
+(its view is being torn down), and what changes after that is written on exit (`finish`).
 
 ### Where things live
 A package imports only the packages to its left (unittests may import more, e.g. a format to build
@@ -154,9 +162,9 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
 - The table columns and the row cells (`asSciterRow` in `main_window`) are built from the
   format's `ColumnInfo` schema as the user's layout of that format arranges it
   (`log_core/column_layout`, `AppSettings.columnLayouts` by format id, edited in the Columns
-  section of Settings): `xcall("getTableColumns", docId)`, arranged once per format and variant
+  section of Settings): `backend.tableColumnsJson(docId)`, arranged once per format and variant
   (`ui/table_columns`). The rule editor gets all the columns of the format:
-  `xcall("getColumns", docId)`.
+  `backend.columns(docId)`.
   - Index (not a format column) stays first and Payload last; the others can be moved and
     hidden. A layout is one per format id, for all its variants: `formats/registry.formatColumns`
     gives the columns of all of them.
@@ -181,9 +189,11 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
   filters of the sidebar, both tables, the search editor, and the state behind them. Only the
   panel of the active tab is shown, the others are `display: none` and keep their rows, scroll,
   selection and draft as they are; a hidden panel renders what changed when it is shown.
-  `script.js` keeps the tabs, the placeholder and the settings.
+  `script.js` keeps the documents and the panels, the placeholder and the settings; the tab
+  strip (rendering, pressing, dragging, tooltips) is `resources/tabs.js`, what a tab does is
+  decided by `script.js`.
   - The calls of a document's views, filters and search take its id first
-    (`getMainViewItem(docId, index)`, ...); only the menu and Settings use the active document.
+    (`backend.mainViewItem(docId, index)`, ...); only the menu and Settings use the active document.
   - The sizes of the splitters follow from the panel shown before.
   - Never hide a log table itself: one hidden by `display: none` before it was ever laid out
     keeps its cells 1px wide for good (Sciter). Status views cover it instead
@@ -191,8 +201,9 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
   - What a table does on a change of its view is the Sciter-free `resources/pane-state.js`.
 - The view status shown to the user comes from the state machines `ui/main_view_fsm` and
   `ui/search_view_fsm` (on `utils/fsm`). They are kept free of Sciter so they can be unit-tested.
-- UI command logic that needs testing goes into Sciter-free modules (e.g. `ui/filter_commands`),
-  not into `MainWindow`.
+- UI command logic that needs testing goes into Sciter-free modules (`ui/app_session`,
+  `ui/filter_commands`), not into `MainWindow`: a new xcall is a method of the session, the
+  window only reads its parameters and answers.
 
 ## Conventions
 

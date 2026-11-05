@@ -354,7 +354,7 @@ body > header {
 }
 
 /* The full name of a cut tab name is not shown while a tab is held, see
-   TabTooltip in script.js */
+   TabTooltip in tabs.js */
 #tabs-container popup[role=overflow-tooltip] {
     prototype: TabTooltip;
 }

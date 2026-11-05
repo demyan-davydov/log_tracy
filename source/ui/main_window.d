@@ -1,149 +1,45 @@
+//! The main window: the bridge between the script (xcall and the global
+//! functions it calls back) and the AppSession, and the rows and columns of
+//! the log tables as Sciter values.
 module ui.main_window;
 
 import sciter.window;
 import sciter.value;
-import ui.app_settings;
-
-import domain.workspace;
-import domain.document_id;
-import domain.document;
-import domain.document_item;
-import log_core.log_format : ColumnInfo, ColumnKind, FormatChoice;
-import log_core.log_message : LogMessage, TimeKind;
-import log_core.rule_filter : RuleId;
-import domain.log_document;
-
-import ui.filter_commands : DocumentFilters;
-import ui.table_columns : TableColumns;
-import log_core.search_filter : checkRegex, MatchRange, SearchFilter;
-import ui.search_chips : chipsFromJson, chipsToJson;
-import ui.main_view_fsm;
-import ui.search_view_fsm;
-import log_core.log_filter : LogFilter;
-
 import sciter.capi.types;
 import sciter.capi.behavior;
 
-import std.path : baseName;
-import std.utf : toUTF8, toUTF16;
-import std.string : fromStringz;
-import std.array : array, empty;
-import std.algorithm;
-import std.stdio;
-import std.json;
+import domain.document : Document;
+import domain.document_id : DocumentId;
+import domain.log_document : LogDocument;
+import domain.document_item : DocumentItem;
+import log_core.log_format : ColumnInfo, ColumnKind, FormatChoice;
+import log_core.log_message : TimeKind;
+import log_core.rule_filter : RuleId;
+import log_core.search_filter : checkRegex, MatchRange;
+import ui.app_session : AppSession;
+import ui.app_settings : AppSettings, toJSON;
+import ui.filter_commands : DocumentFilters;
+
+import std.algorithm : count, startsWith;
+import std.array : empty;
 import std.conv : to;
+import std.json : JSONValue;
+import std.stdio : writeln;
+import std.string : fromStringz;
+import std.utf : toUTF8, toUTF16;
 
-/// UI side of one document: the machines of its main and search views and the
-/// views they show. Lives as long as its document; a reopened document gets a new one.
-private final class DocumentUi : MainViewSink, MainViewCommands, SearchViewSink, SearchViewCommands
-{
-    private Workspace _workspace;
-    private DocumentId _docId;
-    private MainViewFsm _mainView;
-    private SearchViewFsm _searchView;
-    private DocumentFilters _filters;
-
-    MainViewModel mainViewShown; // the latest view shown by the machine
-    bool mainViewChanged; // shown since it was last sent to JS
-    SearchViewModel searchViewShown; // likewise for the search view
-    bool searchViewChanged;
-    bool closeRequested; // the machine asked to close the document
-    // The search the results were found by, to show what its chips found in
-    // them; null without one. The same filter the indexing thread searches with:
-    // its rules are only read, and std.regex keeps the state of a search in the
-    // matcher of each call, not in the compiled regex
-    SearchFilter searchShown;
-
-    this(Workspace workspace, DocumentId docId)
-    {
-        _workspace = workspace;
-        _docId = docId;
-        _mainView = makeMainViewFsm(this, this);
-        _searchView = makeSearchViewFsm(this, this);
-        _mainView.start();
-        _searchView.start();
-    }
-
-    /// Feeds an event of the document to both machines
-    void process(E)(in E e)
-    {
-        _mainView.process(e);
-        _searchView.process(e);
-    }
-
-    /// The filter sets of the main view of the document, created on first use
-    DocumentFilters filters()
-    {
-        if (_filters is null)
-        {
-            auto doc = _workspace.doc(_docId);
-            auto log = cast(LogDocument) doc;
-            const formatId = log is null ? "" : log.formatChoice.id;
-            _filters = new DocumentFilters(doc.format, formatId, (filter) { doc.applyViewFilter(filter); });
-        }
-        return _filters;
-    }
-
-    /// The first filter rule with a color a record of the document matches;
-    /// called for every row shown, so it doesn't create the filters
-    RuleId ruleOf(scope ref const(LogMessage!wchar) message) const
-    {
-        return _filters is null ? RuleId.init : _filters.ruleOf(message);
-    }
-
-    void pressMainCancel()
-    {
-        _mainView.process(CancelPressed());
-    }
-
-    void pressSearchCancel()
-    {
-        _searchView.process(SearchCancelPressed());
-    }
-
-    void show(in MainViewModel vm)
-    {
-        mainViewShown = vm;
-        mainViewChanged = true;
-    }
-
-    void show(in SearchViewModel vm)
-    {
-        searchViewShown = vm;
-        searchViewChanged = true;
-    }
-
-    // Only one operation runs at a time, and each machine handles Cancel only
-    // while its own operation runs: requestCancel() stops just that one
-    bool cancelOperation()
-    {
-        return _workspace.doc(_docId).requestCancel();
-    }
-
-    bool cancelSearch()
-    {
-        return _workspace.doc(_docId).requestCancel();
-    }
-
-    void closeDocument()
-    {
-        closeRequested = true; // done by MainWindow.applyDocumentCommands()
-    }
-}
-
+/// The window: the bridge between the script and the session. A call of the
+/// script (xcall) is read from its Sciter values, done by the AppSession and
+/// answered; what the script is to be told goes from onIdle(), never from
+/// inside a call (see AppSession).
 class MainWindow : SciterWindow
 {
-    private AppSettings _settings;
-    private Workspace _workspace;
-    private DocumentUi[DocumentId] _documentUis;
-    // The columns the tables show for each format, see tableColumns()
-    private TableColumns _tableColumns;
+    private AppSession _session;
 
     this(AppSettings settings)
     {
-        _settings = settings;
-        _workspace = new Workspace();
-        _tableColumns = new TableColumns();
+        _session = new AppSession(settings,
+            (string path, FormatChoice choice) => cast(Document) new LogDocument(path, choice));
 
         import sciter.capi.def;
 
@@ -163,129 +59,6 @@ class MainWindow : SciterWindow
 
         // Disable extended touchpad support on Mac to prevent gesture-related crashes
         _api.SciterSetOption(hwnd, SCITER_RT_OPTIONS.SCITER_EXTENDED_TOUCHPAD_SUPPORT, 0);
-
-        subscribeToDocumentEvents();
-    }
-
-    /// Feeds document events to the machines of the documents; their views
-    /// reach JS from onIdle(), see flushViews()
-    private void subscribeToDocumentEvents()
-    {
-        auto events = _workspace.events;
-        events.subscribe((const DocumentEvent!OperationStarted e) {
-            writeln("Operation ", e.event.operation, " started, doc ", e.docId.toInt());
-            processDocumentEvent(e.docId, e.event);
-        });
-        events.subscribe((const DocumentEvent!OperationProgress e) {
-            processDocumentEvent(e.docId, e.event);
-        });
-        events.subscribe((const DocumentEvent!SourceLost e) {
-            writeln("Source lost, doc ", e.docId.toInt(), ": ", _workspace.displayName(e.docId));
-            processDocumentEvent(e.docId, e.event);
-        });
-        events.subscribe((const DocumentEvent!OperationFinished e) {
-            writeln("Operation ", e.event.operation, " ", e.event.result, ", doc ", e.docId.toInt(),
-                e.event.error.length ? ": " ~ e.event.error : "");
-            processDocumentEvent(e.docId, e.event);
-        });
-    }
-
-    private void processDocumentEvent(E)(DocumentId docId, in E e)
-    {
-        if (auto ui = _documentUis.get(docId, null))
-            ui.process(e);
-    }
-
-    /// Sends the views changed since the last call to JS:
-    /// onMainViewChanged(docId, json) and onSearchViewChanged(docId, json),
-    /// json is toJson of ui.main_view_fsm and ui.search_view_fsm
-    private void flushViews()
-    {
-        foreach (docId, ui; _documentUis)
-        {
-            if (ui.mainViewChanged)
-            {
-                ui.mainViewChanged = false;
-                callScript("onMainViewChanged", docId.toInt(), toJson(ui.mainViewShown).toString().toUTF16());
-            }
-            if (ui.searchViewChanged)
-            {
-                ui.searchViewChanged = false;
-                callScript("onSearchViewChanged", docId.toInt(), toJson(ui.searchViewShown).toString().toUTF16());
-            }
-        }
-    }
-
-    /// Carries out what the machines asked for. Not called from their handlers:
-    /// a document must not be destroyed while its events are being dispatched.
-    private void applyDocumentCommands()
-    {
-        DocumentId[] toClose;
-        foreach (docId, ui; _documentUis)
-            if (ui.closeRequested)
-                toClose ~= docId;
-
-        foreach (docId; toClose)
-        {
-            writeln("Closing document ", docId.toInt(), " on request of its view");
-            closeDocument(docId);
-            callScript("onDocumentClosed", docId.toInt());
-        }
-    }
-
-    private void addDocumentUi(DocumentId docId)
-    {
-        _documentUis[docId] = new DocumentUi(_workspace, docId);
-    }
-
-    /// Closes the document; its file is marked used now in the recent list,
-    /// which is saved at once
-    private void closeDocument(DocumentId docId)
-    {
-        string path;
-        foreach (item; _workspace.documents)
-            if (item.docId == docId)
-                path = item.sourcePath;
-
-        _documentUis.remove(docId);
-        auto doc = _workspace.removeDocument(docId);
-        if (doc !is null)
-            doc.destroy();
-
-        if (path.length)
-        {
-            _settings.recentFiles = withFilesUsed(_settings.recentFiles, [path], nowMs());
-            saveSettings();
-        }
-    }
-
-    /// Files of the open documents, in the order of the tabs
-    private const(string)[] openPaths()
-    {
-        return _workspace.documents.map!(item => item.sourcePath).array;
-    }
-
-    /// Returns: the id of the open document `id`, invalid if there is none
-    private DocumentId findDocumentId(int id)
-    {
-        foreach (item; _workspace.documents)
-            if (item.docId.toInt() == id)
-                return item.docId;
-        return DocumentId.init;
-    }
-
-    /// The view shown by the main view machine of the document, see ui.main_view_fsm.toJson
-    private JSONValue mainViewJson(DocumentId docId)
-    {
-        auto ui = _documentUis.get(docId, null);
-        return ui is null ? JSONValue(null) : toJson(ui.mainViewShown);
-    }
-
-    /// The view shown by the search view machine of the document, see ui.search_view_fsm.toJson
-    private JSONValue searchViewJson(DocumentId docId)
-    {
-        auto ui = _documentUis.get(docId, null);
-        return ui is null ? JSONValue(null) : toJson(ui.searchViewShown);
     }
 
     override void handleAttached(HELEMENT he)
@@ -302,596 +75,231 @@ class MainWindow : SciterWindow
         writeln("handleDetached");
     }
 
-    override bool handleEvent(HELEMENT he, BEHAVIOR_EVENT_PARAMS* params)
-    {
-        if (params.cmd == BEHAVIOR_EVENTS.DOCUMENT_CLOSE)
-        {
-            // this branch is not called for some reason
-            writeln("DOCUMENT_CLOSE");
-            saveSettings();
-            return false; // Let it continue closing
-        }
-
-        const(wchar)[] eventName = params.name ? fromStringz(params.name) : null;
-
-        auto asString = () {
-            const auto dataView = SciterValueConstView(&params.data);
-            return dataView.to!(const(wchar)[])().toUTF8();
-        };
-
-        if (eventName == "openFile"w)
-        {
-            string error;
-            onFileSelected(normalizePath(asString()), error);
-            return true;
-        }
-
-        if (eventName == "loadFibex"w)
-        {
-            onLoadFibex(normalizePath(asString()));
-            return true;
-        }
-        if (eventName == "tab-clicked"w)
-        {
-            onTabClicked(asString());
-            return true;
-        }
-
-        return false;
-    }
-
     override bool handleEvent(HELEMENT he, SCRIPTING_METHOD_PARAMS* params)
     {
         const(char)[] method = fromStringz(params.name);
-
         auto resultView = SciterValueView(&params.result);
 
-        if (method == "getSettings")
+        // The parameter `index` of the call as a T: `defaultValue` if there
+        // is no such parameter or it isn't a T
+        T param(T)(int index, T defaultValue = T.init)
         {
-            auto jsonSettings = toJSON(_settings);
+            static if (is(T == string))
+                const(wchar)[] result = defaultValue.toUTF16();
+            else
+                T result = defaultValue;
+            if (index < params.argc)
+            {
+                SciterValueConstView valueView = SciterValueConstView(&params.argv[index]);
+                valueView.tryGet(result);
+            }
+            static if (is(T == string))
+                return result.toUTF8().idup;
+            else
+                return result;
+        }
+        // The document a call is about: its id is the first parameter of every
+        // call of a document (the views, filters and search of a tab); an id
+        // of no open document gives the null document, with no rows
+        auto docParam = () => _session.findDocument(param!int(0));
+        void answer(string text)
+        {
+            resultView = text.toUTF16();
+        }
 
-            wstring ws = jsonSettings.toString().toUTF16();
-            resultView = ws;
-
+        switch (method)
+        {
+        // ── Settings and the window ─────────────────────────────────────────
+        case "getSettings":
+            answer(toJSON(_session.settings).toString());
             return true;
-        }
-        // ... (rest) ...
+        case "saveAppState":
+            // saveAppState(appStateJson): the window closes
+            _session.saveOnClose(param!string(0));
+            return true;
+        case "getColumnSettings":
+            answer(_session.columnSettingsJson());
+            return true;
+        case "setColumnLayouts":
+            _session.setColumnLayouts(param!string(0));
+            return true;
 
-        // ... getLogCount, getLogItem etc ...
-
-        if (method != "getSettings")
-        { // Handled above
-            // The parameter `index` of the call as a T: `defaultValue` if
-            // there is no such parameter or it isn't a T
-            T param(T)(int index, T defaultValue = T.init)
-            {
-                static if (is(T == string))
-                    const(wchar)[] result = defaultValue.toUTF16();
-                else
-                    T result = defaultValue;
-                if (index < params.argc)
-                {
-                    SciterValueConstView valueView = SciterValueConstView(&params.argv[index]);
-                    valueView.tryGet(result);
-                }
-                static if (is(T == string))
-                    return result.toUTF8().idup;
-                else
-                    return result;
-            }
-            // The document a call is about: its id is the first parameter of
-            // every call of a document (the views, filters and search of a tab);
-            // an id of no open document gives the null document, with no rows
-            auto docParam = () => findDocumentId(param!int(0));
-
-            if (method == "saveAppState")
-            {
-                const json = param!string(0);
-                writeln("saveAppState request: ", json);
-                // The window closes: the open files were being worked with until
-                // now, they come on top of the files closed before
-                _settings.recentFiles = withFilesUsed(_settings.recentFiles, openPaths(), nowMs());
-                saveSettings(json);
+        // ── Files and tabs ──────────────────────────────────────────────────
+        case "getRecentFiles":
+            answer(_session.recentFilesJson());
+            return true;
+        case "openFile":
+            // openFile(path) -> the id of the new document, or why the file
+            // can't be opened: {"path" (as in the recent list), "error"}
+            const path = param!string(0);
+            if (path.empty)
                 return true;
-            }
-            if (method == "getMainViewCount" || method == "getSearchViewCount")
-            {
-                // get<Main|Search>ViewCount(docId)
-                auto doc = _workspace.doc(docParam());
-                auto view = method == "getMainViewCount" ? doc.mainView : doc.searchView;
-                resultView = cast(int) view.itemsCount();
-                return true;
-            }
-            if (method == "getMainViewItem" || method == "getSearchViewItem")
-            {
-                // get<Main|Search>ViewItem(docId, index): null if there is no
-                // such row (any more): the view changed, the file is lost
-                const docId = docParam();
-                auto doc = _workspace.doc(docId);
-                const bool search = method == "getSearchViewItem";
-                const int index = param!int(1);
-                DocumentItem docItem;
-                if (!(search ? doc.searchView : doc.mainView).fetchItem(index, docItem))
-                {
-                    resultView.set(SciterValue.makeNull());
-                    return true;
-                }
+            const opened = _session.openFile(normalizePath(path));
+            if (opened.docId.isValid)
+                resultView = cast(int) opened.docId.toInt();
+            else
+                answer(opened.failureJson);
+            return true;
+        case "retryDocument":
+            // retryDocument(docId) -> error message, "" if the file was reopened
+            answer(_session.retryDocument(param!int(0)));
+            return true;
+        case "getWorkspaceInfo":
+            answer(_session.workspaceInfoJson());
+            return true;
+        case "switchTab":
+            _session.switchTab(param!int(0));
+            return true;
+        case "closeTab":
+            _session.closeTab(param!int(0));
+            return true;
+        case "reorderTab":
+            _session.reorderTab(param!int(0), param!int(1));
+            return true;
+        case "onTabClicked":
+            writeln("Tab clicked: ", param!string(0));
+            return true;
+        case "loadFibex":
+            return true; // FIBEX isn't decoded yet (docs/fibex.md)
+
+        // ── The views ───────────────────────────────────────────────────────
+        case "getMainViewCount":
+        case "getSearchViewCount":
+            // get<Main|Search>ViewCount(docId)
+            auto doc = _session.doc(docParam());
+            auto view = method == "getMainViewCount" ? doc.mainView : doc.searchView;
+            resultView = cast(int) view.itemsCount();
+            return true;
+        case "getMainViewItem":
+        case "getSearchViewItem":
+            // get<Main|Search>ViewItem(docId, index): null if there is no such
+            // row (any more): the view changed, the file is lost
+            const docId = docParam();
+            auto doc = _session.doc(docId);
+            const bool search = method == "getSearchViewItem";
+            const int index = param!int(1);
+            DocumentItem docItem;
+            if (!(search ? doc.searchView : doc.mainView).fetchItem(index, docItem))
+                resultView.set(SciterValue.makeNull());
+            else
                 // the fragments the chips found, after the cells (main view rows have none)
-                const(MatchRange)[] matches;
-                if (search)
-                    if (auto ui = _documentUis.get(docId, null))
-                        if (ui.searchShown !is null)
-                            matches = ui.searchShown.matchRanges(docItem.message());
-                resultView.set(asSciterRow(index, docItem, tableColumns(doc), ruleOf(docId, docItem),
-                    search, matches));
-                return true;
-            }
-            if (method == "getMainViewPosition")
+                resultView.set(asSciterRow(index, docItem, _session.tableColumns(doc),
+                    _session.ruleOf(docId, docItem), search, search ? _session.matchesOf(docId, docItem) : null));
+            return true;
+        case "getMainViewPosition":
+            // getMainViewPosition(docId, messageIndex) -> its row in the main
+            // view, null if the view doesn't show it. The row sends message
+            // indexes as doubles (see asSciterRow)
+            double msgIndex = -1;
+            if (params.argc > 1)
             {
-                // getMainViewPosition(docId, messageIndex) -> its row in the main
-                // view, null if the view doesn't show it
-                // The row sends message indexes as doubles (see asSciterRow)
-                double msgIndex = -1;
-                if (params.argc > 1)
-                {
-                    SciterValueConstView valueView = SciterValueConstView(&params.argv[1]);
-                    int asInt;
-                    if (valueView.tryGet(asInt))
-                        msgIndex = asInt;
-                    else
-                        valueView.tryGet(msgIndex);
-                }
-                size_t position;
-                if (msgIndex >= 0 && _workspace.doc(docParam()).mainView.positionOf(cast(size_t) msgIndex, position))
-                    resultView = cast(int) position;
+                SciterValueConstView valueView = SciterValueConstView(&params.argv[1]);
+                int asInt;
+                if (valueView.tryGet(asInt))
+                    msgIndex = asInt;
                 else
-                    resultView.set(SciterValue.makeNull());
-                return true;
+                    valueView.tryGet(msgIndex);
             }
-            if (method == "getRecentFiles")
-            {
-                resultView = recentFilesJson(_settings.recentFiles, openPaths()).toUTF16();
-                return true;
-            }
-            if (method == "openFile")
-            {
-                string path = param!string(0);
-                if (!path.empty)
-                {
-                    // The id of the new document, or why the file can't be
-                    // opened: {"path" (as in the recent list), "error"}
-                    string error;
-                    path = normalizePath(path);
-                    auto id = onFileSelected(path, error);
-                    if (id.isValid)
-                    {
-                        resultView = id.toInt();
-                    }
-                    else
-                    {
-                        JSONValue failure = ["path": recentFilePath(path), "error": error];
-                        resultView = failure.toString().toUTF16();
-                    }
-                }
-                return true;
-            }
-            if (method == "loadFibex")
-            {
-                string path = param!string(0);
-                if (!path.empty)
-                    onLoadFibex(normalizePath(path));
-                return true;
-            }
-            if (method == "onTabClicked")
-            {
-                string tabId = param!string(0);
-                if (!tabId.empty)
-                    onTabClicked(tabId);
-                return true;
-            }
-            // The filter sets of a document, its id first; the commands return
-            // a message for the user (an error, or what was lost), "" if none
-            if (method == "getFilters")
-            {
-                // getFilters(docId) -> {canFilter, canDlf, sets: [...]}, see DocumentFilters.toJson
-                auto ui = _documentUis.get(docParam(), null);
-                resultView = (ui is null ? `{"canFilter":false,"canDlf":false,"sets":[]}`
-                        : ui.filters.toJson().toString()).toUTF16();
-                return true;
-            }
-            if (method == "getFilterRule")
-            {
-                // getFilterRule(docId, set, rule) -> the fields of DlfFilter,
-                // null if there is no such rule; rule -1: a new one
-                auto ui = _documentUis.get(docParam(), null);
-                const rule = param!int(2);
-                resultView = (ui is null ? "null" : rule < 0 ? DocumentFilters.newRuleJson().toString()
-                        : ui.filters.ruleJson(param!int(1), rule).toString()).toUTF16();
-                return true;
-            }
-            if (method == "checkFilterRule")
-            {
-                // checkFilterRule(docId, rule json) -> {error, conditions: [...]},
-                // see DocumentFilters.checkRule
-                auto ui = _documentUis.get(docParam(), null);
-                resultView = (ui is null ? `{"error":"","conditions":[]}`
-                        : ui.filters.checkRule(param!string(1)).toString()).toUTF16();
-                return true;
-            }
-            if (method == "loadFilterFile" || method == "newFilterSet" || method == "exportFilterSet"
-                || method == "removeFilterSet" || method == "enableFilterSet"
-                || method == "enableFilterRule" || method == "addFilterRule"
-                || method == "updateFilterRule" || method == "removeFilterRule")
-            {
-                // <command>(docId, <its parameters>)
-                const docId = docParam();
-                auto ui = _documentUis.get(docId, null);
-                if (ui is null)
-                    return true;
-                string error;
-                if (method == "loadFilterFile")
-                    error = ui.filters.loadFile(normalizePath(param!string(1)));
-                else if (method == "newFilterSet")
-                    error = ui.filters.newSet();
-                else if (method == "exportFilterSet")
-                    error = ui.filters.exportSet(param!int(1), normalizePath(param!string(2)));
-                else if (method == "addFilterRule")
-                    error = ui.filters.addRule(param!int(1), param!string(2));
-                else if (method == "updateFilterRule")
-                    error = ui.filters.updateRule(param!int(1), param!int(2), param!string(3));
-                else if (method == "removeFilterRule")
-                    error = ui.filters.removeRule(param!int(1), param!int(2));
+            size_t position;
+            if (msgIndex >= 0 && _session.doc(docParam()).mainView.positionOf(cast(size_t) msgIndex, position))
+                resultView = cast(int) position;
+            else
+                resultView.set(SciterValue.makeNull());
+            return true;
+        case "getColumns":
+            // getColumns(docId): all the columns of the document (the rules may
+            // test any of them), [] if there is none
+            answer(columnsJson(_session.doc(docParam()).columns));
+            return true;
+        case "getTableColumns":
+            // getTableColumns(docId): the columns the tables of the document show
+            answer(columnsJson(_session.tableColumns(_session.doc(docParam()))));
+            return true;
+        case "setAnchor":
+            // setAnchor(docId, messageIndex, value) -> true if changed
+            resultView = _session.setAnchor(docParam(), param!int(1), param!bool(2));
+            return true;
+        case "cancelMainView":
+            _session.cancelMainView(docParam());
+            return true;
+        case "cancelSearchView":
+            _session.cancelSearchView(docParam());
+            return true;
 
-                else if (method == "removeFilterSet")
-                    error = ui.filters.remove(param!int(1));
-                else if (method == "enableFilterSet")
-                    error = ui.filters.enableSet(param!int(1), param!bool(2));
-                else
-                    error = ui.filters.enableRule(param!int(1), param!int(2), param!bool(3));
-                if (error.length)
-                    writeln(method, ": ", error);
-                else
-                {
-                    // The sets are copies kept in the settings of the file:
-                    // remembered at once, as the recent list is
-                    if (auto path = sourcePathOf(docId))
-                        _settings.recentFiles = withFilters(_settings.recentFiles, path, ui.filters.saved());
-                    saveSettings();
-                }
-                resultView = error.toUTF16();
-                return true;
-            }
-            if (method == "getColumns")
-            {
-                // getColumns(docId): all the columns of the document (the rules
-                // may test any of them), [] if there is none
-                resultView = columnsJson(_workspace.doc(docParam()).columns).toUTF16();
-                return true;
-            }
-            if (method == "getTableColumns")
-            {
-                // getTableColumns(docId): the columns the tables of the document
-                // show, [] if there is none
-                resultView = columnsJson(tableColumns(_workspace.doc(docParam()))).toUTF16();
-                return true;
-            }
-            if (method == "getColumnSettings")
-            {
-                // The Columns section of the Settings dialog, the format of
-                // the active document first
-                const current = formatChoiceOf(_workspace.current).id;
-                resultView = columnSettingsJson(_settings.columnLayouts, current).toUTF16();
-                return true;
-            }
-            if (method == "setColumnLayouts")
-            {
-                // Saved by the Settings dialog: {format id: [{"id", "visible"}]}
-                _settings.columnLayouts = withColumnLayouts(_settings.columnLayouts, param!string(0));
-                _tableColumns.reset(); // arranged again
-                saveSettings();
-                return true;
-            }
-            if (method == "getWorkspaceInfo")
-            {
-                JSONValue[] docs;
-                foreach (idx, item; _workspace.documents)
-                {
-                    JSONValue d = [
-                        "id": JSONValue(item.docId.toInt()),
-                        "name": JSONValue(item.sourcePath.baseName),
-                        "path": JSONValue(item.sourcePath),
-                        "active": JSONValue(item.docId == _workspace.currentId),
-                        "mainView": mainViewJson(item.docId),
-                        "searchView": searchViewJson(item.docId)
-                    ];
-                    docs ~= d;
-                }
-                resultView = JSONValue(docs).toString().toUTF16();
-                return true;
-            }
-            if (method == "setAnchor")
-            {
-                // setAnchor(docId, messageIndex, value) -> true if changed; false
-                // while an operation is running or at the anchor limit (nothing
-                // changes then)
-                const index = param!int(1);
-                resultView = index >= 0 && _workspace.doc(docParam()).setAnchor(cast(size_t) index, param!bool(2));
-                return true;
-            }
-            if (method == "cancelMainView")
-            {
-                // cancelMainView(docId): Cancel pressed in the main view of the
-                // document; its machine decides what it means
-                if (auto ui = _documentUis.get(findDocumentId(param!int(0)), null))
-                {
-                    ui.pressMainCancel();
-                    applyDocumentCommands();
-                }
-                return true;
-            }
-            if (method == "cancelSearchView")
-            {
-                // cancelSearchView(docId): Cancel pressed in the search view of the document
-                if (auto ui = _documentUis.get(findDocumentId(param!int(0)), null))
-                    ui.pressSearchCancel();
-                return true;
-            }
-            if (method == "startChipSearch")
-            {
-                // startChipSearch(docId, chipsJson) -> error message, "" on
-                // success; no chips clear the search
-                resultView = onStartChipSearch(docParam(), param!string(1)).toUTF16();
-                return true;
-            }
-            if (method == "getSearchHistory")
-            {
-                // getSearchHistory(docId) -> [[chips]] of the document, the latest first
-                JSONValue[] queries;
-                if (auto path = sourcePathOf(docParam()))
-                    foreach (query; savedSearches(_settings.recentFiles, path))
-                        queries ~= chipsToJson(query);
-                resultView = JSONValue(queries).toString().toUTF16();
-                return true;
-            }
-            if (method == "checkRegex")
-            {
-                // checkRegex(pattern, ignoreCase) -> error message, "" for a valid regex
-                resultView = checkRegex(param!string(0), param!bool(1)).toUTF16();
-                return true;
-            }
-            if (method == "switchTab")
-            {
-                int id = param!int(0);
-                auto oldId = _workspace.currentId;
-                writeln("switchTab request: ", id, " (current: ", oldId.toInt(), ")");
-                foreach (item; _workspace.documents)
-                {
-                    if (item.docId.toInt() == id)
-                    {
-                        _workspace.setCurrent(item.docId);
-                        writeln("Workspace current changed to: ", id, " (", item.sourcePath.baseName, ")");
-                        break;
-                    }
-                }
-                return true;
-            }
-            if (method == "retryDocument")
-            {
-                // retryDocument(docId) -> error message, "" if the file was reopened
-                resultView = onRetryDocument(param!int(0)).toUTF16();
-                return true;
-            }
-            if (method == "closeTab")
-            {
-                const docId = findDocumentId(param!int(0));
-                if (docId.isValid)
-                    closeDocument(docId);
-                return true;
-            }
-            if (method == "reorderTab")
-            {
-                int id = param!int(0);
-                int targetIndex = param!int(1);
-                writeln("reorderTab request: ", id, " to index ", targetIndex);
-                foreach (item; _workspace.documents)
-                {
-                    if (item.docId.toInt() == id)
-                    {
-                        _workspace.moveDocumentBefore(item.docId, targetIndex);
-                        writeln("Document reordered: ", id, " to index ", targetIndex);
-                        break;
-                    }
-                }
-                return true;
-            }
-        }
+        // ── Search ──────────────────────────────────────────────────────────
+        case "startChipSearch":
+            // startChipSearch(docId, chipsJson) -> error message, "" on success
+            answer(_session.startChipSearch(docParam(), param!string(1)));
+            return true;
+        case "getSearchHistory":
+            // getSearchHistory(docId) -> [[chips]] of the document, the latest first
+            answer(_session.searchHistoryJson(docParam()));
+            return true;
+        case "checkRegex":
+            // checkRegex(pattern, ignoreCase) -> error message, "" for a valid regex
+            answer(checkRegex(param!string(0), param!bool(1)));
+            return true;
 
-        return false;
-    }
+        // ── Filters: the commands return a message for the user (an error, or
+        // what was lost), "" if none ─────────────────────────────────────────
+        case "getFilters":
+            // getFilters(docId) -> {canFilter, canDlf, sets: [...]}, see DocumentFilters.toJson
+            auto filters = _session.filters(docParam());
+            answer(filters is null ? `{"canFilter":false,"canDlf":false,"sets":[]}` : filters.toJson().toString());
+            return true;
+        case "getFilterRule":
+            // getFilterRule(docId, set, rule) -> the fields of the rule, null
+            // if there is no such rule; rule -1: a new one
+            auto filters = _session.filters(docParam());
+            const rule = param!int(2);
+            answer(filters is null ? "null" : rule < 0 ? DocumentFilters.newRuleJson().toString()
+                    : filters.ruleJson(param!int(1), rule).toString());
+            return true;
+        case "checkFilterRule":
+            // checkFilterRule(docId, rule json) -> {error, conditions: [...]}
+            auto filters = _session.filters(docParam());
+            answer(filters is null ? `{"error":"","conditions":[]}` : filters.checkRule(param!string(1)).toString());
+            return true;
+        case "loadFilterFile":
+            answer(filterCommand(docParam(), f => f.loadFile(normalizePath(param!string(1)))));
+            return true;
+        case "newFilterSet":
+            answer(filterCommand(docParam(), f => f.newSet()));
+            return true;
+        case "exportFilterSet":
+            answer(filterCommand(docParam(), f => f.exportSet(param!int(1), normalizePath(param!string(2)))));
+            return true;
+        case "removeFilterSet":
+            answer(filterCommand(docParam(), f => f.remove(param!int(1))));
+            return true;
+        case "enableFilterSet":
+            answer(filterCommand(docParam(), f => f.enableSet(param!int(1), param!bool(2))));
+            return true;
+        case "addFilterRule":
+            answer(filterCommand(docParam(), f => f.addRule(param!int(1), param!string(2))));
+            return true;
+        case "updateFilterRule":
+            answer(filterCommand(docParam(), f => f.updateRule(param!int(1), param!int(2), param!string(3))));
+            return true;
+        case "enableFilterRule":
+            answer(filterCommand(docParam(), f => f.enableRule(param!int(1), param!int(2), param!bool(3))));
+            return true;
+        case "removeFilterRule":
+            answer(filterCommand(docParam(), f => f.removeRule(param!int(1), param!int(2))));
+            return true;
 
-    /// The columns the tables of `document` show: those of its format as the
-    /// layout of the format arranges them
-    private const(ColumnInfo)[] tableColumns(Document document)
-    {
-        return _tableColumns.of(document.columns, formatChoiceOf(document).id, _settings.columnLayouts);
-    }
-
-    /// The first filter rule with a color of the document a record of it matches
-    private RuleId ruleOf(DocumentId docId, ref const(DocumentItem) item)
-    {
-        auto ui = _documentUis.get(docId, null);
-        return ui is null ? RuleId.init : ui.ruleOf(item.message);
-    }
-
-    /// The format a document was opened with; unset for a document without one
-    private static FormatChoice formatChoiceOf(const Document document)
-    {
-        auto log = cast(const LogDocument) document;
-        return log is null ? FormatChoice.init : log.formatChoice;
-    }
-
-    /// Reopens the file of a document whose source was lost, in the same tab.
-    /// Returns: an error message for the UI (e.g. the disk is still missing),
-    /// or "" if the document was replaced by a freshly opened one
-    private string onRetryDocument(int id)
-    {
-        DocumentId docId;
-        string path;
-        FormatChoice choice; // reopened in the format it had, not detected again
-        foreach (item; _workspace.documents)
-        {
-            if (item.docId.toInt() == id)
-            {
-                docId = item.docId;
-                path = item.sourcePath;
-                choice = formatChoiceOf(item.document);
-            }
-        }
-        if (!docId.isValid)
-            return "the document is not open";
-
-        try
-        {
-            import core.time : MonoTime;
-
-            // Timings: both steps run on the UI thread and may block on a disk
-            // that has just been reconnected or removed
-            const openStart = MonoTime.currTime;
-            auto fresh = new LogDocument(path, choice);
-            const openTime = MonoTime.currTime - openStart;
-
-            const destroyStart = MonoTime.currTime;
-            // The filters the old document had, for the new one
-            auto oldUi = _documentUis.get(docId, null);
-            const filters = oldUi is null ? null : oldUi.filters.saved();
-            auto old = _workspace.replaceDocument(docId, fresh);
-            addDocumentUi(docId); // the new document starts with a new machine
-            _documentUis[docId].filters.restore(filters);
-            if (old !is null)
-                old.destroy();
-            const destroyTime = MonoTime.currTime - destroyStart;
-
-            writeln("Reopened document ", id, ": ", path, " (open: ", openTime,
-                ", destroy old: ", destroyTime, ")");
-            return "";
-        }
-        catch (Exception e)
-        {
-            writeln("Retry failed for ", path, ": ", e.msg);
-            return e.msg;
+        default:
+            return false;
         }
     }
 
-    private DocumentId onFileSelected(string path, out string error)
+    /// A command on the filter sets of a document, its message logged
+    private string filterCommand(DocumentId docId, scope string delegate(DocumentFilters) command)
     {
-        writeln("Opening file: ", path);
-
-        // Open already: its tab is shown instead of a second copy
-        const existing = _workspace.findBySourcePath(path);
-        if (existing.isValid)
-        {
-            _workspace.setCurrent(existing);
-            rememberRecentFile(RecentFile(path, formatChoiceOf(_workspace.doc(existing)), nowMs()));
-            callScript("onDocumentOpened", existing.toInt());
-            return existing;
-        }
-
-        try
-        {
-            writeln("Creating new document: ", path);
-            // Opened the way it was last time: the format may have been chosen by hand
-            auto newDoc = new LogDocument(path, savedFormat(_settings.recentFiles, path));
-            auto docId = _workspace.addDocument(newDoc, path);
-            addDocumentUi(docId);
-            // The filters loaded for the file last time, before the list moves it
-            _documentUis[docId].filters.restore(savedFilters(_settings.recentFiles, path));
-            _workspace.setCurrent(docId);
-            rememberRecentFile(RecentFile(path, newDoc.formatChoice, nowMs()));
-            callScript("onDocumentOpened", docId.toInt());
-            return docId;
-        }
-        catch (Exception e)
-        {
-            writeln("Error opening file: ", e.msg);
-            error = e.msg;
-            // Listed with the reason, to retry or see: a file of the list stays
-            // where it is, a new one goes on top
-            _settings.recentFiles = withFailedFile(_settings.recentFiles, path);
-            saveSettings();
-            return DocumentId.init;
-        }
-    }
-
-    /// Puts the file opened (or tried) on top of the recent list and saves it
-    /// at once, so the list survives a crash and the placeholder shows it right away
-    private void rememberRecentFile(RecentFile file)
-    {
-        _settings.recentFiles = withRecentFile(_settings.recentFiles, file);
-        saveSettings();
-    }
-
-    // ... (rest of methods) ...
-    private void onLoadFibex(string path)
-    {
-        try
-        {
-            //_workspace.current.openFibex(path);
-            callScript("reloadLogTable");
-        }
-        catch (Exception e)
-        {
-            writeln("Error loading fibex: ", e.msg);
-        }
-    }
-
-    /// Starts the search for the chips of the search editor in the document.
-    /// Returns: an error message for the UI, or "" if the search was started
-    private string onStartChipSearch(DocumentId docId, string chipsJson)
-    {
-        writeln("startChipSearch request: ", chipsJson);
-        try
-        {
-            // An invalid regex throws here, before any background work starts
-            const chips = chipsFromJson(chipsJson);
-            auto filter = SearchFilter.fromChips(chips);
-            if (!docId.isValid)
-                return "the document is not open";
-            _workspace.doc(docId).applySearchFilter(filter); // null clears the search
-            if (auto ui = _documentUis.get(docId, null))
-                ui.searchShown = filter;
-            // the history of the file, remembered at once as its filters are
-            // (the latest query again changes nothing: no write of the settings then)
-            if (filter !is null)
-                if (auto path = sourcePathOf(docId))
-                {
-                    const searches = savedSearches(_settings.recentFiles, path);
-                    if (searches.length == 0 || searches[0] != chips)
-                    {
-                        _settings.recentFiles = withSearch(_settings.recentFiles, path, chips);
-                        saveSettings();
-                    }
-                }
-            return "";
-        }
-        catch (Exception e)
-        {
-            writeln("Error starting search: ", e.msg);
-            return e.msg;
-        }
-    }
-
-    /// Returns: the path of the document, null if it isn't open
-    private string sourcePathOf(DocumentId docId)
-    {
-        foreach (item; _workspace.documents)
-            if (item.docId == docId)
-                return item.sourcePath;
-        return null;
-    }
-
-    private void onTabClicked(string id)
-    {
-        writeln("Tab clicked: ", id);
+        const error = _session.filterCommand(docId, command);
+        if (error.length)
+            writeln("filter command: ", error);
+        return error;
     }
 
     static string normalizePath(string path) pure
@@ -909,58 +317,44 @@ class MainWindow : SciterWindow
         return path;
     }
 
-    /// Saves the settings with the UI state asked from the script
-    void saveSettings()
-    {
-        try
-        {
-            const auto appState = callScript("getAppState");
-            saveSettings(appState.to!(const(wchar)[])().toUTF8());
-        }
-        catch (Exception e)
-        {
-            writeln("Failed to call getAppState() ", e.msg);
-        }
-    }
-
-    /// Saves the settings with `uiStateJson` (JSON of JS getAppState()) merged in.
-    /// The open files are marked used now, in place: the time survives a crash,
-    /// the order of the list stays that of the files opened and closed.
-    void saveSettings(const(char)[] uiStateJson)
-    {
-        _settings.recentFiles = withFilesStamped(_settings.recentFiles, openPaths(), nowMs());
-        try
-            ui.app_settings.saveSettings(mergeAppStateFromScript(_settings, uiStateJson));
-        catch (Exception e)
-            writeln("Failed to save settings: ", e.msg);
-    }
-
-    /// Closes all documents, stopping their background operations.
-    /// Call after the event loop has stopped.
+    /// Writes what is left of the settings and closes all documents,
+    /// stopping their background operations. Call after the event loop has stopped.
     void closeAllDocuments()
     {
-        _documentUis = null;
-        _workspace.closeAll();
+        _session.finish();
     }
 
-    // should be called in main() in sciterApplication().runIteration() cycle
+    /// Called from main() after each iteration of the event loop: delivers the
+    /// events of the documents, tells the script what changed and writes the
+    /// settings when they are due. Never inside a call of the script.
     void onIdle()
     {
         fixMacTitlebarBackground();
-        processCurrentDocumentState();
+        _session.dispatchEvents();
+        const calls = _session.takeScriptCalls();
+        if (_session.closing)
+            return; // the view is being torn down: calling the script would crash
+        foreach (call; calls)
+        {
+            if (call.json is null)
+                callScript(call.name, call.docId);
+            else
+                callScript(call.name, call.docId, call.json.toUTF16());
+        }
+        if (_session.settingsDue)
+            _session.saveSettings(appStateOfScript());
     }
 
-    void processCurrentDocumentState()
+    /// The state of the script: its getAppState(), "{}" if it can't be had
+    private string appStateOfScript()
     {
         try
-            _workspace.dispatchEvents();
+            return callScript("getAppState").to!(const(wchar)[])().toUTF8();
         catch (Exception e)
         {
-            for (Throwable t = e; t !is null; t = t.next)
-                writeln("Document event handler failed: ", t.msg);
+            writeln("Failed to call getAppState() ", e.msg);
+            return "{}";
         }
-        applyDocumentCommands();
-        flushViews();
     }
 }
 
