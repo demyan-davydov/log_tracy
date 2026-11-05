@@ -279,6 +279,11 @@ class LogDocument : Document
             return true;
         }
 
+        override bool positionOf(size_t realIndex, out size_t position)
+        {
+            return this.outer._index.mainViewPositionOf(realIndex, position);
+        }
+
         override DocumentView.State state()
         {
             return this.outer._mainStatus.state;
@@ -328,6 +333,11 @@ class LogDocument : Document
                 return false;
             item.anchored = this.outer._anchors.has(item.realIndex);
             return true;
+        }
+
+        override bool positionOf(size_t realIndex, out size_t position)
+        {
+            return this.outer._index.searchViewPositionOf(realIndex, position);
         }
 
         override DocumentView.State state()
@@ -1195,4 +1205,37 @@ unittest
     // The constructor fails before the background slot is constructed; the
     // field destructors run on the unconstructed slot and must cope with it
     assertThrown(new LogDocument("/nonexistent/dlt_document_missing.dlt"));
+}
+
+@("LogDocument: positionOf finds a message in the filtered main view")
+unittest
+{
+    import std.file : remove, tempDir, write;
+    import std.path : buildPath;
+
+    enum messageCount = 100;
+    ubyte[] data; // even messages from ECU1, odd ones from ECU2
+    foreach (i; 0 .. messageCount)
+        data ~= buildDltMessage(i % 2 ? "ECU2" : "ECU1", cast(uint) i, 0, 0, cast(ubyte) i, [0xAA]);
+    auto path = buildPath(tempDir(), "dlt_document_position_of.dlt");
+    write(path, data);
+    scope (exit)
+        remove(path);
+
+    auto doc = new LogDocument(path);
+    dispatchUntil(doc, () => doc.mainView.ready);
+
+    size_t position;
+    assert(doc.mainView.positionOf(42, position) && position == 42, "unfiltered: the message index");
+    assert(!doc.mainView.positionOf(messageCount, position), "past the end of the log");
+
+    runAndWait(doc, () => doc.applyViewFilter(ecuFilter("ECU2")));
+    assert(doc.mainView.positionOf(1, position) && position == 0);
+    assert(doc.mainView.positionOf(43, position) && position == 21);
+    assert(!doc.mainView.positionOf(42, position), "hidden by the filter");
+    assert(!doc.mainView.positionOf(messageCount + 1, position), "past the end of the log");
+
+    runAndWait(doc, () => doc.applySearchFilter(ecuFilter("ECU2")));
+    assert(doc.searchView.positionOf(43, position) && position == 21);
+    assert(!doc.searchView.positionOf(42, position), "not found by the search");
 }

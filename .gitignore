@@ -1,6 +1,9 @@
 docs.json
 docs/*
 !docs/*.md
+!docs/stories/
+docs/stories/*
+!docs/stories/*.md
 .dub
 .DS_Store
 .vscode

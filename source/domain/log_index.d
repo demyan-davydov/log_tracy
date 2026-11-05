@@ -518,6 +518,36 @@ struct LogIndex
         return _viewIsFiltered ? _filterIndex.length : _offsetIndex.length;
     }
 
+    //! @brief The position in the main view of the message `realIndex`
+    //! @return false if the view doesn't show it
+    bool mainViewPositionOf(size_t realIndex, out size_t position) nothrow @nogc
+    {
+        auto lock = LockGuard(cast(Mutex)_mutex);
+        if (!_viewIsFiltered)
+        {
+            position = realIndex;
+            return realIndex < _offsetIndex.length;
+        }
+        return sortedPositionOf(_filterIndex, realIndex, position);
+    }
+
+    //! @brief The position in the search view of the message `realIndex`
+    //! @return false if the view doesn't show it
+    bool searchViewPositionOf(size_t realIndex, out size_t position) nothrow @nogc
+    {
+        auto lock = LockGuard(cast(Mutex)_mutex);
+        return sortedPositionOf(_searchIndex, realIndex, position);
+    }
+
+    //! The position of `realIndex` in an index of message indexes sorted ascending
+    private static bool sortedPositionOf(Index)(ref const(Index) index, size_t realIndex, out size_t position)
+    {
+        if (realIndex > Index.Type.max)
+            return false;
+        position = index.lowerBound(cast(Index.Type) realIndex);
+        return position < index.length && index[position] == realIndex;
+    }
+
     bool fetchMainViewItem(size_t index, scope ref DocumentItem item)
     {
         OffsetIndexItem fileOffset;

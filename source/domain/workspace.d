@@ -39,6 +39,11 @@ private class NullDocumentView : DocumentView
         return false;
     }
 
+    override bool positionOf(size_t realIndex, out size_t position)
+    {
+        return false;
+    }
+
     override State state()
     {
         return State.Ready;

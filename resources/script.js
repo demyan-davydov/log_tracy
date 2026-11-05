@@ -1,5 +1,6 @@
 import { $, $$ } from "@sciter";
-import { VirtualDltTBody, VirtualMainViewTBody, VirtualSearchViewTBody, setColumns, renderHeader, setRuleColors } from "virtual-dlt-view.js";
+import { VirtualDltTBody, VirtualMainViewTBody, VirtualSearchViewTBody, setColumns, renderHeader, setRuleColors, moveRowDrag, endRowDrag } from "virtual-dlt-view.js";
+import { scrollTarget } from "row-selection.js";
 import { ruleColors } from "rule-colors.js";
 import {
     noNewTab, plusShown, openNewTab, activateNewTab, activateDocument,
@@ -8,13 +9,46 @@ import {
 } from "new-tab.js";
 import { lastUsedText } from "recent-time.js";
 import { clampShift, dragTarget, settleShift } from "drag-order.js";
-import { rowText } from "cell-format.js";
 
-// The row whose context menu is open: "Copy Row" copies it
-let contextRow = null;
+// The table whose context menu is open: "Copy Row" copies its selected rows
+let contextList = null;
 
 function copyRowItem() {
     return <li class="copy-row">Copy Row</li>;
+}
+
+// The most text Copy Row puts on the clipboard, in characters (16 MB of ASCII)
+const copyLimit = 16 * 1024 * 1024;
+
+// The context menu opens on `row`: the selection of its table is what Copy Row
+// copies, a row outside it becomes the only selected one
+function contextRowClicked(row) {
+    const list = row.parentElement;
+    const viewIndex = list.viewIndexOf?.(row);
+    if (viewIndex === null || viewIndex === undefined) return;
+    contextList = list;
+    list.selection.contextClick(viewIndex);
+    list.updateRowStates();
+}
+
+// Copies the selected rows of `list` (a log table tbody); past the limit only
+// the first ones, and a notice says so
+function copySelectedRows(list) {
+    const { text, copied, total, truncated } = list.selectedRowsText(copyLimit);
+    if (copied > 0) Clipboard.writeText(text);
+    if (truncated)
+        showNotice(list, `Copied ${copied} of ${total} rows: the clipboard limit is 16 MB`);
+}
+
+// A notice over the bottom of `owner` that hides itself after a few seconds
+function showNotice(owner, text) {
+    const popup = Element.create(<popup class="notice">{text}</popup>);
+    document.body.append(popup);
+    owner.popup(popup, { anchorAt: 2, popupAt: 2 }); // bottom-center on bottom-center
+    setTimeout(() => {
+        popup.state.popup = false;
+        popup.remove();
+    }, 4000);
 }
 
 globalThis.VirtualDltTBody = VirtualDltTBody;
@@ -409,9 +443,12 @@ function setupEvents() {
     document.on("click", "table.log-table td.anchor", (evt, cell) => {
         const index = Number(cell.getAttribute("msg-index"));
         const anchored = cell.getAttribute("has-anchor") === "true";
+        const lists = [getMainViewList(), getSearchViewList()].filter(list => list);
+        const counts = lists.map(list => list.totalItems());
         if (Window.this.xcall("setAnchor", index, !anchored)) {
-            for (const list of [getMainViewList(), getSearchViewList()]) {
-                if (!list) continue;
+            for (const [i, list] of lists.entries()) {
+                // The view gained or lost the row: the selected positions show other rows
+                if (list.totalItems() !== counts[i]) list.resetSelection();
                 list.componentUpdate(); // the view may gain or lose the row
                 list.refreshVisibleRows(); // rows kept on screen show the new anchor
             }
@@ -423,22 +460,44 @@ function setupEvents() {
     // selectable cell (Copy, Select All), alone on the other cells.
     // "contextmenu" comes before the default menu is set, so a menu given there
     // would replace it: the default one is extended on its setup instead.
+    // A right click on a row outside the selection selects only that row first.
     document.on("contextmenu", "table.log-table tbody > tr", (evt, row) => {
-        contextRow = row;
+        contextRowClicked(row);
         if (evt.target.closest("[selectable]")) return; // the default menu
         evt.source = Element.create(<menu class="context">{copyRowItem()}</menu>);
         return true;
     });
     document.on("contextmenusetup", "table.log-table tbody > tr", (evt, row) => {
-        contextRow = row;
+        contextRowClicked(row);
         const menu = evt.source;
         if (menu && !menu.$("li.copy-row")) menu.append(copyRowItem());
     });
     document.on("click", "menu.context > li.copy-row", () => {
-        if (!contextRow) return;
-        const cells = [...contextRow.children].slice(1); // without the anchor
-        Clipboard.writeText(rowText(cells.map(cell => cell.innerText)));
-        contextRow = null;
+        if (contextList) copySelectedRows(contextList);
+        contextList = null;
+    });
+    // Cmd+C (Ctrl+C) in a table, see VirtualDltTBody.onkeydown
+    document.on("copyrows", "table.log-table > tbody", (evt, list) => copySelectedRows(list));
+
+    // A double click on a search result shows its message in the main view:
+    // current and the only one selected, near the top
+    document.on("dblclick", "table.search-view > tbody > tr", (evt, row) => {
+        if (evt.target.closest("td.anchor")) return; // toggles the anchor only
+        const msgIndex = Number(row.$("td.anchor")?.getAttribute("msg-index"));
+        if (!Number.isFinite(msgIndex)) return;
+        // Only into a main view that shows its rows: while it is rebuilt the
+        // positions belong to the content being replaced
+        if (docStatus.get(activeDocId)?.mainView?.status !== "ready") return;
+        const list = getMainViewList();
+        if (!list) return;
+        const position = Window.this.xcall("getMainViewPosition", msgIndex);
+        if (position === null || position === undefined) return;
+        list.selection.moveTo(position);
+        list.navigateTarget = scrollTarget(position, list.visibleRowCount());
+        list.componentUpdate();
+        list.updateRowStates();
+        list.state.focus = true;
+        return true;
     });
 
     document.on("click", "#btn-lost-close", () => {
@@ -604,10 +663,12 @@ function setupEvents() {
 
     document.on("mousemove", function (evt) {
         if (tabDrag) moveTabDrag(evt.clientX);
+        moveRowDrag(evt);
     });
 
     document.on("mouseup", function (evt) {
         if (tabDrag) endTabDrag();
+        endRowDrag();
     });
 
     document.on("keydown", function (evt) {
@@ -1142,6 +1203,7 @@ function updateViewMode() {
             reloadLogTable(saved ? saved.index : "start");
         } else if (vm.dataVersion !== shownDataVersion) {
             console.log("View update: content", vm.dataVersion, "of doc", docId);
+            getMainViewList().resetSelection(); // the rows are other messages now
             reloadLogTable();
         }
         shownDocId = docId;
@@ -1199,6 +1261,7 @@ function updateSearchViewMode() {
             searchList.restoreSelection(saved ? saved.selection : null);
             reloadList(searchList, saved ? saved.index : "start");
         } else if (searchList && vm.dataVersion !== shownSearchDataVersion) {
+            searchList.resetSelection(); // the rows are other messages now
             reloadList(searchList);
         }
         shownSearchDocId = activeDocId;
