@@ -8,6 +8,7 @@ import {
     shownDocument, fileFailed, failureReason
 } from "new-tab.js";
 import { lastUsedText } from "recent-time.js";
+import { SearchEditor } from "search-editor.js";
 import { clampShift, dragTarget, settleShift } from "drag-order.js";
 
 // The table whose context menu is open: "Copy Row" copies its selected rows
@@ -77,6 +78,7 @@ document.on("ready", function () {
     console.log("Starting DLT Explorer UI...");
     initApp();
     initSearch();
+    initChipSearch();
 
     console.log(Window.this.frameType, Window.this.blurBehind)
 });
@@ -216,6 +218,66 @@ function initSearch() {
     document.on("click", "#btn-search", runSearch);
     document.on("input", "#search-input", onEdited);
     document.on("change", "#search-input, #search-regex, #search-ignore-case", onEdited);
+}
+
+// The chip search editor (docs/stories/advanced-search.md), tried side by side
+// with the search field above it. Its draft and its committed chips belong to
+// the document as those of the field do:
+//   docId -> { chips, message } of the editor
+const chipDrafts = new Map();
+//   docId -> JSON of the chips the shown search was run with
+const committedChips = new Map();
+// The document whose draft the editor shows
+let chipEditorDocId = null;
+let chipEditor = null;
+
+function initChipSearch() {
+    chipEditor = new SearchEditor($("#chip-search"), {
+        checkRegex: (pattern, ignoreCase) => Window.this.xcall("checkRegex", pattern, ignoreCase),
+        onEdited: () => {
+            saveChipDraft();
+            updateChipPending();
+        },
+        onCommit: runChipSearch,
+    });
+    document.on("click", "#btn-chip-search", () => {
+        chipEditor.closeChip();
+        runChipSearch();
+    });
+    showChipDraft();
+    updateChipPending();
+}
+
+function runChipSearch() {
+    const chips = chipEditor.searchChips();
+    // an invalid regex chip is refused here; the backend checks again
+    let error = chipEditor.firstError();
+    if (!error) error = Window.this.xcall("startChipSearch", JSON.stringify(chips));
+    $("#chip-search-message").innerText = error ? `Search error: ${error}` : "";
+    if (!error && activeDocId !== null) committedChips.set(activeDocId, JSON.stringify(chips));
+    saveChipDraft();
+    updateChipPending();
+}
+
+function updateChipPending() {
+    const pending = activeDocId !== null && chipEditor !== null
+        && JSON.stringify(chipEditor.searchChips()) !== (committedChips.get(activeDocId) ?? "[]");
+    $(".chip-search-toolbar").classList.toggle("pending", pending);
+    $("#btn-chip-search").classList.toggle("primary", pending);
+}
+
+function saveChipDraft() {
+    if (chipEditorDocId === null || !docStatus.has(chipEditorDocId) || chipEditor === null) return;
+    chipDrafts.set(chipEditorDocId,
+        { chips: chipEditor.chips, message: $("#chip-search-message").innerText || "" });
+}
+
+function showChipDraft() {
+    if (chipEditorDocId === activeDocId || chipEditor === null) return;
+    const draft = chipDrafts.get(activeDocId) || { chips: [], message: "" };
+    chipEditor.setChips(draft.chips);
+    $("#chip-search-message").innerText = draft.message;
+    chipEditorDocId = activeDocId;
 }
 
 function restoreSettings() {
@@ -840,6 +902,7 @@ function refreshTabs() {
     newTab = documentsCounted(newTab, docCount);
 
     saveSearchDraft(); // the controls may be about to show another document
+    saveChipDraft();
     docStatus.clear();
     activeDocId = null;
     for (const doc of docs) {
@@ -887,6 +950,10 @@ function refreshTabs() {
         if (!docStatus.has(docId)) committedSearches.delete(docId); // closed
     for (const docId of searchDrafts.keys())
         if (!docStatus.has(docId)) searchDrafts.delete(docId);
+    for (const docId of chipDrafts.keys())
+        if (!docStatus.has(docId)) chipDrafts.delete(docId);
+    for (const docId of committedChips.keys())
+        if (!docStatus.has(docId)) committedChips.delete(docId);
     for (const docId of filterMessages.keys())
         if (!docStatus.has(docId)) filterMessages.delete(docId);
 
@@ -894,6 +961,8 @@ function refreshTabs() {
     updateSearchViewMode();
     showSearchDraft();
     updateSearchPending();
+    showChipDraft();
+    updateChipPending();
 }
 
 // The columns of the log tables follow the format of the active document, as

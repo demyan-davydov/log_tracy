@@ -15,7 +15,8 @@ import log_core.rule_filter : RuleId;
 import domain.log_document;
 
 import ui.filter_commands : DocumentFilters;
-import log_core.search_filter : SearchFilter;
+import log_core.search_filter : checkRegex, SearchFilter;
+import ui.search_chips : chipsFromJson;
 import ui.main_view_fsm;
 import ui.search_view_fsm;
 import log_core.log_filter : LogFilter;
@@ -648,6 +649,18 @@ class MainWindow : SciterWindow
                 resultView = onStartSearch(query, isRegex, caseInsensitive).toUTF16();
                 return true;
             }
+            if (method == "startChipSearch")
+            {
+                // startChipSearch(chipsJson) -> error message, "" on success; no chips clear the search
+                resultView = onStartChipSearch(getParamString(0)).toUTF16();
+                return true;
+            }
+            if (method == "checkRegex")
+            {
+                // checkRegex(pattern, ignoreCase) -> error message, "" for a valid regex
+                resultView = checkRegex(getParamString(0), getParamBool(1)).toUTF16();
+                return true;
+            }
             if (method == "switchTab")
             {
                 int id = getParamInt(0);
@@ -850,6 +863,25 @@ class MainWindow : SciterWindow
         {
             // An invalid regex throws here, before any background work starts
             auto filter = SearchFilter.fromQuery(query, isRegex, caseInsensitive);
+            _workspace.current.applySearchFilter(filter); // null clears the search
+            return "";
+        }
+        catch (Exception e)
+        {
+            writeln("Error starting search: ", e.msg);
+            return e.msg;
+        }
+    }
+
+    /// Starts the search for the chips of the search editor in the active document.
+    /// Returns: an error message for the UI, or "" if the search was started
+    private string onStartChipSearch(string chipsJson)
+    {
+        writeln("startChipSearch request: ", chipsJson);
+        try
+        {
+            // An invalid regex throws here, before any background work starts
+            auto filter = SearchFilter.fromChips(chipsFromJson(chipsJson));
             _workspace.current.applySearchFilter(filter); // null clears the search
             return "";
         }

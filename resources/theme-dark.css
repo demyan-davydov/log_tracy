@@ -23,6 +23,11 @@
 @const BTN_PRIMARY_BORDER: #005a9e;
 @const BG_DETAILS: #252526;
 @const BG_SEARCH_PENDING: #3d3520;
+@const CHIP_BG: #2b313a;
+@const CHIP_BORDER: #4f5b6b;
+@const CHIP_SELECTED: #264f78;
+@const CHIP_SELECTED_INACTIVE: #3a3d41;
+@const CHIP_EDGE_SPACE: #6b5a1e;
 @const BG_DETAILS_HEADER: #2d2d2d;
 @const LOG_FATAL_BG: #5a0000;
 @const LOG_FATAL_TEXT: #ffd6d6;
@@ -69,6 +74,11 @@
     --bg-details: @BG_DETAILS;
     --bg-details-header: @BG_DETAILS_HEADER;
     --bg-search-pending: @BG_SEARCH_PENDING;
+    --chip-bg: @CHIP_BG;
+    --chip-border: @CHIP_BORDER;
+    --chip-edge-space: @CHIP_EDGE_SPACE;
+    --chip-selected: @CHIP_SELECTED;
+    --chip-selected-inactive: @CHIP_SELECTED_INACTIVE;
 
     /* Log Levels */
     --log-fatal-bg: @LOG_FATAL_BG;

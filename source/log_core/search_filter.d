@@ -6,6 +6,28 @@ import log_core.log_message;
 import std.regex : Regex, regex, matchFirst;
 import std.typecons : Nullable;
 
+//! One condition of a search query (a chip of the search editor): a text or a
+//! regular expression to find in the payload, with its own letter case.
+struct SearchChip
+{
+    string text;
+    bool isRegex;
+    bool ignoreCase;
+}
+
+//! @brief Checks a regular expression of a chip with the engine the search uses.
+//! @return the error message, "" for a valid one
+string checkRegex(const(char)[] pattern, bool ignoreCase)
+{
+    try
+    {
+        new SearchFilter().addRegex(pattern, ignoreCase);
+        return "";
+    }
+    catch (Exception e)
+        return e.msg;
+}
+
 //! Search over the message payload. A message matches if any rule matches.
 final class SearchFilter : LogFilter!wchar
 {
@@ -51,6 +73,25 @@ final class SearchFilter : LogFilter!wchar
         else
             filter.addText(query, caseInsensitive);
         return filter;
+    }
+
+    //! @brief Builds the filter for the chips of a query: a message matches if any
+    //! chip does. Empty chips are skipped.
+    //! @return null if no chip is left, which means "no search"
+    //! @throws RegexException if a regex chip is not a valid regular expression
+    static SearchFilter fromChips(const(SearchChip)[] chips)
+    {
+        auto filter = new SearchFilter();
+        foreach (const ref chip; chips)
+        {
+            if (chip.text.length == 0)
+                continue;
+            if (chip.isRegex)
+                filter.addRegex(chip.text, chip.ignoreCase);
+            else
+                filter.addText(chip.text, chip.ignoreCase);
+        }
+        return filter._rules.length ? filter : null;
     }
 
     //! @brief Adds a rule matching payloads that contain `text`.
@@ -174,6 +215,55 @@ unittest
 
     assertThrown!RegexException(SearchFilter.fromQuery("(unclosed", true, false));
     assert(SearchFilter.fromQuery("(unclosed", false, false) !is null, "fine as plain text");
+}
+
+@("SearchFilter: a chip query matches a message if any chip does")
+unittest
+{
+    auto msg = messageWithPayload("Connection Timeout after 30s");
+    const chips = [SearchChip("refused"), SearchChip(`time\w+`, true, true), SearchChip("Conn")];
+    auto filter = SearchFilter.fromChips(chips);
+    assert(filter.matches(msg));
+    assert(filter.matchIndex(msg).get == 1, "the first chip that matches");
+
+    assert(!SearchFilter.fromChips([SearchChip("timeout"), SearchChip("^after", true)]).matches(msg),
+        "each chip keeps its own case and type");
+    assert(SearchFilter.fromChips([SearchChip("timeout", false, true)]).matches(msg));
+    assert(!SearchFilter.fromChips([SearchChip("Time.*")]).matches(msg), "a text chip is plain text");
+}
+
+@("SearchFilter: empty chips are skipped, no chips means no search")
+unittest
+{
+    auto msg = messageWithPayload("disk error");
+    assert(SearchFilter.fromChips(null) is null);
+    assert(SearchFilter.fromChips([SearchChip(""), SearchChip("", true)]) is null);
+
+    auto filter = SearchFilter.fromChips([SearchChip(""), SearchChip("error")]);
+    assert(filter.matchIndex(msg).get == 0, "the empty chip is not a rule");
+    assert(!SearchFilter.fromChips([SearchChip(""), SearchChip("warning")]).matches(msg),
+        "an empty chip doesn't match everything");
+    auto spaced = messageWithPayload("a b");
+    assert(SearchFilter.fromChips([SearchChip(" ")]).matches(spaced),
+        "a chip of spaces is not empty");
+}
+
+@("SearchFilter: an invalid regex chip is reported when the filter is built")
+unittest
+{
+    import std.exception : assertThrown;
+    import std.regex : RegexException;
+
+    assertThrown!RegexException(SearchFilter.fromChips([SearchChip("ok"), SearchChip("(unclosed", true)]));
+}
+
+@("checkRegex: the error of an invalid regex, nothing for a valid one")
+unittest
+{
+    assert(checkRegex(`time(out|d)\s+\d`, false) == "");
+    assert(checkRegex(`(?=.*a)(?!.*b)`, true) == "", "lookarounds express AND and NOT");
+    assert(checkRegex("(unclosed", false).length > 0);
+    assert(checkRegex("[a-", true).length > 0);
 }
 
 @("SearchFilter: dup keeps the rules")

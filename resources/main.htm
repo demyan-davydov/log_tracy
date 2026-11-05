@@ -7,6 +7,7 @@
     <style src="table.css" />
     <style src="tab-content.css" />
     <style src="menu-bar.css" />
+    <style src="search-editor.css" />
     <script type="module" src="script.js" />
     <script type="module" src="virtual-dlt-view.js" />
 </head>
@@ -127,6 +128,13 @@
                     <button id="btn-search">Search</button>
                 </div>
                 <div id="search-message"></div>
+                <!-- the chip search editor, tried side by side with the field above
+                     (docs/stories/advanced-search.md) -->
+                <div class="toolbar search-toolbar chip-search-toolbar">
+                    <div id="chip-search" class="chip-editor" tabindex="0"></div>
+                    <button id="btn-chip-search">Search</button>
+                </div>
+                <div id="chip-search-message"></div>
 
                 <header>Details / Search Results</header>
                 <div id="search-loading-container" class="status-view compact" style="display:none;">
