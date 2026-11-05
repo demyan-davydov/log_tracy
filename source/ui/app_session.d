@@ -1,0 +1,909 @@
+//! The application behind the window, free of Sciter: the open documents and
+//! their UI side, the settings, and what each call of the script does.
+//!
+//! The session never calls the script: what the script is to be told
+//! (a document opened or closed, a view changed) is queued and taken by the
+//! window from its idle loop (takeScriptCalls), so no script runs inside a
+//! call of the script. Likewise the settings are only marked changed; the
+//! window writes them from its next idle round (settingsDue()), with the
+//! state of the script (its getAppState()) merged in: the changes of one
+//! round make one write. Once the window closes (saveOnClose) the script is
+//! not called any more; what changes after that is written by finish().
+module ui.app_session;
+
+import domain.document;
+import domain.document_id;
+import domain.document_item : DocumentItem;
+import domain.log_document : LogDocument;
+import domain.workspace;
+import log_core.log_format : ColumnInfo, FormatChoice;
+import log_core.rule_filter : RuleId;
+import log_core.search_filter : MatchRange;
+import ui.app_settings;
+import ui.document_ui : DocumentUi;
+import ui.filter_commands : DocumentFilters;
+import ui.table_columns : TableColumns;
+import ui.main_view_fsm : toJson;
+import ui.search_view_fsm : toJson;
+
+import std.json : JSONValue;
+
+/// A call of a global function of the script: name(docId) or name(docId, json)
+struct ScriptCall
+{
+    string name;
+    int docId; // the first argument when hasDocId
+    string json; // the second argument; null: there is none
+    bool hasDocId = true;
+
+    /// A call without arguments
+    static ScriptCall withoutDocument(string name)
+    {
+        return ScriptCall(name, 0, null, false);
+    }
+}
+
+/// The result of opening a file: the id of its document, or why it can't be opened
+struct OpenResult
+{
+    DocumentId docId; // invalid on failure
+    string failureJson; // {"path" (as in the recent list), "error"}
+}
+
+/// Opens the file of a document in a format (unset: detected). Throws if it can't.
+alias DocumentFactory = Document delegate(string path, FormatChoice choice);
+
+/// Writes the settings (to their file)
+alias SettingsWriter = void delegate(in AppSettings settings);
+
+final class AppSession
+{
+    private AppSettings _settings;
+    private Workspace _workspace;
+    private DocumentUi[DocumentId] _documentUis;
+    private TableColumns _tableColumns; // the columns the tables show for each format
+    private DocumentFactory _open;
+    private SettingsWriter _write;
+    private ScriptCall[] _scriptCalls; // queued for the idle loop
+    private bool _settingsChanged; // since they were last written
+    private bool _closing; // the window closes: no more calls of the script
+
+    /// @param open - opens a document, a LogDocument if not given
+    /// @param write - writes the settings, to their file if not given
+    this(AppSettings settings, DocumentFactory open = null, SettingsWriter write = null)
+    {
+        _settings = settings;
+        _workspace = new Workspace();
+        _tableColumns = new TableColumns();
+        _open = open !is null ? open : (string path, FormatChoice choice) => cast(Document) new LogDocument(path, choice);
+        _write = write !is null ? write : (in AppSettings s) { ui.app_settings.saveSettings(s); };
+        subscribeToDocumentEvents();
+    }
+
+    // ── Script calls and settings, for the idle loop of the window ──────────
+
+    /// Delivers the events of the documents to their views, carries out what
+    /// the views asked for, and queues the views that changed
+    void dispatchEvents()
+    {
+        import std.stdio : writeln;
+
+        try
+            _workspace.dispatchEvents();
+        catch (Exception e)
+        {
+            for (Throwable t = e; t !is null; t = t.next)
+                writeln("Document event handler failed: ", t.msg);
+        }
+        applyDocumentCommands();
+    }
+
+    /// The calls of the script queued since the last time, in order: the
+    /// documents opened and closed, then the views that changed
+    ScriptCall[] takeScriptCalls()
+    {
+
+        foreach (docId, ui; _documentUis)
+        {
+            if (ui.mainViewChanged)
+            {
+                ui.mainViewChanged = false;
+                _scriptCalls ~= ScriptCall("onMainViewChanged", idOf(docId), toJson(ui.mainViewShown).toString());
+            }
+            if (ui.searchViewChanged)
+            {
+                ui.searchViewChanged = false;
+                _scriptCalls ~= ScriptCall("onSearchViewChanged", idOf(docId), toJson(ui.searchViewShown).toString());
+            }
+        }
+        auto calls = _scriptCalls;
+        _scriptCalls = null;
+        return calls;
+    }
+
+    /// Returns: true if the settings changed and are to be written now
+    bool settingsDue() const
+    {
+        return _settingsChanged && !_closing;
+    }
+
+    /// True once the window closes (saveOnClose): the script is not to be
+    /// called any more, its view is being torn down
+    bool closing() const
+    {
+        return _closing;
+    }
+
+    /// The event loop stopped: writes what changed since the settings were
+    /// last written (without the state of the script, it can't be asked any
+    /// more) and closes all documents
+    void finish()
+    {
+        if (_settingsChanged)
+            saveSettings("{}");
+        closeAll();
+    }
+
+    /// Writes the settings with `appStateJson` (the script's getAppState())
+    /// merged in. The open files are marked used now, in place: the time
+    /// survives a crash, the order of the list stays that of the files opened
+    /// and closed.
+    void saveSettings(const(char)[] appStateJson)
+    {
+        import std.stdio : writeln;
+
+        _settings.recentFiles = withFilesStamped(_settings.recentFiles, openPaths(), nowMs());
+        _settingsChanged = false;
+        try
+            _write(mergeAppStateFromScript(_settings, appStateJson));
+        catch (Exception e)
+            writeln("Failed to save settings: ", e.msg);
+    }
+
+    /// The window closes: the settings are written at once, the open files on
+    /// top of the files closed before (they were being worked with until now)
+    void saveOnClose(const(char)[] appStateJson)
+    {
+        _settings.recentFiles = withFilesUsed(_settings.recentFiles, openPaths(), nowMs());
+        saveSettings(appStateJson);
+        _closing = true;
+    }
+
+    /// The rows of the main view shown look different now (decoding): the
+    /// script reloads them
+    void reloadLogTable()
+    {
+        _scriptCalls ~= ScriptCall.withoutDocument("reloadLogTable");
+    }
+
+    /// Closes all documents, stopping their background operations
+    void closeAll()
+    {
+        _documentUis = null;
+        _workspace.closeAll();
+    }
+
+    // ── The documents ────────────────────────────────────────────────────────
+
+    /// The settings as they are now
+    ref const(AppSettings) settings() const return
+    {
+        return _settings;
+    }
+
+    /// Returns: the id of the open document `id`, invalid if there is none
+    DocumentId findDocument(int id)
+    {
+        foreach (item; _workspace.documents)
+            if (item.docId.toInt() == id)
+                return item.docId;
+        return DocumentId.init;
+    }
+
+    /// The document `docId`, the null document (no rows) if it isn't open
+    Document doc(DocumentId docId)
+    {
+        return _workspace.doc(docId);
+    }
+
+    /// Opens `path` in a new tab, or shows its tab if it is open already
+    OpenResult openFile(string path)
+    {
+        import std.stdio : writeln;
+
+        writeln("Opening file: ", path);
+        const existing = _workspace.findBySourcePath(path);
+        if (existing.isValid)
+        {
+            _workspace.setCurrent(existing);
+            rememberRecentFile(RecentFile(path, formatChoiceOf(_workspace.doc(existing)), nowMs()));
+            _scriptCalls ~= ScriptCall("onDocumentOpened", idOf(existing));
+            return OpenResult(existing);
+        }
+
+        try
+        {
+            // Opened the way it was last time: the format may have been chosen by hand
+            auto document = _open(path, savedFormat(_settings.recentFiles, path));
+            auto docId = _workspace.addDocument(document, path);
+            addDocumentUi(docId);
+            // The filters loaded for the file last time, before the list moves it
+            _documentUis[docId].filters.restore(savedFilters(_settings.recentFiles, path));
+            _workspace.setCurrent(docId);
+            rememberRecentFile(RecentFile(path, formatChoiceOf(document), nowMs()));
+            _scriptCalls ~= ScriptCall("onDocumentOpened", idOf(docId));
+            return OpenResult(docId);
+        }
+        catch (Exception e)
+        {
+            import std.json : JSONValue;
+
+            writeln("Error opening file: ", e.msg);
+            // Listed with the reason, to retry or see: a file of the list stays
+            // where it is, a new one goes on top
+            _settings.recentFiles = withFailedFile(_settings.recentFiles, path);
+            settingsChanged();
+            JSONValue failure = ["path": recentFilePath(path), "error": e.msg];
+            return OpenResult(DocumentId.init, failure.toString());
+        }
+    }
+
+    /// Reopens the file of a document whose source was lost, in the same tab.
+    /// Returns: an error message for the UI (e.g. the disk is still missing),
+    /// "" if the document was replaced by a freshly opened one
+    string retryDocument(int id)
+    {
+        import core.time : MonoTime;
+        import std.stdio : writeln;
+
+        const docId = findDocument(id);
+        if (!docId.isValid)
+            return "the document is not open";
+        const path = sourcePathOf(docId);
+        // reopened in the format it had, not detected again
+        const choice = formatChoiceOf(_workspace.doc(docId));
+        try
+        {
+            // Timings: both steps run on the UI thread and may block on a disk
+            // that has just been reconnected or removed
+            const openStart = MonoTime.currTime;
+            auto fresh = _open(path, choice);
+            const openTime = MonoTime.currTime - openStart;
+
+            const destroyStart = MonoTime.currTime;
+            // The filters the old document had, for the new one
+            auto oldUi = _documentUis.get(docId, null);
+            const filters = oldUi is null ? null : oldUi.filters.saved();
+            auto old = _workspace.replaceDocument(docId, fresh);
+            addDocumentUi(docId); // the new document starts with a new machine
+            _documentUis[docId].filters.restore(filters);
+            if (old !is null)
+                old.destroy();
+            const destroyTime = MonoTime.currTime - destroyStart;
+
+            writeln("Reopened document ", id, ": ", path, " (open: ", openTime,
+                ", destroy old: ", destroyTime, ")");
+            return "";
+        }
+        catch (Exception e)
+        {
+            writeln("Retry failed for ", path, ": ", e.msg);
+            return e.msg;
+        }
+    }
+
+    /// Closes the tab of the document; its file is marked used now
+    void closeTab(int id)
+    {
+        const docId = findDocument(id);
+        if (docId.isValid)
+            closeDocument(docId);
+    }
+
+    void switchTab(int id)
+    {
+        const docId = findDocument(id);
+        if (docId.isValid)
+            _workspace.setCurrent(docId);
+    }
+
+    void reorderTab(int id, int targetIndex)
+    {
+        const docId = findDocument(id);
+        if (docId.isValid)
+            _workspace.moveDocumentBefore(docId, targetIndex);
+    }
+
+    /// The open documents for the tabs: id, name, path, active, the views shown
+    string workspaceInfoJson()
+    {
+        import std.path : baseName;
+
+        JSONValue[] docs;
+        foreach (item; _workspace.documents)
+        {
+            auto ui = _documentUis.get(item.docId, null);
+            docs ~= JSONValue([
+                "id": JSONValue(item.docId.toInt()),
+                "name": JSONValue(item.sourcePath.baseName),
+                "path": JSONValue(item.sourcePath),
+                "active": JSONValue(item.docId == _workspace.currentId),
+                "mainView": ui is null ? JSONValue(null) : toJson(ui.mainViewShown),
+                "searchView": ui is null ? JSONValue(null) : toJson(ui.searchViewShown)
+            ]);
+        }
+        return JSONValue(docs).toString();
+    }
+
+    /// The recent files for the placeholder, the open ones marked
+    string recentFilesJson()
+    {
+        return ui.app_settings.recentFilesJson(_settings.recentFiles, openPaths());
+    }
+
+    // ── The views ────────────────────────────────────────────────────────────
+
+    /// The columns the tables of `document` show: those of its format as the
+    /// layout of the format arranges them
+    const(ColumnInfo)[] tableColumns(Document document)
+    {
+        return _tableColumns.of(document.columns, formatChoiceOf(document).id, _settings.columnLayouts);
+    }
+
+    /// The first filter rule with a color a row of the document matches
+    RuleId ruleOf(DocumentId docId, ref const(DocumentItem) item)
+    {
+        auto ui = _documentUis.get(docId, null);
+        return ui is null ? RuleId.init : ui.ruleOf(item.message);
+    }
+
+    /// What the chips of the search found in the payload of a search result
+    const(MatchRange)[] matchesOf(DocumentId docId, ref const(DocumentItem) item)
+    {
+        auto ui = _documentUis.get(docId, null);
+        return ui is null || ui.searchShown is null ? null : ui.searchShown.matchRanges(item.message());
+    }
+
+    /// Returns: true if the anchor changed; false while an operation is
+    /// running or at the anchor limit (nothing changes then)
+    bool setAnchor(DocumentId docId, int messageIndex, bool value)
+    {
+        return messageIndex >= 0 && _workspace.doc(docId).setAnchor(cast(size_t) messageIndex, value);
+    }
+
+    /// Cancel pressed in the main view of the document: its machine decides
+    /// what it means (closing a loading document happens in dispatchEvents)
+    void cancelMainView(DocumentId docId)
+    {
+        if (auto ui = _documentUis.get(docId, null))
+            ui.pressMainCancel();
+    }
+
+    void cancelSearchView(DocumentId docId)
+    {
+        if (auto ui = _documentUis.get(docId, null))
+            ui.pressSearchCancel();
+    }
+
+    // ── Search ───────────────────────────────────────────────────────────────
+
+    /// Starts the search for the chips in the document; no chips clear it.
+    /// Returns: an error message for the UI, "" if the search was started
+    string startChipSearch(DocumentId docId, string chipsJson)
+    {
+        import log_core.search_filter : SearchFilter;
+        import std.stdio : writeln;
+        import ui.search_chips : chipsFromJson;
+
+        writeln("startChipSearch request: ", chipsJson);
+        try
+        {
+            // An invalid regex throws here, before any background work starts
+            const chips = chipsFromJson(chipsJson);
+            auto filter = SearchFilter.fromChips(chips);
+            if (!docId.isValid)
+                return "the document is not open";
+            _workspace.doc(docId).applySearchFilter(filter); // null clears the search
+            if (auto ui = _documentUis.get(docId, null))
+                ui.searchShown = filter;
+            // the history of the file, remembered as its filters are (the
+            // latest query again changes nothing)
+            if (filter !is null)
+                if (auto path = sourcePathOf(docId))
+                {
+                    const searches = savedSearches(_settings.recentFiles, path);
+                    if (searches.length == 0 || searches[0] != chips)
+                    {
+                        _settings.recentFiles = withSearch(_settings.recentFiles, path, chips);
+                        settingsChanged();
+                    }
+                }
+            return "";
+        }
+        catch (Exception e)
+        {
+            writeln("Error starting search: ", e.msg);
+            return e.msg;
+        }
+    }
+
+    /// The queries searched in the file of the document, the latest first: [[chips]]
+    string searchHistoryJson(DocumentId docId)
+    {
+        import ui.search_chips : chipsToJson;
+
+        JSONValue[] queries;
+        if (auto path = sourcePathOf(docId))
+            foreach (query; savedSearches(_settings.recentFiles, path))
+                queries ~= chipsToJson(query);
+        return JSONValue(queries).toString();
+    }
+
+    // ── Filters ──────────────────────────────────────────────────────────────
+
+    /// The filter sets of the document, null if it isn't open
+    DocumentFilters filters(DocumentId docId)
+    {
+        auto ui = _documentUis.get(docId, null);
+        return ui is null ? null : ui.filters;
+    }
+
+    /// Runs a command on the filter sets of the document; the sets are kept
+    /// in the settings of its file when it succeeds (they are copies, see
+    /// DocumentFilters). Returns: a message for the user (an error, what was
+    /// lost), "" if none
+    string filterCommand(DocumentId docId, scope string delegate(DocumentFilters) command)
+    {
+        auto filters = filters(docId);
+        if (filters is null)
+            return "";
+        const error = command(filters);
+        if (error.length == 0)
+        {
+            if (auto path = sourcePathOf(docId))
+                _settings.recentFiles = withFilters(_settings.recentFiles, path, filters.saved());
+            settingsChanged();
+        }
+        return error;
+    }
+
+    // ── Columns ──────────────────────────────────────────────────────────────
+
+    /// The Columns section of the Settings dialog, the format of the active document first
+    string columnSettingsJson()
+    {
+        return ui.app_settings.columnSettingsJson(_settings.columnLayouts, formatChoiceOf(_workspace.current).id);
+    }
+
+    /// Saved by the Settings dialog: {format id: [{"id", "visible"}]}
+    void setColumnLayouts(string json)
+    {
+        _settings.columnLayouts = withColumnLayouts(_settings.columnLayouts, json);
+        _tableColumns.reset(); // arranged again
+        settingsChanged();
+    }
+
+    // ── Inside ───────────────────────────────────────────────────────────────
+
+    /// Feeds document events to the machines of the documents
+    private void subscribeToDocumentEvents()
+    {
+        import std.stdio : writeln;
+
+        auto events = _workspace.events;
+        events.subscribe((const DocumentEvent!OperationStarted e) {
+            writeln("Operation ", e.event.operation, " started, doc ", e.docId.toInt());
+            processDocumentEvent(e.docId, e.event);
+        });
+        events.subscribe((const DocumentEvent!OperationProgress e) {
+            processDocumentEvent(e.docId, e.event);
+        });
+        events.subscribe((const DocumentEvent!SourceLost e) {
+            writeln("Source lost, doc ", e.docId.toInt(), ": ", _workspace.displayName(e.docId));
+            processDocumentEvent(e.docId, e.event);
+        });
+        events.subscribe((const DocumentEvent!OperationFinished e) {
+            writeln("Operation ", e.event.operation, " ", e.event.result, ", doc ", e.docId.toInt(),
+                e.event.error.length ? ": " ~ e.event.error : "");
+            processDocumentEvent(e.docId, e.event);
+        });
+    }
+
+    private void processDocumentEvent(E)(DocumentId docId, in E e)
+    {
+        if (auto ui = _documentUis.get(docId, null))
+            ui.process(e);
+    }
+
+    /// Carries out what the machines asked for. Not called from their handlers:
+    /// a document must not be destroyed while its events are being dispatched.
+    private void applyDocumentCommands()
+    {
+        import std.stdio : writeln;
+
+        DocumentId[] toClose;
+        foreach (docId, ui; _documentUis)
+            if (ui.closeRequested)
+                toClose ~= docId;
+
+        foreach (docId; toClose)
+        {
+            writeln("Closing document ", docId.toInt(), " on request of its view");
+            closeDocument(docId);
+            _scriptCalls ~= ScriptCall("onDocumentClosed", idOf(docId));
+        }
+    }
+
+    private void addDocumentUi(DocumentId docId)
+    {
+        _documentUis[docId] = new DocumentUi(_workspace, docId);
+        // its machines start showing at once: their first views are queued
+    }
+
+    /// Closes the document; its file is marked used now in the recent list
+    private void closeDocument(DocumentId docId)
+    {
+        const path = sourcePathOf(docId);
+        _documentUis.remove(docId);
+        auto doc = _workspace.removeDocument(docId);
+        if (doc !is null)
+            doc.destroy();
+        if (path.length)
+        {
+            _settings.recentFiles = withFilesUsed(_settings.recentFiles, [path], nowMs());
+            settingsChanged();
+        }
+    }
+
+    /// Puts the file opened (or tried) on top of the recent list
+    private void rememberRecentFile(RecentFile file)
+    {
+        _settings.recentFiles = withRecentFile(_settings.recentFiles, file);
+        settingsChanged();
+    }
+
+    private void settingsChanged()
+    {
+        _settingsChanged = true;
+    }
+
+    /// Files of the open documents, in the order of the tabs
+    private const(string)[] openPaths()
+    {
+        string[] paths;
+        foreach (item; _workspace.documents)
+            paths ~= item.sourcePath;
+        return paths;
+    }
+
+    /// Returns: the path of the document, null if it isn't open
+    private string sourcePathOf(DocumentId docId)
+    {
+        foreach (item; _workspace.documents)
+            if (item.docId == docId)
+                return item.sourcePath;
+        return null;
+    }
+
+    /// The format a document was opened with; unset for a document without one
+    private static FormatChoice formatChoiceOf(const Document document)
+    {
+        auto log = cast(const LogDocument) document;
+        return log is null ? FormatChoice.init : log.formatChoice;
+    }
+
+    private static int idOf(DocumentId docId)
+    {
+        return cast(int) docId.toInt();
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Tests
+// ═══════════════════════════════════════════════════════════════════════════
+
+version (unittest)
+{
+    import log_core.log_filter : LogFilter;
+    import log_core.log_format : LogFormat;
+    import formats.plain_text : PlainTextFormat;
+    import utils.event_bus.event_bus_async : EventBusAsync;
+    import utils.event_bus.event_bus_interface : SignalConsumer;
+    import core.time : msecs;
+    import std.algorithm : canFind;
+    import std.json : parseJSON;
+
+    private final class FakeView : DocumentView
+    {
+        size_t itemsCount() nothrow @nogc { return 0; }
+        bool fetchItem(size_t index, scope ref DocumentItem item) { return false; }
+        bool positionOf(size_t realIndex, out size_t position) { return false; }
+        State state() { return State.Ready; }
+        float progress() { return 1; }
+        Document.Operation operation() { return Document.Operation.None; }
+        void enableFilter(bool enable) {}
+        bool isFilterEnabled() const { return false; }
+        void applyFilter(LogFilter!wchar filter) {}
+        void resetFilter() {}
+    }
+
+    /// A document whose events the test publishes; it records the searches asked
+    private final class FakeDocument : Document
+    {
+        EventBusAsync bus;
+        FakeView view;
+        LogFilter!wchar[] searches;
+        bool cancelAsked;
+        PlainTextFormat plainText; // filters need the columns of a format
+        this() { bus = new EventBusAsync(); view = new FakeView(); plainText = new PlainTextFormat(); }
+
+        SignalConsumer events() { return bus; }
+        void dispatchEvents() { bus.dispatch(); }
+        DocumentView mainView() { return view; }
+        DocumentView searchView() { return view; }
+        const(LogFormat) format() { return plainText; }
+        void applyViewFilter(LogFilter!wchar filter) {}
+        void applySearchFilter(LogFilter!wchar filter) { searches ~= filter; }
+        bool setAnchor(size_t index, bool value) { return true; }
+        size_t[] exportAnchors() const pure { return null; }
+        void importAnchors(const(size_t[]) anchors) {}
+        bool requestCancel() { cancelAsked = true; return true; }
+        bool sourceLost() { return false; }
+    }
+
+    /// A session over fake documents: a path with "missing" in it can't be opened
+    private struct Fixture
+    {
+        // What the delegates of the session record: a class, so copies of
+        // the fixture share it
+        private static final class Records
+        {
+            FakeDocument[string] opened; // by path
+            AppSettings[] written;
+        }
+
+        AppSession session;
+        Records records;
+
+        static Fixture make(AppSettings settings = AppSettings.init)
+        {
+            Fixture f;
+            auto records = new Records();
+            f.records = records;
+            f.session = new AppSession(settings, (string path, FormatChoice choice) {
+                if (path.canFind("missing"))
+                    throw new Exception("no such file");
+                auto doc = new FakeDocument();
+                records.opened[path] = doc;
+                return cast(Document) doc;
+            }, (in AppSettings s) { records.written ~= AppSettings(s); });
+            return f;
+        }
+
+        FakeDocument docOf(string path) { return records.opened[path]; }
+        AppSettings[] writes() { return records.written; }
+    }
+
+    private string[] paths(const RecentFile[] list)
+    {
+        string[] result;
+        foreach (ref file; list)
+            result ~= file.path;
+        return result;
+    }
+
+    private string[] namesOf(const ScriptCall[] calls)
+    {
+        string[] names;
+        foreach (c; calls)
+            names ~= c.name;
+        return names;
+    }
+}
+
+@("AppSession: a file opened gets a document; the script is told later, not during the call")
+unittest
+{
+    auto f = Fixture.make();
+    const result = f.session.openFile("/logs/a.log");
+    assert(result.docId.isValid && result.failureJson is null);
+    assert(f.session.doc(result.docId) is f.docOf("/logs/a.log"));
+    assert(f.session.settings.recentFiles.paths == ["/logs/a.log"]);
+
+    const calls = f.session.takeScriptCalls();
+    assert(calls.length >= 1 && calls[0] == ScriptCall("onDocumentOpened", cast(int) result.docId.toInt()));
+    assert(f.session.takeScriptCalls().length == 0, "taken once");
+}
+
+@("AppSession: a file that can't be opened is listed with the reason, the script is told nothing")
+unittest
+{
+    auto f = Fixture.make();
+    const result = f.session.openFile("/logs/missing.log");
+    assert(!result.docId.isValid);
+    const failure = parseJSON(result.failureJson);
+    assert(failure["path"].str == "/logs/missing.log");
+    assert(failure["error"].str == "no such file");
+    assert(f.session.settings.recentFiles.paths == ["/logs/missing.log"]);
+    assert(!namesOf(f.session.takeScriptCalls()).canFind("onDocumentOpened"));
+}
+
+@("AppSession: a file open already shows its tab instead of a second document")
+unittest
+{
+    auto f = Fixture.make();
+    const first = f.session.openFile("/logs/a.log").docId;
+    f.session.openFile("/logs/b.log");
+    f.session.takeScriptCalls();
+
+    assert(f.session.openFile("/logs/a.log").docId == first);
+    assert(parseJSON(f.session.workspaceInfoJson()).array.length == 2);
+    assert(f.session.takeScriptCalls()[0] == ScriptCall("onDocumentOpened", cast(int) first.toInt()));
+}
+
+@("AppSession: the views of a new document reach the script after it is told of the document")
+unittest
+{
+    auto f = Fixture.make();
+    const id = f.session.openFile("/logs/a.log").docId;
+    f.session.dispatchEvents();
+    const calls = f.session.takeScriptCalls();
+    assert(namesOf(calls) == ["onDocumentOpened", "onMainViewChanged", "onSearchViewChanged"]);
+    assert(parseJSON(calls[1].json)["status"].str == "loadingFile");
+    assert(calls[1].docId == id.toInt());
+}
+
+@("AppSession: Cancel while a file loads closes its document from the idle loop")
+unittest
+{
+    auto f = Fixture.make();
+    const id = f.session.openFile("/logs/a.log").docId;
+    f.session.takeScriptCalls();
+
+    f.session.cancelMainView(id);
+    assert(f.session.findDocument(cast(int) id.toInt()).isValid, "not closed during the call");
+    f.session.dispatchEvents();
+    assert(!f.session.findDocument(cast(int) id.toInt()).isValid);
+    assert(f.session.takeScriptCalls() == [ScriptCall("onDocumentClosed", cast(int) id.toInt())]);
+}
+
+@("AppSession: a tab closed by the user goes away at once, its file marked used")
+unittest
+{
+    auto f = Fixture.make();
+    const id = f.session.openFile("/logs/a.log").docId;
+    f.session.openFile("/logs/b.log");
+    assert(paths(f.session.settings.recentFiles) == ["/logs/b.log", "/logs/a.log"]);
+
+    f.session.closeTab(cast(int) id.toInt());
+    assert(!f.session.findDocument(cast(int) id.toInt()).isValid);
+    assert(paths(f.session.settings.recentFiles) == ["/logs/a.log", "/logs/b.log"], "used now: on top");
+    assert(f.session.takeScriptCalls().length, "the views of b are still told");
+}
+
+@("AppSession: the settings are written from the idle loop, once for the changes before it")
+unittest
+{
+    auto f = Fixture.make();
+    assert(!f.session.settingsDue, "nothing changed");
+
+    f.session.openFile("/logs/a.log");
+    f.session.openFile("/logs/b.log");
+    assert(f.writes.length == 0, "not written during the calls");
+    assert(f.session.settingsDue);
+    f.session.saveSettings(`{"theme": "dark"}`);
+    assert(f.writes.length == 1, "both changes in one write");
+    assert(f.writes[0].theme == "dark", "the state of the script is merged in");
+    assert(paths(f.writes[0].recentFiles) == ["/logs/b.log", "/logs/a.log"]);
+    assert(!f.session.settingsDue, "written: nothing changed since");
+}
+
+@("AppSession: on close the settings are written at once, the open files on top")
+unittest
+{
+    auto f = Fixture.make();
+    f.session.openFile("/logs/a.log");
+    const closed = f.session.openFile("/logs/c.log").docId;
+    f.session.closeTab(cast(int) closed.toInt());
+    assert(paths(f.session.settings.recentFiles) == ["/logs/c.log", "/logs/a.log"]);
+
+    f.session.saveOnClose(`{"tableFontSize": 120}`);
+    assert(f.writes.length == 1 && f.writes[0].tableFontSize == 120);
+    assert(paths(f.writes[0].recentFiles) == ["/logs/a.log", "/logs/c.log"],
+        "the open files were used until now");
+}
+
+@("AppSession: once the window closes the script is no longer asked; the rest is written on exit")
+unittest
+{
+    auto f = Fixture.make();
+    const id = f.session.openFile("/logs/a.log").docId;
+    f.session.saveOnClose(`{}`);
+    assert(f.session.closing);
+
+    f.session.cancelMainView(id); // the loading document closes itself
+    f.session.dispatchEvents();
+    assert(!f.session.settingsDue, "no getAppState() of a closing window");
+
+    f.session.finish();
+    assert(f.writes.length == 2, "written without the state of the script");
+    assert(f.session.findDocument(cast(int) id.toInt()) == DocumentId.init);
+}
+
+@("AppSession: a call of the script without a document has no id")
+unittest
+{
+    auto f = Fixture.make();
+    f.session.reloadLogTable();
+    const call = f.session.takeScriptCalls()[0];
+    assert(call.name == "reloadLogTable" && !call.hasDocId);
+}
+
+@("AppSession: a search is started in the document and kept in the history of its file")
+unittest
+{
+    auto f = Fixture.make();
+    const id = f.session.openFile("/logs/a.log").docId;
+    const chips = `[{"text": "error", "isRegex": false, "ignoreCase": true}]`;
+    assert(f.session.startChipSearch(id, chips) == "");
+    assert(f.docOf("/logs/a.log").searches.length == 1);
+    assert(parseJSON(f.session.searchHistoryJson(id)).array.length == 1);
+
+    assert(f.session.startChipSearch(id, `[{"text": "(", "isRegex": true, "ignoreCase": false}]`).length,
+        "an invalid regex is an error");
+    assert(f.docOf("/logs/a.log").searches.length == 1, "and searches nothing");
+}
+
+@("AppSession: a filter command that succeeds is kept in the settings of the file")
+unittest
+{
+    auto f = Fixture.make();
+    const id = f.session.openFile("/logs/a.log").docId;
+    assert(f.session.filterCommand(id, (DocumentFilters filters) => filters.newSet()) == "");
+    assert(savedFilters(f.session.settings.recentFiles, "/logs/a.log").length == 1);
+}
+
+@("AppSession: a file opened again gets the filters it had")
+unittest
+{
+    auto f = Fixture.make();
+    auto id = f.session.openFile("/logs/a.log").docId;
+    f.session.filterCommand(id, (DocumentFilters filters) => filters.newSet());
+    f.session.closeTab(cast(int) id.toInt());
+
+    id = f.session.openFile("/logs/a.log").docId;
+    assert(f.session.filters(id).saved().length == 1);
+}
+
+@("AppSession: a real file opens in a LogDocument and its main view gets ready")
+unittest
+{
+    import core.thread : Thread;
+    import std.file : remove, tempDir, write;
+    import std.path : buildPath;
+
+    const path = buildPath(tempDir(), "dlt_explorer_session_test.log");
+    write(path, "first line\nsecond line\n");
+    scope (exit) remove(path);
+
+    AppSettings[] written;
+    auto session = new AppSession(AppSettings.init, null, (in AppSettings s) { written ~= AppSettings(s); });
+    scope (exit) session.closeAll();
+    const id = session.openFile(path).docId;
+    assert(id.isValid);
+
+    string status;
+    foreach (attempt; 0 .. 500)
+    {
+        session.dispatchEvents();
+        foreach (call; session.takeScriptCalls())
+            if (call.name == "onMainViewChanged")
+                status = parseJSON(call.json)["status"].str;
+        if (status == "ready")
+            break;
+        Thread.sleep(10.msecs);
+    }
+    assert(status == "ready", status);
+    assert(session.doc(id).mainView.itemsCount == 2);
+    assert(session.settings.recentFiles[0].format.id.length, "the format detected is remembered");
+}

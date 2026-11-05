@@ -49,16 +49,22 @@ ByteSource (log_core/byte_source)          bytes of a log, addressed by offset (
 LogIndex (domain/log_index)                offset/filter/search indexes, built on a background thread
 LogDocument (domain/log_document)          a log + its main view and search view, operation events
 Workspace (domain/workspace)               open documents, the current one
-MainWindow (ui/main_window)                Sciter window: xcall bridge to the script
+AppSession (ui/app_session)                what the calls of the script do: files, tabs, views,
+                                           search, filters, settings (Sciter-free, tested)
+MainWindow (ui/main_window)                Sciter window: xcall bridge to the session, table rows
 resources/script.js, document-pane.js     tabs; a panel per document (filters, tables, search)
 resources/virtual-dlt-view.js              virtual table built from the column schema
 ```
 
-The script asks the backend through `Window.this.xcall(name, ...)` (handled in
-`MainWindow.handleEvent`); the backend tells the script what changed by `callScript` of a global
-function (`onMainViewChanged(docId, json)`, `onSearchViewChanged`, `onDocumentOpened`, ...). Those
-are sent from `onIdle()` (`flushViews`), after the document events of the indexing thread were
-dispatched on the UI thread, never from inside an `xcall`.
+The script asks the backend through `Window.this.xcall(name, ...)` (read in
+`MainWindow.handleEvent`, done by `AppSession`); the backend tells the script what changed by
+`callScript` of a global function (`onMainViewChanged(docId, json)`, `onSearchViewChanged`,
+`onDocumentOpened`, ...). The session only queues those calls; `MainWindow.onIdle()` sends them
+(`takeScriptCalls`) after the document events of the indexing thread were dispatched on the UI
+thread, never from inside an `xcall`. The settings are likewise only marked changed: the next
+`onIdle()` writes them (`settingsDue`), with the script's `getAppState()` merged in.
+`saveAppState` on closing writes them at once; from then on the script is not called any more
+(its view is being torn down), and what changes after that is written on exit (`finish`).
 
 ### Where things live
 A package imports only the packages to its left (unittests may import more, e.g. a format to build
@@ -191,8 +197,9 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
   - What a table does on a change of its view is the Sciter-free `resources/pane-state.js`.
 - The view status shown to the user comes from the state machines `ui/main_view_fsm` and
   `ui/search_view_fsm` (on `utils/fsm`). They are kept free of Sciter so they can be unit-tested.
-- UI command logic that needs testing goes into Sciter-free modules (e.g. `ui/filter_commands`),
-  not into `MainWindow`.
+- UI command logic that needs testing goes into Sciter-free modules (`ui/app_session`,
+  `ui/filter_commands`), not into `MainWindow`: a new xcall is a method of the session, the
+  window only reads its parameters and answers.
 
 ## Conventions
 
