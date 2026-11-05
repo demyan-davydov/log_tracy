@@ -97,7 +97,8 @@ utils  ←  sciter  ←  ui
   the UI thread and the indexing thread call it concurrently.
 
 ### Adding a text format
-Derive from `TextFormat` and implement `decodeText`, `columns` and `name`. Implement
+Derive from `TextFormat` and implement `decodeText`, `columns` and `name` (a line it can't
+parse goes to the payload as it is: `decodeAsPlainText`). Implement
 `isRecordStart` too if continuation lines are glued to their record. Add a `FormatDetector` and
 register it in `formats/registry`. Declare the format's `FormatInfo` (stable `id`, `name`, a
 three-letter `shortName` for the badge of a recent file) and return it from the detector's `info`. Parsing helpers (numbers, times, dates) live in
@@ -113,6 +114,8 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
 - Pass a `LogMessage` by `ref`, never `out`: `out` resets it to `.init` without its destructor
   and leaks the buffer on every decode.
 - DLT fields are read through UFCS accessors in `formats/dlt/fields` (`msg.ecuId`, `msg.appId`, ...).
+- DLT records for unittests are built by `formats/dlt/testing_utils` (`BuildV1`, `BuildV2`,
+  `buildDltMessage`), also for the tests of other packages.
 - Filters implement `LogFilter!wchar` (`log_core/log_filter`).
 - The filters of the main view are rules, as in dlt-viewer, the same for every format
   (`log_core/rule_filter`):
@@ -157,8 +160,8 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
   - Index (not a format column) stays first and Payload last; the others can be moved and
     hidden. A layout is one per format id, for all its variants: `formats/registry.formatColumns`
     gives the columns of all of them.
-  - Dragging to reorder (tabs, columns in Settings) shares the Sciter-free
-    `resources/drag-order.js`.
+  - Dragging to reorder (tabs, columns in Settings) shares `resources/drag-strip.js` (the
+    elements: shifts, classes, marker) over the Sciter-free `resources/drag-order.js` (the math).
 - A row is: anchored, rule id, view index, message index, level, then one cell per column
   (`rowLayout` in `resources/cell-format.js`). A row of the search results (`getSearchViewItem`
   only) has one more cell after the columns: what the chips of the search found in the payload,

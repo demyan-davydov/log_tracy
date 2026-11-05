@@ -383,7 +383,7 @@ class LogDocument : Document
 
 version (unittest)
 {
-    import formats.dlt.format : buildDltMessage;
+    import formats.dlt.testing_utils : buildDltMessage;
     import formats.dlt.fields : ecuId;
 
     private string writeTestDlt(string name, size_t messageCount, const(char)[4] ecuId = "ECU1")
@@ -1117,7 +1117,7 @@ version (Posix)
 @("LogDocument: messages after garbage are indexed at their own offset")
 unittest
 {
-    import formats.dlt.format : buildDltMessage;
+    import formats.dlt.testing_utils : buildDltMessage;
     import std.file : remove, tempDir, write;
     import std.path : buildPath;
 

@@ -40,6 +40,16 @@ abstract class TextFormat : LogFormat
     //! @brief Decodes the text of a record: its lines without the last line break
     protected abstract bool decodeText(ref LogMessage!wchar msg, const(char)[] text) const nothrow @nogc;
 
+    //! @brief Puts the whole text into the payload of a record begun: how a
+    //! format shows a record it can't parse, and plain text all of them
+    //! @returns true: the record is decoded
+    protected static bool decodeAsPlainText(ref LogMessage!wchar msg, const(char)[] text) nothrow @nogc
+    {
+        auto builder = msg.payloadBuilder();
+        builder.appendUtf8(text);
+        return true;
+    }
+
     override ScanResult scanRecords(const(ubyte)[] data, size_t from, size_t[] offsets, bool final_) const nothrow @nogc
     {
         size_t pos = from == 0 ? bomLength(data) : from;
@@ -237,9 +247,7 @@ version (unittest)
         override bool decodeText(ref LogMessage!wchar msg, const(char)[] text) const nothrow @nogc
         {
             msg.beginRecord();
-            auto builder = msg.payloadBuilder();
-            builder.appendUtf8(text);
-            return true;
+            return decodeAsPlainText(msg, text);
         }
     }
 

@@ -128,7 +128,8 @@ private const(FormatDetector)[] detectors()
 @("detectFormat: a DLT file is detected as DLT")
 unittest
 {
-    import formats.dlt.format : DltFormat, buildDltMessage;
+    import formats.dlt.format : DltFormat;
+    import formats.dlt.testing_utils : buildDltMessage;
 
     auto format = detectFormat("x.dlt", buildDltMessage());
     assert(cast(DltFormat) format !is null);

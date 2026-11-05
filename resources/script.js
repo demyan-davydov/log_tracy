@@ -8,7 +8,7 @@ import {
 import { lastUsedText } from "recent-time.js";
 import { DocumentPane } from "document-pane.js";
 import { paneChanges } from "pane-state.js";
-import { clampShift, dragTarget, settleShift } from "drag-order.js";
+import { setShift, pressItem, dragTo, drop, showDropMarker } from "drag-strip.js";
 
 // The table whose context menu is open: "Copy Row" copies its selected rows
 let contextList = null;
@@ -512,21 +512,12 @@ function closeTab(docId) {
     refreshTabs();
 }
 
-// Chrome-like dragging of a tab: the tab follows the mouse along the strip,
-// the tabs it passes slide aside to free its new place, a marker shows where
-// it will land; on drop it slides into that place and the workspace order is
-// updated. No tooltips while a tab is held: they would cover the strip
+// Chrome-like dragging of a tab (drag-strip.js): on drop the workspace order
+// is updated. No tooltips while a tab is held: they would cover the strip
 // (see TabTooltip).
-// tabDrag: { tab, tabs, rects, spans, from, to, startX, dx, sep,
-//            markerOrigin, active, settling, refreshPending }, null when no
-//            tab is held.
-const TAB_DRAG_THRESHOLD = 4; // px of mouse movement before a press becomes a drag
-const TAB_SETTLE_MS = 160;    // a bit longer than the .settling transition
+// tabDrag: the drag of drag-strip.js with { tab, sep, refreshPending }, null
+//          when no tab is held.
 let tabDrag = null;
-
-function setTabShift(tab, dx) {
-    tab.style.transform = dx ? `translate(${dx}px, 0)` : "";
-}
 
 // Tooltip of the tab strip: the full name Sciter shows by itself for a name
 // cut by text-overflow (tabs have no title). style.css gives it this
@@ -553,28 +544,17 @@ function closeTabTooltips() {
 }
 
 // The marker is on the edge of the place the tab will land on, between it and
-// the tab it was moved past; hidden while the tab would stay where it was.
-// It takes exactly the rectangle of a separator on that edge (d.sep), so it
-// covers the separator there; its origin is calibrated on the first show.
+// the tab it was moved past. It takes exactly the rectangle of a separator on
+// that edge (d.sep), so it covers the separator there.
 function showTabDropMarker(d) {
     const marker = $("#tab-drop-marker");
-    if (!marker) return;
-    if (d.to === d.from) {
-        marker.style.display = "none";
-        return;
-    }
-    marker.style.display = "block";
-    if (!d.markerOrigin) {
-        marker.style.left = "0px";
-        marker.style.top = "0px";
-        const r = marker.getBoundingClientRect();
-        d.markerOrigin = { left: r.left, top: r.top };
-    }
-    const edge = d.to > d.from ? d.rects[d.to].right : d.rects[d.to].left;
-    marker.style.left = `${edge + d.sep.offset - d.markerOrigin.left}px`;
-    marker.style.top = `${d.sep.top - d.markerOrigin.top}px`;
-    marker.style.width = `${d.sep.width}px`;
-    marker.style.height = `${d.sep.height}px`;
+    showDropMarker(marker, d, origin => {
+        const edge = d.to > d.from ? d.rects[d.to].right : d.rects[d.to].left;
+        marker.style.left = `${edge + d.sep.offset - origin.left}px`;
+        marker.style.top = `${d.sep.top - origin.top}px`;
+        marker.style.width = `${d.sep.width}px`;
+        marker.style.height = `${d.sep.height}px`;
+    });
 }
 
 // Rectangle of a separator relative to the left edge of its tab
@@ -585,53 +565,29 @@ function measureTabSeparator(tab, tabRect) {
 
 function beginTabDrag(tab, clientX) {
     const tabs = [...$$(DOC_TABS)];
-    const rects = tabs.map(t => t.getBoundingClientRect());
     const from = tabs.indexOf(tab);
     if (from < 0) return;
-    tabDrag = {
-        tab, tabs, rects, from, to: from,
-        spans: rects.map(r => ({ start: r.left, end: r.right })), // see drag-order.js
-        startX: clientX, dx: 0,
-        sep: measureTabSeparator(tabs[0], rects[0]), markerOrigin: null,
-        active: false, settling: false, refreshPending: false
-    };
+    tabDrag = pressItem(tabs, from, clientX);
+    tabDrag.tab = tab;
+    tabDrag.sep = measureTabSeparator(tabs[0], tabDrag.rects[0]);
+    tabDrag.refreshPending = false;
     closeTabTooltips();
 }
 
 function moveTabDrag(clientX) {
-    const d = tabDrag;
-    if (d.settling) return;
-    const dx = clientX - d.startX;
-    if (!d.active) {
-        if (Math.abs(dx) < TAB_DRAG_THRESHOLD) return;
-        d.active = true;
+    const landed = dragTo(tabDrag, clientX, () => {
         closeTabTooltips();
-        d.tab.classList.add("dragging");
-        for (const t of d.tabs) if (t !== d.tab) t.classList.add("shifting");
         $("#tabs-container").append(<div id="tab-drop-marker"></div>);
-    }
-    d.dx = clampShift(d.spans, d.from, dx); // the tab stays within the strip
-    setTabShift(d.tab, d.dx);
-
-    // The tab takes the place of every tab whose middle its leading edge has passed
-    const { to, shifts } = dragTarget(d.spans, d.from, d.dx);
-    d.tabs.forEach((t, i) => { if (i !== d.from) setTabShift(t, shifts[i]); });
-    d.to = to;
-    showTabDropMarker(d);
+    });
+    if (landed) showTabDropMarker(tabDrag);
 }
 
 function endTabDrag() {
     const d = tabDrag;
     if (d.settling) return;
-    if (!d.active) { // a plain click
-        finishTabDrag(false);
-        return;
-    }
     // Slide into the free place, then commit the new order
-    d.settling = true;
-    d.tab.classList.add("settling");
-    setTabShift(d.tab, settleShift(d.spans, d.from, d.to));
-    setTimeout(() => finishTabDrag(d.to !== d.from), TAB_SETTLE_MS);
+    if (!drop(d, () => finishTabDrag(d.to !== d.from)))
+        finishTabDrag(false); // a plain click
 }
 
 function finishTabDrag(moved) {
@@ -645,9 +601,9 @@ function finishTabDrag(moved) {
         refreshTabs(); // renders the tabs in the new order, without shifts
         return;
     }
-    for (const t of d.tabs) {
+    for (const t of d.items) {
         for (const cls of ["dragging", "shifting", "settling"]) t.classList.remove(cls);
-        setTabShift(t, 0);
+        setShift(t, 0);
     }
     if (d.refreshPending) refreshTabs();
 }

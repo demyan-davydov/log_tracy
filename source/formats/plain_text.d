@@ -33,9 +33,7 @@ final class PlainTextFormat : TextFormat
     protected override bool decodeText(ref LogMessage!wchar msg, const(char)[] text) const nothrow @nogc
     {
         msg.beginRecord();
-        auto builder = msg.payloadBuilder();
-        builder.appendUtf8(text);
-        return true;
+        return decodeAsPlainText(msg, text);
     }
 }
 

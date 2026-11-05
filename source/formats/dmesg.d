@@ -110,11 +110,7 @@ final class DmesgFormat : TextFormat
 
         DmesgLine line;
         if (!parseLine(_variant, text, line))
-        {
-            auto builder = msg.payloadBuilder();
-            builder.appendUtf8(text);
-            return true;
-        }
+            return decodeAsPlainText(msg, text);
 
         msg.timeNs = line.timeNs;
         msg.timeKind = line.timeKind;
