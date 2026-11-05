@@ -259,9 +259,11 @@ function restoreLanguage() {
 function setLanguage(setting) {
     const { language, country } = platform.systemLanguage();
     const locale = requestedLocale(setting, language, country);
-    currentCatalog = locale === pseudoLocale ? { locale, messages: {} } : backend.translation(locale);
+    const catalog = backend.useLanguage(locale); // the menu of the backend too
+    currentCatalog = locale === pseudoLocale ? { locale, messages: {} } : catalog;
     currentLanguage = setting;
     setCatalog(currentCatalog);
+    if (menuSetUp) setupMenuBar(); // shown already: in the new language
     console.log("Language set to:", setting || "system", "->", currentCatalog?.locale ?? "en");
 }
 
@@ -359,9 +361,11 @@ function setupEvents() {
 // shown in hints, and on Windows and Linux it is drawn as the menu bar (macOS:
 // the native menu)
 let windowMenu = { menuBar: false, menus: [] };
+let menuSetUp = false; // by setupMenuBar: set up again when the language changes
 
 function setupMenuBar() {
     windowMenu = backend.menu();
+    menuSetUp = true;
     if (windowMenu.menuBar) showMenuBar($("#main-menu"), windowMenu.menus, id => onMenuCommand(id));
 }
 

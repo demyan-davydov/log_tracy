@@ -230,6 +230,9 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
   literal: `scripts/i18n-extract.mjs` finds the texts by it and brings the catalogs
   (`resources/i18n/translations/<BCP 47 tag>.json`) up to them; `tests/js` fail when a catalog
   is out of date. The story and the decisions: `docs/stories/i18n.md`.
+- The backend translates its own texts (the menu) by the catalog the script chose
+  (`backend.useLanguage`, `ui/translations.Catalog`): `appMenu(platform, tr)` writes its labels
+  as `tr("&File")` with `tr` a parameter, so the extractor finds them.
 - Not translated: the contents of logs, the column titles of formats, levels, the texts of
   shortcuts.
 

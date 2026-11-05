@@ -43,7 +43,7 @@ export function pseudoize(text) {
     const body = text.replace(/\{\w+\}|&.?|./gsu, (part) => {
         if (part.startsWith("{") && part.length > 1)
             return part;
-        visible += part.length === 2 && part[0] === "&" ? 1 : part.length;
+        visible += part[0] === "&" && part.length > 1 ? part.length - 1 : part.length; // UTF-16 units of the letters
         return part[0] === "&" ? part : accented[part] ?? part;
     });
     return `[${body} ${"~".repeat(Math.max(1, Math.round(visible * 0.3)))}]`;

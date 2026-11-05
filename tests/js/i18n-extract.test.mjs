@@ -212,3 +212,12 @@ test("scan: the scripts of resources (js and the pages) and the D sources, each 
         rmSync(root, { recursive: true, force: true });
     }
 });
+
+test("check: a translation keeps the mnemonic of its source", () => {
+    const texts = extractTexts(`tr("&File"); tr("Tom && Jerry"); tr("Plain"); tr("Search & Filter")`).texts;
+    const catalog = { locale: "ru", name: "Русский", messages: { "&File": "Файл", "Tom && Jerry": "Том && Джерри", "Plain": "&Просто", "Search & Filter": "Поиск и фильтр" } };
+    assert.deepEqual(checkCatalog(catalog, texts), ["mnemonic lost: &File", "mnemonic added: Plain"]);
+    catalog.messages["&File"] = "&Файл";
+    catalog.messages["Plain"] = "Просто";
+    assert.deepEqual(checkCatalog(catalog, texts), []);
+});

@@ -97,3 +97,8 @@ test("pseudo locale: every text pseudoized, parameters put in after", () => {
     assert.equal(tr("{n} of {m}", { n: 1, m: 2 }), "[1 ôƒ 2 ~]");
     assert.equal(trn("{n} file", "{n} files", 3), "[3 ƒîļéš ~~]");
 });
+
+test("pseudo: lengths in UTF-16 units, a mnemonic counts its letter", () => {
+    assert.equal(pseudoize("😀😀😀😀😀"), "[😀😀😀😀😀 ~~~]");
+    assert.equal(pseudoize("&😀😀😀😀😀"), "[&😀😀😀😀😀 ~~~]");
+});

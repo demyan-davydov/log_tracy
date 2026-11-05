@@ -30,9 +30,11 @@ export const menu = () => parsed(xcall("getMenu"), { menuBar: false, menus: [] }
 // The languages there are translations to: [{ locale, name }] (english, the
 // source, is none of them)
 export const languages = () => parsed(xcall("getLanguages"), []);
-// The catalog of translations a language (BCP 47 tag: "ru-KZ") takes:
-// { locale, name, messages }, see i18n/i18n.js; null: none, the english source
-export const translation = locale => parsed(xcall("getTranslation", locale), null);
+// The texts of the backend (the menu) are in the language `locale` (BCP 47 tag:
+// "ru-KZ", the pseudo locale) from now on. Gives the catalog of translations
+// it takes for the script: { locale, name, messages }, see i18n/i18n.js; null:
+// none, the english source (or the pseudo locale: the script makes it itself)
+export const useLanguage = locale => parsed(xcall("useLanguage", locale), null);
 // The Columns section of Settings: { current, formats: [...] }, null if none
 export const columnSettings = () => parsed(xcall("getColumnSettings"), null);
 // The layouts the Settings dialog closed with: { format id: [{ id, visible }] }

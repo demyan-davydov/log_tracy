@@ -14,6 +14,8 @@ import domain.log_document : LogDocument;
 import domain.document_item : DocumentItem;
 import log_core.log_format : ColumnInfo, FormatChoice;
 import log_core.log_message : TimeKind;
+import ui.app_menu : MenuItem, MenuPlatform;
+import ui.main_menu_loader : retitleAppMenu;
 import log_core.rule_filter : RuleId;
 import log_core.search_filter : checkRegex, MatchRange;
 import ui.app_session : AppSession;
@@ -41,6 +43,12 @@ class MainWindow : SciterWindow
     void useTranslations(string dir)
     {
         _session.useTranslations(dir);
+    }
+
+    /// The menu bar of the window on `platform`, in the language of the interface
+    MenuItem[] menuBar(MenuPlatform platform)
+    {
+        return _session.menuBar(platform);
     }
 
     this(AppSettings settings)
@@ -137,10 +145,12 @@ class MainWindow : SciterWindow
         case "getLanguages":
             answer(_session.languagesJson());
             return true;
-        case "getTranslation":
-            // getTranslation(locale): the catalog that language takes, null: none
-            if (const text = _session.translationJson(param!string(0)))
+        case "useLanguage":
+            // useLanguage(locale): the texts of the backend in that language from now on (the
+            // native menu retitled); answers the catalog it takes, null: none
+            if (const text = _session.useLanguage(param!string(0)))
                 answer(text);
+            retitleAppMenu(this);
             return true;
         case "getColumnSettings":
             answer(_session.columnSettingsJson());

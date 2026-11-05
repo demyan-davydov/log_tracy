@@ -107,6 +107,107 @@ string translationJson(const Translation[] translations, string requested)
     return null;
 }
 
+/// The translations of the texts of the backend (the menu): the plain texts of a catalog.
+struct Catalog
+{
+    string[string] messages; /// by the english text, translated ones only
+    bool pseudo; /// every text pseudoized: the pseudo locale
+
+    /// The translation of `text`, `text` itself if none
+    string translate(string text) const pure @safe
+    {
+        if (pseudo)
+            return pseudoize(text);
+        if (const translated = text in messages)
+            return *translated;
+        return text;
+    }
+}
+
+/// The locale of the pseudo translation, as in resources/i18n/i18n.js
+enum pseudoLocale = "x-pseudo";
+
+/// The catalog of the text of a catalog file; empty if it is no catalog.
+Catalog parseCatalog(string json)
+{
+    Catalog catalog;
+    if (!json.length)
+        return catalog;
+    try
+    {
+        const j = parseJSON(json);
+        const messages = "messages" in j;
+        if (!messages || messages.type != JSONType.object)
+            return catalog;
+        foreach (key, value; messages.object)
+            if (value.type == JSONType.string && value.str.length)
+                catalog.messages[key] = value.str;
+    }
+    catch (Exception e)
+        writeln("Can't read the catalog: ", e.msg);
+    return catalog;
+}
+
+/// The catalog of `locale`: pseudo for the pseudo locale, else that of `json`.
+Catalog catalogOf(string locale, string json)
+{
+    import std.uni : sicmp;
+
+    if (sicmp(locale, pseudoLocale) == 0)
+        return Catalog(null, true);
+    return parseCatalog(json);
+}
+
+/// The pseudo translation of `text`, as pseudoize of resources/i18n/i18n.js (lengths in UTF-16
+/// units, as of a script string).
+string pseudoize(string text) pure @safe
+{
+    import std.algorithm : max;
+    import std.array : appender, replicate;
+    import std.ascii : isAlphaNum;
+    import std.math : round;
+    import std.utf : codeLength, decode;
+
+    static immutable upper = "ÅƁÇÐÉƑĜĤÎĴĶĻṀÑÔÞǪŔŠŢÛṼŴẊÝŽ"d;
+    static immutable lower = "áƀçðéƒĝĥîĵķļṁñôþǫŕšţûṽŵẋýž"d;
+
+    auto body = appender!string;
+    size_t visible;
+    size_t i;
+    while (i < text.length)
+    {
+        if (text[i] == '{') // a parameter stays as it is
+        {
+            size_t j = i + 1;
+            while (j < text.length && (isAlphaNum(text[j]) || text[j] == '_'))
+                j++;
+            if (j > i + 1 && j < text.length && text[j] == '}')
+            {
+                body.put(text[i .. j + 1]);
+                i = j + 1;
+                continue;
+            }
+        }
+        const start = i;
+        const c = decode(text, i);
+        if (c == '&' && i < text.length) // the mnemonic letter stays as it is
+        {
+            visible += codeLength!wchar(decode(text, i));
+            body.put(text[start .. i]);
+            continue;
+        }
+        else if (c >= 'A' && c <= 'Z')
+            body.put(upper[c - 'A']);
+        else if (c >= 'a' && c <= 'z')
+            body.put(lower[c - 'a']);
+        else
+            body.put(text[start .. i]);
+        visible += codeLength!wchar(c); // as the length of a script string
+    }
+    const padding = max(1, cast(size_t) round(visible * 0.3));
+    return "[" ~ body[] ~ " " ~ "~".replicate(padding) ~ "]";
+}
+
 version (unittest)
 {
     import std.file : mkdirRecurse, rmdirRecurse, write, exists, tempDir;
@@ -208,4 +309,42 @@ unittest
     rmdirRecurse(dir);
     mkdirRecurse(dir);
     assert(translationJson(translations, "ru") is null, "a file gone is no catalog");
+}
+
+@("parseCatalog: the translated texts of a catalog; plural ones and untranslated are not")
+unittest
+{
+    const catalog = parseCatalog(`{"locale": "ru", "name": "Русский", "messages": {
+        "&File": "&Файл", "Quit": "", "{n} file": {"one": "{n} файл"}}}`);
+    assert(catalog.translate("&File") == "&Файл");
+    assert(catalog.translate("Quit") == "Quit", "not translated yet: english");
+    assert(catalog.translate("Gone") == "Gone");
+    assert(catalog.messages.length == 1);
+}
+
+@("parseCatalog: no catalog, no translations")
+unittest
+{
+    assert(parseCatalog(null).translate("A") == "A");
+    assert(parseCatalog(`{"messages": `).translate("A") == "A");
+    assert(parseCatalog(`{"messages": 5}`).translate("A") == "A");
+}
+
+@("pseudoize: as resources/i18n/i18n.js does it")
+unittest
+{
+    assert(pseudoize("Open") == "[Ôþéñ ~]");
+    assert(pseudoize("Settings") == "[Šéţţîñĝš ~~]");
+    assert(pseudoize("{count} of {total}") == "[{count} ôƒ {total} ~]");
+    assert(pseudoize("E&xit") == "[É&xîţ ~]");
+    assert(pseudoize("😀😀😀😀😀") == "[😀😀😀😀😀 ~~~]", "lengths in UTF-16 units, as of a script string");
+    assert(pseudoize("&😀😀😀😀😀") == "[&😀😀😀😀😀 ~~~]");
+}
+
+@("catalogOf: the pseudo locale pseudoizes every text, in any case")
+unittest
+{
+    assert(catalogOf("x-pseudo", null).translate("Open") == "[Ôþéñ ~]");
+    assert(catalogOf("X-Pseudo", null).translate("Open") == "[Ôþéñ ~]");
+    assert(catalogOf("ru", `{"messages": {"Open": "Открыть"}}`).translate("Open") == "Открыть");
 }

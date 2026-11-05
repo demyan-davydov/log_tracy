@@ -18,13 +18,13 @@ import domain.workspace;
 import log_core.log_format : ColumnInfo, FormatChoice;
 import log_core.rule_filter : RuleId;
 import log_core.search_filter : MatchRange;
-import ui.app_menu : hostMenuPlatform, MenuPlatform, WindowMenu, windowMenu;
+import ui.app_menu : hostMenuPlatform, MenuItem, MenuPlatform, WindowMenu, windowMenu;
 import ui.app_settings;
 import ui.document_ui : DocumentUi;
 import ui.filter_commands : DocumentFilters;
 import ui.table_columns : TableColumns;
-import ui.translations : Translation, findTranslations, catalogLanguagesJson = languagesJson,
-    catalogTranslationJson = translationJson;
+import ui.translations : Catalog, catalogOf, Translation, findTranslations,
+    catalogLanguagesJson = languagesJson, catalogTranslationJson = translationJson;
 import ui.main_view_fsm : toJson;
 import ui.search_view_fsm : toJson;
 
@@ -64,6 +64,7 @@ final class AppSession
     private bool _closing; // the window closes: no more calls of the script
     private WindowMenu _menu = windowMenu(hostMenuPlatform(), ""); // the menu of the window
     private Translation[] _translations; // of the interface, by locale
+    private Catalog _catalog; // of the language of the interface: the texts of the session
 
     /// @param open - opens a document (a LogDocument in the app)
     /// @param write - writes the settings, to their file if not given
@@ -473,7 +474,7 @@ final class AppSession
     {
         import ui.app_menu : windowMenuJson;
 
-        return windowMenuJson(_menu);
+        return windowMenuJson(_menu, &_catalog.translate);
     }
 
     // ── Translations ─────────────────────────────────────────────────────────
@@ -490,11 +491,23 @@ final class AppSession
         return catalogLanguagesJson(_translations);
     }
 
-    /// The text of the catalog the language `requested` (a BCP 47 tag) takes, null if none:
-    /// the english source
-    string translationJson(string requested)
+    /// The texts of the session (the menu) are in the language `requested` (a BCP 47 tag) from
+    /// now on: in the catalog it takes, pseudoized for the pseudo locale, english if none.
+    /// Returns: the text of that catalog for the script, null if none (the script makes the
+    /// pseudo one itself)
+    string useLanguage(string requested)
     {
-        return catalogTranslationJson(_translations, requested);
+        const text = catalogTranslationJson(_translations, requested);
+        _catalog = catalogOf(requested, text);
+        return _catalog.pseudo ? null : text;
+    }
+
+    /// The menu bar of the window on `platform`, in the language of the interface
+    MenuItem[] menuBar(MenuPlatform platform)
+    {
+        import ui.app_menu : appMenu;
+
+        return appMenu(platform, &_catalog.translate);
     }
 
     // ── Columns ──────────────────────────────────────────────────────────────
@@ -966,26 +979,37 @@ unittest
         "not the preferences the session started with");
 }
 
-@("AppSession: the languages of its translations, and the catalog a language takes")
+@("AppSession: the languages of its translations; a language used translates the menu")
 unittest
 {
     import std.file : rmdirRecurse, write;
     import std.json : parseJSON;
     import std.path : buildPath;
+    import ui.app_menu : MenuPlatform;
     import ui.translations : makeTestDir;
 
     auto f = Fixture.make();
     assert(parseJSON(f.session.languagesJson()).array.length == 0, "none until told where they are");
-    assert(f.session.translationJson("ru") is null);
+    assert(f.session.useLanguage("ru") is null);
 
     const dir = makeTestDir("session");
     scope (exit) rmdirRecurse(dir);
-    const text = `{"locale": "ru", "name": "Русский", "messages": {}}`;
+    const text = `{"locale": "ru", "name": "Русский", "messages": {"&File": "&Файл"}}`;
     write(buildPath(dir, "ru.json"), text);
 
     f.session.useTranslations(dir);
     const languages = parseJSON(f.session.languagesJson());
     assert(languages.array.length == 1 && languages[0]["locale"].str == "ru");
-    assert(f.session.translationJson("ru-RU") == text);
-    assert(f.session.translationJson("de") is null);
+
+    assert(f.session.menuBar(MenuPlatform.windows)[0].label == "File");
+    assert(f.session.useLanguage("ru-RU") == text, "the catalog for the script");
+    assert(f.session.menuBar(MenuPlatform.windows)[0].label == "Файл");
+    f.session.showMenu(windowMenu(MenuPlatform.windows, ""));
+    assert(parseJSON(f.session.menuJson())["menus"][0]["label"].str == "Файл");
+
+    assert(f.session.useLanguage("x-pseudo") is null, "the script makes the pseudo catalog itself");
+    assert(f.session.menuBar(MenuPlatform.windows)[0].label == "[Fîļé ~]", "the mnemonic letter as it is");
+
+    assert(f.session.useLanguage("de") is null);
+    assert(f.session.menuBar(MenuPlatform.windows)[0].label == "File", "no catalog: english");
 }

@@ -181,34 +181,44 @@ MenuItem[] macAppMenuMerge(MenuItem[] items) pure nothrow @safe
     return merged;
 }
 
-/// The menu bar of the window on `platform`.
+/// What translates the texts of the menu: the english text to the language of the interface.
+alias Translate = string delegate(string text) pure @safe;
+
+/// The menu bar of the window on `platform`, in english.
 MenuItem[] appMenu(MenuPlatform platform) pure @safe
 {
+    return appMenu(platform, delegate(string text) => text);
+}
+
+/// The menu bar of the window on `platform`, its labels translated by `tr`; the mnemonic is
+/// marked in the translation ("&Файл").
+MenuItem[] appMenu(MenuPlatform platform, scope Translate tr) pure @safe
+{
     // `&` marks the mnemonic letter of Windows and Linux; macOS has none
-    auto openFile = command(MenuCommand.openFile, "&Open File...", primary("O"));
-    auto settings = command(MenuCommand.settings, "&Settings...", primary(","));
+    auto openFile = command(MenuCommand.openFile, tr("&Open File..."), primary("O"));
+    auto settings = command(MenuCommand.settings, tr("&Settings..."), primary(","));
     final switch (platform)
     {
     case MenuPlatform.mac:
         return [
             submenu("DLT Explorer", [
-                settings, separator(), command(MenuCommand.quit, "Quit", primary("Q")),
+                settings, separator(), command(MenuCommand.quit, tr("Quit"), primary("Q")),
             ], MenuRole.app),
-            submenu("&File", [openFile]),
-            submenu("&Window", [command(MenuCommand.minimize, "&Minimize", primary("M"))]),
+            submenu(tr("&File"), [openFile]),
+            submenu(tr("&Window"), [command(MenuCommand.minimize, tr("&Minimize"), primary("M"))]),
         ];
     case MenuPlatform.windows:
         return [
-            submenu("&File", [
+            submenu(tr("&File"), [
                 openFile, separator(), settings, separator(),
-                command(MenuCommand.quit, "E&xit", Shortcut("F4", false, false, true, true)),
+                command(MenuCommand.quit, tr("E&xit"), Shortcut("F4", false, false, true, true)),
             ]),
         ];
     case MenuPlatform.linux:
         return [
-            submenu("&File", [
+            submenu(tr("&File"), [
                 openFile, separator(), settings, separator(),
-                command(MenuCommand.quit, "&Quit", primary("Q")),
+                command(MenuCommand.quit, tr("&Quit"), primary("Q")),
             ]),
         ];
     }
@@ -298,15 +308,15 @@ string menuJson(MenuItem[] bar, MenuPlatform platform) @safe
     return menuJsonValue(bar, platform).toString();
 }
 
-/// The menu of the window for the script: `{"menuBar": whether it draws it as its menu bar,
-/// "menus": menuJson}`.
-string windowMenuJson(WindowMenu menu) @safe
+/// The menu of the window for the script, its labels translated by `tr`: `{"menuBar": whether
+/// it draws it as its menu bar, "menus": menuJson}`.
+string windowMenuJson(WindowMenu menu, scope Translate tr) @safe
 {
     import std.json : JSONValue;
 
     JSONValue json;
     json["menuBar"] = menu.menuBar;
-    json["menus"] = menuJsonValue(appMenu(menu.platform), menu.platform);
+    json["menus"] = menuJsonValue(appMenu(menu.platform, tr), menu.platform);
     return json.toString();
 }
 
@@ -487,13 +497,13 @@ unittest
     assert(submenu("&File", []).label == "File" && submenu("&File", []).mnemonic == 0);
 }
 
-@("every entry and command of Windows and Linux has a mnemonic, unique in its menu")
-unittest
+version (unittest)
 {
-    import std.uni : toLower;
-
-    void check(MenuItem[] items)
+    /// Every entry and command of `items` has a mnemonic, unique in its menu
+    private void checkMnemonics(MenuItem[] items)
     {
+        import std.uni : toLower;
+
         dchar[] used;
         foreach (ref item; items)
         {
@@ -507,12 +517,32 @@ unittest
             const letter = item.label.to!wstring[i].toLower;
             assert(!used.canFind(letter), item.label);
             used ~= letter;
-            check(item.items);
+            checkMnemonics(item.items);
         }
     }
+}
 
-    check(appMenu(MenuPlatform.windows));
-    check(appMenu(MenuPlatform.linux));
+@("every entry and command of Windows and Linux has a mnemonic, unique in its menu")
+unittest
+{
+    checkMnemonics(appMenu(MenuPlatform.windows));
+    checkMnemonics(appMenu(MenuPlatform.linux));
+}
+
+@("the menus of every catalog of resources/i18n/translations have their mnemonics, unique in a menu")
+unittest
+{
+    import std.file : readText;
+    import ui.translations : findTranslations, parseCatalog;
+
+    const translations = findTranslations("resources/i18n/translations"); // dub test runs at the root
+    assert(translations.length > 0, "the catalogs of the project");
+    foreach (t; translations)
+    {
+        const catalog = parseCatalog(readText(t.path));
+        checkMnemonics(appMenu(MenuPlatform.windows, &catalog.translate));
+        checkMnemonics(appMenu(MenuPlatform.linux, &catalog.translate));
+    }
 }
 @("DOM key codes of shortcut keys")
 unittest
@@ -579,4 +609,41 @@ unittest
         "mnemonic": 0, "items": [{"command": "x", "label": "Exit", "mnemonic": 1}]}]`));
     assert(parseJSON(menuJson(withMnemonics, MenuPlatform.mac)) == parseJSON(`[{"label": "File",
         "items": [{"command": "x", "label": "Exit"}]}]`));
+}
+
+@("appMenu: the labels are translated, the mnemonic is that of the translation")
+unittest
+{
+    string russian(string text) pure @safe
+    {
+        switch (text)
+        {
+        case "&File": return "&Файл";
+        case "E&xit": return "В&ыход";
+        case "&Open File...": return "&Открыть файл...";
+        default: return text;
+        }
+    }
+
+    auto bar = appMenu(MenuPlatform.windows, &russian);
+    assert(bar[0].label == "Файл" && bar[0].mnemonic == 0);
+    assert(bar[0].items[0].label == "Открыть файл..." && bar[0].items[0].mnemonic == 0);
+    assert(bar[0].items[$ - 1].label == "Выход" && bar[0].items[$ - 1].mnemonic == 1);
+    assert(bar[0].items[2].label == "Settings...", "a text not translated stays english");
+    assert(appMenu(MenuPlatform.mac, &russian)[0].label == "DLT Explorer", "the name of the application is no text to translate");
+}
+
+@("windowMenuJson: the menu translated")
+unittest
+{
+    import std.json : parseJSON;
+
+    string upper(string text) pure @safe
+    {
+        import std.uni : toUpper;
+        return text.toUpper;
+    }
+
+    const json = parseJSON(windowMenuJson(windowMenu(MenuPlatform.windows, ""), &upper));
+    assert(json["menus"][0]["label"].str == "FILE");
 }

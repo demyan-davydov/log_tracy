@@ -83,7 +83,7 @@ test("the languages of the translations and the catalog a language takes", () =>
     assert.deepEqual(callOf(() => backend.languages(), `[{"locale": "ru", "name": "Русский"}]`),
         { call: ["getLanguages"], value: [{ locale: "ru", name: "Русский" }] });
     assert.deepEqual(callOf(() => backend.languages(), undefined).value, []);
-    assert.deepEqual(callOf(() => backend.translation("ru-RU"), `{"locale": "ru", "messages": {}}`),
-        { call: ["getTranslation", "ru-RU"], value: { locale: "ru", messages: {} } });
-    assert.equal(callOf(() => backend.translation("de"), undefined).value, null, "none: the english source");
+    assert.deepEqual(callOf(() => backend.useLanguage("ru-RU"), `{"locale": "ru", "messages": {}}`),
+        { call: ["useLanguage", "ru-RU"], value: { locale: "ru", messages: {} } });
+    assert.equal(callOf(() => backend.useLanguage("de"), undefined).value, null, "none: the english source");
 });

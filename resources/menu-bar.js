@@ -37,30 +37,42 @@ function menuAt(bar, path) {
 // Opens the menu of a bar entry or a submenu item `li`
 const openMenuOf = li => li.popup(li.$("menu"), { anchorAt: li.parentElement.id === "menu-bar" ? 1 : 3, popupAt: 7 });
 
+// The bar shown: { bar, run, shortcuts }; null until shown
+let shown = null;
+
 // Shows `bar` in `host` and handles it: a click on an item, its shortcut or its
-// mnemonic calls run(command)
+// mnemonic calls run(command). Shown again (another language), it replaces the
+// bar shown before; the handlers are set once and take the bar shown now
 export function showMenuBar(host, bar, run) {
+    const first = shown === null;
+    for (const menu of host.$$("menu:popup")) menu.state.popup = false;
     host.innerHTML = "";
     host.append(<ul id="menu-bar">
         {bar.map((entry, i) => <li><caption>{labelOf(entry)}</caption>{menuOf(entry.items, `${i}`)}</li>)}
     </ul>);
     host.style.display = "block";
-    const strip = host.$("#menu-bar");
-    host.on("click", "li[command]", (evt, item) => run(item.getAttribute("command")));
+    shown = { bar, run, shortcuts: shortcutsOf(bar) };
+    if (first) handleMenuBar(host);
+}
+
+// The handlers of the bar in `host`, of the bar shown at the time of an event
+function handleMenuBar(host) {
+    host.on("click", "li[command]", (evt, item) => shown.run(item.getAttribute("command")));
 
     const closeMenus = () => { for (const menu of host.$$("menu:popup")) menu.state.popup = false; };
     const choose = li => {
         if (li.$("menu")) return openMenuOf(li);
         closeMenus();
-        run(li.getAttribute("command"));
+        shown.run(li.getAttribute("command"));
     };
     const cues = on => host.classList.toggle("cues", on);
 
     // Before the element in focus, as the accelerators of a native menu: an
     // editor doesn't take Ctrl+O or Alt+F away from the menu
-    const shortcuts = shortcutsOf(bar);
     document.addEventListener("keydown", evt => {
         if (evt.code === "AltLeft" || evt.code === "AltRight") return cues(true);
+        const { bar, run, shortcuts } = shown;
+        const strip = host.$("#menu-bar");
         const open = host.$$("menu:popup").pop(); // the innermost
         let target = null;
         if (open) {
