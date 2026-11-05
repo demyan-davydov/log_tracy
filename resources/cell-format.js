@@ -51,3 +51,8 @@ export function cellClass(column, level) {
     const name = column.byLevel ? levelName(level) : "";
     return name ? `aux level-${name.toLowerCase()}` : "aux";
 }
+
+// The text of a row copied to the clipboard: the cells as they are shown
+export function rowText(cellTexts) {
+    return cellTexts.join("\t");
+}

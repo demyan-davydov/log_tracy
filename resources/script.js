@@ -8,6 +8,14 @@ import {
 } from "new-tab.js";
 import { lastUsedText } from "recent-time.js";
 import { clampShift, dragTarget, settleShift } from "drag-order.js";
+import { rowText } from "cell-format.js";
+
+// The row whose context menu is open: "Copy Row" copies it
+let contextRow = null;
+
+function copyRowItem() {
+    return <li class="copy-row">Copy Row</li>;
+}
 
 globalThis.VirtualDltTBody = VirtualDltTBody;
 globalThis.VirtualMainViewTBody = VirtualMainViewTBody;
@@ -409,6 +417,28 @@ function setupEvents() {
             }
         }
         return true; // don't change the row selection
+    });
+
+    // Context menu of a log row: "Copy Row" after the default items of a
+    // selectable cell (Copy, Select All), alone on the other cells.
+    // "contextmenu" comes before the default menu is set, so a menu given there
+    // would replace it: the default one is extended on its setup instead.
+    document.on("contextmenu", "table.log-table tbody > tr", (evt, row) => {
+        contextRow = row;
+        if (evt.target.closest("[selectable]")) return; // the default menu
+        evt.source = Element.create(<menu class="context">{copyRowItem()}</menu>);
+        return true;
+    });
+    document.on("contextmenusetup", "table.log-table tbody > tr", (evt, row) => {
+        contextRow = row;
+        const menu = evt.source;
+        if (menu && !menu.$("li.copy-row")) menu.append(copyRowItem());
+    });
+    document.on("click", "menu.context > li.copy-row", () => {
+        if (!contextRow) return;
+        const cells = [...contextRow.children].slice(1); // without the anchor
+        Clipboard.writeText(rowText(cells.map(cell => cell.innerText)));
+        contextRow = null;
     });
 
     document.on("click", "#btn-lost-close", () => {

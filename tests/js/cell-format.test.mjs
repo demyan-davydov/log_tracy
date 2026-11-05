@@ -2,7 +2,7 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { formatTime, formatDuration, levelName, cellClass } from "../../resources/cell-format.js";
+import { formatTime, formatDuration, levelName, cellClass, rowText } from "../../resources/cell-format.js";
 
 // TimeKind values of the backend (log_core/log_message)
 const Absolute = 1, Local = 2, LocalNoYear = 3, SinceBoot = 4;
@@ -51,4 +51,13 @@ test("a column colored by the level gets the class of the record's level", () =>
     assert.equal(cellClass({ byLevel: true }, 3), "aux level-warn");
     assert.equal(cellClass({ byLevel: true }, 0), "aux", "a record without level");
     assert.equal(cellClass({}, 2), "aux", "other columns");
+});
+
+test("a copied row is its cells as shown, separated by tabs", () => {
+    assert.equal(rowText(["12", "2026-11-03 14:22:01.500000", "ECU1", "hello"]),
+        "12\t2026-11-03 14:22:01.500000\tECU1\thello");
+});
+
+test("a copied row keeps its empty cells, so the columns stay aligned", () => {
+    assert.equal(rowText(["1", "", "text"]), "1\t\ttext");
 });
