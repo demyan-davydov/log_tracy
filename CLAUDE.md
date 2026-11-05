@@ -27,10 +27,13 @@ scripts\test-windows.bat           # on Windows: build + unittests
 - Running the app:
   - `resources/` is read from disk at run time, so a JS/CSS/HTML change needs a restart, not a
     rebuild.
-  - `libsciter.dylib` (or `sciter.dll`) must sit next to the executable. The libraries of every
-    platform are in `libs/`; the bundle scripts take them from there.
+  - `libsciter.dylib` (or `sciter.dll`) must sit next to the executable, and next to the test
+    executable for `dub test` (in a fresh worktree too). The libraries of every platform are in
+    `libs/`; the bundle scripts take them from there.
   - `settings.json` sits next to the executable and is rewritten on exit. Run a copy of the binary
     from another folder to keep the developer's own settings.
+  - The script's `console.log` goes to the app's stdout as `info [script]: ...` lines (errors as
+    `error [script]: ...`), next to the backend's `writeln`.
 
 ## Architecture
 
@@ -50,6 +53,12 @@ MainWindow (ui/main_window)                Sciter window: xcall bridge to the sc
 resources/script.js, document-pane.js     tabs; a panel per document (filters, tables, search)
 resources/virtual-dlt-view.js              virtual table built from the column schema
 ```
+
+The script asks the backend through `Window.this.xcall(name, ...)` (handled in
+`MainWindow.handleEvent`); the backend tells the script what changed by `callScript` of a global
+function (`onMainViewChanged(docId, json)`, `onSearchViewChanged`, `onDocumentOpened`, ...). Those
+are sent from `onIdle()` (`flushViews`), after the document events of the indexing thread were
+dispatched on the UI thread, never from inside an `xcall`.
 
 ### Where things live
 A package imports only the packages to its left (unittests may import more, e.g. a format to build
@@ -142,8 +151,9 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
 - The table columns and the row cells (`asSciterRow` in `main_window`) are built from the
   format's `ColumnInfo` schema as the user's layout of that format arranges it
   (`log_core/column_layout`, `AppSettings.columnLayouts` by format id, edited in the Columns
-  section of Settings): `xcall("getTableColumns")`. The rule editor gets all the columns of the
-  format: `xcall("getColumns")`.
+  section of Settings): `xcall("getTableColumns", docId)`, arranged once per format and variant
+  (`ui/table_columns`). The rule editor gets all the columns of the format:
+  `xcall("getColumns", docId)`.
   - Index (not a format column) stays first and Payload last; the others can be moved and
     hidden. A layout is one per format id, for all its variants: `formats/registry.formatColumns`
     gives the columns of all of them.
@@ -183,6 +193,9 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
 
 ## Conventions
 
+- The main branch is `master`. Work goes on a branch and is merged with `--no-ff`. The story of
+  a feature (what and why, in Russian) is in `docs/stories/`; what was noticed but left for
+  later goes to `docs/backlog.md`.
 - Every module starts with a `//!` comment stating its responsibility. Use camelCase, write
   comments in English.
 - Tests first: write the test, see it fail for the right reason, then change the code. For new
