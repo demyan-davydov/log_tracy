@@ -153,9 +153,11 @@ final class AppSession
         import std.stdio : writeln;
 
         _settings.recentFiles = withFilesStamped(_settings.recentFiles, openPaths(), nowMs());
+        // Kept, not only written: a later write without the script ("{}") keeps it
+        _settings = mergeAppStateFromScript(_settings, appStateJson);
         _settingsChanged = false;
         try
-            _write(mergeAppStateFromScript(_settings, appStateJson));
+            _write(_settings);
         catch (Exception e)
             writeln("Failed to save settings: ", e.msg);
     }
@@ -918,4 +920,19 @@ unittest
     assert(f.lastChoice == FormatChoice("logcat", 1), "the saved format is asked for");
     assert(f.session.settings.recentFiles[0].format == FormatChoice("plain-text", 0),
         "the format of the document is remembered");
+}
+
+@("AppSession: the state of the script written last is kept for the writes after it")
+unittest
+{
+    auto f = Fixture.make();
+    const id = f.session.openFile("/logs/a.log").docId;
+    f.session.saveOnClose(`{"theme": "dark", "tableFontSize": 130}`);
+
+    f.session.cancelMainView(id); // closes after the window did: a write without the script
+    f.session.dispatchEvents();
+    f.session.finish();
+    assert(f.writes.length == 2);
+    assert(f.writes[1].theme == "dark" && f.writes[1].tableFontSize == 130,
+        "not the preferences the session started with");
 }
