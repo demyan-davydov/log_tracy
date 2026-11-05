@@ -230,6 +230,11 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
   literal: `scripts/i18n-extract.mjs` finds the texts by it and brings the catalogs
   (`resources/i18n/translations/<BCP 47 tag>.json`) up to them; `tests/js` fail when a catalog
   is out of date. The story and the decisions: `docs/stories/i18n.md`.
+- The language changes at run time. What is built once (markup, the JSX skeleton of a panel) is
+  marked with its source instead (`<header data-tr="Filters" />`, `data-tr-title`,
+  `data-tr-placeholder`) and translated by `i18n/dom.translateTree`; what is rendered anew
+  calls `tr()` and is rendered again on a change (`DocumentPane.languageChanged`). A sentence
+  with elements in it is one text: `trParts("{open} a log with {shortcut}", {open, shortcut})`.
 - The backend translates its own texts (the menu) by the catalog the script chose
   (`backend.useLanguage`, `ui/translations.Catalog`): `appMenu(platform, tr)` writes its labels
   as `tr("&File")` with `tr` a parameter, so the extractor finds them.

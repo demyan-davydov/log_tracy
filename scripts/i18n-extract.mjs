@@ -1,7 +1,9 @@
 // Brings the catalogs of resources/i18n/translations up to the texts of the code, as lupdate
-// does: finds the tr / trc / trn calls in resources/ (*.js, the scripts of *.htm) and source/
-// (*.d), outside comments, adds new texts untranslated (""), moves the texts gone from the
-// code to "obsolete" (and back when they return), sorts the keys. A call whose text is not a literal is an error: it can't be found.
+// does: finds the tr / trc / trn / trParts calls and the marked elements (data-tr) in
+// resources/ (*.js, the scripts and markup of *.htm) and source/ (*.d), outside comments,
+// adds new texts untranslated (""), moves the texts gone from the code to "obsolete" (and
+// back when they return), sorts the keys. A call or mark whose text is not a literal is an
+// error: it can't be found.
 //   node scripts/i18n-extract.mjs            update the catalogs
 //   node scripts/i18n-extract.mjs --check    only tell what is out of date (exit code 1)
 // See resources/i18n/i18n.js for the calls and the catalog; tests: tests/js/i18n-*.test.mjs.
@@ -12,7 +14,7 @@ import { pluralCategories } from "../resources/i18n/plural.js";
 
 const translationsDir = "resources/i18n/translations";
 // Where the calls are defined, not made.
-const implementations = new Set(["resources/i18n/i18n.js"]);
+const implementations = new Set(["resources/i18n/i18n.js", "resources/i18n/dom.js"]);
 
 // The string literals a text may be: of JS (no substitutions in a template), and of D (with
 // the postfix of its width; WYSIWYG strings are not: their escapes are not escapes).
@@ -22,7 +24,7 @@ const literals = {
 };
 const comma = /\s*,/y;
 const end = /\s*[,)]/y;
-const call = /(?<![\w.$])(trn|trc|tr)\s*\(/g;
+const call = /(?<![\w.$])(trn|trc|trParts|tr)\s*\(/g;
 
 const escapes = { n: "\n", t: "\t", r: "\r", 0: "\0", b: "\b", f: "\f", v: "\v" };
 
@@ -108,6 +110,35 @@ function withoutComments(source, language) {
     return out;
 }
 
+// The markup of a page: its scripts and comments blanked, lines and positions stay.
+function markupOf(page) {
+    return page.replace(/(<script\b[^>]*>)([\s\S]*?)(<\/script>)/gi, (_, open, body, close) => open + blank(body) + close)
+        .replace(/<!--[\s\S]*?-->/g, blank);
+}
+
+const entities = { amp: "&", lt: "<", gt: ">", quot: "\"", apos: "'" };
+const decodeEntities = (text) => text.replace(/&(amp|lt|gt|quot|apos|#\d+);/g, (_, e) =>
+    e[0] === "#" ? String.fromCharCode(parseInt(e.slice(1), 10)) : entities[e]);
+
+const mark = /(?<![\w-])data-tr(?:-title|-placeholder)?(?![\w-])/g;
+// "text" or 'text' in markup; in JSX also {"text"}, {'text'}
+const markValue = /\s*=\s*(?:"([^"]*)"|'([^']*)'|\{\s*"([^"\\]*)"\s*\}|\{\s*'([^'\\]*)'\s*\})/y;
+
+// The texts of the elements marked in `code` (dom.js: data-tr="Filters", data-tr-title="..."),
+// added to `texts`; a mark without a literal text to `errors`. `decode`: the entities of HTML.
+function markedTexts(code, decode, texts, errors) {
+    for (const m of code.matchAll(mark)) {
+        markValue.lastIndex = m.index + m[0].length;
+        const value = markValue.exec(code);
+        if (value) {
+            const literal = value[1] ?? value[2] ?? value[3] ?? value[4];
+            const text = decode ? decodeEntities(literal) : literal;
+            texts.push({ key: text, source: text, plural: false });
+        } else
+            errors.push({ line: code.slice(0, m.index).split("\n").length, call: code.slice(m.index, m.index + 40).split("\n")[0] });
+    }
+}
+
 // The scripts of a page, the rest blanked: lines and positions stay.
 function scriptsOf(page) {
     let out = "", last = 0;
@@ -131,10 +162,11 @@ function readLiteral(source, pos, after, literal) {
     return [decode(m[1]), after === comma ? comma.lastIndex : literal.lastIndex];
 }
 
-// The texts to translate called in `source` of `language` ("js", "d", or "htm": the scripts
-// of a page): {key as in a catalog ("text|context" for trc), source (the english text),
-// plural, other (the english plural of a trn)}; and the calls whose text is not a literal:
-// {line, call}. Comments are skipped.
+// The texts to translate in `source` of `language` ("js", "d", or "htm": a page, its scripts
+// and its markup): of the calls, then of the marked elements (data-tr="...", see
+// resources/i18n/dom.js). {key as in a catalog ("text|context" for trc), source (the english
+// text), plural, other (the english plural of a trn)}; and the calls and marks whose text is
+// not a literal: {line, call}. Comments are skipped.
 export function extractTexts(source, language = "js") {
     const code = withoutComments(language === "htm" ? scriptsOf(source) : source, language === "d" ? "d" : "js");
     const literal = literals[language === "d" ? "d" : "js"];
@@ -146,7 +178,7 @@ export function extractTexts(source, language = "js") {
         const pos = m.index + m[0].length;
         const name = m[1];
         let text = null;
-        if (name === "tr") {
+        if (name === "tr" || name === "trParts") {
             const first = readLiteral(code, pos, end, literal);
             text = first && { key: first[0], source: first[0], plural: false };
         } else {
@@ -162,6 +194,9 @@ export function extractTexts(source, language = "js") {
         else
             errors.push({ line: code.slice(0, m.index).split("\n").length, call: code.slice(m.index, pos + 30).split("\n")[0] });
     }
+    markedTexts(code, false, texts, errors);
+    if (language === "htm")
+        markedTexts(markupOf(source), true, texts, errors);
     return { texts, errors };
 }
 

@@ -14,14 +14,15 @@ import * as platform from "platform.js";
 import { applyTheme } from "theme.js";
 import { showMenuBar } from "menu-bar.js";
 import { shortcutTextOf } from "menu-shortcuts.js";
-import { pseudoLocale, setCatalog } from "i18n/i18n.js";
+import { pseudoLocale, setCatalog, tr, trParts } from "i18n/i18n.js";
+import { translateTree } from "i18n/dom.js";
 import { requestedLocale } from "i18n/languages.js";
 
 // The table whose context menu is open: "Copy Row" copies its selected rows
 let contextList = null;
 
 function copyRowItem() {
-    return <li class="copy-row">Copy Row</li>;
+    return <li class="copy-row">{tr("Copy Row")}</li>;
 }
 
 // The most text Copy Row puts on the clipboard, in characters (16 MB of ASCII)
@@ -44,7 +45,7 @@ function copySelectedRows(list) {
     const { text, copied, total, truncated } = list.selectedRowsText(copyLimit);
     if (copied > 0) platform.copyText(text);
     if (truncated)
-        showNotice(list, `Copied ${copied} of ${total} rows: the clipboard limit is 16 MB`);
+        showNotice(list, tr("Copied {copied} of {total} rows: the clipboard limit is 16 MB", { copied, total }));
 }
 
 // A notice over the bottom of `owner` that hides itself after a few seconds
@@ -168,13 +169,14 @@ function splitPath(path) {
 // content of the New Tab otherwise
 function renderPlaceholder() {
     const placeholder = $("#empty-placeholder");
-    const title = win.newTab.active ? "Open a file" : "No file open";
+    const title = win.newTab.active ? tr("Open a file") : tr("No file open");
     const openShortcut = shortcutTextOf(windowMenu.menus, "file.open");
+    const open = <button class="inline-button" id="btn-placeholder-open">{tr("Open")}</button>;
     placeholder.content(<div class="placeholder-body">
         <div class="placeholder-title">{title}</div>
-        <div class="placeholder-hint">
-            <button class="inline-button" id="btn-placeholder-open">Open</button> a log{
-                openShortcut ? [" with ", <kbd>{openShortcut}</kbd>] : []}
+        <div class="placeholder-hint">{openShortcut
+            ? trParts("{open} a log with {shortcut}", { open, shortcut: <kbd>{openShortcut}</kbd> })
+            : trParts("{open} a log", { open })}
         </div>
     </div>);
     const recentFiles = getRecentFiles();
@@ -182,7 +184,7 @@ function renderPlaceholder() {
 
     // Items one by one: append() of JSX is known to work, nested arrays aren't
     placeholder.$(".placeholder-body").append(<div class="recent-files">
-        <div class="recent-files-header">Recent files</div>
+        <div class="recent-files-header">{tr("Recent files")}</div>
     </div>);
     const list = placeholder.$(".recent-files");
     const now = Date.now();
@@ -206,7 +208,7 @@ function renderPlaceholder() {
         // Right of the name: an open file is only switched to; the others show
         // when they were worked with last, if that is known
         if (opened)
-            added.$(".recent-file-head").append(<div class="recent-file-when opened">Opened</div>);
+            added.$(".recent-file-head").append(<div class="recent-file-when opened">{tr("Opened")}</div>);
         else if (lastUsed)
             added.$(".recent-file-head").append(<div class="recent-file-when">{lastUsedText(lastUsed, now)}</div>);
         // Under the path: why the file can't be opened
@@ -214,7 +216,7 @@ function renderPlaceholder() {
         const failed = failure && failure.path === path;
         if (failed || !exists) {
             added.classList.add(failed ? "failed" : "missing");
-            const note = failed ? `Failed to open: ${failureReason(failure.error)}` : "File not found";
+            const note = failed ? tr("Failed to open: {reason}", { reason: failureReason(failure.error) }) : tr("File not found");
             added.$(".recent-file-text").append(<div class="recent-file-note">{note}</div>);
         }
     }
@@ -252,6 +254,8 @@ function restoreLanguage() {
         setLanguage(setting);
     } catch (e) {
         console.error("Failed to set the language:", e);
+        setCatalog(null); // english, but the marked texts and titles still there
+        translateTree(document);
     }
 }
 
@@ -263,8 +267,14 @@ function setLanguage(setting) {
     currentCatalog = locale === pseudoLocale ? { locale, messages: {} } : catalog;
     currentLanguage = setting;
     setCatalog(currentCatalog);
-    if (menuSetUp) setupMenuBar(); // shown already: in the new language
     console.log("Language set to:", setting || "system", "->", currentCatalog?.locale ?? "en");
+    translateTree(document); // what is built once: the markup, the skeletons of the panels
+    if (!menuSetUp) return; // starting: the rest is rendered in this language anyway
+    // Rendered already: anew, in this language
+    setupMenuBar();
+    renderedPlaceholder = null;
+    refreshTabs();
+    for (const pane of panes.values()) pane.languageChanged();
 }
 
 // Scales the log tables: the font of each column keeps its proportion to the
@@ -342,7 +352,9 @@ function setupEvents() {
     document.on("contextmenusetup", "table.log-table tbody > tr", (evt, row) => {
         contextRowClicked(row);
         const menu = evt.source;
-        if (menu && !menu.$("li.copy-row")) menu.append(copyRowItem());
+        const item = menu?.$("li.copy-row");
+        if (item) item.textContent = tr("Copy Row"); // a menu kept: in the language now
+        else if (menu) menu.append(copyRowItem());
     });
     document.on("click", "menu.context > li.copy-row", () => {
         if (contextList) copySelectedRows(contextList);

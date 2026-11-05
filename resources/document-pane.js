@@ -246,6 +246,12 @@ export class DocumentPane {
         if (searchView !== undefined) this.updateSearchView();
     }
 
+    // The language of the interface changed: what the panel rendered is
+    // rendered anew in it (its skeleton is translated by translateTree of the
+    // document)
+    languageChanged() {
+    }
+
     // Shows the panel, up to date. `splitters` are the sizes of the panel
     // shown before (colsState, rowsState: its frameset states, see hide()),
     // null to keep its own.

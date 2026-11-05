@@ -2,7 +2,9 @@
 // which is the key of its translation and what is shown when there is none:
 //   tr("Open File..."), tr("Found {count}", { count }),
 //   trc("noun", "Filter")                    a context tells homonyms apart,
-//   trn("{n} match", "{n} matches", n)       the plural form of the language; n goes in as {n}.
+//   trn("{n} match", "{n} matches", n)       the plural form of the language; n goes in as {n},
+//   trParts("{open} a log", { open: <button/> })  parts to render, elements put in.
+// Elements built once are marked instead (data-tr="Filters"): see dom.js.
 // The argument is always a string literal: scripts/i18n-extract finds the texts by it.
 // A catalog is a file of resources/i18n/translations ({locale, name, messages}); the key of a
 // text with a context is "text|context", a plural text is keyed by its singular and
@@ -50,7 +52,7 @@ export function pseudoize(text) {
 }
 
 // The translation of the catalog under `key`, if there is one.
-function translated(key) {
+function catalogText(key) {
     const text = catalog?.messages?.[key];
     return typeof text === "string" && text !== "" ? text : null;
 }
@@ -58,7 +60,7 @@ function translated(key) {
 function translate(key, source, args) {
     if (catalog?.locale === pseudoLocale)
         return format(pseudoize(source), args);
-    return format(translated(key) ?? source, args);
+    return format(catalogText(key) ?? source, args);
 }
 
 // The translation of `text`, its {name} parameters put in from `args`.
@@ -77,4 +79,28 @@ export function trn(one, other, n, args) {
     const forms = catalog?.messages?.[one];
     const form = forms && typeof forms === "object" ? forms[pluralCategory(catalog.locale, n)] : null;
     return format(typeof form === "string" && form !== "" ? form : english, values);
+}
+
+// The translation of `text` as parts to render: the text split around its {name} parameters,
+// the values of `parts` (elements: a button, a <kbd>) put in as they are; an unknown parameter
+// stays as written. tr("{open} a log with {shortcut}") with the button and the key in it.
+export function trParts(text, parts) {
+    const translation = translate(text, text); // no args: the parameters stay to split by
+    const result = [];
+    let last = 0, pending = "";
+    for (const m of translation.matchAll(/\{(\w+)\}/g)) {
+        pending += translation.slice(last, m.index);
+        last = m.index + m[0].length;
+        if (parts && Object.prototype.hasOwnProperty.call(parts, m[1])) {
+            if (pending)
+                result.push(pending);
+            pending = "";
+            result.push(parts[m[1]]);
+        } else
+            pending += m[0];
+    }
+    pending += translation.slice(last);
+    if (pending)
+        result.push(pending);
+    return result;
 }

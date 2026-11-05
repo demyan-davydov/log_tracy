@@ -221,3 +221,24 @@ test("check: a translation keeps the mnemonic of its source", () => {
     catalog.messages["Plain"] = "Просто";
     assert.deepEqual(checkCatalog(catalog, texts), []);
 });
+
+test("the texts of marked elements: data-tr, data-tr-title, data-tr-placeholder, in markup and JSX", () => {
+    const page = `<html>\n<button data-tr-title="New Tab">+</button>\n<header data-tr="Filters"></header>\n` +
+        `<input data-tr-placeholder="Search &amp; find" />\n<script>const a = <span data-tr="In JSX" />;</script>\n</html>`;
+    assert.deepEqual(extractTexts(page, "htm").texts.map((t) => t.key), ["In JSX", "New Tab", "Filters", "Search & find"]);
+    assert.deepEqual(keysOf(`const h = <header data-tr="Details" />; // <b data-tr="not this" />`), ["Details"]);
+});
+
+test("a mark without its text is an error", () => {
+    const { errors } = extractTexts(`<p>\n<header data-tr></header>\n<b data-tr={name} /></p>`, "htm");
+    assert.deepEqual(errors.map((e) => e.line), [2, 3]);
+});
+
+test("the texts of trParts calls, as of tr", () => {
+    assert.deepEqual(keysOf(`const hint = trParts("{open} a log with {shortcut}", { open, shortcut });`), ["{open} a log with {shortcut}"]);
+});
+
+test("a mark's text in single quotes, or a JSX expression of a literal", () => {
+    assert.deepEqual(extractTexts(`<p data-tr='Filters'></p>`, "htm").texts.map((t) => t.key), ["Filters"]);
+    assert.deepEqual(keysOf(`const a = <b data-tr={"Details"} data-tr-title={'Hint'} />;`), ["Details", "Hint"]);
+});

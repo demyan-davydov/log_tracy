@@ -2,7 +2,7 @@
 // Run: node --test tests/js
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { setCatalog, tr, trc, trn, format, pseudoize, pseudoLocale } from "../../resources/i18n/i18n.js";
+import { setCatalog, tr, trc, trn, trParts, format, pseudoize, pseudoLocale } from "../../resources/i18n/i18n.js";
 
 const ru = {
     locale: "ru",
@@ -101,4 +101,17 @@ test("pseudo locale: every text pseudoized, parameters put in after", () => {
 test("pseudo: lengths in UTF-16 units, a mnemonic counts its letter", () => {
     assert.equal(pseudoize("😀😀😀😀😀"), "[😀😀😀😀😀 ~~~]");
     assert.equal(pseudoize("&😀😀😀😀😀"), "[&😀😀😀😀😀 ~~~]");
+});
+
+test("parts: the translation split around its parameters, the values put in as they are", () => {
+    const button = { element: "button" }, kbd = { element: "kbd" };
+    assert.deepEqual(trParts("{open} a log with {shortcut}", { open: button, shortcut: kbd }),
+        [button, " a log with ", kbd]);
+    setCatalog({ locale: "ru", messages: { "{open} a log with {shortcut}": "{open} журнал: {shortcut}" } });
+    assert.deepEqual(trParts("{open} a log with {shortcut}", { open: button, shortcut: kbd }),
+        [button, " журнал: ", kbd]);
+});
+
+test("parts: an unknown parameter stays as written, no empty strings", () => {
+    assert.deepEqual(trParts("{a}{b} and {c}", { a: 1, b: 2 }), [1, 2, " and {c}"]);
 });
