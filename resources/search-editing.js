@@ -69,8 +69,9 @@ export function typeBarInChip(state) {
     const replace = (...chips) => [...state.chips.slice(0, i), ...chips, ...state.chips.slice(i + 1)];
     if (!typed.split)
         return { chips: replace(typed.chip), pos: { chip: i, offset: typed.caret } };
-    const [left, right] = typed.split;
+    const [left, split] = typed.split;
     if (left.text === "") return state;
+    const { color, ...right } = split; // a new chip: it gets a color of its own
     return { chips: replace(left, right), pos: { chip: i + 1, offset: 0 } };
 }
 
@@ -94,6 +95,23 @@ export function searchChips(chips) {
 export function sameQuery(a, b) {
     const key = chips => JSON.stringify(searchChips(chips).map(c => [c.text, c.isRegex, c.ignoreCase]));
     return key(a) === key(b);
+}
+
+// Gives a match color to every chip without one: the first color no
+// other chip has, or, with all of them taken, the one used least.
+// A chip keeps its color while the query is edited.
+// @param size - the number of colors (matchColorCount of match-colors.js)
+// @returns the chips, the same array if every chip has a color
+export function assignColors(chips, size) {
+    if (chips.every(chip => chip.color !== undefined)) return chips;
+    const uses = new Array(size).fill(0);
+    for (const chip of chips) if (chip.color !== undefined) uses[chip.color % size]++;
+    return chips.map(chip => {
+        if (chip.color !== undefined) return chip;
+        const color = uses.indexOf(Math.min(...uses)); // a free one first: 0 uses
+        uses[color]++;
+        return { ...chip, color };
+    });
 }
 
 // ---- selection of whole chips ----

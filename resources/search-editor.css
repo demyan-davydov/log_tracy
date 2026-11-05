@@ -29,6 +29,11 @@
     background: var(--text-main);
 }
 
+/* The caret blinks as the one of a text field (search-editor.js toggles the class) */
+.chip-editor.blink-off > .gap.caret {
+    background: transparent;
+}
+
 .chip-editor > .placeholder {
     color: var(--text-label);
     margin: 1dip 0;
@@ -41,7 +46,7 @@
     height: 1.3em;
     margin: 1dip 0;
     padding: 0 1dip;
-    background: var(--chip-bg);
+    /* the background is the chip's match color: a match-color-N class */
     border: 1dip solid var(--chip-border);
     border-radius: 3dip;
 }
@@ -79,7 +84,8 @@
     font-family: monospace;
 }
 
-/* Spaces at the edges of a chip are significant: they are tinted */
+/* Spaces at the edges of a chip are significant: they are shaded, the same on
+   any match color */
 .chip-editor .chip-text::mark(edge-space) {
     background: var(--chip-edge-space);
 }

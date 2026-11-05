@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { makeChip } from "../../resources/search-query.js";
 import {
     moveCaret, moveTo, typeInGap, typeBarInChip, deleteInGap, searchChips,
-    sameQuery, selection, extendCaret, selectChipsFrom, selectTo, selectAll, selectedChips, insertChips,
+    sameQuery, assignColors, selection, extendCaret, selectChipsFrom, selectTo, selectAll, selectedChips, insertChips,
 } from "../../resources/search-editing.js";
 
 const text = (t, ignoreCase = false) => makeChip(t, { ignoreCase });
@@ -197,4 +197,35 @@ test("sameQuery: queries differ by their chips, not by the empty ones being edit
     assert.equal(sameQuery([text("a"), text("b")], [text("b"), text("a")]), false, "the order matters");
     assert.equal(sameQuery([text("a")], [text("a", true)]), false, "the case matters");
     assert.equal(sameQuery([text("a")], [regex("a")]), false, "the type matters");
+});
+
+// ---- colors ----
+
+const colored = (t, color) => ({ ...makeChip(t), color });
+
+test("assignColors: a chip without a color takes the first one no other chip has", () => {
+    assert.deepEqual(assignColors([colored("a", 0), text("b"), colored("c", 1)], 16),
+        [colored("a", 0), colored("b", 2), colored("c", 1)]);
+    assert.deepEqual(assignColors([text("a"), text("b")], 16), [colored("a", 0), colored("b", 1)]);
+});
+
+test("assignColors: the chips keep their colors, the array too if nothing changes", () => {
+    const chips = [colored("a", 5), colored("b", 3)];
+    assert.equal(assignColors(chips, 16), chips);
+});
+
+test("assignColors: with every color taken, the one used least, the first of them", () => {
+    const chips = [colored("a", 0), colored("b", 1), colored("c", 0), text("d")];
+    assert.deepEqual(assignColors(chips, 2)[3], colored("d", 1));
+    assert.deepEqual(assignColors([colored("a", 0), colored("b", 1), text("c")], 2)[2], colored("c", 0));
+});
+
+test("typeBarInChip: the chip split off is a new chip, without the color", () => {
+    const next = typeBarInChip({ chips: [colored("abcd", 4)], pos: at(0, 2) });
+    assert.equal(next.chips[0].color, 4);
+    assert.equal(next.chips[1].color, undefined);
+});
+
+test("sameQuery: the colors are no part of the query", () => {
+    assert.equal(sameQuery([colored("a", 1)], [colored("a", 2)]), true);
 });

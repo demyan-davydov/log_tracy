@@ -8,10 +8,14 @@
 import * as env from "@env";
 import {
     moveCaret, moveTo, typeInGap, typeBarInChip, deleteInGap, searchChips,
-    sameQuery, selection, extendCaret, selectChipsFrom, selectTo, selectAll, selectedChips, deleteSelection, insertChips,
+    sameQuery, assignColors, selection, extendCaret, selectChipsFrom, selectTo, selectAll, selectedChips, deleteSelection, insertChips,
 } from "search-editing.js";
 import { formatQuery, parseQuery, makeChip } from "search-query.js";
 import { EditHistory } from "edit-history.js";
+import { matchColorCount, matchColorClass } from "match-colors.js";
+
+// The blink of the caret between chips, as a text field's: half a period on, half off
+const blinkHalfPeriod = 530;
 
 const isMac = () => env.PLATFORM === "OSX";
 
@@ -30,6 +34,7 @@ export class SearchEditor {
         this.regexErrors = new Map(); // "ignoreCase\0pattern" -> error
         this.entryText = null; // the text of the chip edited, as it was when the caret came in (Esc)
         this.textAnchor = null; // where a Shift selection inside the edited chip started
+        this.blinkTimer = null; // while the caret between chips is shown
         this.drag = null; // a mouse selection: {anchor} from a gap, {chip, left} from inside a chip
         this.bind();
         this.render();
@@ -42,13 +47,15 @@ export class SearchEditor {
     // @param history - the undo steps of those chips (EditHistory), a new one if not given
     setChips(chips, history = null) {
         this.history = history ?? new EditHistory();
-        this.state = { chips: chips.map(c => ({ ...c })), pos: { gap: chips.length } };
+        this.state = { chips: assignColors(chips.map(c => ({ ...c })), matchColorCount), pos: { gap: chips.length } };
         this.entryText = null;
         this.render();
     }
 
-    // The chips the search runs with
-    searchChips() { return searchChips(this.state.chips); }
+    // The chips the search runs with (their colors are no part of the query)
+    searchChips() {
+        return searchChips(this.state.chips).map(({ text, isRegex, ignoreCase }) => ({ text, isRegex, ignoreCase }));
+    }
 
     // @returns the error of the first invalid regex chip, "" if there is none
     firstError() {
@@ -91,6 +98,8 @@ export class SearchEditor {
     // (typing in one chip) are one step.
     go(next, kind = null) {
         if (!next) return;
+        const colored = assignColors(next.chips, matchColorCount); // a new chip gets its color
+        if (colored !== next.chips) next = { ...next, chips: colored };
         if (!sameQuery(this.state.chips, next.chips)) this.history.record(this.state, kind);
         else this.history.breakMerge();
         const enteredChip = next.pos.gap === undefined
@@ -116,7 +125,7 @@ export class SearchEditor {
             root.append(<span class="gap" data-gap={i}></span>);
             if (i === chips.length) break;
             const chip = chips[i];
-            root.append(<span class="chip" data-chip={i}>
+            root.append(<span class={`chip ${matchColorClass(chip.color ?? i)}`} data-chip={i}>
                 <span class="chip-toggle chip-regex" title="Regular expression">.*</span>
                 <span class="chip-toggle chip-case" title="Ignore case">Aa</span>
                 <span class="chip-text"></span>
@@ -150,9 +159,20 @@ export class SearchEditor {
                 if (edit.edit.selectionStart !== edit.edit.selectionEnd) edit.edit.selectRange();
         this.root.$$(".chip").forEach((el, i) =>
             el.classList.toggle("selected", !!range && i >= range.from && i < range.to));
+        const caretShown = focused && !range && pos.gap !== undefined;
         this.root.$$(".gap").forEach((el, g) =>
-            el.classList.toggle("caret", focused && !range && pos.gap === g));
+            el.classList.toggle("caret", caretShown && pos.gap === g));
+        this.restartBlink(caretShown);
         this.root.classList.toggle("focused", focused);
+    }
+
+    // The caret is shown again on every change of the state, then blinks
+    restartBlink(shown) {
+        this.root.classList.remove("blink-off");
+        if (this.blinkTimer) clearInterval(this.blinkTimer);
+        this.blinkTimer = shown
+            ? setInterval(() => this.root.classList.toggle("blink-off"), blinkHalfPeriod)
+            : null;
     }
 
     placeFocus() {

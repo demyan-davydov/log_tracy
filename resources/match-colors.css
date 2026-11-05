@@ -1,0 +1,22 @@
+/* The match colors: each search chip has one, and the matches it finds will be
+   shown in it. Pale, so the text of the theme reads well on each (light theme:
+   pastels under dark text, dark theme: muted tones under light text). Defined
+   as --match-color-N in theme-light.css and theme-dark.css; there are
+   matchColorCount of them (match-colors.js): change all three together, the
+   test tests/js/match-colors.test.mjs checks they agree. */
+.match-color-0 { background-color: var(--match-color-0); }
+.match-color-1 { background-color: var(--match-color-1); }
+.match-color-2 { background-color: var(--match-color-2); }
+.match-color-3 { background-color: var(--match-color-3); }
+.match-color-4 { background-color: var(--match-color-4); }
+.match-color-5 { background-color: var(--match-color-5); }
+.match-color-6 { background-color: var(--match-color-6); }
+.match-color-7 { background-color: var(--match-color-7); }
+.match-color-8 { background-color: var(--match-color-8); }
+.match-color-9 { background-color: var(--match-color-9); }
+.match-color-10 { background-color: var(--match-color-10); }
+.match-color-11 { background-color: var(--match-color-11); }
+.match-color-12 { background-color: var(--match-color-12); }
+.match-color-13 { background-color: var(--match-color-13); }
+.match-color-14 { background-color: var(--match-color-14); }
+.match-color-15 { background-color: var(--match-color-15); }
