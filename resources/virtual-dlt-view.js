@@ -1,7 +1,7 @@
 console.log("Loading virtual-dlt-view.js...");
 import { VirtualList, VirtualSelect } from "virtual-select.js";
 import * as backend from "backend.js";
-import * as env from "@env";
+import * as platform from "platform.js";
 import { cellClass, cellText, itemText, rowLayout, matchPieces } from "cell-format.js";
 import { matchColorClass } from "match-colors.js";
 import { RowSelection, selectedText, autoScrollSpeed } from "row-selection.js";
@@ -41,8 +41,8 @@ function renderCell(column, value, level, matches, matchColors) {
 
 // Cmd+click toggles a row on macOS, where Ctrl+click opens the context menu:
 // it comes as a left press with Ctrl, which must not select like a click
-const toggleKey = env.PLATFORM === "OSX" ? "metaKey" : "ctrlKey";
-const contextClickKey = env.PLATFORM === "OSX" ? "ctrlKey" : null;
+const toggleKey = platform.isMac() ? "metaKey" : "ctrlKey";
+const contextClickKey = platform.isMac() ? "ctrlKey" : null;
 
 // select with virtual data source
 // The rows show the document `docId` (set by the script) with what the script

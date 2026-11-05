@@ -1,15 +1,16 @@
 import { $ } from "@sciter";
 import { VirtualDltTBody, VirtualMainViewTBody, VirtualSearchViewTBody, moveRowDrag, endRowDrag } from "virtual-dlt-view.js";
+import { plusShown, failureReason } from "new-tab.js";
 import {
-    noNewTab, plusShown, openNewTab, activateNewTab, activateDocument,
-    closeNewTab, documentOpened, documentsCounted, showsPlaceholder,
-    shownDocument, fileFailed, failureReason
-} from "new-tab.js";
+    initialWindow, workspaceChanged, newTabRequested, newTabPressed, newTabClosed, documentPressed,
+    documentOpened, openFailed, documentClosed, shown, activeDocId
+} from "window-state.js";
 import { lastUsedText } from "recent-time.js";
 import { DocumentPane } from "document-pane.js";
 import { paneChanges } from "pane-state.js";
 import { TabStrip } from "tabs.js";
 import * as backend from "backend.js";
+import * as platform from "platform.js";
 
 // The table whose context menu is open: "Copy Row" copies its selected rows
 let contextList = null;
@@ -36,7 +37,7 @@ function contextRowClicked(row) {
 // the first ones, and a notice says so
 function copySelectedRows(list) {
     const { text, copied, total, truncated } = list.selectedRowsText(copyLimit);
-    if (copied > 0) Clipboard.writeText(text);
+    if (copied > 0) platform.copyText(text);
     if (truncated)
         showNotice(list, `Copied ${copied} of ${total} rows: the clipboard limit is 16 MB`);
 }
@@ -59,14 +60,16 @@ globalThis.VirtualSearchViewTBody = VirtualSearchViewTBody;
 let currentTheme = "light";
 // Font size of the log tables, % of the normal one (Settings)
 let tableFontSize = 100;
-// The placeholder rendered last: "start", "newTab", null while a document is shown
-let shownPlaceholder = null;
+// The state of the window (window-state.js): the documents, the New Tab, the
+// file that failed to open. Changed by its events only, rendered by refreshTabs()
+let win = initialWindow;
+// The placeholder rendered last: { mode, version } (see shown(),
+// placeholderVersion), null while a document is shown
+let renderedPlaceholder = null;
 
 document.on("ready", function () {
     console.log("Starting DLT Explorer UI...");
     initApp();
-
-    console.log(Window.this.frameType, Window.this.blurBehind)
 });
 
 function stopScroll(element) {
@@ -76,7 +79,7 @@ function stopScroll(element) {
 
 // Save UI state while the window and DOM are still fully alive.
 // Must not be done from native BEHAVIOR_DETACH: calling scripts during view teardown crashes Sciter.
-Window.this.on("closerequest", () => {
+platform.onWindowCloseRequest(() => {
     try {
         backend.saveAppState(getAppState());
     } catch (e) {
@@ -84,7 +87,7 @@ Window.this.on("closerequest", () => {
     }
 });
 
-Window.this.on("close", (evt) => {
+platform.onWindowClose(() => {
     console.log("Closing Window...");
 
     // 1. Останавливаем инерционный скролл
@@ -156,7 +159,7 @@ function splitPath(path) {
 // content of the New Tab otherwise
 function renderPlaceholder() {
     const placeholder = $("#empty-placeholder");
-    const title = newTab.active ? "Open a file" : "No file open";
+    const title = win.newTab.active ? "Open a file" : "No file open";
     placeholder.content(<div class="placeholder-body">
         <div class="placeholder-title">{title}</div>
         <div class="placeholder-hint">
@@ -196,18 +199,15 @@ function renderPlaceholder() {
         else if (lastUsed)
             added.$(".recent-file-head").append(<div class="recent-file-when">{lastUsedText(lastUsed, now)}</div>);
         // Under the path: why the file can't be opened
-        const failed = openFailure && openFailure.path === path;
+        const failure = win.failure;
+        const failed = failure && failure.path === path;
         if (failed || !exists) {
             added.classList.add(failed ? "failed" : "missing");
-            const note = failed ? `Failed to open: ${failureReason(openFailure.error)}` : "File not found";
+            const note = failed ? `Failed to open: ${failureReason(failure.error)}` : "File not found";
             added.$(".recent-file-text").append(<div class="recent-file-note">{note}</div>);
         }
     }
 }
-
-// The file that failed to open last: { path (as in the recent list), error },
-// shown under its item in the recent files until a file opens or "+" is pressed
-let openFailure = null;
 
 // Opens a file in a new tab. On failure the backend keeps it in the recent
 // files (where it was, or on top if it is new there), and the placeholder
@@ -215,10 +215,8 @@ let openFailure = null;
 function openFile(path) {
     const { failure } = backend.openFile(path);
     if (!failure) return; // opened
-    openFailure = failure;
-    console.error("Can't open", path, ":", openFailure.error);
-    newTab = fileFailed(newTab, docCount);
-    shownPlaceholder = null; // render it again, with the failure
+    console.error("Can't open", path, ":", failure.error);
+    win = openFailed(win, failure); // shown under the file in the recent files
     refreshTabs();
 }
 
@@ -233,7 +231,7 @@ function setTheme(theme) {
 
     currentTheme = theme;
     console.log("Theme set to:", theme);
-    Window.this.update();
+    platform.repaintWindow();
 }
 
 // Scales the log tables: the font of each column keeps its proportion to the
@@ -248,13 +246,9 @@ function setTableFontSize(percent) {
 
 // The Settings dialog; Save applies all its sections at once
 function openSettingsAction() {
-    const result = Window.this.modal({
-        url: "settings.htm",
-        alignment: "center",
-        parameters: {
-            theme: currentTheme, tableFontSize,
-            columns: backend.columnSettings()
-        }
+    const result = platform.showModal("settings.htm", {
+        theme: currentTheme, tableFontSize,
+        columns: backend.columnSettings()
     });
     if (!result) return; // Cancel
     if (result.theme) setTheme(result.theme);
@@ -266,10 +260,8 @@ function openSettingsAction() {
 }
 
 function openFileAction() {
-    const fn = Window.this.selectFile({
-        mode: "open",
-        filter: "Log Files (*.dlt;*.log;*.txt)|*.dlt;*.log;*.txt|DLT Files (*.dlt)|*.dlt|Text Logs (*.log;*.txt)|*.log;*.txt|All Files (*.*)|*.*"
-    });
+    const fn = platform.chooseFileToOpen(
+        "Log Files (*.dlt;*.log;*.txt)|*.dlt;*.log;*.txt|DLT Files (*.dlt)|*.dlt|Text Logs (*.log;*.txt)|*.log;*.txt|All Files (*.*)|*.*");
     if (fn) {
         console.log("File selected:", fn);
         openFile(fn);
@@ -336,33 +328,26 @@ function setupEvents() {
 // getWorkspaceInfo in refreshTabs(), the changes from onMainViewChanged and
 // onSearchViewChanged.
 const panes = new Map();
-let activeDocId = null; // active in the backend; hidden while the New Tab is shown
-let docCount = 0;
-
-// The New Tab (see new-tab.js): the last tab of the strip while open
-let newTab = noNewTab;
 
 // The tabs (tabs.js): what pressing, closing and moving them does
 const tabStrip = new TabStrip({
     pressTab: (docId) => {
-        const leavingNewTab = newTab.active;
-        newTab = activateDocument(newTab);
-        if (docId !== activeDocId) switchTab(docId); // keeps the tab elements
-        else if (leavingNewTab) refreshTabs(); // the document is shown again
+        const before = win;
+        win = documentPressed(win);
+        if (docId !== activeDocId(before)) switchTab(docId); // keeps the tab elements
+        else if (before.newTab.active) refreshTabs(); // the document is shown again
     },
     pressNewTab: () => {
-        if (newTab.active) return; // shown already
-        newTab = activateNewTab(newTab);
+        if (win.newTab.active) return; // shown already
+        win = newTabPressed(win);
         refreshTabs();
     },
     addTab: () => {
-        newTab = openNewTab();
-        openFailure = null; // a fresh start
-        shownPlaceholder = null; // render it again, without the failure
+        win = newTabRequested(win);
         refreshTabs();
     },
     closeNewTab: () => {
-        newTab = closeNewTab();
+        win = newTabClosed(win);
         refreshTabs();
     },
     closeTab: (docId) => closeTab(docId),
@@ -390,10 +375,7 @@ function refreshTabs() {
     if (tabStrip.holdWhileDragging()) return; // rendered after the drop
     const docs = backend.workspaceInfo();
     if (!docs) return;
-    docCount = docs.length;
-    newTab = documentsCounted(newTab, docCount);
-
-    activeDocId = docs.find(doc => doc.active)?.id ?? null;
+    win = workspaceChanged(win, docs);
     // A panel per open document
     const changes = paneChanges([...panes.keys()], docs.map(doc => doc.id));
     for (const docId of changes.remove) {
@@ -411,7 +393,7 @@ function refreshTabs() {
         panes.get(doc.id).setViews({ mainView: doc.mainView, searchView: doc.searchView, path: doc.path },
             false); // rendered by showDocument() below
 
-    tabStrip.render(docs, newTab, plusShown(docs.length));
+    tabStrip.render(win.docs, win.newTab, plusShown(win.docs.length));
     for (const doc of docs) showTabStatus(doc.id, panes.get(doc.id));
 
     showDocument();
@@ -427,7 +409,7 @@ function switchTab(docId) {
 function closeTab(docId) {
     const id = parseInt(docId);
     backend.closeTab(id);
-    shownPlaceholder = null; // the recent files show when the file was used, not "Opened"
+    win = documentClosed(win);
     refreshTabs();
 }
 
@@ -441,8 +423,8 @@ let splitters = { cols: "200px, *", rows: "*, 250dip", colsState: null, rowsStat
 // Shows the panel of the active document, or the placeholder instead of all
 // the panels while no document is shown
 function showDocument() {
-    const docId = shownDocument(newTab, docCount, activeDocId);
-    const pane = docId === null ? null : panes.get(docId) ?? null;
+    const view = shown(win);
+    const pane = view.placeholder ? null : panes.get(view.docId) ?? null;
     const empty = $("#empty-placeholder");
     empty.style.display = pane ? "none" : "flex";
     $("#document-panes").style.display = pane ? "" : "none";
@@ -454,17 +436,18 @@ function showDocument() {
         pane.refresh();
     }
     if (pane) {
-        shownPlaceholder = null;
+        renderedPlaceholder = null;
         return;
     }
-    // Rendered on entering it only: not on every event of a hidden
-    // document, which would rebuild the list under the mouse
-    const mode = newTab.active ? "newTab" : "start";
-    if (shownPlaceholder !== mode) {
+    // Rendered on entering it, or when what it shows changed (placeholderVersion):
+    // not on every event of a hidden document, which would rebuild the list
+    // under the mouse
+    const mode = view.placeholder ?? "start"; // "start" too for a document without its panel yet
+    if (renderedPlaceholder?.mode !== mode || renderedPlaceholder.version !== win.placeholderVersion) {
         renderPlaceholder();
         empty.state.focus = true; // keys don't go to a hidden panel
     }
-    shownPlaceholder = mode;
+    renderedPlaceholder = { mode, version: win.placeholderVersion };
 }
 
 // Native: the search view of a document shows something else now.
@@ -499,8 +482,7 @@ globalThis.onMainViewChanged = function (docId, json) {
 // already (then that one is the current document again)
 globalThis.onDocumentOpened = function (docId) {
     console.log("Native: onDocumentOpened (int)", docId);
-    newTab = documentOpened(newTab); // opened from the New Tab: takes its place
-    openFailure = null;
+    win = documentOpened(win); // opened from the New Tab: takes its place
     refreshTabs(); // the table reloads when the file is loaded
 };
 
@@ -508,15 +490,15 @@ globalThis.onDocumentOpened = function (docId) {
 // while the file was loading)
 globalThis.onDocumentClosed = function (docId) {
     console.log("Native: onDocumentClosed", docId);
-    shownPlaceholder = null; // the recent files show when the file was used, not "Opened"
+    win = documentClosed(win);
     refreshTabs();
 };
 
 globalThis.getAppState = function () {
-    const [left, top, width, height] = Window.this.box("xywh", "border", "screen", true);
-    const list = panes.get(activeDocId)?.mainList; // shown or under the New Tab
+    const windowRect = platform.windowFrame();
+    const list = panes.get(activeDocId(win))?.mainList; // shown or under the New Tab
     return JSON.stringify({
-        windowRect: { left, top, width, height },
+        windowRect,
         theme: currentTheme,
         tableFontSize,
         scrollPosition: list ? (list.state.scrollPos || 0) : 0
