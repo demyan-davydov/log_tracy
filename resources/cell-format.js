@@ -56,3 +56,27 @@ export function cellClass(column, level) {
 export function rowText(cellTexts) {
     return cellTexts.join("\t");
 }
+
+// The cells of a row of the backend (asSciterRow in main_window.d): the fixed
+// cells by their position, then a cell per column from firstColumn on
+export const rowLayout = { anchored: 0, rule: 1, viewIndex: 2, messageIndex: 3, level: 4, firstColumn: 5 };
+
+// The text a cell of `column` shows for `value` (a cell of the backend row)
+export function cellText(column, value) {
+    if (value === null && column.kind !== "Time") return ""; // the record has no such field
+    switch (column.kind) {
+        case "Time": return formatTime(value);
+        case "Level": return value ? (levelName(value) || "unknown") : ""; // None: no level
+        case "Duration": return formatDuration(value, column.unitsPerSecond);
+        case "Enum": return column.labels?.[value] ?? "unknown";
+        default: return String(value); // Payload, Text, Integer, Hex (formatted by the backend)
+    }
+}
+
+// The text of a row of the backend as the table shows it: Index, then the
+// cells of `columns`; null if there is no row
+export function itemText(item, columns) {
+    if (!item) return null;
+    return rowText([String(item[rowLayout.messageIndex]),
+        ...columns.map((column, i) => cellText(column, item[rowLayout.firstColumn + i]))]);
+}

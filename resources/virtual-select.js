@@ -1,11 +1,11 @@
+// A list that renders only the items on screen (behavior: virtual-list). The
+// selection lives in the subclasses (see VirtualDltTBody).
 export class VirtualList extends Element {
-    currentItem = null; // item, one of items
     // Where the next render() scrolls to: a row number, "start" or "end"; null
     // keeps the scroll. render() runs posted by componentUpdate(), so a
     // navigation posted next to componentUpdate() would come before the one
     // render() posts itself and be overridden by it: set this instead.
     navigateTarget = null;
-    selectedItems;// TODO: = new WeakSet();
     styleSet;
     props;
 
@@ -24,18 +24,6 @@ export class VirtualList extends Element {
 
     totalItems() { // virtual function, must be overriden
         return 0;
-    }
-
-    // Returns the position of the item in the current view (linear index).
-    // Necessary for keyboard navigation and range selection (Shift).
-    indexOf(item) { // virtual function, must be overriden
-        return -1;
-    }
-
-    // Returns a stable unique identifier for the item.
-    // Used for tracking selection across data reloads or scrolling.
-    keyOf(item) { // virtual function, can be overriden
-        return item;
     }
 
     render() {
@@ -84,10 +72,9 @@ export class VirtualList extends Element {
             });
         }
 
-        const { currentItem, selectedItems } = this;
         for (let index = firstIndex; index <= lastIndex; ++index) {
             const item = this.itemAt(index);
-            if (item) list.push(this.renderItem(item, item === currentItem, selectedItems?.has(item)));
+            if (item) list.push(this.renderItem(item));
         }
 
         if (target !== null)
@@ -99,13 +86,12 @@ export class VirtualList extends Element {
 
     // scroll down
     appendElements(index, n) {
-        const { currentItem, selectedItems } = this;
         if (index === undefined) index = 0;
         const elements = [];
         for (let i = 0; i < n; ++i, ++index) {
             if (index >= this.totalItems()) break;
             const item = this.itemAt(index);
-            elements.push(this.renderItem(item, item === currentItem, selectedItems?.has(item)));
+            elements.push(this.renderItem(item));
         }
 
         this.append(elements);
@@ -114,13 +100,12 @@ export class VirtualList extends Element {
 
     // scroll up
     prependElements(index, n) {
-        const { currentItem, selectedItems } = this;
         if (index === undefined) index = this.totalItems() - 1;
         const elements = [];
         for (let i = 0; i < n; ++i, --index) {
             if (index < 0) break;
             const item = this.itemAt(index);
-            elements.push(this.renderItem(item, item === currentItem, selectedItems?.has(item)));
+            elements.push(this.renderItem(item));
         }
 
         elements.reverse();
@@ -130,13 +115,12 @@ export class VirtualList extends Element {
 
     // scroll to
     replaceElements(index, n) {
-        const { currentItem, selectedItems } = this;
         const elements = [];
         const start = index;
         for (let i = 0; i < n; ++i, ++index) {
             if (index >= this.totalItems()) break;
             const item = this.itemAt(index);
-            elements.push(this.renderItem(item, item === currentItem, selectedItems?.has(item)));
+            elements.push(this.renderItem(item));
         }
 
         this.patch(elements);
@@ -151,9 +135,9 @@ export class VirtualList extends Element {
         return <virtual-select {this.props} styleset={this.styleset}>{items}</virtual-select>;
     }
 
-    renderItem(item, index) // overridable
+    renderItem(item) // overridable
     {
-        return <option key={index}>item {index}</option>;
+        return <option>{String(item)}</option>;
     }
 
     oncontentrequired(evt) {
@@ -162,107 +146,6 @@ export class VirtualList extends Element {
         else if (where < 0) evt.data = this.prependElements(start, length); // scrolling up, need to prepend more elements
         else evt.data = this.replaceElements(start, length); // scrolling to index
         return true;
-    }
-
-    itemOfElement(element) {
-        return this.itemAt(element.elementIndex + this.vlist.firstBufferIndex);
-    }
-
-    advanceNext() {
-        if (!this.currentItem)
-            this.componentUpdate({ currentItem: this.itemOfElement(this.vlist.firstVisibleItem) });
-        else {
-            let index = this.indexOf(this.currentItem);
-            if (++index < this.totalItems()) {
-                this.componentUpdate({ currentItem: this.itemAt(index) });
-                this.vlist.advanceTo(index);
-            }
-        }
-        return true;
-    }
-
-    advancePrevious() {
-        if (!this.currentItem)
-            this.componentUpdate({ currentItem: this.itemOfElement(this.vlist.lastVisibleItem) });
-        else {
-            let index = this.indexOf(this.currentItem);
-            if (--index >= 0) {
-                this.componentUpdate({ currentItem: this.itemAt(index) });
-                this.vlist.advanceTo(index);
-            }
-        }
-        return true;
-    }
-
-    advanceFirst() {
-        this.currentItem = this.itemAt(0);
-        this.vlist.navigateTo("start");
-        return true;
-    }
-
-    advanceLast() {
-        this.currentItem = this.itemAt(this.totalItems() - 1);
-        this.vlist.navigateTo("end");
-        return true;
-    }
-
-    onkeydown(evt) {
-        switch (evt.code) {
-            case "ArrowDown": return this.advanceNext();
-            case "ArrowUp": return this.advancePrevious();
-            case "End": return this.advanceLast();
-            case "Home": return this.advanceFirst();
-            default: return false;
-        }
-        this.post(new Event("input", { bubbles: true }));
-        return true;
-    }
-
-    // auto scroll with pressed mouse button ++
-    ["on ~mousedown"](evt) {
-        this.state.capture(true);
-    }
-    ["on ~mouseup"](evt) {
-        this.state.capture(false);
-    }
-
-    ["on ~mousetick"](evt) {
-        console.log(evt.y);
-        let height = this.state.box("height");
-        if (evt.y < 0)
-            this.vlist.navigate("itemprior");
-        else if (evt.y > height)
-            this.vlist.navigate("itemnext");
-    }
-    // auto scroll with pressed mouse button --
-
-    setCurrentOption(child) {
-        let option;
-        for (let node = child; node; node = node.parentElement) {
-            if (node.parentElement === this) {
-                option = node;
-                break;
-            }
-        }
-
-        if (option) {
-            this.componentUpdate({ currentItem: this.itemOfElement(option) });
-            this.post(new Event("input", { bubbles: true }));
-            return true;
-        }
-    }
-
-    ["on mousedown"](evt) {
-        if (evt.button == 1) this.setCurrentOption(evt.target);
-    }
-
-    ["on mousemove"](evt) {
-        if (evt.button == 1) this.setCurrentOption(evt.target);
-    }
-
-    get value() {
-        if (!this.currentItem) return;
-        return this.currentItem;
     }
 }
 
@@ -281,10 +164,6 @@ export class VirtualSelect extends VirtualList {
 
     totalItems() { // virtual function, can be overriden
         return this.items?.length || 0;
-    }
-
-    indexOf(item) { // virtual function, can be overriden
-        return this.items?.indexOf(item);
     }
 
     render(props) {

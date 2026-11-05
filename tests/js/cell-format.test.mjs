@@ -2,7 +2,7 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { formatTime, formatDuration, levelName, cellClass, rowText } from "../../resources/cell-format.js";
+import { formatTime, formatDuration, levelName, cellClass, rowText, cellText, itemText } from "../../resources/cell-format.js";
 
 // TimeKind values of the backend (log_core/log_message)
 const Absolute = 1, Local = 2, LocalNoYear = 3, SinceBoot = 4;
@@ -60,4 +60,28 @@ test("a copied row is its cells as shown, separated by tabs", () => {
 
 test("a copied row keeps its empty cells, so the columns stay aligned", () => {
     assert.equal(rowText(["1", "", "text"]), "1\t\ttext");
+});
+
+test("a cell is copied as it is shown", () => {
+    assert.equal(cellText({ kind: "Time" }, [3141592, SinceBoot]), "3.141592");
+    assert.equal(cellText({ kind: "Time" }, null), "-");
+    assert.equal(cellText({ kind: "Level" }, 2), "Error");
+    assert.equal(cellText({ kind: "Level" }, 0), "", "the record has no level");
+    assert.equal(cellText({ kind: "Level" }, 99), "unknown");
+    assert.equal(cellText({ kind: "Integer" }, 42), "42");
+    assert.equal(cellText({ kind: "Hex" }, "0x1F"), "0x1F");
+    assert.equal(cellText({ kind: "Duration", unitsPerSecond: 10000 }, 31415), "3.1415");
+    assert.equal(cellText({ kind: "Enum", labels: ["log", "trace"] }, 1), "trace");
+    assert.equal(cellText({ kind: "Enum", labels: ["log"] }, 5), "unknown");
+    assert.equal(cellText({ kind: "Text" }, "ECU1"), "ECU1");
+    assert.equal(cellText({ kind: "Payload" }, "line1\n\tat foo"), "line1\n\tat foo", "copied as is");
+    assert.equal(cellText({ kind: "Text" }, null), "", "the record has no such field");
+});
+
+test("a row of the backend is copied as Index and its columns, without the fixed cells", () => {
+    const columns = [{ kind: "Text" }, { kind: "Payload" }];
+    // anchored, rule id, view index, message index, level, then the columns
+    const item = [true, 3, 7, 1234, 4, "ECU1", "hello"];
+    assert.equal(itemText(item, columns), "1234\tECU1\thello");
+    assert.equal(itemText(null, columns), null, "no such row");
 });

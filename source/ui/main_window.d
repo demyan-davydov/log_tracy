@@ -414,6 +414,28 @@ class MainWindow : SciterWindow
 
                 return true;
             }
+            if (method == "getMainViewPosition")
+            {
+                // getMainViewPosition(messageIndex) -> its row in the main view,
+                // null if the view doesn't show it
+                // The row sends message indexes as doubles (see asSciterRow)
+                double msgIndex = -1;
+                if (params.argc > 0)
+                {
+                    SciterValueConstView valueView = SciterValueConstView(&params.argv[0]);
+                    int asInt;
+                    if (valueView.tryGet(asInt))
+                        msgIndex = asInt;
+                    else
+                        valueView.tryGet(msgIndex);
+                }
+                size_t position;
+                if (msgIndex >= 0 && _workspace.current.mainView.positionOf(cast(size_t) msgIndex, position))
+                    resultView = cast(int) position;
+                else
+                    resultView.set(SciterValue.makeNull());
+                return true;
+            }
             if (method == "getSearchViewCount")
             {
                 const int count = cast(int) _workspace.current.searchView.itemsCount();

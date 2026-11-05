@@ -24,6 +24,10 @@ interface DocumentView
 
     bool fetchItem(size_t index, scope ref DocumentItem item);
 
+    //! @brief The position in the view of the message with index `realIndex`
+    //! @return false if the view doesn't show that message
+    bool positionOf(size_t realIndex, out size_t position);
+
     State state();
 
     float progress(); // return 1.0 if ready
