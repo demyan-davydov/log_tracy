@@ -111,7 +111,11 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
     (`ruleError`), it is kept, never dropped silently;
   - a `FilterSet` is what one filter file holds; `RuleFilter.compile` builds the view filter from
     the enabled rules of the enabled sets (shown: an include rule matches, or there is none, and
-    no exclude rule does; markers don't filter).
+    no exclude rule does; markers don't filter);
+  - a rule has a `RuleId` while its document is open (given by `DocumentFilters`, not saved);
+    `RuleMatcher` finds the first rule *with a color* a record matches, of any kind, as dlt-viewer
+    colors the rows. It runs for every row shown on the UI thread: keep matching cheap (the
+    conditions of a rule are checked cheapest first, substrings by code units).
 - Filter files: our own JSON format (`log_core/filter_file`, `<name>.<format id>.logfilter`, the
   format is also written inside) for any log; a `.dlf` of dlt-viewer (`formats/dlt/dlf`) for DLT
   logs only, converted to rules and back (`fromDlf`, `toDlf`), naming what is lost.
@@ -144,7 +148,10 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
     gives the columns of all of them.
   - Dragging to reorder (tabs, columns in Settings) shares the Sciter-free
     `resources/drag-order.js`.
-- A row is: anchored, filterMask, view index, message index, level, then one cell per column.
+- A row is: anchored, rule id, view index, message index, level, then one cell per column.
+  - The rule id is the first rule with a color the record matches (null if none); the script
+    looks its color up in the rules of the panel (`resources/rule-colors.js`) and sets it on the
+    row, `table.css` shows it on the first cell only, as a fade from the left edge.
   - A time cell is `[microseconds, TimeKind]`: it is shown by the kind of the record, not of
     the column.
   - Hex cells are formatted by the backend: 64-bit values don't fit a script number.

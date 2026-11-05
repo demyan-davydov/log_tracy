@@ -104,6 +104,15 @@
     cursor: pointer;
 }
 
+/* The color of the filter rule a record matches (as dlt-viewer colors the
+   rows): set on the row, shown on its first cell only, fading out from the
+   left edge to a third of the cell; the background of the row shows through.
+   Sciter takes var() in a gradient only in `background`, not in
+   `background-image`. */
+.log-table>tbody>tr[rule-color="true"]>td:first-child {
+    background: linear-gradient(to right, var(--rule-color), transparent 33%);
+}
+
 /* Anchor column: the mark of an anchored message, a faint one on hover */
 .log-table>tbody>tr>td.anchor[has-anchor="true"]:before {
     content: "⚓";

@@ -13,6 +13,15 @@ export function setColumns(newColumns) {
     columns = newColumns;
 }
 
+// The colors of the filter rules of the active document by rule id (see
+// rule-colors.js): a row shows the color of the rule it refers to
+let ruleColorById = new Map();
+
+// Sets the colors of the rules; the rows on screen are refreshed by the caller
+export function setRuleColors(colors) {
+    ruleColorById = colors;
+}
+
 // The header row of a log table for the current columns
 export function renderHeader() {
     return <tr>
@@ -92,12 +101,16 @@ export class VirtualDltTBody extends VirtualSelect {
         // Row layout from D backend asSciterRow(): the fixed cells, then a
         // cell per column of the document (see setColumns)
         const idx_anchor = 0;
+        const idx_rule = 1; // id of the first filter rule with a color the record matches, null if none
         const idx_viewIndex = 2;
         const idx_absolute_index = 3;
         const idx_level = 4; // LogLevel of the record: colors the columns with byLevel
         const idx_firstColumn = 5;
 
-        return <tr state-current={isCurrent} state-checked={isSelected} view-index={item[idx_viewIndex]}>
+        // The color of the rule is set on the row, table.css shows it on the first cell
+        const ruleColor = ruleColorById.get(item[idx_rule]); // undefined: no rule, or no color
+        return <tr state-current={isCurrent} state-checked={isSelected} view-index={item[idx_viewIndex]}
+            rule-color={ruleColor ? "true" : "false"} style={ruleColor ? `--rule-color: ${ruleColor}` : ""}>
             <td class="anchor" has-anchor={item[idx_anchor] ? "true" : "false"} msg-index={item[idx_absolute_index]}></td>
             <td class="aux">{item[idx_absolute_index]}</td>
             {columns.map((column, i) => renderCell(column, item[idx_firstColumn + i], item[idx_level]))}

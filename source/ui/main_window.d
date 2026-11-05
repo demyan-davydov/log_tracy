@@ -10,7 +10,8 @@ import domain.document;
 import domain.document_item;
 import log_core.log_format : ColumnInfo, ColumnKind, FormatChoice;
 import log_core.column_layout : arrangeColumns;
-import log_core.log_message : TimeKind;
+import log_core.log_message : LogMessage, TimeKind;
+import log_core.rule_filter : RuleId;
 import domain.log_document;
 
 import ui.filter_commands : DocumentFilters;
@@ -75,6 +76,13 @@ private final class DocumentUi : MainViewSink, MainViewCommands, SearchViewSink,
             _filters = new DocumentFilters(doc.format, formatId, (filter) { doc.applyViewFilter(filter); });
         }
         return _filters;
+    }
+
+    /// The first filter rule with a color a record of the document matches;
+    /// called for every row shown, so it doesn't create the filters
+    RuleId ruleOf(scope ref const(LogMessage!wchar) message) const
+    {
+        return _filters is null ? RuleId.init : _filters.ruleOf(message);
     }
 
     void pressMainCancel()
@@ -400,7 +408,7 @@ class MainWindow : SciterWindow
                 // null if there is no such row (any more): the view changed, the file is lost
                 DocumentItem docItem;
                 if (_workspace.current.mainView.fetchItem(index, docItem))
-                    resultView.set(asSciterRow(index, docItem, tableColumns()));
+                    resultView.set(asSciterRow(index, docItem, tableColumns(), ruleOf(docItem)));
                 else
                     resultView.set(SciterValue.makeNull());
 
@@ -418,7 +426,7 @@ class MainWindow : SciterWindow
                 const int index = getParamInt(0);
                 DocumentItem docItem; // null if there is no such row, as above
                 if (_workspace.current.searchView.fetchItem(index, docItem))
-                    resultView.set(asSciterRow(index, docItem, tableColumns()));
+                    resultView.set(asSciterRow(index, docItem, tableColumns(), ruleOf(docItem)));
                 else
                     resultView.set(SciterValue.makeNull());
 
@@ -683,6 +691,13 @@ class MainWindow : SciterWindow
             _tableColumnsFormat = formatId;
         }
         return _tableColumns;
+    }
+
+    /// The first filter rule with a color of the current document a record of it matches
+    private RuleId ruleOf(ref const(DocumentItem) item)
+    {
+        auto ui = _documentUis.get(_workspace.currentId, null);
+        return ui is null ? RuleId.init : ui.ruleOf(item.message);
     }
 
     /// The format a document was opened with; unset for a document without one
@@ -983,10 +998,13 @@ unittest
     assert(hexCellText(0x1234_5678_9ABC_DEF1) == "123456789ABCDEF1", "no rounding above 2^53");
 }
 
-//! @brief A row of the log table: anchored, filterMask, view index, message
+//! @brief A row of the log table: anchored, rule id, view index, message
 //! index, level, then a cell per column (see virtual-dlt-view.js). The level
 //! colors the cells of the columns that ask for it (ColumnInfo.byLevel).
-SciterValue asSciterRow(int index, ref const(DocumentItem) item, const(ColumnInfo)[] columns)
+//! @param rule - the first filter rule with a color the record matches (the
+//! script shows it by its color); none is sent as null
+SciterValue asSciterRow(int index, ref const(DocumentItem) item, const(ColumnInfo)[] columns,
+    RuleId rule)
 {
     enum fixedCells = 5;
     const msg = &item.message();
@@ -994,7 +1012,13 @@ SciterValue asSciterRow(int index, ref const(DocumentItem) item, const(ColumnInf
     SciterValue row = SciterValue.makeArrayWithSize(fixedCells + columns.length);
     auto cells = AsArrayView(row);
     cells.opIndex(0, item.anchored);
-    cells.opIndex(1, item.filterMask);
+    if (rule.isValid())
+        cells.opIndex(1, cast(double) rule.toInt());
+    else
+    {
+        SciterValue none = SciterValue.makeNull();
+        cells.opIndex(1, none);
+    }
     cells.opIndex(2, index);
     cells.opIndex(3, cast(double) item.realIndex);
     cells.opIndex(4, cast(int) msg.level);

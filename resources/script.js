@@ -1,5 +1,6 @@
 import { $, $$ } from "@sciter";
-import { VirtualDltTBody, VirtualMainViewTBody, VirtualSearchViewTBody, setColumns, renderHeader } from "virtual-dlt-view.js";
+import { VirtualDltTBody, VirtualMainViewTBody, VirtualSearchViewTBody, setColumns, renderHeader, setRuleColors } from "virtual-dlt-view.js";
+import { ruleColors } from "rule-colors.js";
 import {
     noNewTab, plusShown, openNewTab, activateNewTab, activateDocument,
     closeNewTab, documentOpened, documentsCounted, showsPlaceholder,
@@ -598,7 +599,7 @@ const ruleKindMarks = { include: "+", exclude: "\u2212", marker: "\u25C6" };
 const ruleKindTitles = {
     include: "Shows the records it matches",
     exclude: "Hides the records it matches",
-    marker: "Highlights the records it matches (not shown yet)"
+    marker: "Marks the records it matches with its color"
 };
 
 // Runs a filter command of the active document and shows the sets again; the
@@ -608,6 +609,14 @@ function filterCommand(name, ...args) {
     const error = Window.this.xcall(name, ...args);
     filterMessages.set(activeDocId, error || "");
     showFilters();
+    refreshRuleColors();
+}
+
+// The rows on screen refer to the rules again: a change of a rule may change
+// the rule with a color a row matches without filtering the view again
+function refreshRuleColors() {
+    for (const list of [getMainViewList(), getSearchViewList()])
+        list?.refreshVisibleRows?.();
 }
 
 let shownFilters = { canFilter: false, canDlf: false, sets: [] }; // what showFilters() got last
@@ -642,6 +651,7 @@ function editRule(set, rule) {
     }
     filterMessages.set(activeDocId, "");
     showFilters();
+    refreshRuleColors();
     return true;
 }
 
@@ -652,6 +662,7 @@ function showFilters() {
         ? { canFilter: false, canDlf: false, sets: [] }
         : JSON.parse(Window.this.xcall("getFilters") || "{}");
     shownFilters = info;
+    setRuleColors(ruleColors(info.sets)); // the rows refer to the rules by id
     const panel = $("#filter-sets");
     // Built from scratch, as the quick filter was: reused inputs keep their state
     panel.clear();
@@ -744,8 +755,9 @@ function refreshTabs() {
         docStatus.set(doc.id, { mainView: doc.mainView, searchView: doc.searchView, path: doc.path });
         if (doc.active) activeDocId = doc.id;
     }
-    applyColumns();
+    // The filters first: the rows the columns re-render refer to its rules
     if (activeDocId !== filtersDocId) showFilters(); // the sets change by commands only
+    applyColumns();
 
     // Same documents in the same order (e.g. another tab was activated): the
     // elements are kept, so a tab being pressed or dragged stays in the DOM
