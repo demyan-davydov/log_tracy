@@ -438,69 +438,13 @@ final class Workspace
 unittest
 {
 
-    // Minimal implementation of Document for testing
-    class MockDocument : Document
+    // A document told apart by its name
+    class MockDocument : NullDocument
     {
         string name;
         this(string n)
         {
             name = n;
-        }
-
-        SignalConsumer events()
-        {
-            return k_nullEvents;
-        }
-
-        void dispatchEvents()
-        {
-        }
-
-        DocumentView mainView()
-        {
-            return k_nullDocumentView;
-        }
-
-        DocumentView searchView()
-        {
-            return k_nullDocumentView;
-        }
-
-        const(LogFormat) format()
-        {
-            return null;
-        }
-
-        void applyViewFilter(LogFilter!wchar filter)
-        {
-        }
-
-        void applySearchFilter(LogFilter!wchar filter)
-        {
-        }
-
-        bool setAnchor(size_t index, bool value)
-        {
-            return false;
-        }
-
-        size_t[] exportAnchors() const pure
-        {
-            return null;
-        }
-
-        void importAnchors(const(size_t[]) anchors)
-        {
-        }
-
-        bool requestCancel()
-        {
-            return false;
-        }
-
-        bool sourceLost()
-        {
-            return false;
         }
     }
 
@@ -548,23 +492,13 @@ unittest
     import utils.event_bus.event_bus_async : EventBusAsync;
 
     // Document whose events are published by the test itself
-    class EventSourceDocument : Document
+    class EventSourceDocument : NullDocument
     {
         EventBusAsync bus;
         this() { bus = new EventBusAsync(); }
 
-        SignalConsumer events() { return bus; }
-        void dispatchEvents() { bus.dispatch(); }
-        DocumentView mainView() { return k_nullDocumentView; }
-        DocumentView searchView() { return k_nullDocumentView; }
-        const(LogFormat) format() { return null; }
-        void applyViewFilter(LogFilter!wchar filter) {}
-        void applySearchFilter(LogFilter!wchar filter) {}
-        bool setAnchor(size_t index, bool value) { return false; }
-        size_t[] exportAnchors() const pure { return null; }
-        void importAnchors(const(size_t[]) anchors) {}
-        bool requestCancel() { return false; }
-        bool sourceLost() { return false; }
+        override SignalConsumer events() { return bus; }
+        override void dispatchEvents() { bus.dispatch(); }
     }
 
     auto ws = new Workspace();
@@ -605,22 +539,9 @@ unittest
 {
     static int destroyed;
 
-    class ClosableDocument : Document
+    class ClosableDocument : NullDocument
     {
         ~this() { ++destroyed; }
-
-        SignalConsumer events() { return k_nullEvents; }
-        void dispatchEvents() {}
-        DocumentView mainView() { return k_nullDocumentView; }
-        DocumentView searchView() { return k_nullDocumentView; }
-        const(LogFormat) format() { return null; }
-        void applyViewFilter(LogFilter!wchar filter) {}
-        void applySearchFilter(LogFilter!wchar filter) {}
-        bool setAnchor(size_t index, bool value) { return false; }
-        size_t[] exportAnchors() const pure { return null; }
-        void importAnchors(const(size_t[]) anchors) {}
-        bool requestCancel() { return false; }
-        bool sourceLost() { return false; }
     }
 
     auto ws = new Workspace();
@@ -639,23 +560,13 @@ unittest
 {
     import utils.event_bus.event_bus_async : EventBusAsync;
 
-    class EventSourceDocument : Document
+    class EventSourceDocument : NullDocument
     {
         EventBusAsync bus;
         this() { bus = new EventBusAsync(); }
 
-        SignalConsumer events() { return bus; }
-        void dispatchEvents() { bus.dispatch(); }
-        DocumentView mainView() { return k_nullDocumentView; }
-        DocumentView searchView() { return k_nullDocumentView; }
-        const(LogFormat) format() { return null; }
-        void applyViewFilter(LogFilter!wchar filter) {}
-        void applySearchFilter(LogFilter!wchar filter) {}
-        bool setAnchor(size_t index, bool value) { return false; }
-        size_t[] exportAnchors() const pure { return null; }
-        void importAnchors(const(size_t[]) anchors) {}
-        bool requestCancel() { return false; }
-        bool sourceLost() { return false; }
+        override SignalConsumer events() { return bus; }
+        override void dispatchEvents() { bus.dispatch(); }
     }
 
     auto ws = new Workspace();
@@ -692,25 +603,9 @@ unittest
 {
     import std.path : absolutePath, buildPath;
 
-    class PlainDocument : Document
-    {
-        SignalConsumer events() { return k_nullEvents; }
-        void dispatchEvents() {}
-        DocumentView mainView() { return k_nullDocumentView; }
-        DocumentView searchView() { return k_nullDocumentView; }
-        void applyViewFilter(LogFilter!wchar filter) {}
-        void applySearchFilter(LogFilter!wchar filter) {}
-        bool setAnchor(size_t index, bool value) { return false; }
-        size_t[] exportAnchors() const pure { return null; }
-        void importAnchors(const(size_t[]) anchors) {}
-        bool requestCancel() { return false; }
-        bool sourceLost() { return false; }
-        const(LogFormat) format() { return null; }
-    }
-
     auto ws = new Workspace();
-    const a = ws.addDocument(new PlainDocument(), "/logs/a.dlt");
-    const b = ws.addDocument(new PlainDocument(), absolutePath("b.dlt"));
+    const a = ws.addDocument(new NullDocument(), "/logs/a.dlt");
+    const b = ws.addDocument(new NullDocument(), absolutePath("b.dlt"));
 
     assert(ws.findBySourcePath("/logs/a.dlt") == a);
     assert(ws.findBySourcePath("/logs/./x/../a.dlt") == a);
@@ -718,7 +613,7 @@ unittest
     assert(!ws.findBySourcePath("/logs/c.dlt").isValid);
     version (Windows)
     {
-        const w = ws.addDocument(new PlainDocument(), `C:\Logs\W.dlt`);
+        const w = ws.addDocument(new NullDocument(), `C:\Logs\W.dlt`);
         assert(ws.findBySourcePath(`c:/logs/w.dlt`) == w, "case and separators don't matter");
     }
 

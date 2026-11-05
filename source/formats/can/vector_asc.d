@@ -71,11 +71,7 @@ final class AscFormat : TextFormat
 
         AscLine line;
         if (!parseLine(_header, text, line))
-        {
-            auto builder = msg.payloadBuilder();
-            builder.appendUtf8(text);
-            return true;
-        }
+            return decodeAsPlainText(msg, text);
 
         if (showsStart)
         {

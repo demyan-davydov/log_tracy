@@ -617,15 +617,6 @@ static AppSettings loadSettings(string path = defaultSettingsPath())
         string content = readText(path);
         JSONValue j = parseJSON(content);
 
-        if ("windowRect" in j)
-        {
-            JSONValue r = j["windowRect"];
-            settings.windowRect.left = r["left"].integer.to!int;
-            settings.windowRect.top = r["top"].integer.to!int;
-            settings.windowRect.width = r["width"].integer.to!int;
-            settings.windowRect.height = r["height"].integer.to!int;
-        }
-
         if ("files" in j)
         {
             foreach (val; j["files"].array)
@@ -679,16 +670,8 @@ static AppSettings loadSettings(string path = defaultSettingsPath())
             settings.recentFiles = withRecentFile(settings.recentFiles, settings.activeFile);
         }
 
-        if ("theme" in j)
-        {
-            settings.theme = j["theme"].str;
-        }
-
-        if ("tableFontSize" in j)
-        {
-            settings.tableFontSize = j["tableFontSize"].integer.to!int;
-        }
-
+        // After the files and the recent list: a bad preference loses only what follows
+        readPreferences(j, settings);
         if (const layouts = "columnLayouts" in j)
             settings.columnLayouts = columnLayoutsFromJson(*layouts);
 
@@ -699,6 +682,47 @@ static AppSettings loadSettings(string path = defaultSettingsPath())
     }
 
     return settings;
+}
+
+/// The settings with the state the script reports on closing put in: the
+/// JSON of its getAppState() (window rect, theme, font size of the tables,
+/// scroll position of the active file). Keys it doesn't have keep their values;
+/// a malformed JSON changes nothing more after the first bad key.
+AppSettings mergeAppStateFromScript(const AppSettings base, const(char)[] appStateJson)
+{
+    AppSettings settings = base;
+    try
+    {
+        const j = parseJSON(appStateJson);
+        readPreferences(j, settings);
+        const scroll = "scrollPosition" in j;
+        if (scroll !is null && settings.activeFile.length > 0)
+            foreach (ref f; settings.files)
+                if (f.path == settings.activeFile)
+                {
+                    f.scrollPosition = scroll.integer.to!int;
+                    break;
+                }
+    }
+    catch (Exception e)
+    {
+        writeln("Error parsing the state of the script: ", e.msg);
+    }
+    return settings;
+}
+
+/// Reads what both the settings file and the state of the script hold: the
+/// window rect, the theme and the font size of the tables. Keys `j` doesn't
+/// have leave their values in `settings`.
+private void readPreferences(in JSONValue j, ref AppSettings settings)
+{
+    if (const r = "windowRect" in j) // taken whole or not at all
+        settings.windowRect = WindowRect((*r)["left"].integer.to!int, (*r)["top"].integer.to!int,
+            (*r)["width"].integer.to!int, (*r)["height"].integer.to!int);
+    if (const theme = "theme" in j)
+        settings.theme = theme.str;
+    if (const fontSize = "tableFontSize" in j)
+        settings.tableFontSize = fontSize.integer.to!int;
 }
 
 void saveSettings(in AppSettings settings, string path = defaultSettingsPath())
@@ -1147,4 +1171,81 @@ unittest
         "a column the format doesn't have any more isn't listed");
     assert(columns[0]["title"].str == "Tag" && !columns[0]["visible"].boolean);
     assert(columns[1]["visible"].boolean);
+}
+
+@("mergeAppStateFromScript: the window, theme and font size come from the script")
+unittest
+{
+    AppSettings base;
+    base.windowRect = WindowRect(1, 2, 3, 4);
+    base.theme = "light";
+    base.tableFontSize = 100;
+
+    const merged = mergeAppStateFromScript(base, `{"windowRect": {"left": 10, "top": 20,
+        "width": 300, "height": 400}, "theme": "dark", "tableFontSize": 120}`);
+    assert(merged.windowRect == WindowRect(10, 20, 300, 400));
+    assert(merged.theme == "dark");
+    assert(merged.tableFontSize == 120);
+    assert(base.theme == "light", "the settings given are not changed");
+}
+
+@("mergeAppStateFromScript: keys the script doesn't send keep their values")
+unittest
+{
+    AppSettings base;
+    base.windowRect = WindowRect(1, 2, 3, 4);
+    base.theme = "dark";
+    base.tableFontSize = 90;
+
+    const merged = mergeAppStateFromScript(base, `{"tableFontSize": 110}`);
+    assert(merged.windowRect == WindowRect(1, 2, 3, 4));
+    assert(merged.theme == "dark");
+    assert(merged.tableFontSize == 110);
+    assert(mergeAppStateFromScript(base, "not json") == base, "a malformed JSON changes nothing");
+}
+
+@("mergeAppStateFromScript: the scroll position goes to the active file")
+unittest
+{
+    AppSettings base;
+    base.files = [FileState("/a.dlt", 1), FileState("/b.dlt", 2)];
+    base.activeFile = "/b.dlt";
+
+    const merged = mergeAppStateFromScript(base, `{"scrollPosition": 42}`);
+    assert(merged.files == [FileState("/a.dlt", 1), FileState("/b.dlt", 42)]);
+    assert(base.files[1].scrollPosition == 2, "the files of the settings given are not changed");
+}
+
+@("loadSettings: a bad theme or font size doesn't lose the files and the recent list")
+unittest
+{
+    const path = buildPath(tempDir(), "dlt_explorer_settings_bad_font_test.json");
+    scope (exit) if (exists(path)) remove(path);
+    std.file.write(path, `{"activeFile": "/b.dlt", "files": [{"path": "/b.dlt", "scrollPosition": 3}],
+        "recentFiles": [{"path": "/a.dlt"}], "tableFontSize": 110.5}`);
+
+    const settings = loadSettings(path);
+    assert(settings.activeFile == "/b.dlt");
+    assert(settings.files == [FileState("/b.dlt", 3)]);
+    assert(settings.recentFiles.paths == ["/a.dlt"]);
+}
+
+@("mergeAppStateFromScript: a window rect without all its keys is not taken in part")
+unittest
+{
+    AppSettings base;
+    base.windowRect = WindowRect(1, 2, 3, 4);
+
+    const merged = mergeAppStateFromScript(base, `{"windowRect": {"left": 10, "top": 20}}`);
+    assert(merged.windowRect == WindowRect(1, 2, 3, 4));
+}
+
+@("mergeAppStateFromScript: without an active file no file gets the scroll position")
+unittest
+{
+    AppSettings base;
+    base.files = [FileState("", 1)];
+
+    const merged = mergeAppStateFromScript(base, `{"scrollPosition": 42}`);
+    assert(merged.files == [FileState("", 1)]);
 }

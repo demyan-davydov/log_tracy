@@ -109,7 +109,7 @@
     <script type="module">
         import { $, $$ } from "@sciter";
         import { toggleColumn, moveColumn, resetColumns, isDefaultLayout, layoutsOf, initialFormat, formatLabel } from "column-settings.js";
-        import { clampShift, dragTarget, settleShift } from "drag-order.js";
+        import { setShift, pressItem, dragTo, drop, showDropMarker } from "drag-strip.js";
 
         // Without parameters (opened on its own to look at it): a sample DLT log
         const params = Window.this.parameters || {
@@ -213,20 +213,11 @@
         document.on("change", "select#table-font-size", applyTableFontSize);
 
         // ── Dragging a column ────────────────────────────────────────────────
-        // As a tab is dragged (script.js), by its header: the column follows
-        // the mouse within the strip, the columns it passes slide aside, a
-        // marker shows where it will land; on drop it slides into that place.
-        // Index and Payload are outside the list: nothing moves past them.
-        // columnDrag: { cell, cells, rects, spans, format (its index), from, to,
-        //               startX, dx, markerOrigin, active, settling }, null when
-        //               no column is held.
-        const DRAG_THRESHOLD = 4; // px of mouse movement before a press becomes a drag
-        const SETTLE_MS = 160;    // a bit longer than the .settling transition
+        // As a tab is dragged (drag-strip.js), by its header. Index and Payload
+        // are outside the list: nothing moves past them.
+        // columnDrag: the drag of drag-strip.js with { format (its index) },
+        //             null when no column is held.
         let columnDrag = null;
-
-        function setCellShift(cell, dx) {
-            cell.style.transform = dx ? `translate(${dx}px, 0)` : "";
-        }
 
         document.on("mousedown", ".column-cell.movable > .column-header", (evt, header) => {
             if (evt.buttons & 6) return; // only the left button
@@ -250,78 +241,45 @@
 
         function beginColumnDrag(cell, clientX) {
             const cells = [...$$("#column-list > .column-cell")];
-            const rects = cells.map(c => c.getBoundingClientRect());
             const from = cells.indexOf(cell);
             if (from < 0) return;
-            columnDrag = {
-                cell, cells, rects, format: shown, from, to: from,
-                spans: rects.map(r => ({ start: r.left, end: r.right })),
-                startX: clientX, dx: 0, markerOrigin: null,
-                active: false, settling: false
-            };
+            columnDrag = pressItem(cells, from, clientX);
+            columnDrag.format = shown;
         }
 
         function moveColumnDrag(clientX) {
-            const d = columnDrag;
-            if (d.settling) return;
-            const dx = clientX - d.startX;
-            if (!d.active) {
-                if (Math.abs(dx) < DRAG_THRESHOLD) return;
-                d.active = true;
-                d.cell.classList.add("dragging");
-                for (const c of d.cells) if (c !== d.cell) c.classList.add("shifting");
-                $("#column-list").append(<div id="column-drop-marker"></div>);
-            }
-            d.dx = clampShift(d.spans, d.from, dx);
-            setCellShift(d.cell, d.dx);
-            const { to, shifts } = dragTarget(d.spans, d.from, d.dx);
-            d.cells.forEach((c, i) => { if (i !== d.from) setCellShift(c, shifts[i]); });
-            d.to = to;
-            showDropMarker(d);
+            const landed = dragTo(columnDrag, clientX,
+                () => $("#column-list").append(<div id="column-drop-marker"></div>));
+            if (landed) showColumnDropMarker(columnDrag);
         }
 
         function endColumnDrag() {
             const d = columnDrag;
             if (d.settling) return;
-            if (!d.active) { // a click on a header: nothing to do
+            const settles = drop(d, () => {
+                columnDrag = null;
+                renderColumns();
+            });
+            if (!settles) { // a click on a header: nothing to do
                 columnDrag = null;
                 return;
             }
             // The new order is kept at once (a Save or another format chosen
             // while the column slides keeps it); the strip is rebuilt after the slide
             if (d.to !== d.from) setFormat(moveColumn(formats[d.format], d.from, d.to), d.format);
-            d.settling = true;
-            d.cell.classList.add("settling");
-            setCellShift(d.cell, settleShift(d.spans, d.from, d.to));
-            setTimeout(() => {
-                columnDrag = null;
-                renderColumns();
-            }, SETTLE_MS);
         }
 
         // The marker is on the edge of the place the column lands on, as that
-        // of the tabs, the whole height of the strip; hidden while the column
-        // would stay where it was. Its origin is calibrated on the first show
-        // (absolute offsets are inside the border).
-        function showDropMarker(d) {
+        // of the tabs, the whole height of the strip
+        function showColumnDropMarker(d) {
             const marker = $("#column-drop-marker");
-            if (!marker) return;
-            if (d.to === d.from) {
-                marker.style.display = "none";
-                return;
-            }
-            marker.style.display = "block";
-            if (!d.markerOrigin) {
-                marker.style.left = "0px";
-                marker.style.top = "0px";
-                const r = marker.getBoundingClientRect();
-                d.markerOrigin = { left: r.left, top: r.top, width: r.right - r.left };
-            }
-            const cell = d.rects[d.from];
-            const edge = d.to > d.from ? d.rects[d.to].right : d.rects[d.to].left;
-            marker.style.left = `${edge - d.markerOrigin.width / 2 - d.markerOrigin.left}px`;
-            marker.style.top = `${cell.top - d.markerOrigin.top}px`;
-            marker.style.height = `${cell.bottom - cell.top}px`;
+            showDropMarker(marker, d, origin => {
+                const cell = d.rects[d.from];
+                const edge = d.to > d.from ? d.rects[d.to].right : d.rects[d.to].left;
+                marker.style.left = `${edge - origin.width / 2 - origin.left}px`;
+                marker.style.top = `${cell.top - origin.top}px`;
+                marker.style.height = `${cell.bottom - cell.top}px`;
+            });
         }
 
         // ── The dialog ───────────────────────────────────────────────────────

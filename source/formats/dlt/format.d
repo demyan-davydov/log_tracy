@@ -287,53 +287,7 @@ private bool isPlausibleStorageHeader(const(ubyte)[] buffer) pure @nogc nothrow
 
 version (unittest)
 {
-    import std.bitmanip : nativeToBigEndian;
-
-    /// Build a minimal valid DLT message (StorageHeader + StandardHeader + payload)
-    ubyte[] buildDltMessage(
-        const(char)[4] ecuId = "ECU1",
-        uint seconds = 1000,
-        uint microseconds = 500,
-        ubyte headerType = 0,
-        ubyte messageCounter = 0,
-        const(ubyte)[] payload = []
-    )
-    {
-        ubyte[] msg;
-
-        // Storage Header (16 bytes, little-endian)
-        msg ~= cast(ubyte[]) DLT_PATTERN;
-        msg ~= nativeToLE(seconds);
-        msg ~= nativeToLE(microseconds);
-        msg ~= cast(const(ubyte)[]) ecuId;
-
-        // Standard Header (4 bytes)
-        msg ~= headerType;
-        msg ~= messageCounter;
-
-        ushort totalLength = cast(ushort)(StandardHeader.sizeof + payload.length);
-        ubyte[2] lenBE = nativeToBigEndian!ushort(totalLength);
-        msg ~= lenBE[];
-
-        // Payload
-        msg ~= payload;
-
-        return msg;
-    }
-
-    /// Convert uint to little-endian bytes
-    private ubyte[4] nativeToLE(uint val) pure nothrow @nogc
-    {
-        version (LittleEndian)
-            return *cast(ubyte[4]*)&val;
-        else
-            return [
-                cast(ubyte)(val & 0xFF),
-                cast(ubyte)((val >> 8) & 0xFF),
-                cast(ubyte)((val >> 16) & 0xFF),
-                cast(ubyte)((val >> 24) & 0xFF)
-            ];
-    }
+    import formats.dlt.testing_utils : BuildV1, buildDltMessage;
 
     /// All records of `data` scanned in one go, as the index does for a file
     private size_t[] scanAll(const(DltFormat) format, const(ubyte)[] data)
@@ -591,13 +545,14 @@ unittest
 {
     import formats.dlt.fields;
 
-    ubyte headerType = StandardHeader.Type.UseExtendedHeader;
-    ubyte[ExtendedHeader.sizeof] extHeader;
-    extHeader[0] = 0x01; // messageInfo: verbose
-    extHeader[1] = 0; // numberOfArguments
-    extHeader[2 .. 6] = cast(ubyte[4]) "APP1";
-    extHeader[6 .. 10] = cast(ubyte[4]) "CTX1";
-    auto data = buildDltMessage("ECU1", 400, 0, headerType, 5, extHeader[]);
+    BuildV1 r; // verbose, with the extended header of APP1/CTX1
+    r.storageEcu = "ECU1";
+    r.storageSeconds = 400;
+    r.protocolVersion = 0;
+    r.msbf = false;
+    r.typeInfo = 0;
+    r.counter = 5;
+    auto data = r.bytes();
 
     auto format = new DltFormat();
     LogMessage!wchar msg;
@@ -721,7 +676,7 @@ unittest
 
 version (unittest)
 {
-    import formats.dlt.header_v2 : BuildV2, dltViewerTestFile;
+    import formats.dlt.testing_utils : BuildV2, dltViewerTestFile;
 
     ubyte[] storageHeaderV2(const(char)[] ecuId)
     {

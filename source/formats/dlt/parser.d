@@ -1037,175 +1037,39 @@ bool isPrintableUtf8(const(char)[] s) pure nothrow @nogc
     return true;
 }
 
-// ─── Helper: build a minimal raw DLT message byte array ──────────────────────
-// Returns a ubyte[] with StorageHeader + StandardHeader + optional ExtendedHeader + payload.
+// ─── Verbose arguments of version 1 records ──────────────────────────────────
+
 version (unittest)
 {
+    import formats.dlt.testing_utils : BuildV1, argument, bytesOf;
+
 private:
-    import std.bitmanip : nativeToBigEndian, nativeToLittleEndian;
-
-    // Build a complete DLT message in a ubyte[] for unit testing.
-    // All pointer casts are safe because we own the GC array.
-    ubyte[] buildDltMessage_without_storage_header(
-        bool withExtHeader,
-        bool verbose,
-        ubyte numArgs,
-        ubyte msgType, // MessageType raw value
-        ubyte logLevel, // LogLevel raw value (used in MessageInfo bits 4-7)
-        uint messageId, // for non-verbose (big endian in payload)
-        ubyte[] payload, // for verbose: raw argument bytes; for non-verbose: appended after messageId
-        string appId = "APP1",
-        string ctxId = "CTX1",
-    )
-    {
-        import core.stdc.string : memset, memcpy;
-
-        // ── Standard Header ──────────────────────────────────────────────
-        StandardHeader stdH;
-        ubyte ht = StandardHeader.Type.MostSignificantByteFirst; // big-endian
-        if (withExtHeader)
-            ht |= StandardHeader.Type.UseExtendedHeader;
-        stdH.headerType = ht;
-
-        // ── Extended Header ──────────────────────────────────────────────
-        ExtendedHeader extH;
-        if (withExtHeader)
-        {
-            // MessageInfo: bits [0]=verbose, [1-3]=msgType, [4-7]=logLevel
-            ubyte info = cast(ubyte)((verbose ? 1 : 0)
-                    | ((msgType & 0x07) << 1)
-                    | (
-                        (logLevel & 0x0F) << 4));
-            extH.messageInfo = MessageInfo(info);
-            extH.numberOfArguments = numArgs;
-            foreach (i, c; appId[0 .. (appId.length < 4 ? appId.length : 4)])
-                extH.applicationId[i] = cast(ubyte) c;
-            foreach (i, c; ctxId[0 .. (ctxId.length < 4 ? ctxId.length : 4)])
-                extH.contextId[i] = cast(ubyte) c;
-        }
-
-        // ── Assemble ─────────────────────────────────────────────────────
-        ubyte[] body;
-        if (!verbose && withExtHeader)
-        {
-            // Non-verbose: prepend message ID (big endian)
-            ubyte[4] idBytes = nativeToBigEndian(messageId);
-            body ~= idBytes[];
-        }
-        body ~= payload;
-
-        const size_t totalLen = StandardHeader.sizeof
-            + (withExtHeader ? ExtendedHeader.sizeof : 0)
-            + body.length;
-
-        stdH.nativeLength = cast(ushort) totalLen;
-
-        ubyte[] result;
-        result ~= (cast(ubyte*)&stdH)[0 .. StandardHeader.sizeof];
-        if (withExtHeader)
-            result ~= (cast(ubyte*)&extH)[0 .. ExtendedHeader.sizeof];
-        result ~= body;
-
-        return result;
-    }
-
-    // Build a complete DLT message in a ubyte[] for unit testing.
-    // All pointer casts are safe because we own the GC array.
-    ubyte[] buildDltMessage(
-        bool withExtHeader,
-        bool verbose,
-        ubyte numArgs,
-        ubyte msgType, // MessageType raw value
-        ubyte logLevel, // LogLevel raw value (used in MessageInfo bits 4-7)
-        uint messageId, // for non-verbose (big endian in payload)
-        ubyte[] payload, // for verbose: raw argument bytes; for non-verbose: appended after messageId
-        string ecuId = "ECU1",
-        string appId = "APP1",
-        string ctxId = "CTX1",
-        uint seconds = 1000,
-        uint usecs = 500
-    )
-    {
-        import core.stdc.string : memset, memcpy;
-
-        // ── Storage Header ───────────────────────────────────────────────
-        StorageHeader sh;
-        sh.pattern = cast(char[4]) "DLT\x01";
-        sh.nativeSeconds = seconds;
-        sh.nativeMicroseconds = usecs;
-        foreach (i, c; ecuId[0 .. (ecuId.length < 4 ? ecuId.length : 4)])
-            sh.ecuId[i] = c;
-
-        ubyte[] result;
-        result ~= (cast(ubyte*)&sh)[0 .. StorageHeader.sizeof];
-
-        result ~= buildDltMessage_without_storage_header(
-            withExtHeader,
-            verbose,
-            numArgs,
-            msgType,
-            logLevel,
-            messageId,
-            payload,
-            appId,
-            ctxId);
-
-        return result;
-    }
-
-    // Helper: pack a 4-byte TypeInfo word + data bytes for a verbose uint32 argument
+    // Verbose arguments of big-endian records, with the type info of their kind
     ubyte[] verboseUint32Arg(uint value)
     {
-        import std.bitmanip : nativeToBigEndian;
-
-        // TypeInfo: TypeUnsigned | Tyle32Bit
-        const uint ti = TypeInfoFlags.TypeUnsigned | Tyle.Tyle32Bit;
-        ubyte[4] tib = nativeToBigEndian(ti);
-        ubyte[4] vb = nativeToBigEndian(value);
-        return tib[] ~ vb[];
+        return argument(TypeInfoFlags.TypeUnsigned | Tyle.Tyle32Bit, bytesOf(value));
     }
 
     ubyte[] verboseInt32Arg(int value)
     {
-        import std.bitmanip : nativeToBigEndian;
-
-        const uint ti = TypeInfoFlags.TypeSigned | Tyle.Tyle32Bit;
-        ubyte[4] tib = nativeToBigEndian(ti);
-        ubyte[4] vb = nativeToBigEndian(cast(uint) value);
-        return tib[] ~ vb[];
+        return argument(TypeInfoFlags.TypeSigned | Tyle.Tyle32Bit, bytesOf(value));
     }
 
     ubyte[] verboseBoolArg(bool value)
     {
-        import std.bitmanip : nativeToBigEndian;
-
-        const uint ti = TypeInfoFlags.TypeBoolean;
-        ubyte[4] tib = nativeToBigEndian(ti);
-        return tib[] ~ [cast(ubyte)(value ? 1 : 0)];
+        return argument(TypeInfoFlags.TypeBoolean, [value ? 1 : 0]);
     }
 
+    // The length (16 bits) counts the null terminator
     ubyte[] verboseAsciiStringArg(string s)
     {
-        import std.bitmanip : nativeToBigEndian;
-
-        const uint ti = TypeInfoFlags.TypeString | TypeInfoFlags.StringCodingASCII;
-        ubyte[4] tib = nativeToBigEndian(ti);
-        ushort len = cast(ushort)(s.length + 1); // +1 for null terminator
-        ubyte[2] lb = nativeToBigEndian(len);
-        ubyte[] result = tib[] ~ lb[];
-        result ~= cast(ubyte[]) s;
-        result ~= [cast(ubyte) 0]; // null terminator
-        return result;
+        return argument(TypeInfoFlags.TypeString | TypeInfoFlags.StringCodingASCII,
+            bytesOf(cast(ushort)(s.length + 1)) ~ cast(const(ubyte)[]) s ~ cast(ubyte) 0);
     }
 
     ubyte[] verboseFloat32Arg(float value)
     {
-        import std.bitmanip : nativeToBigEndian;
-
-        const uint ti = TypeInfoFlags.TypeFloat | Tyle.Tyle32Bit;
-        ubyte[4] tib = nativeToBigEndian(ti);
-        ubyte[4] vb = nativeToBigEndian(*cast(uint*)&value);
-        return tib[] ~ vb[];
+        return argument(TypeInfoFlags.TypeFloat | Tyle.Tyle32Bit, bytesOf(value));
     }
 }
 
@@ -1222,18 +1086,10 @@ unittest
 @("parseDltItem: non-verbose without extended header and with storage header")
 unittest
 {
-    auto data = buildDltMessage_without_storage_header(
-        false, // no ext header
-        false, // non-verbose
-        0, // numArgs
-        0, // msgType
-        0, // logLevel
-        0, // messageId
-        [] // payload
-
-        
-
-    );
+    BuildV1 r;
+    r.storage = false;
+    r.extended = false;
+    auto data = r.bytes();
 
     LogMessage!char msg;
     assert(parseDltItem(msg, data, false));
@@ -1244,18 +1100,10 @@ unittest
 @("parseDltItem: non-verbose without extended header")
 unittest
 {
-    auto data = buildDltMessage(
-        false, // no ext header
-        false, // non-verbose
-        0, // numArgs
-        0, // msgType
-        0, // logLevel
-        0, // messageId
-        [] // payload
-
-        
-
-    );
+    BuildV1 r;
+    r.storageEcu = "ECU1";
+    r.extended = false;
+    auto data = r.bytes();
 
     LogMessage!char msg;
     assert(parseDltItem(msg, data));
@@ -1266,18 +1114,11 @@ unittest
 @("parseDltItem: non-verbose with message ID, no FIBEX")
 unittest
 {
-    auto data = buildDltMessage(
-        true, // with ext header
-        false, // non-verbose
-        0, // numArgs
-        0, // msgType Log
-        0, // logLevel
-        0xDEAD, // messageId
-        [], // extra payload after ID
-
-        
-
-    );
+    BuildV1 r;
+    r.verbose = false;
+    r.typeInfo = 0;
+    r.payload = bytesOf(0xDEADu); // the message ID, nothing after it
+    auto data = r.bytes();
 
     LogMessage!char msg;
     assert(parseDltItem(msg, data));
@@ -1289,15 +1130,7 @@ unittest
 @("parseDltItem: verbose bool argument") unittest
 {
     ubyte[] args = verboseBoolArg(true) ~ verboseBoolArg(false);
-    auto data = buildDltMessage(
-        true, // with ext header
-        true, // verbose
-        2, // numArgs
-        cast(ubyte) MessageType.Log,
-        cast(ubyte) LogLevel.Info,
-        0,
-        args,
-    );
+    auto data = verbose(args, 2).bytes();
 
     LogMessage!char msg;
     assert(parseDltItem(msg, data));
@@ -1308,8 +1141,9 @@ unittest
 unittest
 {
     ubyte[] args = verboseInt32Arg(-42);
-    auto data = buildDltMessage(true, true, 1,
-        cast(ubyte) MessageType.Log, cast(ubyte) LogLevel.Error, 0, args);
+    auto r = verbose(args, 1);
+    r.typeInfo = LogLevel.Error;
+    auto data = r.bytes();
 
     LogMessage!char msg;
     assert(parseDltItem(msg, data));
@@ -1321,8 +1155,9 @@ unittest
 unittest
 {
     ubyte[] args = verboseUint32Arg(12_345);
-    auto data = buildDltMessage(true, true, 1,
-        cast(ubyte) MessageType.Log, cast(ubyte) LogLevel.Debug, 0, args);
+    auto r = verbose(args, 1);
+    r.typeInfo = LogLevel.Debug;
+    auto data = r.bytes();
 
     LogMessage!char msg;
     assert(parseDltItem(msg, data));
@@ -1334,8 +1169,7 @@ unittest
 unittest
 {
     ubyte[] args = verboseAsciiStringArg("Hello DLT");
-    auto data = buildDltMessage(true, true, 1,
-        cast(ubyte) MessageType.Log, cast(ubyte) LogLevel.Info, 0, args);
+    auto data = verbose(args, 1).bytes();
 
     LogMessage!char msg;
     assert(parseDltItem(msg, data));
@@ -1349,8 +1183,9 @@ unittest
         ~ verboseUint32Arg(7)
         ~ verboseBoolArg(true);
 
-    auto data = buildDltMessage(true, true, 3,
-        cast(ubyte) MessageType.Log, cast(ubyte) LogLevel.Warn, 0, args);
+    auto r = verbose(args, 3);
+    r.typeInfo = LogLevel.Warn;
+    auto data = r.bytes();
 
     LogMessage!char msg;
     assert(parseDltItem(msg, data));
@@ -1362,9 +1197,11 @@ unittest
 unittest
 {
     ubyte[] args = verboseBoolArg(true);
-    auto data = buildDltMessage(true, true, 1,
-        cast(ubyte) MessageType.Log, cast(ubyte) LogLevel.Info, 0, args,
-        "MYEC", "MYAP", "MYCT");
+    auto r = verbose(args, 1);
+    r.storageEcu = "MYEC";
+    r.appId = "MYAP";
+    r.ctxId = "MYCT";
+    auto data = r.bytes();
 
     LogMessage!char msg;
     assert(parseDltItem(msg, data));
@@ -1377,9 +1214,10 @@ unittest
 unittest
 {
     ubyte[] args = verboseBoolArg(true);
-    auto data = buildDltMessage(true, true, 1,
-        cast(ubyte) MessageType.Log, cast(ubyte) LogLevel.Info, 0, args,
-        "ECU1", "APP1", "CTX1", 9999, 123);
+    auto r = verbose(args, 1);
+    r.storageSeconds = 9999;
+    r.storageMicroseconds = 123;
+    auto data = r.bytes();
 
     LogMessage!char msg;
     assert(parseDltItem(msg, data));
@@ -1391,8 +1229,10 @@ unittest
 unittest
 {
     ubyte[] args = verboseBoolArg(false);
-    auto data = buildDltMessage(true, true, 1,
-        cast(ubyte) MessageType.AppTrace, 0, 0, args);
+    auto r = verbose(args, 1);
+    r.type = MessageType.AppTrace;
+    r.typeInfo = 0;
+    auto data = r.bytes();
 
     LogMessage!char msg;
     assert(parseDltItem(msg, data));
@@ -1403,8 +1243,7 @@ unittest
 unittest
 {
     ubyte[] args = verboseFloat32Arg(1.5f);
-    auto data = buildDltMessage(true, true, 1,
-        cast(ubyte) MessageType.Log, cast(ubyte) LogLevel.Info, 0, args);
+    auto data = verbose(args, 1).bytes();
 
     LogMessage!char msg;
     assert(parseDltItem(msg, data));
@@ -1418,8 +1257,7 @@ unittest
 {
     // Claim 3 args but supply bytes only for 1
     ubyte[] args = verboseUint32Arg(1); // only 1 arg worth of bytes
-    auto data = buildDltMessage(true, true, 3,
-        cast(ubyte) MessageType.Log, cast(ubyte) LogLevel.Info, 0, args);
+    auto data = verbose(args, 3).bytes();
 
     LogMessage!char msg;
     assert(parseDltItem(msg, data)); // must not crash
@@ -1429,7 +1267,7 @@ unittest
 
 // ─── Control Message Tests ────────────────────────────────────────────────────
 //
-// buildDltMessage sets MSBF=1 (big-endian), so uint32 fields in payload must be BE.
+// control() builds big-endian records (MSBF=1), so uint32 fields in payload must be BE.
 // Control message payload structure (response):
 //   [4 bytes service ID BE] [1 byte status] [service-specific data]
 // Control message payload structure (request):
@@ -1438,24 +1276,7 @@ unittest
 version (unittest)
 {
 private:
-    // Build a non-verbose control message.
-    // ctrlType: ControlType.Request (1) or ControlType.Response (2)
-    ubyte[] buildControlMsg(uint svcId, ubyte ctrlType, ubyte[] payload,
-        string ecuId = "ECU1", string appId = "APP1", string ctxId = "CTX1")
-    {
-        return buildDltMessage(
-            true, // with extended header
-            false, // non-verbose
-            0, // numArgs unused for control
-            cast(ubyte) MessageType.Control,
-            ctrlType, // goes into bits 4-7 of messageInfo
-            svcId, // messageId (for non-verbose this is prepended by buildDltMessage)
-            payload,
-            ecuId, appId, ctxId,
-        );
-    }
-
-    // Build [status | extra] payload (service ID is handled by buildControlMsg)
+    // Build [status | extra] payload (the service ID is put by control())
     ubyte[] ctrlResponsePayload(ubyte status, ubyte[] extra = [])
     {
         return [status] ~ extra;
@@ -1476,11 +1297,7 @@ private:
 unittest
 {
     // Use default 4-char IDs — 3-char IDs leave 4th byte as char.init=0xFF which fails isASCII
-    auto data = buildControlMsg(
-        0x13,
-        cast(ubyte) ControlType.Response,
-        getSoftwareVersionPayload("MyApp v2.5.1"),
-    );
+    auto data = control(0x13, ControlType.Response, getSoftwareVersionPayload("MyApp v2.5.1")).bytes();
 
     LogMessage!char msg;
     assert(parseDltItem(msg, data));
@@ -1493,11 +1310,7 @@ unittest
 unittest
 {
     // Edge: version string is just a null terminator (length=1, string="")
-    auto data = buildControlMsg(
-        0x13,
-        cast(ubyte) ControlType.Response,
-        getSoftwareVersionPayload(""),
-    );
+    auto data = control(0x13, ControlType.Response, getSoftwareVersionPayload("")).bytes();
     LogMessage!char msg;
     assert(parseDltItem(msg, data));
     assert(msg.messageId == 0x13);
@@ -1508,7 +1321,7 @@ unittest
 unittest
 {
     ubyte[] payload = [cast(ubyte) ServiceResponseStatus.Error];
-    auto data = buildControlMsg(0x13, cast(ubyte) ControlType.Response, payload);
+    auto data = control(0x13, ControlType.Response, payload).bytes();
 
     LogMessage!char msg;
     assert(parseDltItem(msg, data));
@@ -1522,11 +1335,7 @@ unittest
 @("parseDltItem: control set_log_level response ok")
 unittest
 {
-    auto data = buildControlMsg(
-        0x01,
-        cast(ubyte) ControlType.Response,
-        ctrlResponsePayload(ServiceResponseStatus.Ok),
-    );
+    auto data = control(0x01, ControlType.Response, ctrlResponsePayload(ServiceResponseStatus.Ok)).bytes();
     LogMessage!char msg;
     assert(parseDltItem(msg, data));
     assert(msg.messageId == 0x01);
@@ -1541,7 +1350,7 @@ unittest
 {
     // Service ID 0xFF (unknown) → falls into generic branch with "ctrl" name
     ubyte[] payload = [cast(ubyte) ServiceResponseStatus.Ok] ~ cast(ubyte[]) "hello";
-    auto data = buildControlMsg(0xFF, cast(ubyte) ControlType.Response, payload);
+    auto data = control(0xFF, ControlType.Response, payload).bytes();
 
     LogMessage!char msg;
     assert(parseDltItem(msg, data));
@@ -1557,7 +1366,7 @@ unittest
 unittest
 {
     // Request: ctrlType = ControlType.Request, no status byte
-    auto data = buildControlMsg(0x09, cast(ubyte) ControlType.Request, []);
+    auto data = control(0x09, ControlType.Request, []).bytes();
 
     LogMessage!char msg;
     assert(parseDltItem(msg, data));
@@ -1617,96 +1426,10 @@ unittest
 version (unittest)
 {
 private:
-    //! `value` in the byte order of a message
-    ubyte[] bytesOf(T)(T value, bool msbf = true)
-    {
-        import std.bitmanip : nativeToBigEndian, nativeToLittleEndian;
-
-        return msbf ? nativeToBigEndian(value).dup : nativeToLittleEndian(value).dup;
-    }
-
-    //! A verbose argument: its type info, then its body as given
-    ubyte[] argument(uint typeInfo, const(ubyte)[] body, bool msbf = true)
-    {
-        return bytesOf(typeInfo, msbf) ~ body;
-    }
-
-    //! A DLT record with every header field under control
-    struct Record
-    {
-        bool storage = true;
-        char[4] storageEcu = "STOR";
-        ubyte protocolVersion = 1;
-        bool msbf = true;
-        ubyte counter;
-        const(char)[] ecuId; // WEID when set
-        bool withSessionId;
-        uint sessionId;
-        bool withTimestamp;
-        uint timestamp;
-        bool extended = true;
-        bool verbose = true;
-        ubyte type = MessageType.Log;
-        ubyte typeInfo = LogLevel.Info; // MTIN
-        ubyte numberOfArguments;
-        char[4] appId = "APP1";
-        char[4] ctxId = "CTX1";
-        const(ubyte)[] payload;
-        int length = -1; // of the standard header; -1: computed
-
-        ubyte[] bytes() const
-        {
-            ubyte htyp = cast(ubyte)(protocolVersion << 5);
-            ubyte[] rest;
-            if (extended)
-                htyp |= StandardHeader.Type.UseExtendedHeader;
-            if (msbf)
-                htyp |= StandardHeader.Type.MostSignificantByteFirst;
-            if (ecuId !is null)
-            {
-                htyp |= StandardHeader.Type.WithEcuId;
-                char[4] id = 0;
-                id[0 .. ecuId.length] = ecuId;
-                rest ~= cast(const(ubyte)[]) id[];
-            }
-            if (withSessionId)
-            {
-                htyp |= StandardHeader.Type.WithSessionId;
-                rest ~= bytesOf(sessionId, true); // always big-endian
-            }
-            if (withTimestamp)
-            {
-                htyp |= StandardHeader.Type.WithTimestamp;
-                rest ~= bytesOf(timestamp, true);
-            }
-            if (extended)
-            {
-                rest ~= cast(ubyte)((verbose ? 1 : 0) | (type & 0x07) << 1 | (typeInfo & 0x0F) << 4);
-                rest ~= numberOfArguments;
-                rest ~= cast(const(ubyte)[]) appId[];
-                rest ~= cast(const(ubyte)[]) ctxId[];
-            }
-            rest ~= payload;
-
-            ubyte[] result;
-            if (storage)
-            {
-                result ~= DLT_PATTERN[];
-                result ~= bytesOf(1000u, false);
-                result ~= bytesOf(0u, false);
-                result ~= cast(const(ubyte)[]) storageEcu[];
-            }
-            result ~= htyp;
-            result ~= counter;
-            result ~= bytesOf(cast(ushort)(length >= 0 ? length : 4 + rest.length), true);
-            return result ~ rest;
-        }
-    }
-
     //! A verbose log record of the arguments
-    Record verbose(const(ubyte)[] args, ubyte count, bool msbf = true)
+    BuildV1 verbose(const(ubyte)[] args, ubyte count, bool msbf = true)
     {
-        Record r;
+        BuildV1 r;
         r.msbf = msbf;
         r.numberOfArguments = count;
         r.payload = args;
@@ -1714,9 +1437,9 @@ private:
     }
 
     //! A non-verbose control record of the service with the data after its ID
-    Record control(uint serviceId, ControlType controlType, const(ubyte)[] data, bool msbf = true)
+    BuildV1 control(uint serviceId, ControlType controlType, const(ubyte)[] data, bool msbf = true)
     {
-        Record r;
+        BuildV1 r;
         r.msbf = msbf;
         r.verbose = false;
         r.type = MessageType.Control;
@@ -1726,7 +1449,7 @@ private:
     }
 
     //! The payload text of a decoded record
-    string payloadOf(const Record r)
+    string payloadOf(const BuildV1 r)
     {
         LogMessage!char msg;
         assert(parseDltItem(msg, r.bytes(), r.storage));
@@ -1739,7 +1462,7 @@ private:
 @("parseDltItem: the session ID is big-endian in a little-endian record")
 unittest
 {
-    Record r;
+    BuildV1 r;
     r.msbf = false;
     r.withSessionId = true;
     r.sessionId = 0x01020304;
@@ -1755,7 +1478,7 @@ unittest
 @("parseDltItem: a non-verbose log record has the level of its extended header")
 unittest
 {
-    Record r;
+    BuildV1 r;
     r.verbose = false;
     r.typeInfo = LogLevel.Error;
     r.payload = bytesOf(0x10u);
@@ -1770,23 +1493,23 @@ unittest
 {
     LogMessage!char msg;
 
-    Record trace = verbose([], 0);
+    BuildV1 trace = verbose([], 0);
     trace.type = MessageType.AppTrace;
     trace.typeInfo = AppTraceType.Variable; // 1, the value of Fatal
     assert(parseDltItem(msg, trace.bytes()));
     assert(msg.level == LogLevel.None);
 
-    Record ctrl = control(ServiceID.SetLogLevel, ControlType.Response, [0]);
+    BuildV1 ctrl = control(ServiceID.SetLogLevel, ControlType.Response, [0]);
     assert(parseDltItem(msg, ctrl.bytes()));
     assert(msg.level == LogLevel.None);
 
-    Record noExtended;
+    BuildV1 noExtended;
     noExtended.extended = false;
     noExtended.payload = bytesOf(1u);
     assert(parseDltItem(msg, noExtended.bytes()));
     assert(msg.level == LogLevel.None);
 
-    Record badLevel = verbose([], 0);
+    BuildV1 badLevel = verbose([], 0);
     badLevel.typeInfo = 9;
     assert(parseDltItem(msg, badLevel.bytes()));
     assert(msg.level == LogLevel.None);
@@ -1890,7 +1613,7 @@ unittest
 {
     foreach (msbf; [true, false])
     {
-        Record r;
+        BuildV1 r;
         r.msbf = msbf;
         r.extended = false;
         r.payload = bytesOf(0x1234u, msbf) ~ cast(ubyte[])[0x41, 0x42];
@@ -1905,7 +1628,7 @@ unittest
 @("parseDltItem: a non-verbose record shows its message ID and data")
 unittest
 {
-    Record r;
+    BuildV1 r;
     r.verbose = false;
     r.payload = bytesOf(57_005u) ~ cast(ubyte[])[0x41, 0x42, 0x01, 0x7F, 0xC3];
     assert(payloadOf(r) == "[57005] 4142017F C3 |AB...");
@@ -1980,7 +1703,7 @@ unittest
 @("parseDltItem: the ECU ID of the standard header wins over the storage header")
 unittest
 {
-    Record r = verbose([], 0);
+    BuildV1 r = verbose([], 0);
     r.ecuId = "WEID";
 
     LogMessage!char msg;
@@ -1995,7 +1718,7 @@ unittest
 @("parseDltItem: a record of an unknown protocol version is not decoded")
 unittest
 {
-    Record r = verbose(argument(u32, bytesOf(7u)), 1);
+    BuildV1 r = verbose(argument(u32, bytesOf(7u)), 1);
     r.protocolVersion = 3;
     assert(payloadOf(r) == "[DLT protocol version 3 is not supported]");
 
@@ -2053,7 +1776,7 @@ unittest
 @("parseDltItem: message counter, session ID and timestamp are fields only when present")
 unittest
 {
-    Record r = verbose([], 0);
+    BuildV1 r = verbose([], 0);
     r.counter = 42;
 
     LogMessage!char msg;
@@ -2075,7 +1798,7 @@ unittest
 @("parseDltItem: a non-verbose payload too short for a message ID is shown in hex")
 unittest
 {
-    Record r;
+    BuildV1 r;
     r.extended = false;
     r.payload = cast(ubyte[])[0x41, 0x01];
 
@@ -2092,7 +1815,7 @@ unittest
 @("parseDltItem: a record of an unknown protocol version has no fields of version 1")
 unittest
 {
-    Record r = verbose(argument(u32, bytesOf(7u)), 1);
+    BuildV1 r = verbose(argument(u32, bytesOf(7u)), 1);
     r.protocolVersion = 3;
     r.ecuId = "WEID";
     r.withSessionId = true;
@@ -2120,17 +1843,8 @@ unittest
 version (unittest)
 {
 private:
-    import formats.dlt.header_v2 : BuildV2, ContentInfo, SegmentFrame, dltViewerTestFile;
-
-    //! A storage header of version 2
-    ubyte[] storageV2(const(char)[] ecuId, ulong seconds, uint nanoseconds)
-    {
-        ubyte[] bytes = cast(ubyte[]) "DLT\x02".dup;
-        bytes ~= bytesOf(nanoseconds, false);
-        bytes ~= bytesOf(seconds, false)[0 .. 5];
-        bytes ~= cast(ubyte) ecuId.length;
-        return bytes ~ cast(const(ubyte)[]) ecuId;
-    }
+    import formats.dlt.header_v2 : ContentInfo, SegmentFrame;
+    import formats.dlt.testing_utils : BuildV2, dltViewerTestFile, storageV2;
 
     //! The decoded payload text of a version 2 message without storage header
     string payloadV2(const BuildV2 b)
@@ -2288,7 +2002,7 @@ unittest
 {
     LogMessage!char msg;
 
-    Record r = verbose([], 0);
+    BuildV1 r = verbose([], 0);
     auto bytes = r.bytes();
     bytes[8 .. 12] = bytesOf(5_242_880u, false); // microseconds beyond a second
     assert(parseDltItem(msg, bytes));
@@ -2331,7 +2045,7 @@ unittest
     // Real payload of dlt-daemon, from qdlt/tests/test_dltctrlmsg.cpp
     enum payload = hexString!("030000000701005359530001004d475200ffff2200436f6e74657874206f66206d61696e"
         ~ "20646c742073797374656d206d616e616765721200444c542053797374656d204d616e6167657272656d6f");
-    Record r = control(0, ControlType.Response, [], false);
+    BuildV1 r = control(0, ControlType.Response, [], false);
     r.payload = cast(const(ubyte)[]) payload;
     assert(payloadOf(r) == "[get_log_info ok] SYS (DLT System Manager): "
         ~ "MGR level=default trace=default (Context of main dlt system manager)");

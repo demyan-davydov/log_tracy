@@ -84,11 +84,7 @@ final class LogcatFormat : TextFormat
         LogcatLine line;
         const bool parsed = _variant == Variant.Brief ? parseBrief(text, line) : parseThreadtime(text, line);
         if (!parsed)
-        {
-            auto builder = msg.payloadBuilder();
-            builder.appendUtf8(text);
-            return true;
-        }
+            return decodeAsPlainText(msg, text);
 
         msg.timeNs = line.timeNs;
         msg.timeKind = line.timeKind;

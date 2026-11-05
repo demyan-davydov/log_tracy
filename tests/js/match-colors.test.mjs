@@ -16,9 +16,7 @@ test("the stylesheet has a class for every match color, and no more", () => {
 
 for (const theme of ["theme-light.css", "theme-dark.css"])
     test(`${theme} defines every match color, and no more`, () => {
-        const text = resource(theme);
-        assert.deepEqual(numbers(text, /--match-color-(\d+):/g), upTo(matchColorCount));
-        assert.deepEqual(numbers(text, /@const MATCH_COLOR_(\d+):/g), upTo(matchColorCount));
+        assert.deepEqual(numbers(resource(theme), /--match-color-(\d+):/g), upTo(matchColorCount));
     });
 
 test("matchColorClass: the colors repeat", () => {

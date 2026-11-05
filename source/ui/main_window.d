@@ -361,42 +361,32 @@ class MainWindow : SciterWindow
 
         if (method != "getSettings")
         { // Handled above
-            // Helper lambdas
-            auto getParamInt = (int index, int defaultValue = int.init) {
-                int result = defaultValue;
+            // The parameter `index` of the call as a T: `defaultValue` if
+            // there is no such parameter or it isn't a T
+            T param(T)(int index, T defaultValue = T.init)
+            {
+                static if (is(T == string))
+                    const(wchar)[] result = defaultValue.toUTF16();
+                else
+                    T result = defaultValue;
                 if (index < params.argc)
                 {
                     SciterValueConstView valueView = SciterValueConstView(&params.argv[index]);
                     valueView.tryGet(result);
                 }
-                return result;
-            };
-            auto getParamBool = (int index, bool defaultValue = false) {
-                bool result = defaultValue;
-                if (index < params.argc)
-                {
-                    SciterValueConstView valueView = SciterValueConstView(&params.argv[index]);
-                    valueView.tryGet(result);
-                }
-                return result;
-            };
-            auto getParamString = (int index, string defaultValue = string.init) {
-                const(wchar)[] result = defaultValue.toUTF16();
-                if (index < params.argc)
-                {
-                    SciterValueConstView valueView = SciterValueConstView(&params.argv[index]);
-                    valueView.tryGet(result);
-                }
-                return result.toUTF8().idup;
-            };
+                static if (is(T == string))
+                    return result.toUTF8().idup;
+                else
+                    return result;
+            }
             // The document a call is about: its id is the first parameter of
             // every call of a document (the views, filters and search of a tab);
             // an id of no open document gives the null document, with no rows
-            auto docParam = () => findDocumentId(getParamInt(0));
+            auto docParam = () => findDocumentId(param!int(0));
 
             if (method == "saveAppState")
             {
-                const json = getParamString(0);
+                const json = param!string(0);
                 writeln("saveAppState request: ", json);
                 // The window closes: the open files were being worked with until
                 // now, they come on top of the files closed before
@@ -404,26 +394,36 @@ class MainWindow : SciterWindow
                 saveSettings(json);
                 return true;
             }
-            if (method == "getMainViewCount")
+            if (method == "getMainViewCount" || method == "getSearchViewCount")
             {
-                // getMainViewCount(docId)
-                const int count = cast(int) _workspace.doc(docParam()).mainView.itemsCount();
-                resultView = count;
+                // get<Main|Search>ViewCount(docId)
+                auto doc = _workspace.doc(docParam());
+                auto view = method == "getMainViewCount" ? doc.mainView : doc.searchView;
+                resultView = cast(int) view.itemsCount();
                 return true;
             }
-            if (method == "getMainViewItem")
+            if (method == "getMainViewItem" || method == "getSearchViewItem")
             {
-                // getMainViewItem(docId, index)
+                // get<Main|Search>ViewItem(docId, index): null if there is no
+                // such row (any more): the view changed, the file is lost
                 const docId = docParam();
                 auto doc = _workspace.doc(docId);
-                const int index = getParamInt(1);
-                // null if there is no such row (any more): the view changed, the file is lost
+                const bool search = method == "getSearchViewItem";
+                const int index = param!int(1);
                 DocumentItem docItem;
-                if (doc.mainView.fetchItem(index, docItem))
-                    resultView.set(asSciterRow(index, docItem, tableColumns(doc), ruleOf(docId, docItem)));
-                else
+                if (!(search ? doc.searchView : doc.mainView).fetchItem(index, docItem))
+                {
                     resultView.set(SciterValue.makeNull());
-
+                    return true;
+                }
+                // the fragments the chips found, after the cells (main view rows have none)
+                const(MatchRange)[] matches;
+                if (search)
+                    if (auto ui = _documentUis.get(docId, null))
+                        if (ui.searchShown !is null)
+                            matches = ui.searchShown.matchRanges(docItem.message());
+                resultView.set(asSciterRow(index, docItem, tableColumns(doc), ruleOf(docId, docItem),
+                    search, matches));
                 return true;
             }
             if (method == "getMainViewPosition")
@@ -448,33 +448,6 @@ class MainWindow : SciterWindow
                     resultView.set(SciterValue.makeNull());
                 return true;
             }
-            if (method == "getSearchViewCount")
-            {
-                // getSearchViewCount(docId)
-                const int count = cast(int) _workspace.doc(docParam()).searchView.itemsCount();
-                resultView = count;
-                return true;
-            }
-            if (method == "getSearchViewItem")
-            {
-                // getSearchViewItem(docId, index)
-                const docId = docParam();
-                auto doc = _workspace.doc(docId);
-                const int index = getParamInt(1);
-                DocumentItem docItem; // null if there is no such row, as above
-                if (doc.searchView.fetchItem(index, docItem))
-                {
-                    // the fragments the chips found, after the cells (main view rows have none)
-                    auto ui = _documentUis.get(docId, null);
-                    const search = ui is null ? null : ui.searchShown;
-                    resultView.set(asSciterRow(index, docItem, tableColumns(doc), ruleOf(docId, docItem),
-                        true, search is null ? null : search.matchRanges(docItem.message())));
-                }
-                else
-                    resultView.set(SciterValue.makeNull());
-
-                return true;
-            }
             if (method == "getRecentFiles")
             {
                 resultView = recentFilesJson(_settings.recentFiles, openPaths()).toUTF16();
@@ -482,7 +455,7 @@ class MainWindow : SciterWindow
             }
             if (method == "openFile")
             {
-                string path = getParamString(0);
+                string path = param!string(0);
                 if (!path.empty)
                 {
                     // The id of the new document, or why the file can't be
@@ -504,14 +477,14 @@ class MainWindow : SciterWindow
             }
             if (method == "loadFibex")
             {
-                string path = getParamString(0);
+                string path = param!string(0);
                 if (!path.empty)
                     onLoadFibex(normalizePath(path));
                 return true;
             }
             if (method == "onTabClicked")
             {
-                string tabId = getParamString(0);
+                string tabId = param!string(0);
                 if (!tabId.empty)
                     onTabClicked(tabId);
                 return true;
@@ -531,9 +504,9 @@ class MainWindow : SciterWindow
                 // getFilterRule(docId, set, rule) -> the fields of DlfFilter,
                 // null if there is no such rule; rule -1: a new one
                 auto ui = _documentUis.get(docParam(), null);
-                const rule = getParamInt(2);
+                const rule = param!int(2);
                 resultView = (ui is null ? "null" : rule < 0 ? DocumentFilters.newRuleJson().toString()
-                        : ui.filters.ruleJson(getParamInt(1), rule).toString()).toUTF16();
+                        : ui.filters.ruleJson(param!int(1), rule).toString()).toUTF16();
                 return true;
             }
             if (method == "checkFilterRule")
@@ -542,7 +515,7 @@ class MainWindow : SciterWindow
                 // see DocumentFilters.checkRule
                 auto ui = _documentUis.get(docParam(), null);
                 resultView = (ui is null ? `{"error":"","conditions":[]}`
-                        : ui.filters.checkRule(getParamString(1)).toString()).toUTF16();
+                        : ui.filters.checkRule(param!string(1)).toString()).toUTF16();
                 return true;
             }
             if (method == "loadFilterFile" || method == "newFilterSet" || method == "exportFilterSet"
@@ -557,24 +530,24 @@ class MainWindow : SciterWindow
                     return true;
                 string error;
                 if (method == "loadFilterFile")
-                    error = ui.filters.loadFile(normalizePath(getParamString(1)));
+                    error = ui.filters.loadFile(normalizePath(param!string(1)));
                 else if (method == "newFilterSet")
                     error = ui.filters.newSet();
                 else if (method == "exportFilterSet")
-                    error = ui.filters.exportSet(getParamInt(1), normalizePath(getParamString(2)));
+                    error = ui.filters.exportSet(param!int(1), normalizePath(param!string(2)));
                 else if (method == "addFilterRule")
-                    error = ui.filters.addRule(getParamInt(1), getParamString(2));
+                    error = ui.filters.addRule(param!int(1), param!string(2));
                 else if (method == "updateFilterRule")
-                    error = ui.filters.updateRule(getParamInt(1), getParamInt(2), getParamString(3));
+                    error = ui.filters.updateRule(param!int(1), param!int(2), param!string(3));
                 else if (method == "removeFilterRule")
-                    error = ui.filters.removeRule(getParamInt(1), getParamInt(2));
+                    error = ui.filters.removeRule(param!int(1), param!int(2));
 
                 else if (method == "removeFilterSet")
-                    error = ui.filters.remove(getParamInt(1));
+                    error = ui.filters.remove(param!int(1));
                 else if (method == "enableFilterSet")
-                    error = ui.filters.enableSet(getParamInt(1), getParamBool(2));
+                    error = ui.filters.enableSet(param!int(1), param!bool(2));
                 else
-                    error = ui.filters.enableRule(getParamInt(1), getParamInt(2), getParamBool(3));
+                    error = ui.filters.enableRule(param!int(1), param!int(2), param!bool(3));
                 if (error.length)
                     writeln(method, ": ", error);
                 else
@@ -613,7 +586,7 @@ class MainWindow : SciterWindow
             if (method == "setColumnLayouts")
             {
                 // Saved by the Settings dialog: {format id: [{"id", "visible"}]}
-                _settings.columnLayouts = withColumnLayouts(_settings.columnLayouts, getParamString(0));
+                _settings.columnLayouts = withColumnLayouts(_settings.columnLayouts, param!string(0));
                 _tableColumns.reset(); // arranged again
                 saveSettings();
                 return true;
@@ -641,15 +614,15 @@ class MainWindow : SciterWindow
                 // setAnchor(docId, messageIndex, value) -> true if changed; false
                 // while an operation is running or at the anchor limit (nothing
                 // changes then)
-                const index = getParamInt(1);
-                resultView = index >= 0 && _workspace.doc(docParam()).setAnchor(cast(size_t) index, getParamBool(2));
+                const index = param!int(1);
+                resultView = index >= 0 && _workspace.doc(docParam()).setAnchor(cast(size_t) index, param!bool(2));
                 return true;
             }
             if (method == "cancelMainView")
             {
                 // cancelMainView(docId): Cancel pressed in the main view of the
                 // document; its machine decides what it means
-                if (auto ui = _documentUis.get(findDocumentId(getParamInt(0)), null))
+                if (auto ui = _documentUis.get(findDocumentId(param!int(0)), null))
                 {
                     ui.pressMainCancel();
                     applyDocumentCommands();
@@ -659,7 +632,7 @@ class MainWindow : SciterWindow
             if (method == "cancelSearchView")
             {
                 // cancelSearchView(docId): Cancel pressed in the search view of the document
-                if (auto ui = _documentUis.get(findDocumentId(getParamInt(0)), null))
+                if (auto ui = _documentUis.get(findDocumentId(param!int(0)), null))
                     ui.pressSearchCancel();
                 return true;
             }
@@ -667,7 +640,7 @@ class MainWindow : SciterWindow
             {
                 // startChipSearch(docId, chipsJson) -> error message, "" on
                 // success; no chips clear the search
-                resultView = onStartChipSearch(docParam(), getParamString(1)).toUTF16();
+                resultView = onStartChipSearch(docParam(), param!string(1)).toUTF16();
                 return true;
             }
             if (method == "getSearchHistory")
@@ -683,12 +656,12 @@ class MainWindow : SciterWindow
             if (method == "checkRegex")
             {
                 // checkRegex(pattern, ignoreCase) -> error message, "" for a valid regex
-                resultView = checkRegex(getParamString(0), getParamBool(1)).toUTF16();
+                resultView = checkRegex(param!string(0), param!bool(1)).toUTF16();
                 return true;
             }
             if (method == "switchTab")
             {
-                int id = getParamInt(0);
+                int id = param!int(0);
                 auto oldId = _workspace.currentId;
                 writeln("switchTab request: ", id, " (current: ", oldId.toInt(), ")");
                 foreach (item; _workspace.documents)
@@ -705,20 +678,20 @@ class MainWindow : SciterWindow
             if (method == "retryDocument")
             {
                 // retryDocument(docId) -> error message, "" if the file was reopened
-                resultView = onRetryDocument(getParamInt(0)).toUTF16();
+                resultView = onRetryDocument(param!int(0)).toUTF16();
                 return true;
             }
             if (method == "closeTab")
             {
-                const docId = findDocumentId(getParamInt(0));
+                const docId = findDocumentId(param!int(0));
                 if (docId.isValid)
                     closeDocument(docId);
                 return true;
             }
             if (method == "reorderTab")
             {
-                int id = getParamInt(0);
-                int targetIndex = getParamInt(1);
+                int id = param!int(0);
+                int targetIndex = param!int(1);
                 writeln("reorderTab request: ", id, " to index ", targetIndex);
                 foreach (item; _workspace.documents)
                 {
@@ -936,72 +909,6 @@ class MainWindow : SciterWindow
         return path;
     }
 
-
-    /// Merges UI state JSON (produced by JS getAppState()) into a copy of settings.
-    static AppSettings applyUiState(const AppSettings base, const(char)[] json)
-    {
-        AppSettings settings = base;
-        try
-        {
-            auto j = parseJSON(json);
-
-            // window rect
-            /*{
-                const winRc = getPlacement();
-                settings.windowRect.left = winRc.left;
-                settings.windowRect.top = winRc.top;
-                settings.windowRect.width = winRc.right - winRc.left;
-                settings.windowRect.height = winRc.bottom - winRc.top;
-
-                writeln("windowRect: ", settings.windowRect);
-            }*/
-
-            if ("windowRect" in j)
-            {
-                auto r = j["windowRect"];
-                settings.windowRect.left = r["left"].integer.to!int;
-                settings.windowRect.top = r["top"].integer.to!int;
-                settings.windowRect.width = r["width"].integer.to!int;
-                settings.windowRect.height = r["height"].integer.to!int;
-            }
-
-            // Preferences changed in the Settings dialog
-            if ("theme" in j)
-                settings.theme = j["theme"].str;
-            if ("tableFontSize" in j)
-                settings.tableFontSize = j["tableFontSize"].integer.to!int;
-
-            // Get active file scroll pos
-            int scroll = 0;
-            if ("scrollPosition" in j)
-            {
-                scroll = j["scrollPosition"].integer.to!int;
-            }
-
-            // Update scroll for active file
-            if (settings.activeFile.length > 0)
-            {
-                foreach (ref f; settings.files)
-                {
-                    if (f.path == settings.activeFile)
-                    {
-                        f.scrollPosition = scroll;
-                        break;
-                    }
-                }
-            }
-        }
-        catch (Exception e)
-        {
-            writeln("Error parsing UI settings: ", e.msg);
-        }
-
-        // if we wanted to trust JS for activeFile:
-        // if ("activeFile" in j) _settings.activeFile = j["activeFile"].str;
-
-        return settings;
-    }
-
     /// Saves the settings with the UI state asked from the script
     void saveSettings()
     {
@@ -1023,7 +930,7 @@ class MainWindow : SciterWindow
     {
         _settings.recentFiles = withFilesStamped(_settings.recentFiles, openPaths(), nowMs());
         try
-            ui.app_settings.saveSettings(applyUiState(_settings, uiStateJson));
+            ui.app_settings.saveSettings(mergeAppStateFromScript(_settings, uiStateJson));
         catch (Exception e)
             writeln("Failed to save settings: ", e.msg);
     }

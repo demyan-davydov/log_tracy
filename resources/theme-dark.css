@@ -1,121 +1,69 @@
-@const BG_MAIN: #1e1e1e;
-@const TEXT_MAIN: #d4d4d4;
-@const BG_HEADER: #2d2d2d;
-@const BORDER_COLOR: #3e3e42;
-@const BG_TAB_INACTIVE: #2d2d2d;
-@const BG_TAB_ACTIVE: #1e1e1e;
-@const BG_TAB_HOVER: #3a3a3d;
-@const TAB_TEXT: #9a9a9a;
-@const TAB_SEPARATOR: #555559;
-@const TAB_CLOSE: #9a9a9a;
-@const TAB_CLOSE_HOVER: #4a4a4e;
-@const BG_SIDEBAR: #252526;
-@const TEXT_HEADER_SIDEBAR: #aaa;
-@const BORDER_SIDEBAR_HEADER: #3e3e42;
-@const TEXT_LABEL: #ccc;
-@const BG_INPUT: #3c3c3c;
-@const BORDER_INPUT: #3e3e42;
-@const BORDER_FOCUS: #0078d7;
-@const BTN_DEFAULT_BG: #3c3c3c;
-@const BTN_DEFAULT_HOVER: #4c4c4c;
-@const BTN_PRIMARY_BG: #0078d7;
-@const BTN_PRIMARY_TEXT: white;
-@const BTN_PRIMARY_BORDER: #005a9e;
-@const BG_DETAILS: #252526;
-@const BG_SEARCH_PENDING: #3d3520;
-@const CHIP_BORDER: #4f5b6b;
-@const CHIP_SELECTED: #264f78;
-@const CHIP_SELECTED_INACTIVE: #3a3d41;
-@const CHIP_EDGE_SPACE: rgba(255,255,255,0.2);
-/* The match colors: one per search chip and the matches it finds, see match-colors.css */
-@const MATCH_COLOR_0: #5a3434;
-@const MATCH_COLOR_1: #5a4430;
-@const MATCH_COLOR_2: #55502a;
-@const MATCH_COLOR_3: #46532e;
-@const MATCH_COLOR_4: #2f5238;
-@const MATCH_COLOR_5: #2b5048;
-@const MATCH_COLOR_6: #2c4a58;
-@const MATCH_COLOR_7: #33415e;
-@const MATCH_COLOR_8: #41395e;
-@const MATCH_COLOR_9: #4d3758;
-@const MATCH_COLOR_10: #5a3550;
-@const MATCH_COLOR_11: #54403a;
-@const MATCH_COLOR_12: #474e37;
-@const MATCH_COLOR_13: #34494e;
-@const MATCH_COLOR_14: #463f52;
-@const MATCH_COLOR_15: #514636;
-@const BG_DETAILS_HEADER: #2d2d2d;
-@const LOG_FATAL_BG: #5a0000;
-@const LOG_FATAL_TEXT: #ffd6d6;
-@const LOG_ERROR: #ff4d4d;
-@const LOG_WARN: #ffaa00;
-@const LOG_INFO: #60c060;
-@const LOG_DEBUG: #888;
-
 :root {
     /* Main Layout */
-    --bg-main: @BG_MAIN;
-    --text-main: @TEXT_MAIN;
-    --bg-header: @BG_HEADER;
-    --border-color: @BORDER_COLOR;
+    --bg-main: #1e1e1e;
+    --text-main: #d4d4d4;
+    --bg-header: #2d2d2d;
+    --border-color: #3e3e42;
 
     /* Toolbar & Tabs */
-    --bg-tab-inactive: @BG_TAB_INACTIVE;
-    --bg-tab-active: @BG_TAB_ACTIVE;
-    --bg-tab-hover: @BG_TAB_HOVER;
-    --tab-text: @TAB_TEXT;
-    --tab-separator: @TAB_SEPARATOR;
-    --tab-close: @TAB_CLOSE;
-    --tab-close-hover: @TAB_CLOSE_HOVER;
+    --bg-tab-inactive: #2d2d2d;
+    --bg-tab-active: #1e1e1e;
+    --bg-tab-hover: #3a3a3d;
+    --tab-text: #9a9a9a;
+    --tab-separator: #555559;
+    --tab-close: #9a9a9a;
+    --tab-close-hover: #4a4a4e;
 
     /* Sidebar */
-    --bg-sidebar: @BG_SIDEBAR;
-    --text-header-sidebar: @TEXT_HEADER_SIDEBAR;
-    --border-sidebar-header: @BORDER_SIDEBAR_HEADER;
-    --text-label: @TEXT_LABEL;
+    --bg-sidebar: #252526;
+    --text-header-sidebar: #aaa;
+    --border-sidebar-header: #3e3e42;
+    --text-label: #ccc;
 
     /* Inputs */
-    --bg-input: @BG_INPUT;
-    --border-input: @BORDER_INPUT;
-    --border-focus: @BORDER_FOCUS;
+    --bg-input: #3c3c3c;
+    --border-input: #3e3e42;
+    --border-focus: #0078d7;
 
     /* Buttons */
-    --btn-default-bg: @BTN_DEFAULT_BG;
-    --btn-default-hover: @BTN_DEFAULT_HOVER;
-    --btn-primary-bg: @BTN_PRIMARY_BG;
-    --btn-primary-text: @BTN_PRIMARY_TEXT;
-    --btn-primary-border: @BTN_PRIMARY_BORDER;
+    --btn-default-bg: #3c3c3c;
+    --btn-default-hover: #4c4c4c;
+    --btn-primary-bg: #0078d7;
+    --btn-primary-text: white;
+    --btn-primary-border: #005a9e;
 
     /* Details Panel */
-    --bg-details: @BG_DETAILS;
-    --bg-details-header: @BG_DETAILS_HEADER;
-    --bg-search-pending: @BG_SEARCH_PENDING;
-    --match-color-0: @MATCH_COLOR_0;
-    --match-color-1: @MATCH_COLOR_1;
-    --match-color-2: @MATCH_COLOR_2;
-    --match-color-3: @MATCH_COLOR_3;
-    --match-color-4: @MATCH_COLOR_4;
-    --match-color-5: @MATCH_COLOR_5;
-    --match-color-6: @MATCH_COLOR_6;
-    --match-color-7: @MATCH_COLOR_7;
-    --match-color-8: @MATCH_COLOR_8;
-    --match-color-9: @MATCH_COLOR_9;
-    --match-color-10: @MATCH_COLOR_10;
-    --match-color-11: @MATCH_COLOR_11;
-    --match-color-12: @MATCH_COLOR_12;
-    --match-color-13: @MATCH_COLOR_13;
-    --match-color-14: @MATCH_COLOR_14;
-    --match-color-15: @MATCH_COLOR_15;
-    --chip-border: @CHIP_BORDER;
-    --chip-edge-space: @CHIP_EDGE_SPACE;
-    --chip-selected: @CHIP_SELECTED;
-    --chip-selected-inactive: @CHIP_SELECTED_INACTIVE;
+    --bg-details: #252526;
+    --bg-details-header: #2d2d2d;
+    --bg-search-pending: #3d3520;
+
+    /* The match colors: one per search chip and the matches it finds, see match-colors.css */
+    --match-color-0: #5a3434;
+    --match-color-1: #5a4430;
+    --match-color-2: #55502a;
+    --match-color-3: #46532e;
+    --match-color-4: #2f5238;
+    --match-color-5: #2b5048;
+    --match-color-6: #2c4a58;
+    --match-color-7: #33415e;
+    --match-color-8: #41395e;
+    --match-color-9: #4d3758;
+    --match-color-10: #5a3550;
+    --match-color-11: #54403a;
+    --match-color-12: #474e37;
+    --match-color-13: #34494e;
+    --match-color-14: #463f52;
+    --match-color-15: #514636;
+    --chip-border: #4f5b6b;
+    --chip-edge-space: rgba(255,255,255,0.2);
+    --chip-selected: #264f78;
+    --chip-selected-inactive: #3a3d41;
 
     /* Log Levels */
-    --log-fatal-bg: @LOG_FATAL_BG;
-    --log-fatal-text: @LOG_FATAL_TEXT;
-    --log-error: @LOG_ERROR;
-    --log-warn: @LOG_WARN;
-    --log-info: @LOG_INFO;
-    --log-debug: @LOG_DEBUG;
+    --log-fatal-bg: #5a0000;
+    --log-fatal-text: #ffd6d6;
+    --log-error: #ff4d4d;
+    --log-warn: #ffaa00;
+    --log-info: #60c060;
+    --log-debug: #888;
 }
