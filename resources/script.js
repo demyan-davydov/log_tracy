@@ -1,5 +1,5 @@
 import { $, $$ } from "@sciter";
-import { VirtualDltTBody, VirtualMainViewTBody, VirtualSearchViewTBody, setColumns, renderHeader, setRuleColors, setMatchColors, moveRowDrag, endRowDrag } from "virtual-dlt-view.js";
+import { VirtualDltTBody, VirtualMainViewTBody, VirtualSearchViewTBody, moveRowDrag, endRowDrag } from "virtual-dlt-view.js";
 import { scrollTarget } from "row-selection.js";
 import { ruleColors } from "rule-colors.js";
 import {
@@ -140,7 +140,7 @@ const chipDrafts = new Map();
 //   docId -> JSON of the chips the shown search was run with
 const committedChips = new Map();
 //   docId -> the match colors of those chips, by their place: the results show
-//   what each chip found in its color (setMatchColors)
+//   what each chip found in its color (matchColors of the search table)
 const committedColors = new Map();
 // The document whose draft the editor shows
 let chipEditorDocId = null;
@@ -176,7 +176,7 @@ function runChipSearch() {
     if (!error && activeDocId !== null) {
         committedChips.set(activeDocId, JSON.stringify(chips));
         committedColors.set(activeDocId, chipEditor.searchChipColors());
-        setMatchColors(committedColors.get(activeDocId)); // before the results come
+        getSearchViewList().matchColors = committedColors.get(activeDocId); // before the results come
     }
     saveChipDraft();
     updateChipPending();
@@ -741,7 +741,8 @@ function showFilters() {
         ? { canFilter: false, canDlf: false, sets: [] }
         : JSON.parse(Window.this.xcall("getFilters", activeDocId) || "{}");
     shownFilters = info;
-    setRuleColors(ruleColors(info.sets)); // the rows refer to the rules by id
+    const colors = ruleColors(info.sets); // the rows refer to the rules by id
+    for (const list of [getMainViewList(), getSearchViewList()]) list.ruleColors = colors;
     const panel = $("#filter-sets");
     // Built from scratch, as the quick filter was: reused inputs keep their state
     panel.clear();
@@ -840,7 +841,7 @@ function refreshTabs() {
     // The filters first: the rows the columns re-render refer to its rules
     if (activeDocId !== filtersDocId) showFilters(); // the sets change by commands only
     applyColumns();
-    setMatchColors(committedColors.get(activeDocId) ?? []); // before the results are shown
+    getSearchViewList().matchColors = committedColors.get(activeDocId) ?? []; // before the results are shown
 
     // Same documents in the same order (e.g. another tab was activated): the
     // elements are kept, so a tab being pressed or dragged stays in the DOM
@@ -900,10 +901,10 @@ function applyColumns() {
     const json = activeDocId === null ? "[]" : Window.this.xcall("getTableColumns", activeDocId) || "[]";
     if (json === "[]" || json === appliedColumns) return json; // none, or unchanged
     appliedColumns = json;
-    setColumns(JSON.parse(json));
+    const columns = JSON.parse(json);
     for (const table of $$("table.log-table")) {
-        table.$("thead").content(renderHeader());
         const list = table.$("tbody");
+        list.setColumns(columns);
         list.componentUpdate?.();
         list.refreshVisibleRows?.(); // rows on screen get the new cells
     }
