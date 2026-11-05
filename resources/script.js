@@ -1,4 +1,4 @@
-import { $, $$ } from "@sciter";
+import { $ } from "@sciter";
 import { VirtualDltTBody, VirtualMainViewTBody, VirtualSearchViewTBody, moveRowDrag, endRowDrag } from "virtual-dlt-view.js";
 import {
     noNewTab, plusShown, openNewTab, activateNewTab, activateDocument,
@@ -8,7 +8,7 @@ import {
 import { lastUsedText } from "recent-time.js";
 import { DocumentPane } from "document-pane.js";
 import { paneChanges } from "pane-state.js";
-import { setShift, pressItem, dragTo, drop, showDropMarker } from "drag-strip.js";
+import { TabStrip } from "tabs.js";
 import * as backend from "backend.js";
 
 // The table whose context menu is open: "Copy Row" copies its selected rows
@@ -291,12 +291,6 @@ globalThis.onMenuCommand = function (id) {
 };
 
 function setupEvents() {
-    document.on("click", "#btn-add-tab", () => {
-        newTab = openNewTab();
-        openFailure = null; // a fresh start
-        shownPlaceholder = null; // render it again, without the failure
-        refreshTabs();
-    });
     document.on("click", "#btn-placeholder-open", openFileAction);
 
     document.on("click", ".recent-file", (evt, item) => openFile(item.getAttribute("path")));
@@ -324,49 +318,9 @@ function setupEvents() {
     // Cmd+C (Ctrl+C) in a table, see VirtualDltTBody.onkeydown
     document.on("copyrows", "table.log-table > tbody", (evt, list) => copySelectedRows(list));
 
-    // A tab is activated on mousedown (as in browsers) and can then be dragged;
-    // click only handles the close button
-    document.on("click", ".tab .tab-close", function (evt, close) {
-        if (close.parentElement.id === NEW_TAB_ID) {
-            newTab = closeNewTab();
-            refreshTabs();
-        } else {
-            closeTab(close.parentElement.id);
-        }
-        return true;
-    });
-
-    document.on("mousedown", ".tab", function (evt, tab) {
-        // Only the left button activates and drags: the right (2) and middle
-        // (4) bits are the same in DOM and in Sciter (PROP_/MIDDLE_MOUSE_BUTTON)
-        if (evt.buttons & 6) return;
-        if (evt.target.classList.contains("tab-close")) return;
-        if (tabDrag?.settling) return; // the previous drop is still settling
-        if (tabDrag) finishTabDrag(false); // released outside the window: the press is dropped
-        if (tab.id === NEW_TAB_ID) { // stays the last one: not dragged
-            if (newTab.active) return true; // shown already
-            newTab = activateNewTab(newTab);
-            refreshTabs();
-            return true;
-        }
-        const docId = parseInt(tab.id);
-        const leavingNewTab = newTab.active;
-        newTab = activateDocument(newTab);
-        if (docId !== activeDocId) switchTab(docId); // keeps the tab elements
-        else if (leavingNewTab) refreshTabs(); // the document is shown again
-        beginTabDrag(tab, evt.clientX);
-        return true; // no text selection
-    });
-
-    document.on("mousemove", function (evt) {
-        if (tabDrag) moveTabDrag(evt.clientX);
-        moveRowDrag(evt);
-    });
-
-    document.on("mouseup", function (evt) {
-        if (tabDrag) endTabDrag();
-        endRowDrag();
-    });
+    // Not consumed: the tab strip follows them too (tabs.js)
+    document.on("mousemove", evt => { moveRowDrag(evt); });
+    document.on("mouseup", () => { endRowDrag(); });
 
     document.on("keydown", function (evt) {
         const modifier = evt.metaKey || evt.ctrlKey;
@@ -386,21 +340,42 @@ let activeDocId = null; // active in the backend; hidden while the New Tab is sh
 let docCount = 0;
 
 // The New Tab (see new-tab.js): the last tab of the strip while open
-const NEW_TAB_ID = "new-tab";
 let newTab = noNewTab;
 
-// The tabs of the documents, without the New Tab
-const DOC_TABS = `#tabs-container > .tab:not(#${NEW_TAB_ID})`;
+// The tabs (tabs.js): what pressing, closing and moving them does
+const tabStrip = new TabStrip({
+    pressTab: (docId) => {
+        const leavingNewTab = newTab.active;
+        newTab = activateDocument(newTab);
+        if (docId !== activeDocId) switchTab(docId); // keeps the tab elements
+        else if (leavingNewTab) refreshTabs(); // the document is shown again
+    },
+    pressNewTab: () => {
+        if (newTab.active) return; // shown already
+        newTab = activateNewTab(newTab);
+        refreshTabs();
+    },
+    addTab: () => {
+        newTab = openNewTab();
+        openFailure = null; // a fresh start
+        shownPlaceholder = null; // render it again, without the failure
+        refreshTabs();
+    },
+    closeNewTab: () => {
+        newTab = closeNewTab();
+        refreshTabs();
+    },
+    closeTab: (docId) => closeTab(docId),
+    moveTab: (docId, index) => {
+        backend.reorderTab(docId, index);
+        refreshTabs(); // renders the tabs in the new order, without shifts
+    },
+    refresh: () => refreshTabs(),
+});
 
-function findTab(docId) {
-    return $(`#tabs-container > .tab[id="${docId}"]`);
-}
-
-// Exposes the status of the document (its panel) on the tab element for CSS:
-// main-status, search-status
-function applyTabStatus(tab, pane) {
-    tab.setAttribute("main-status", pane.mainView ? pane.mainView.status : "");
-    tab.setAttribute("search-status", pane.searchView ? pane.searchView.status : "");
+// Shows the status of the document (its panel) on its tab
+function showTabStatus(docId, pane) {
+    tabStrip.setStatus(docId, pane.mainView?.status, pane.searchView?.status);
 }
 
 // What a panel asks of the window
@@ -412,13 +387,9 @@ const paneHost = {
 };
 
 function refreshTabs() {
-    if (tabDrag) { // the tabs are being dragged: render them after the drop
-        tabDrag.refreshPending = true;
-        return;
-    }
+    if (tabStrip.holdWhileDragging()) return; // rendered after the drop
     const docs = backend.workspaceInfo();
     if (!docs) return;
-    const container = $("#tabs-container");
     docCount = docs.length;
     newTab = documentsCounted(newTab, docCount);
 
@@ -440,57 +411,10 @@ function refreshTabs() {
         panes.get(doc.id).setViews({ mainView: doc.mainView, searchView: doc.searchView, path: doc.path },
             false); // rendered by showDocument() below
 
-    // Same documents in the same order (e.g. another tab was activated): the
-    // elements are kept, so a tab being pressed or dragged stays in the DOM
-    let tabs = [...$$(DOC_TABS)];
-    const sameTabs = tabs.length === docs.length
-        && tabs.every((tab, i) => parseInt(tab.id) === docs[i].id);
-    if (!sameTabs) {
-        // The + button is kept, the tabs follow it
-        for (const tab of tabs) tab.remove();
-        const newTabElement = $(`#${NEW_TAB_ID}`); // kept, after the documents
-        for (const doc of docs) {
-            container.append(<div class="tab" id={doc.id}>
-                <span class="tab-sep"></span>
-                <span class="tab-name"></span>
-                <span class="tab-close">×</span>
-            </div>);
-            if (newTabElement) container.insertBefore(container.lastElementChild, newTabElement);
-        }
-        tabs = [...$$(DOC_TABS)];
-    }
-    $("#btn-add-tab").style.display = plusShown(docs.length) ? "" : "none";
-    docs.forEach((doc, i) => {
-        const tab = tabs[i];
-        if (doc.active && !newTab.active) tab.classList.add("active");
-        else tab.classList.remove("active");
-        tab.$(".tab-name").textContent = doc.name;
-        applyTabStatus(tab, panes.get(doc.id));
-    });
-    renderNewTab();
+    tabStrip.render(docs, newTab, plusShown(docs.length));
+    for (const doc of docs) showTabStatus(doc.id, panes.get(doc.id));
 
     showDocument();
-}
-
-
-// The New Tab element: after all the document tabs while open
-function renderNewTab() {
-    const container = $("#tabs-container");
-    let tab = $(`#${NEW_TAB_ID}`);
-    if (!newTab.open) {
-        if (tab) tab.remove();
-        return;
-    }
-    if (!tab) {
-        container.append(<div class="tab" id={NEW_TAB_ID}>
-            <span class="tab-sep"></span>
-            <span class="tab-name">New Tab</span>
-            <span class="tab-close">×</span>
-        </div>);
-        tab = container.lastElementChild;
-    }
-    if (newTab.active) tab.classList.add("active");
-    else tab.classList.remove("active");
 }
 
 function switchTab(docId) {
@@ -505,102 +429,6 @@ function closeTab(docId) {
     backend.closeTab(id);
     shownPlaceholder = null; // the recent files show when the file was used, not "Opened"
     refreshTabs();
-}
-
-// Chrome-like dragging of a tab (drag-strip.js): on drop the workspace order
-// is updated. No tooltips while a tab is held: they would cover the strip
-// (see TabTooltip).
-// tabDrag: the drag of drag-strip.js with { tab, sep, refreshPending }, null
-//          when no tab is held.
-let tabDrag = null;
-
-// Tooltip of the tab strip: the full name Sciter shows by itself for a name
-// cut by text-overflow (tabs have no title). style.css gives it this
-// prototype: one that is about to appear while a tab is held is closed at
-// once, the shown ones are tracked to close them when a tab is pressed (they
-// can't be found with a selector).
-const shownTabTooltips = new Set();
-
-globalThis.TabTooltip = class extends Element {
-    componentDidMount() {
-        if (tabDrag) this.state.popup = false;
-        else shownTabTooltips.add(this);
-    }
-    componentWillUnmount() {
-        shownTabTooltips.delete(this);
-    }
-};
-
-function closeTabTooltips() {
-    for (const popup of [...shownTabTooltips]) {
-        shownTabTooltips.delete(popup);
-        try { popup.state.popup = false; } catch (e) { }
-    }
-}
-
-// The marker is on the edge of the place the tab will land on, between it and
-// the tab it was moved past. It takes exactly the rectangle of a separator on
-// that edge (d.sep), so it covers the separator there.
-function showTabDropMarker(d) {
-    const marker = $("#tab-drop-marker");
-    showDropMarker(marker, d, origin => {
-        const edge = d.to > d.from ? d.rects[d.to].right : d.rects[d.to].left;
-        marker.style.left = `${edge + d.sep.offset - origin.left}px`;
-        marker.style.top = `${d.sep.top - origin.top}px`;
-        marker.style.width = `${d.sep.width}px`;
-        marker.style.height = `${d.sep.height}px`;
-    });
-}
-
-// Rectangle of a separator relative to the left edge of its tab
-function measureTabSeparator(tab, tabRect) {
-    const r = tab.$(".tab-sep").getBoundingClientRect();
-    return { offset: r.left - tabRect.left, top: r.top, width: r.right - r.left, height: r.bottom - r.top };
-}
-
-function beginTabDrag(tab, clientX) {
-    const tabs = [...$$(DOC_TABS)];
-    const from = tabs.indexOf(tab);
-    if (from < 0) return;
-    tabDrag = pressItem(tabs, from, clientX);
-    tabDrag.tab = tab;
-    tabDrag.sep = measureTabSeparator(tabs[0], tabDrag.rects[0]);
-    tabDrag.refreshPending = false;
-    closeTabTooltips();
-}
-
-function moveTabDrag(clientX) {
-    const landed = dragTo(tabDrag, clientX, () => {
-        closeTabTooltips();
-        $("#tabs-container").append(<div id="tab-drop-marker"></div>);
-    });
-    if (landed) showTabDropMarker(tabDrag);
-}
-
-function endTabDrag() {
-    const d = tabDrag;
-    if (d.settling) return;
-    // Slide into the free place, then commit the new order
-    if (!drop(d, () => finishTabDrag(d.to !== d.from)))
-        finishTabDrag(false); // a plain click
-}
-
-function finishTabDrag(moved) {
-    const d = tabDrag;
-    tabDrag = null;
-    const marker = $("#tab-drop-marker");
-    if (marker) marker.remove();
-    if (moved) {
-        console.log("Tab", d.tab.id, "moved from", d.from, "to", d.to);
-        backend.reorderTab(parseInt(d.tab.id), d.to);
-        refreshTabs(); // renders the tabs in the new order, without shifts
-        return;
-    }
-    for (const t of d.items) {
-        for (const cls of ["dragging", "shifting", "settling"]) t.classList.remove(cls);
-        setShift(t, 0);
-    }
-    if (d.refreshPending) refreshTabs();
 }
 
 // The panel shown: that of the document of the active tab, none while the
@@ -650,8 +478,7 @@ globalThis.onSearchViewChanged = function (docId, json) {
     if (vm.status !== "searching")
         console.log("Native: onSearchViewChanged", docId, json);
     pane.setViews({ searchView: vm });
-    const tab = findTab(docId);
-    if (tab) applyTabStatus(tab, pane);
+    showTabStatus(docId, pane);
 };
 
 // Native: the main view of a document shows something else now.
@@ -665,8 +492,7 @@ globalThis.onMainViewChanged = function (docId, json) {
     if (vm.status !== "loadingFile" && vm.status !== "filtering")
         console.log("Native: onMainViewChanged", docId, json);
     pane.setViews({ mainView: vm });
-    const tab = findTab(docId);
-    if (tab) applyTabStatus(tab, pane);
+    showTabStatus(docId, pane);
 };
 
 // Native: a file was opened, in a new document or in the one that had it open

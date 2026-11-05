@@ -52,7 +52,8 @@ Workspace (domain/workspace)               open documents, the current one
 AppSession (ui/app_session)                what the calls of the script do: files, tabs, views,
                                            search, filters, settings (Sciter-free, tested)
 MainWindow (ui/main_window)                Sciter window: xcall bridge to the session, table rows
-resources/script.js, document-pane.js     tabs; a panel per document (filters, tables, search)
+resources/script.js, tabs.js             the window: tabs, placeholder, settings, backend callbacks
+resources/document-pane.js                 a panel per document (filters, tables, search)
 resources/virtual-dlt-view.js              virtual table built from the column schema
 ```
 
@@ -188,7 +189,9 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
   filters of the sidebar, both tables, the search editor, and the state behind them. Only the
   panel of the active tab is shown, the others are `display: none` and keep their rows, scroll,
   selection and draft as they are; a hidden panel renders what changed when it is shown.
-  `script.js` keeps the tabs, the placeholder and the settings.
+  `script.js` keeps the documents and the panels, the placeholder and the settings; the tab
+  strip (rendering, pressing, dragging, tooltips) is `resources/tabs.js`, what a tab does is
+  decided by `script.js`.
   - The calls of a document's views, filters and search take its id first
     (`backend.mainViewItem(docId, index)`, ...); only the menu and Settings use the active document.
   - The sizes of the splitters follow from the panel shown before.
