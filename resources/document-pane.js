@@ -7,6 +7,7 @@
 // up to date.
 
 import { SearchEditor } from "search-editor.js";
+import * as backend from "backend.js";
 import { ruleColors } from "rule-colors.js";
 import { scrollTarget } from "row-selection.js";
 import { noTable, tableStep } from "pane-state.js";
@@ -223,10 +224,10 @@ export class DocumentPane {
         this.applyFontSize(host.tableFontSize());
 
         this.chipEditor = new SearchEditor(this.root.$(".chip-search"), {
-            checkRegex: (pattern, ignoreCase) => Window.this.xcall("checkRegex", pattern, ignoreCase),
+            checkRegex: (pattern, ignoreCase) => backend.checkRegex(pattern, ignoreCase),
             onEdited: () => this.updateChipPending(),
             onCommit: () => this.runChipSearch(),
-            history: () => JSON.parse(Window.this.xcall("getSearchHistory", this.docId) || "[]"),
+            history: () => backend.searchHistory(this.docId),
             historyButton: this.root.$(".btn-chip-history"),
         });
         this.updateChipPending();
@@ -317,7 +318,7 @@ export class DocumentPane {
     // and what the rows are rendered with) when they change.
     // @returns true if they changed
     setColumns() {
-        const json = Window.this.xcall("getTableColumns", this.docId) || "[]";
+        const json = backend.tableColumnsJson(this.docId);
         if (json === "[]" || json === this.appliedColumns) return false; // none yet, or unchanged
         this.appliedColumns = json;
         const columns = JSON.parse(json);
@@ -412,7 +413,7 @@ export class DocumentPane {
         const chips = this.chipEditor.searchChips();
         // an invalid regex chip is refused here; the backend checks again
         let error = this.chipEditor.firstError();
-        if (!error) error = Window.this.xcall("startChipSearch", this.docId, JSON.stringify(chips));
+        if (!error) error = backend.startChipSearch(this.docId, chips);
         this.root.$(".chip-search-message").innerText = error ? `Search error: ${error}` : "";
         if (!error) {
             this.committedChips = JSON.stringify(chips);
@@ -431,10 +432,9 @@ export class DocumentPane {
     // ---- filters ----
 
     // The filter sets live in the backend (DocumentFilters), per document.
-    // Runs a filter command and shows the sets again; the table reloads when
-    // the filter operation reports completion.
-    filterCommand(name, ...args) {
-        const error = Window.this.xcall(name, this.docId, ...args);
+    // Shows the sets again after a filter command of the backend, with its
+    // message; the table reloads when the filter operation reports completion.
+    showFilterResult(error) {
         this.filterMessage = error || "";
         this.showFilters();
         this.refreshRuleColors();
@@ -452,7 +452,7 @@ export class DocumentPane {
     // @returns true if the rule was applied, false if the editor was cancelled
     editRule(set, rule) {
         const docId = this.docId;
-        let values = JSON.parse(Window.this.xcall("getFilterRule", docId, set, rule) || "null");
+        let values = backend.filterRule(docId, set, rule);
         if (!values) return false;
         let error = "";
         for (;;) {
@@ -461,16 +461,15 @@ export class DocumentPane {
                 alignment: "center",
                 parameters: {
                     title: rule < 0 ? "New Rule" : "Edit Rule", theme: this.host.theme(), rule: values, error,
-                    columns: JSON.parse(Window.this.xcall("getColumns", docId) || "[]"),
+                    columns: backend.columns(docId),
                     // What is wrong with the rule, while it is edited: the editor
                     // marks it at once instead of being reopened with the error
-                    check: rule => Window.this.xcall("checkFilterRule", docId, JSON.stringify(rule))
+                    check: rule => backend.checkFilterRuleJson(docId, rule)
                 }
             });
             if (!result) return false;
-            const json = JSON.stringify(result);
-            error = rule < 0 ? Window.this.xcall("addFilterRule", docId, set, json)
-                : Window.this.xcall("updateFilterRule", docId, set, rule, json);
+            error = rule < 0 ? backend.addFilterRule(docId, set, result)
+                : backend.updateFilterRule(docId, set, rule, result);
             if (!error) break;
             values = result;
         }
@@ -483,7 +482,7 @@ export class DocumentPane {
     // Shows the filter sets: a set is a row with its switch, name and remove
     // button, followed by a row per rule
     showFilters() {
-        const info = JSON.parse(Window.this.xcall("getFilters", this.docId) || "null") ?? noFilters;
+        const info = backend.filters(this.docId) ?? noFilters;
         this.filters = info;
         this.filtersShown = true;
         this.ruleColors = ruleColors(info.sets); // the rows refer to the rules by id
@@ -551,7 +550,7 @@ export class DocumentPane {
             const index = Number(cell.getAttribute("msg-index"));
             const anchored = cell.getAttribute("has-anchor") === "true";
             const counts = this.lists.map(list => list.totalItems());
-            if (Window.this.xcall("setAnchor", this.docId, index, !anchored)) {
+            if (backend.setAnchor(this.docId, index, !anchored)) {
                 for (const [i, list] of this.lists.entries()) {
                     // The view gained or lost the row: the selected positions show other rows
                     if (list.totalItems() !== counts[i]) list.resetSelection();
@@ -572,7 +571,7 @@ export class DocumentPane {
             // positions belong to the content being replaced
             if (this.mainView?.status !== "ready") return;
             const list = this.mainList;
-            const position = Window.this.xcall("getMainViewPosition", this.docId, msgIndex);
+            const position = backend.mainViewPosition(this.docId, msgIndex);
             if (position === null || position === undefined) return;
             list.selection.moveTo(position);
             list.navigateTarget = scrollTarget(position, list.visibleRowCount());
@@ -587,7 +586,7 @@ export class DocumentPane {
         on("click", ".btn-lost-retry", () => {
             // Reopens the file in the same tab; fails while the disk is still missing
             const retryStart = Date.now();
-            const error = Window.this.xcall("retryDocument", this.docId);
+            const error = backend.retryDocument(this.docId);
             const retryTime = Date.now() - retryStart;
             if (error) {
                 console.log(`Retry failed after ${retryTime} ms: ${error}`);
@@ -608,11 +607,11 @@ export class DocumentPane {
             console.log(`Retry: xcall ${retryTime} ms, views refresh ${Date.now() - refreshStart} ms`);
         });
 
-        on("click", ".search-status .btn-cancel", () => Window.this.xcall("cancelSearchView", this.docId));
+        on("click", ".search-status .btn-cancel", () => backend.cancelSearchView(this.docId));
 
         // What Cancel means (stop the filter, close a loading document) is decided
         // by the main view machine of the document
-        on("click", ".main-status .btn-cancel", () => Window.this.xcall("cancelMainView", this.docId));
+        on("click", ".main-status .btn-cancel", () => backend.cancelMainView(this.docId));
 
         on("click", ".btn-fibex", () => {
             const fn = Window.this.selectFile({
@@ -620,7 +619,7 @@ export class DocumentPane {
                 filter: "XML Files (*.xml)|*.xml|All Files (*.*)|*.*"
             });
             if (fn) {
-                Window.this.xcall("loadFibex", fn);
+                backend.loadFibex(fn);
                 this.reloadMainRows();
             }
         });
@@ -632,17 +631,17 @@ export class DocumentPane {
                 ? "Filter Files (*.logfilter;*.dlf)|*.logfilter;*.dlf|DLT Explorer Filters (*.logfilter)|*.logfilter|dlt-viewer Filters (*.dlf)|*.dlf|All Files (*.*)|*.*"
                 : "DLT Explorer Filters (*.logfilter)|*.logfilter|All Files (*.*)|*.*";
             const fn = Window.this.selectFile({ mode: "open", filter });
-            if (fn) this.filterCommand("loadFilterFile", fn);
+            if (fn) this.showFilterResult(backend.loadFilterFile(this.docId, fn));
         });
 
         // An empty set, kept with the log like a loaded one; its first rule is
         // asked for right away
         on("click", ".btn-new-dlf", () => {
-            this.filterCommand("newFilterSet");
+            this.showFilterResult(backend.newFilterSet(this.docId));
             if (this.filterMessage) return;
             const set = this.filters.sets.length - 1;
             // No first rule: no set either, so cancelled tries don't pile up
-            if (!this.editRule(set, -1)) this.filterCommand("removeFilterSet", set);
+            if (!this.editRule(set, -1)) this.showFilterResult(backend.removeFilterSet(this.docId, set));
         });
 
         on("click", ".filter-add", (evt, button) => {
@@ -671,7 +670,7 @@ export class DocumentPane {
             // Without its extension: the dialog adds it itself (name.dlf.dlf otherwise)
             if (fileName) params.path = fileName.replace(/\.(dlf|logfilter)$/i, "");
             const fn = Window.this.selectFile(params);
-            if (fn) this.filterCommand("exportFilterSet", set, fn);
+            if (fn) this.showFilterResult(backend.exportFilterSet(this.docId, set, fn));
             return true;
         });
 
@@ -689,21 +688,21 @@ export class DocumentPane {
 
         on("click", ".filter-rule-remove", (evt, button) => {
             const row = button.parentElement;
-            this.filterCommand("removeFilterRule", setOf(row), ruleOf(row));
+            this.showFilterResult(backend.removeFilterRule(this.docId, setOf(row), ruleOf(row)));
             return true;
         });
 
         on("change", ".filter-set-switch", (evt, input) => {
-            this.filterCommand("enableFilterSet", setOf(input.parentElement), input.value);
+            this.showFilterResult(backend.enableFilterSet(this.docId, setOf(input.parentElement), input.value));
         });
 
         on("change", ".filter-rule-switch", (evt, input) => {
             const row = input.parentElement;
-            this.filterCommand("enableFilterRule", setOf(row), ruleOf(row), input.value);
+            this.showFilterResult(backend.enableFilterRule(this.docId, setOf(row), ruleOf(row), input.value));
         });
 
         on("click", ".filter-remove", (evt, button) => {
-            this.filterCommand("removeFilterSet", setOf(button.parentElement));
+            this.showFilterResult(backend.removeFilterSet(this.docId, setOf(button.parentElement)));
             return true;
         });
     }

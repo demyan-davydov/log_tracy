@@ -1,6 +1,6 @@
 console.log("Loading virtual-dlt-view.js...");
-import { VirtualList } from "virtual-select.js";
-import { VirtualSelect } from "virtual-select.js";
+import { VirtualList, VirtualSelect } from "virtual-select.js";
+import * as backend from "backend.js";
 import * as env from "@env";
 import { cellClass, cellText, itemText, rowLayout, matchPieces } from "cell-format.js";
 import { matchColorClass } from "match-colors.js";
@@ -49,7 +49,7 @@ const contextClickKey = env.PLATFORM === "OSX" ? "ctrlKey" : null;
 // gives each table: its columns, the colors of the rules of the document and,
 // for the search results, the match colors of the chips.
 export class VirtualDltTBody extends VirtualSelect {
-    // The columns the rows show, from Window.xcall("getTableColumns"):
+    // The columns the rows show, from backend.tableColumnsJson:
     // [{ id, title, kind, width, timeKind?, unitsPerSecond?, labels? }].
     // Getters with defaults: field initializers don't run for the tbody bound
     // by CSS `prototype:`.
@@ -350,11 +350,11 @@ export class VirtualMainViewTBody extends VirtualDltTBody {
     }
 
     itemAt(at) {
-        return this.docId == null ? null : Window.this.xcall("getMainViewItem", this.docId, at);
+        return this.docId == null ? null : backend.mainViewItem(this.docId, at);
     }
 
     totalItems() {
-        return this.docId == null ? 0 : Window.this.xcall("getMainViewCount", this.docId);
+        return this.docId == null ? 0 : backend.mainViewCount(this.docId);
     }
 }
 
@@ -365,10 +365,10 @@ export class VirtualSearchViewTBody extends VirtualDltTBody {
     }
 
     itemAt(at) {
-        return this.docId == null ? null : Window.this.xcall("getSearchViewItem", this.docId, at);
+        return this.docId == null ? null : backend.searchViewItem(this.docId, at);
     }
 
     totalItems() {
-        return this.docId == null ? 0 : Window.this.xcall("getSearchViewCount", this.docId);
+        return this.docId == null ? 0 : backend.searchViewCount(this.docId);
     }
 }

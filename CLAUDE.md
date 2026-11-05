@@ -56,8 +56,9 @@ resources/script.js, document-pane.js     tabs; a panel per document (filters, t
 resources/virtual-dlt-view.js              virtual table built from the column schema
 ```
 
-The script asks the backend through `Window.this.xcall(name, ...)` (read in
-`MainWindow.handleEvent`, done by `AppSession`); the backend tells the script what changed by
+The script asks the backend through `resources/backend.js`, one function per
+`Window.this.xcall(name, ...)` (read in `MainWindow.handleEvent`, done by `AppSession`): a new
+call gets its function there, the script calls nothing else; the backend tells the script what changed by
 `callScript` of a global function (`onMainViewChanged(docId, json)`, `onSearchViewChanged`,
 `onDocumentOpened`, ...). The session only queues those calls; `MainWindow.onIdle()` sends them
 (`takeScriptCalls`) after the document events of the indexing thread were dispatched on the UI
@@ -160,9 +161,9 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
 - The table columns and the row cells (`asSciterRow` in `main_window`) are built from the
   format's `ColumnInfo` schema as the user's layout of that format arranges it
   (`log_core/column_layout`, `AppSettings.columnLayouts` by format id, edited in the Columns
-  section of Settings): `xcall("getTableColumns", docId)`, arranged once per format and variant
+  section of Settings): `backend.tableColumnsJson(docId)`, arranged once per format and variant
   (`ui/table_columns`). The rule editor gets all the columns of the format:
-  `xcall("getColumns", docId)`.
+  `backend.columns(docId)`.
   - Index (not a format column) stays first and Payload last; the others can be moved and
     hidden. A layout is one per format id, for all its variants: `formats/registry.formatColumns`
     gives the columns of all of them.
@@ -189,7 +190,7 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
   selection and draft as they are; a hidden panel renders what changed when it is shown.
   `script.js` keeps the tabs, the placeholder and the settings.
   - The calls of a document's views, filters and search take its id first
-    (`getMainViewItem(docId, index)`, ...); only the menu and Settings use the active document.
+    (`backend.mainViewItem(docId, index)`, ...); only the menu and Settings use the active document.
   - The sizes of the splitters follow from the panel shown before.
   - Never hide a log table itself: one hidden by `display: none` before it was ever laid out
     keeps its cells 1px wide for good (Sciter). Status views cover it instead

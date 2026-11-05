@@ -9,6 +9,7 @@ import { lastUsedText } from "recent-time.js";
 import { DocumentPane } from "document-pane.js";
 import { paneChanges } from "pane-state.js";
 import { setShift, pressItem, dragTo, drop, showDropMarker } from "drag-strip.js";
+import * as backend from "backend.js";
 
 // The table whose context menu is open: "Copy Row" copies its selected rows
 let contextList = null;
@@ -77,7 +78,7 @@ function stopScroll(element) {
 // Must not be done from native BEHAVIOR_DETACH: calling scripts during view teardown crashes Sciter.
 Window.this.on("closerequest", () => {
     try {
-        Window.this.xcall("saveAppState", getAppState());
+        backend.saveAppState(getAppState());
     } catch (e) {
         console.error("saveAppState failed:", e);
     }
@@ -120,9 +121,8 @@ function initApp() {
 
 function restoreSettings() {
     try {
-        const settingsStr = Window.this.xcall("getSettings");
-        if (settingsStr) {
-            const settings = JSON.parse(settingsStr);
+        const settings = backend.settings();
+        if (settings) {
             if (settings.theme) {
                 setTheme(settings.theme);
             }
@@ -140,7 +140,7 @@ function restoreSettings() {
 // list at once. Files not found stay listed (a removed drive may come back).
 function getRecentFiles() {
     try {
-        return JSON.parse(Window.this.xcall("getRecentFiles") || "[]");
+        return backend.recentFiles();
     } catch (e) {
         console.error("Failed to get recent files:", e);
         return [];
@@ -213,13 +213,9 @@ let openFailure = null;
 // files (where it was, or on top if it is new there), and the placeholder
 // (brought up if needed) shows why under it.
 function openFile(path) {
-    const result = Window.this.xcall("openFile", path);
-    if (typeof result !== "string") return; // the id of the document: opened
-    try {
-        openFailure = JSON.parse(result);
-    } catch (e) {
-        openFailure = { path, error: result };
-    }
+    const { failure } = backend.openFile(path);
+    if (!failure) return; // opened
+    openFailure = failure;
     console.error("Can't open", path, ":", openFailure.error);
     newTab = fileFailed(newTab, docCount);
     shownPlaceholder = null; // render it again, with the failure
@@ -257,14 +253,14 @@ function openSettingsAction() {
         alignment: "center",
         parameters: {
             theme: currentTheme, tableFontSize,
-            columns: JSON.parse(Window.this.xcall("getColumnSettings") || "null")
+            columns: backend.columnSettings()
         }
     });
     if (!result) return; // Cancel
     if (result.theme) setTheme(result.theme);
     if (result.tableFontSize) setTableFontSize(result.tableFontSize);
     if (result.columnLayouts) {
-        Window.this.xcall("setColumnLayouts", JSON.stringify(result.columnLayouts));
+        backend.setColumnLayouts(result.columnLayouts);
         for (const pane of panes.values()) pane.columnsChanged(); // as arranged now
     }
 }
@@ -420,9 +416,8 @@ function refreshTabs() {
         tabDrag.refreshPending = true;
         return;
     }
-    const info = Window.this.xcall("getWorkspaceInfo");
-    if (!info) return;
-    const docs = JSON.parse(info);
+    const docs = backend.workspaceInfo();
+    if (!docs) return;
     const container = $("#tabs-container");
     docCount = docs.length;
     newTab = documentsCounted(newTab, docCount);
@@ -501,13 +496,13 @@ function renderNewTab() {
 function switchTab(docId) {
     const id = parseInt(docId);
     console.log("Requesting switch to doc (int):", id);
-    Window.this.xcall("switchTab", id);
+    backend.switchTab(id);
     refreshTabs(); // reloads the table of the other document if it is ready
 }
 
 function closeTab(docId) {
     const id = parseInt(docId);
-    Window.this.xcall("closeTab", id);
+    backend.closeTab(id);
     shownPlaceholder = null; // the recent files show when the file was used, not "Opened"
     refreshTabs();
 }
@@ -597,7 +592,7 @@ function finishTabDrag(moved) {
     if (marker) marker.remove();
     if (moved) {
         console.log("Tab", d.tab.id, "moved from", d.from, "to", d.to);
-        Window.this.xcall("reorderTab", parseInt(d.tab.id), d.to);
+        backend.reorderTab(parseInt(d.tab.id), d.to);
         refreshTabs(); // renders the tabs in the new order, without shifts
         return;
     }
