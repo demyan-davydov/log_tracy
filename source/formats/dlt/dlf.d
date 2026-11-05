@@ -5,6 +5,7 @@ module formats.dlt.dlf;
 //! filter rules on the columns of DltFormat and back (fromDlf, toDlf). A filter becomes a rule with the same meaning as in
 //! dlt-viewer (qdlt/qdltfilter.cpp, QDltFilter::match):
 //!   type 0/1/2         -> include / exclude / marker
+//!   filterColour       -> the color of the rows, if a marker or enableMarker
 //!   ecuid              -> ecu equals
 //!   applicationid      -> app equals, or regex
 //!   contextid          -> ctx contains, or regex
@@ -279,7 +280,10 @@ DlfFilter[] toDlf(const(FilterRule)[] rules, ref string[] warnings)
         f.enabled = rule.enabled;
         f.type = rule.kind == RuleKind.Exclude ? 1 : rule.kind == RuleKind.Marker ? 2 : 0;
         if (rule.color.length)
+        {
             f.color = rule.color;
+            f.enableMarker = true; // dlt-viewer colors the rows with it, see toRule
+        }
 
         string[] taken; // a .dlf holds one condition per column
         foreach (ref c; rule.conditions)
@@ -411,8 +415,11 @@ FilterRule toRule(ref const(DlfFilter) f)
     FilterRule rule;
     rule.name = f.name;
     rule.enabled = f.enabled;
-    rule.color = f.color;
     rule.kind = f.type == 1 ? RuleKind.Exclude : f.type == 2 ? RuleKind.Marker : RuleKind.Include;
+    // Every filter has a color: dlt-viewer colors the rows with it only for a
+    // marker or when asked (QDltFilter::isMarker)
+    if (rule.kind == RuleKind.Marker || f.enableMarker)
+        rule.color = f.color;
 
     void add(string columnId, Check check, string value, long min = 0, long max = 0,
         bool ignoreCase = false)
@@ -493,7 +500,8 @@ version (unittest)
 unittest
 {
     auto rules = rulesOf(dlf(
-            "<type>0</type><name>Positive</name><enablefilter>1</enablefilter><filterColour>#ff0000</filterColour>",
+            "<type>0</type><name>Positive</name><enablefilter>1</enablefilter><enableMarker>1</enableMarker>"
+            ~ "<filterColour>#ff0000</filterColour>",
             "<type>1</type><name>Negative</name><enablefilter>0</enablefilter>",
             "<type>2</type><name>Marker</name><enablefilter>1</enablefilter>"));
     assert(rules.length == 3);
@@ -503,6 +511,29 @@ unittest
     assert(rules[2].kind == RuleKind.Marker);
     foreach (ref rule; rules)
         assert(rule.conditions.length == 0 && rule.problem == "");
+}
+
+@("toRule: a filter colors the rows as in dlt-viewer: a marker, or with enableMarker")
+unittest
+{
+    auto rules = rulesOf(dlf(
+            "<type>0</type><name>Plain</name><filterColour>#ff0000</filterColour>",
+            "<type>1</type><name>Marked</name><enableMarker>1</enableMarker><filterColour>#00ff00</filterColour>",
+            "<type>2</type><name>Marker</name><filterColour>#0000ff</filterColour>"));
+    assert(rules[0].color == "", "every filter has a color, dlt-viewer uses it only if asked");
+    assert(rules[1].color == "#00ff00");
+    assert(rules[2].color == "#0000ff", "a marker always colors");
+}
+
+@("toDlf: a rule with a color is written with enableMarker, one without has none")
+unittest
+{
+    FilterRule colored, plain;
+    colored.color = "#00ff00";
+    string[] warnings;
+    auto filters = toDlf([colored, plain], warnings);
+    assert(filters[0].enableMarker && filters[0].color == "#00ff00");
+    assert(!filters[1].enableMarker);
 }
 
 @("parseDlfFilters: only the enabled fields become conditions")
@@ -614,6 +645,7 @@ unittest
     f.type = 1;
     f.name = "All";
     f.color = "#00ff00";
+    f.enableMarker = true;
     f.ecuId = "ECU1";
     f.enableEcu = true;
     f.appId = "A.P";

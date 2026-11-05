@@ -14,6 +14,7 @@ import formats.dlt.dlf : canLoadDlf, fromDlf, readDlf, toDlf, writeDlf;
 import log_core.filter_file;
 import log_core.log_filter : LogFilter;
 import log_core.log_format : LogFormat;
+import log_core.log_message : LogMessage;
 import log_core.rule_filter;
 import ui.app_settings : copyOf, SavedFilter;
 
@@ -25,6 +26,8 @@ final class DocumentFilters
     private string _formatId; // FormatInfo.id of the log, written to the filter files
     private void delegate(LogFilter!wchar) _apply;
     private FilterSet[] _sets; // the problems of their rules are set by check()
+    private RuleMatcher _matcher; // compiled from _sets by rematch(); null: no rules
+    private RuleIdGenerator _ruleIds; // the rules get their ids when they come in
 
     //! @param formatId - FormatInfo.id of the format of the log
     //! @param apply - filters the main view of the document (null: no filter)
@@ -38,6 +41,13 @@ final class DocumentFilters
     const(FilterSet)[] sets() const
     {
         return _sets;
+    }
+
+    //! @returns the id of the first rule the record matches (see
+    //! RuleMatcher), an invalid one if none
+    RuleId ruleOf(scope ref const(LogMessage!wchar) item) const
+    {
+        return _matcher is null ? RuleId.init : _matcher.firstMatch(item);
     }
 
     //! @returns true if the log has columns to filter by
@@ -85,7 +95,9 @@ final class DocumentFilters
             return "Can't load the filter: " ~ e.msg;
         set.source = path;
         check(set);
+        identify(set);
         _sets ~= set;
+        rematch();
         if (filtersView(set))
             apply();
         return noteOf(baseName(path), notes);
@@ -137,12 +149,18 @@ final class DocumentFilters
         return noteOf(baseName(path), notes);
     }
 
-    //! The sets as they are saved for the log: copies of their rules
+    //! The sets as they are saved for the log: copies of their rules, without
+    //! their ids (a rule gets a new one when it is restored)
     SavedFilter[] saved() const
     {
         SavedFilter[] result;
         foreach (ref s; _sets)
-            result ~= SavedFilter(s.name, s.source, s.enabled, copyOf(s.rules));
+        {
+            auto rules = copyOf(s.rules);
+            foreach (ref rule; rules)
+                rule.id = RuleId.init;
+            result ~= SavedFilter(s.name, s.source, s.enabled, rules);
+        }
         return result;
     }
 
@@ -160,9 +178,11 @@ final class DocumentFilters
             set.enabled = saved.enabled;
             set.rules = copyOf(saved.rules);
             check(set);
+            identify(set);
             changed |= filtersView(set);
             _sets ~= set;
         }
+        rematch();
         if (changed)
             apply();
     }
@@ -176,6 +196,7 @@ final class DocumentFilters
             return noSuchSet;
         const changed = filtersView(_sets[set]);
         _sets = _sets.remove(set);
+        rematch();
         if (changed)
             apply();
         return "";
@@ -187,6 +208,7 @@ final class DocumentFilters
         if (set >= _sets.length)
             return noSuchSet;
         _sets[set].enabled = enabled;
+        rematch();
         if (filtersView(_sets[set], true))
             apply();
         return "";
@@ -199,6 +221,7 @@ final class DocumentFilters
             return noSuchSet;
         auto target = &_sets[set].rules[rule];
         target.enabled = enabled;
+        rematch();
         if (_sets[set].enabled && filters(*target, true)) // markers don't change what is shown
             apply();
         return "";
@@ -225,7 +248,7 @@ final class DocumentFilters
     {
         if (set >= _sets.length)
             return noSuchSet;
-        return edit(set, json, (s, rule) { s.rules ~= rule; });
+        return edit(set, json, (s, rule) { rule.id = _ruleIds.popId(); s.rules ~= rule; });
     }
 
     //! @brief Replaces a rule of a set, as addRule takes it
@@ -233,7 +256,7 @@ final class DocumentFilters
     {
         if (set >= _sets.length || rule >= _sets[set].rules.length)
             return noSuchSet;
-        return edit(set, json, (s, r) { s.rules[rule] = r; });
+        return edit(set, json, (s, r) { r.id = s.rules[rule].id; s.rules[rule] = r; });
     }
 
     //! @brief Checks a rule for the editor, as addRule takes it
@@ -272,6 +295,7 @@ final class DocumentFilters
             return noSuchSet;
         const changed = _sets[set].enabled && filters(_sets[set].rules[rule]);
         _sets[set].rules = _sets[set].rules.remove(rule);
+        rematch();
         if (changed)
             apply();
         return "";
@@ -279,7 +303,7 @@ final class DocumentFilters
 
     //! The state of the filter panel: {canFilter, canDlf, sets: [{name,
     //! source, fileName, enabled, rules: [{name, kind, enabled, color,
-    //! error}]}]}. canFilter tells whether the log has columns to filter by,
+    //! error, id}]}]}. canFilter tells whether the log has columns to filter by,
     //! canDlf whether .dlf files apply to it; fileName is the file to offer
     //! on export: the source, or <name>.<format>.logfilter; kind is
     //! "include", "exclude" or "marker"; error says why a rule isn't
@@ -295,8 +319,10 @@ final class DocumentFilters
                     "name": JSONValue(rule.name),
                     "kind": JSONValue(kindWords[rule.kind]), // as in a filter file
                     "enabled": JSONValue(rule.enabled),
-                    "color": JSONValue(rule.color),
+                    // Only a color the rows take (see RuleMatcher): the script uses it as it is
+                    "color": JSONValue(isRuleColor(rule.color) ? rule.color : ""),
                     "error": JSONValue(rule.problem), // see check()
+                    "id": JSONValue(cast(long) rule.id.toInt()), // a row refers to the rule it matches by it
                 ]);
             sets ~= JSONValue([
                 "name": JSONValue(s.name),
@@ -357,6 +383,7 @@ final class DocumentFilters
         auto target = &_sets[set];
         const before = filtersView(*target);
         change(target, rule);
+        rematch();
         if (before || filtersView(*target))
             apply();
         return "";
@@ -394,6 +421,19 @@ final class DocumentFilters
         return (anyState || set.enabled) && set.rules.any!(r => filters(r));
     }
 
+    //! Gives the rules of a set that comes in their ids
+    private void identify(ref FilterSet set)
+    {
+        foreach (ref rule; set.rules)
+            rule.id = _ruleIds.popId();
+    }
+
+    //! Compiles the matcher of the records from the rules, after a change of them
+    private void rematch()
+    {
+        _matcher = RuleMatcher.compile(_format is null ? null : _format.columns, _sets);
+    }
+
     //! Filters the view with the enabled rules
     private void apply()
     {
@@ -408,7 +448,6 @@ version (unittest)
 {
     import formats.dlt.format : DltFormat;
     import formats.dlt.fields : beginDltRecord;
-    import log_core.log_message : LogMessage;
 
     //! The filters of a DLT document whose view filter is kept in `applied`
     private final class Fixture
@@ -420,6 +459,20 @@ version (unittest)
         this(const(LogFormat) format = new DltFormat(), string formatId = "dlt")
         {
             filters = new DocumentFilters(format, formatId, (f) { applied = f; ++applyCount; });
+        }
+
+        //! The first rule a record of the app matches
+        RuleId ruleOf(string appId)
+        {
+            LogMessage!wchar msg;
+            msg.beginDltRecord("ECU1", appId, "CTX1");
+            return filters.ruleOf(msg);
+        }
+
+        //! The id of a rule
+        RuleId idOf(size_t set, size_t rule)
+        {
+            return filters.sets[set].rules[rule].id;
         }
 
         //! Whether a record of the app is shown by the applied filter
@@ -463,6 +516,12 @@ version (unittest)
 
         return format(`{"name": "%s", "enabled": %s, "conditions": [{"column": "app", "check": "equals", "value": "%s"}]}`,
             name, enabled, appId);
+    }
+
+    //! appRule with a color
+    private string coloredAppRule(string name, string appId)
+    {
+        return appRule(name, appId)[0 .. $ - 1] ~ `, "color": "#00ff00"}`;
     }
 
     //! The body of an enabled filter of the app
@@ -594,6 +653,89 @@ unittest
     assert(fx.filters.enableSet(0, false) == "" && fx.filters.enableSet(0, true) == "");
     assert(fx.filters.remove(0) == "");
     assert(fx.applyCount == count);
+}
+
+@("DocumentFilters: every rule that comes in gets a new id; an edited rule keeps its own")
+unittest
+{
+    import std.file : remove;
+
+    const path = makeDlf("filters_ids.dlf", appFilter("APP1"), appFilter("APP2"));
+    scope (exit)
+        remove(path);
+
+    auto fx = new Fixture();
+    assert(fx.filters.loadFile(path) == "" && fx.filters.newSet() == "");
+    assert(fx.filters.addRule(1, appRule("Three", "APP3")) == "");
+    const ids = [fx.idOf(0, 0), fx.idOf(0, 1), fx.idOf(1, 0)];
+    foreach (i, id; ids)
+    {
+        assert(id.isValid());
+        foreach (other; ids[0 .. i])
+            assert(id != other, "unique among the sets");
+    }
+    assert(fx.filters.updateRule(1, 0, appRule("Four", "APP4")) == "");
+    assert(fx.idOf(1, 0) == ids[2], "the same rule, edited");
+
+    auto restored = new Fixture();
+    restored.filters.restore(fx.filters.saved());
+    assert(restored.idOf(0, 0).isValid() && restored.idOf(0, 0) != restored.idOf(0, 1));
+
+    const json = fx.filters.toJson()["sets"][0]["rules"][1];
+    assert(json["id"].integer == ids[1].toInt(), "the panel knows the ids");
+}
+
+@("DocumentFilters: the panel gets the colors that color the rows, #rrggbb only")
+unittest
+{
+    auto fx = new Fixture();
+    assert(fx.filters.newSet() == "");
+    assert(fx.filters.addRule(0, appRule("Green", "APP1")[0 .. $ - 1] ~ `, "color": "#00ff00"}`) == "");
+    assert(fx.filters.addRule(0, appRule("Red", "APP2")[0 .. $ - 1] ~ `, "color": "red"}`) == "");
+    const rules = fx.filters.toJson()["sets"][0]["rules"];
+    assert(rules[0]["color"].str == "#00ff00");
+    assert(rules[1]["color"].str == "", "a color the rows can't take: none");
+}
+
+@("DocumentFilters: a record refers to the first rule with a color it matches, after every change of the rules")
+unittest
+{
+    import std.file : remove;
+
+    enum red = "<filterColour>#ff0000</filterColour>";
+    const path = makeDlf("filters_match.dlf", appFilter("APP1", 2) ~ red, // a marker colors
+        appFilter("APP2") ~ "<enableMarker>1</enableMarker>" ~ red, appFilter("APP5") ~ red);
+    scope (exit)
+        remove(path);
+
+    auto fx = new Fixture();
+    assert(!fx.ruleOf("APP1").isValid(), "no rules yet");
+    assert(fx.filters.loadFile(path) == "");
+    assert(fx.ruleOf("APP1") == fx.idOf(0, 0) && fx.ruleOf("APP2") == fx.idOf(0, 1));
+    assert(!fx.ruleOf("APP5").isValid(), "an include filter without enableMarker has no color");
+    assert(!fx.ruleOf("APP3").isValid());
+
+    assert(fx.filters.enableRule(0, 0, false) == "");
+    assert(!fx.ruleOf("APP1").isValid(), "a rule switched off");
+    assert(fx.filters.enableRule(0, 0, true) == "");
+    assert(fx.filters.enableSet(0, false) == "");
+    assert(!fx.ruleOf("APP1").isValid(), "a set switched off");
+    assert(fx.filters.enableSet(0, true) == "");
+
+    assert(fx.filters.addRule(0, coloredAppRule("Three", "APP3")) == "");
+    assert(fx.ruleOf("APP3") == fx.idOf(0, 3), "an added rule");
+    assert(fx.filters.updateRule(0, 3, coloredAppRule("Four", "APP4")) == "");
+    assert(!fx.ruleOf("APP3").isValid() && fx.ruleOf("APP4") == fx.idOf(0, 3), "an edited rule");
+    assert(fx.filters.updateRule(0, 3, appRule("Four", "APP4")) == "");
+    assert(!fx.ruleOf("APP4").isValid(), "its color taken away");
+    assert(fx.filters.removeRule(0, 0) == "");
+    assert(!fx.ruleOf("APP1").isValid(), "a removed rule");
+
+    auto restored = new Fixture();
+    restored.filters.restore(fx.filters.saved());
+    assert(restored.ruleOf("APP2") == restored.idOf(0, 0), "restored sets");
+    assert(fx.filters.remove(0) == "");
+    assert(!fx.ruleOf("APP2").isValid(), "a removed set");
 }
 
 @("DocumentFilters: the sets are saved as copies and restored without their files")

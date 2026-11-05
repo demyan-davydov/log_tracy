@@ -14,7 +14,7 @@ import log_core.log_format : ColumnInfo, ColumnKind;
 import log_core.log_message;
 
 import std.algorithm.iteration : map;
-import std.algorithm.searching : canFind, countUntil;
+import std.algorithm.searching : countUntil;
 import std.array : array;
 import std.format : format;
 import std.regex : matchFirst, regex, Regex;
@@ -59,6 +59,9 @@ struct FilterRule
     bool enabled = true;
     string color; // "#rrggbb" or empty
     Condition[] conditions;
+    //! Who the rule is in its document while it is open (see RuleId); not
+    //! saved, not written to the files
+    RuleId id;
     //! Why the rule can't be applied, set by an importer for what the model
     //! can't express (e.g. the header text of a .dlf); "" if it can
     string problem;
@@ -96,10 +99,33 @@ private struct CompiledCondition
     ColumnKind kind;
     int field = -1;
     Check check;
-    wstring text; // Equals and Contains on texts
+    wstring text; // Equals and Contains on texts; in lower case for Contains with ignoreCase
     long min, max; // Equals (min) and Range on numbers, levels and enums
     bool ignoreCase;
+    //! Contains with ignoreCase on a text with letters beyond the BMP: their
+    //! case is found by decoding (see containsIgnoringCase)
+    bool beyondBmp;
     Regex!wchar regex;
+
+    //! How much a check costs, roughly: a number, a field, the payload, a
+    //! regular expression
+    int cost() const pure nothrow @nogc
+    {
+        if (kind != ColumnKind.Text && kind != ColumnKind.Payload)
+            return 0;
+        const payload = kind == ColumnKind.Payload ? 1 : 0;
+        final switch (check)
+        {
+        case Check.Equals:
+            return 1 + payload;
+        case Check.Contains:
+            return 2 + payload;
+        case Check.Regex:
+            return 4 + payload;
+        case Check.Range:
+            return 0; // rejected by compileCondition
+        }
+    }
 
     bool matches(scope ref const(LogMessage!wchar) item) const
     {
@@ -128,8 +154,14 @@ private struct CompiledCondition
         case Check.Equals:
             return ignoreCase ? icmp(value, text) == 0 : value == text;
         case Check.Contains:
-            return ignoreCase
-                ? value.canFind!((a, b) => toLower(a) == toLower(b))(text) : value.canFind(text);
+        {
+            import std.algorithm.searching : canFind;
+
+            if (!ignoreCase)
+                return contains(value, text);
+            return beyondBmp ? value.canFind!((a, b) => toLower(a) == toLower(b))(text)
+                : containsIgnoringCase(value, text);
+        }
         case Check.Regex:
             return !matchFirst(value, regex).empty;
         default:
@@ -142,6 +174,63 @@ private struct CompiledCondition
         // Equals sets max = min
         return value >= min && value <= max;
     }
+}
+
+// Substrings are looked for by code units: a substring of UTF-16 is found
+// without decoding it. Most places differ at the first code unit, so it is
+// checked alone first. This runs for every row on screen and every record a
+// filter goes through.
+
+//! @returns true if `text` is in `value`
+private bool contains(const(wchar)[] value, const(wchar)[] text) pure nothrow @nogc
+{
+    if (text.length == 0)
+        return true;
+    if (value.length < text.length)
+        return false;
+    const first = text[0];
+    foreach (i; 0 .. value.length - text.length + 1)
+        if (value[i] == first && value[i + 1 .. i + text.length] == text[1 .. $])
+            return true;
+    return false;
+}
+
+//! @returns `c` in lower case
+private wchar lowerOf(wchar c) pure nothrow @nogc
+{
+    if (c < 0x80)
+        return c >= 'A' && c <= 'Z' ? cast(wchar)(c + ('a' - 'A')) : c;
+    return cast(wchar) toLower(cast(dchar) c);
+}
+
+//! @returns true if `lowerText` (in lower case) is in `value`, in any case.
+//! Exact for a text in the BMP: a surrogate of `value` is never one of its code
+//! units, and no letter beyond the BMP is a letter of the BMP in another case.
+private bool containsIgnoringCase(const(wchar)[] value, const(wchar)[] lowerText) pure nothrow @nogc
+{
+    import std.uni : toUpper;
+
+    if (lowerText.length == 0)
+        return true;
+    if (value.length < lowerText.length)
+        return false;
+    const first = lowerText[0];
+    // Its upper case is a quick yes only if it is lowered back to it (not for ı: I is i)
+    wchar firstUpper = cast(wchar) toUpper(cast(dchar) first);
+    if (lowerOf(firstUpper) != first)
+        firstUpper = first;
+    outer: foreach (i; 0 .. value.length - lowerText.length + 1)
+    {
+        const c = value[i];
+        // Beyond ASCII a letter may have more upper cases (K and the Kelvin sign)
+        if (c != first && c != firstUpper && (c < 0x80 || lowerOf(c) != first))
+            continue;
+        foreach (j; 1 .. lowerText.length)
+            if (lowerOf(value[i + j]) != lowerText[j])
+                continue outer;
+        return true;
+    }
+    return false;
 }
 
 //! @throws Exception if the condition can't be applied to the columns
@@ -170,6 +259,17 @@ private CompiledCondition compileCondition(const(ColumnInfo)[] columns, ref cons
     case ColumnKind.Text:
     case ColumnKind.Payload:
         compiled.text = condition.text.toUTF16;
+        if (condition.check == Check.Contains && condition.ignoreCase)
+            foreach (wchar c; compiled.text) // by code units: canFind would decode the pairs
+                compiled.beyondBmp |= c >= 0xD800 && c <= 0xDFFF;
+        if (condition.check == Check.Contains && condition.ignoreCase && !compiled.beyondBmp)
+        {
+            // As containsIgnoringCase lowers the value: code unit by code unit
+            auto lower = compiled.text.dup;
+            foreach (ref c; lower)
+                c = lowerOf(c);
+            compiled.text = lower.idup;
+        }
         if (condition.check == Check.Regex)
             compiled.regex = regex(compiled.text, condition.ignoreCase ? "i" : ""); // throws
         else if (condition.check == Check.Range)
@@ -286,6 +386,56 @@ string[] conditionErrors(const(ColumnInfo)[] columns, ref const(FilterRule) rule
     return errors;
 }
 
+//! A rule that can be applied, resolved against the columns of the format
+private struct CompiledRule
+{
+    CompiledCondition[] conditions; // the cheapest first, see CompiledCondition.cost
+    RuleKind kind;
+    RuleId id;
+}
+
+//! @returns the rules of the enabled sets that are enabled, can be applied
+//! (see ruleError) and are taken by `take`, in their order, compiled
+private CompiledRule[] compileApplicable(alias take)(const(ColumnInfo)[] columns,
+    const(FilterSet)[] sets)
+{
+    import std.algorithm.sorting : sort;
+    import std.algorithm.mutation : SwapStrategy;
+
+    CompiledRule[] rules;
+    foreach (ref set; sets)
+    {
+        if (!set.enabled)
+            continue;
+        foreach (ref rule; set.rules)
+        {
+            if (!rule.enabled || rule.problem.length || !take(rule))
+                continue;
+            CompiledRule compiled;
+            compiled.kind = rule.kind;
+            compiled.id = rule.id;
+            try
+                foreach (ref condition; rule.conditions)
+                    compiled.conditions ~= compileCondition(columns, condition);
+            catch (Exception)
+                continue; // see ruleError
+            // All of them must match: the cheap ones first spare the others
+            compiled.conditions.sort!((a, b) => a.cost < b.cost, SwapStrategy.stable);
+            rules ~= compiled;
+        }
+    }
+    return rules;
+}
+
+//! @returns true if the record matches all the conditions
+private bool allMatch(const(CompiledCondition)[] conditions, scope ref const(LogMessage!wchar) item)
+{
+    foreach (ref condition; conditions)
+        if (!condition.matches(item))
+            return false;
+    return true;
+}
+
 //! The filter of the main view compiled from the enabled rules of the enabled
 //! sets; rules with an error (see ruleError) are skipped
 final class RuleFilter : LogFilter!wchar
@@ -305,36 +455,14 @@ final class RuleFilter : LogFilter!wchar
     static RuleFilter compile(const(ColumnInfo)[] columns, const(FilterSet)[] sets)
     {
         Rule[] includes, excludes;
-        foreach (ref set; sets)
+        foreach (ref rule; compileApplicable!(r => r.kind != RuleKind.Marker)(columns, sets))
         {
-            if (!set.enabled)
-                continue;
-            foreach (ref rule; set.rules)
-            {
-                if (!rule.enabled || rule.kind == RuleKind.Marker || rule.problem.length)
-                    continue;
-                Rule compiled;
-                try
-                    foreach (ref condition; rule.conditions)
-                        compiled ~= compileCondition(columns, condition);
-                catch (Exception)
-                    continue; // see ruleError
-                if (rule.kind == RuleKind.Include)
-                    includes ~= compiled;
-                else
-                    excludes ~= compiled;
-            }
+            if (rule.kind == RuleKind.Include)
+                includes ~= rule.conditions;
+            else
+                excludes ~= rule.conditions;
         }
         return includes.length || excludes.length ? new RuleFilter(includes, excludes) : null;
-    }
-
-    private static bool ruleMatches(const(CompiledCondition)[] rule,
-        scope ref const(LogMessage!wchar) item)
-    {
-        foreach (ref condition; rule)
-            if (!condition.matches(item))
-                return false;
-        return true;
     }
 
     override bool matches(scope ref const(LogMessage!wchar) item) const
@@ -350,7 +478,7 @@ final class RuleFilter : LogFilter!wchar
         if (_includes.length == 0)
             found = 0;
         foreach (i, rule; _includes)
-            if (ruleMatches(rule, item))
+            if (allMatch(rule, item))
             {
                 found = cast(uint) i;
                 break;
@@ -358,7 +486,7 @@ final class RuleFilter : LogFilter!wchar
         if (found.isNull)
             return found;
         foreach (rule; _excludes)
-            if (ruleMatches(rule, item))
+            if (allMatch(rule, item))
                 return Nullable!uint.init;
         return found;
     }
@@ -378,6 +506,85 @@ final class RuleFilter : LogFilter!wchar
         }
 
         return new RuleFilter(copy(_includes), copy(_excludes));
+    }
+}
+
+//! @returns true if `color` is "#rrggbb"
+bool isRuleColor(string color) pure nothrow @nogc
+{
+    import std.ascii : isHexDigit;
+
+    if (color.length != 7 || color[0] != '#')
+        return false;
+    foreach (c; color[1 .. $])
+        if (!isHexDigit(c))
+            return false;
+    return true;
+}
+
+//! The identity of a rule among the rules of a document while it is open: a
+//! row of the table refers to the rule it matches by it. Not saved: a rule
+//! gets a new one each time it is loaded.
+struct RuleId
+{
+    private uint _id; // 0: no rule
+
+    this(uint id) pure nothrow @nogc
+    {
+        _id = id;
+    }
+
+    bool isValid() const pure nothrow @nogc
+    {
+        return _id != 0;
+    }
+
+    uint toInt() const pure nothrow @nogc
+    {
+        return _id;
+    }
+}
+
+//! Gives the rules of a document their ids, each one new
+struct RuleIdGenerator
+{
+    private uint _last;
+
+    RuleId popId() pure nothrow @nogc
+    {
+        return RuleId(++_last);
+    }
+}
+
+//! Finds the rule a record matches, for the table to show it by its color (as
+//! dlt-viewer colors the rows): the first one that matches among the enabled
+//! rules of the enabled sets that have a color, of any kind (an excluded
+//! record is seen when anchored). Rules with an error (see ruleError) and
+//! colors that aren't "#rrggbb" are skipped.
+final class RuleMatcher
+{
+    private CompiledRule[] _rules; // in the order of the sets and their rules
+
+    private this(CompiledRule[] rules) pure
+    {
+        _rules = rules;
+    }
+
+    //! @returns null if there is no rule with a color
+    static RuleMatcher compile(const(ColumnInfo)[] columns, const(FilterSet)[] sets)
+    {
+        auto rules = compileApplicable!(r => isRuleColor(r.color))(columns, sets);
+        return rules.length ? new RuleMatcher(rules) : null;
+    }
+
+    //! @returns the id of the first rule with a color the record matches, an
+    //! invalid one if none
+    RuleId firstMatch(scope ref const(LogMessage!wchar) item) const
+    {
+        foreach (ref rule; _rules)
+            if (allMatch(rule.conditions, item))
+                return rule.id;
+        return RuleId.init;
     }
 }
 
@@ -717,4 +924,133 @@ unittest
     auto filter = compileRules(rule(RuleKind.Include, text("tag", Check.Regex, "^A")));
     assert(filter.dup().matches(a) && !filter.dup().matches(b));
     assert(filter.idup().matches(a) && !filter.idup().matches(b));
+}
+
+@("isRuleColor: only #rrggbb")
+unittest
+{
+    assert(isRuleColor("#ff0000") && isRuleColor("#00FF7f"));
+    assert(!isRuleColor("") && !isRuleColor("red") && !isRuleColor("#f00"));
+    assert(!isRuleColor("#ff00000") && !isRuleColor("#ff00g0") && !isRuleColor("#ff0000;"));
+}
+
+@("RuleFilter: a substring beyond ASCII, in any case if asked")
+unittest
+{
+    Record r;
+    r.text = "Ошибка: Größe 😀 überschritten";
+    assert(conditionMatches(text("payload", Check.Contains, "Größe 😀"), r));
+    assert(!conditionMatches(text("payload", Check.Contains, "größe"), r), "the case counts");
+    assert(conditionMatches(text("payload", Check.Contains, "ОШИБКА: GRÖ", true), r));
+    assert(conditionMatches(text("payload", Check.Contains, "😀 ÜBER", true), r));
+    assert(!conditionMatches(text("payload", Check.Contains, "😁", true), r));
+
+    r.text = "temperature 300 \u212A, Hot";
+    assert(conditionMatches(text("payload", Check.Contains, "300 k", true), r),
+        "the Kelvin sign is a K in lower case");
+    assert(conditionMatches(text("payload", Check.Contains, "k, hOT", true), r));
+    assert(conditionMatches(text("payload", Check.Contains, "", true), r), "an empty text is in any");
+    assert(!conditionMatches(text("payload", Check.Contains, "hot!", true), r), "longer than what is left");
+}
+
+@("RuleFilter: in any case, the first letter is compared as the others")
+unittest
+{
+    Record r;
+    r.text = "Id";
+    assert(!conditionMatches(text("payload", Check.Contains, "ıd", true), r),
+        "the dotless i is I in upper case, but I is i in lower case");
+    assert(conditionMatches(text("payload", Check.Contains, "id", true), r));
+    r.text = "Sun";
+    assert(!conditionMatches(text("payload", Check.Contains, "ſun", true), r), "the long s");
+}
+
+@("RuleFilter: in any case, beyond the BMP")
+unittest
+{
+    Record r;
+    r.text = "word \U00010400 here"; // DESERET CAPITAL LETTER LONG I
+    assert(conditionMatches(text("payload", Check.Contains, "\U00010428 HERE", true), r),
+        "its small letter, in any case");
+    assert(!conditionMatches(text("payload", Check.Contains, "\U00010428", false), r), "the case counts");
+}
+
+@("RuleIdGenerator: every id is new and valid; the default one is not")
+unittest
+{
+    RuleIdGenerator ids;
+    const a = ids.popId(), b = ids.popId();
+    assert(a.isValid() && b.isValid() && a != b);
+    assert(!RuleId.init.isValid());
+}
+
+@("RuleMatcher: the first matching rule that has a color, of any kind")
+unittest
+{
+    LogMessage!wchar a, b, c;
+    make(a, Record("A"));
+    make(b, Record("B", 7));
+    make(c, Record("C"));
+    auto isA = text("tag", Check.Equals, "A");
+
+    auto plainA = rule(RuleKind.Include, isA); // matches first, but without a color
+    plainA.id = RuleId(1);
+    auto markA = rule(RuleKind.Marker, isA);
+    markA.id = RuleId(2);
+    markA.color = "#ff0000";
+    auto pid7 = rule(RuleKind.Exclude, text("pid", Check.Equals, "7"));
+    pid7.id = RuleId(3);
+    pid7.color = "#0000ff";
+    auto all = rule(RuleKind.Include);
+    all.id = RuleId(4);
+    all.color = "#00ff00";
+    auto invalid = rule(RuleKind.Include, isA);
+    invalid.id = RuleId(5);
+    invalid.color = "red"; // not #rrggbb: as none
+
+    FilterSet first, second;
+    first.rules = [invalid, plainA, markA];
+    second.rules = [pid7, all];
+    auto matcher = RuleMatcher.compile(testColumns, [first, second]);
+    assert(matcher !is null);
+    assert(matcher.firstMatch(a) == RuleId(2), "the rules without a color are passed by");
+    assert(matcher.firstMatch(b) == RuleId(3), "an exclude rule, across the sets");
+    assert(matcher.firstMatch(c) == RuleId(4), "a rule without conditions matches every record");
+
+    second.rules = [pid7];
+    matcher = RuleMatcher.compile(testColumns, [first, second]);
+    assert(!matcher.firstMatch(c).isValid(), "no rule matches");
+}
+
+@("RuleMatcher: disabled rules and sets, rules with an error don't match")
+unittest
+{
+    LogMessage!wchar a;
+    make(a, Record("A"));
+    FilterRule numbered(uint id, Condition[] conditions...)
+    {
+        auto r = rule(RuleKind.Marker, conditions);
+        r.id = RuleId(id);
+        r.color = "#ff0000";
+        return r;
+    }
+
+    FilterSet set;
+    assert(RuleMatcher.compile(testColumns, [set]) is null, "no rules");
+    set.rules = [rule(RuleKind.Marker)];
+    assert(RuleMatcher.compile(testColumns, [set]) is null, "no rule with a color");
+
+    auto disabled = numbered(1);
+    disabled.enabled = false;
+    auto withError = numbered(2, text("nope", Check.Equals, "A"));
+    auto withProblem = numbered(3);
+    withProblem.problem = "header text is not supported";
+    set.rules = [disabled, withError, withProblem];
+    assert(RuleMatcher.compile(testColumns, [set]) is null, "no rule can be matched");
+
+    set.rules = [numbered(4)];
+    set.enabled = false;
+    assert(RuleMatcher.compile(testColumns, [set]) is null, "a disabled set");
+    set.enabled = true;
+    assert(RuleMatcher.compile(testColumns, [set]).firstMatch(a) == RuleId(4));
 }
