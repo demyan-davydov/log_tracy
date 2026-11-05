@@ -160,8 +160,7 @@ class MainWindow : SciterWindow
             writeln("Tab clicked: ", param!string(0));
             return true;
         case "loadFibex":
-            _session.reloadLogTable(); // FIBEX isn't decoded yet
-            return true;
+            return true; // FIBEX isn't decoded yet (docs/fibex.md)
 
         // ── The views ───────────────────────────────────────────────────────
         case "getMainViewCount":
@@ -337,9 +336,7 @@ class MainWindow : SciterWindow
             return; // the view is being torn down: calling the script would crash
         foreach (call; calls)
         {
-            if (!call.hasDocId)
-                callScript(call.name);
-            else if (call.json is null)
+            if (call.json is null)
                 callScript(call.name, call.docId);
             else
                 callScript(call.name, call.docId, call.json.toUTF16());

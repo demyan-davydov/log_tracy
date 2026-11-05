@@ -31,15 +31,8 @@ import std.json : JSONValue;
 struct ScriptCall
 {
     string name;
-    int docId; // the first argument when hasDocId
+    int docId;
     string json; // the second argument; null: there is none
-    bool hasDocId = true;
-
-    /// A call without arguments
-    static ScriptCall withoutDocument(string name)
-    {
-        return ScriptCall(name, 0, null, false);
-    }
 }
 
 /// The result of opening a file: the id of its document, or why it can't be opened
@@ -169,13 +162,6 @@ final class AppSession
         _settings.recentFiles = withFilesUsed(_settings.recentFiles, openPaths(), nowMs());
         saveSettings(appStateJson);
         _closing = true;
-    }
-
-    /// The rows of the main view shown look different now (decoding): the
-    /// script reloads them
-    void reloadLogTable()
-    {
-        _scriptCalls ~= ScriptCall.withoutDocument("reloadLogTable");
     }
 
     /// Closes all documents, stopping their background operations
@@ -826,14 +812,6 @@ unittest
     assert(f.session.findDocument(cast(int) id.toInt()) == DocumentId.init);
 }
 
-@("AppSession: a call of the script without a document has no id")
-unittest
-{
-    auto f = Fixture.make();
-    f.session.reloadLogTable();
-    const call = f.session.takeScriptCalls()[0];
-    assert(call.name == "reloadLogTable" && !call.hasDocId);
-}
 
 @("AppSession: a search is started in the document and kept in the history of its file")
 unittest

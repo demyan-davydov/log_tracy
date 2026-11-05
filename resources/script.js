@@ -686,11 +686,6 @@ globalThis.onDocumentClosed = function (docId) {
     refreshTabs();
 };
 
-// Native: the rows of the main view shown look different now (decoding)
-globalThis.reloadLogTable = function () {
-    shownPane?.reloadMainRows();
-};
-
 globalThis.getAppState = function () {
     const [left, top, width, height] = Window.this.box("xywh", "border", "screen", true);
     const list = panes.get(activeDocId)?.mainList; // shown or under the New Tab
