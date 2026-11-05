@@ -25,6 +25,7 @@ test("an invalid regex is refused before the backend is asked", () => {
     assert.equal(colored, false, "the colors are not worked out for a refused search");
     assert.equal(asked, false);
     assert.equal(run.message, "Search error: bad regex");
+    assert.equal(run.error, "bad regex", "kept to say it again in another language");
     assert.equal(run.started, false);
     assert.equal(run.search, noSearch, "the committed search stays");
 });
@@ -61,4 +62,11 @@ test("a cancelled editor applies nothing", () => {
     let applied = false;
     assert.equal(editRule({ name: "r" }, () => null, () => { applied = true; return ""; }), false);
     assert.equal(applied, false);
+});
+
+test("the message of a search error, in the language now; none without an error", async () => {
+    const { searchMessage } = await import("../../resources/pane-commands.js");
+    assert.equal(searchMessage("bad regex"), "Search error: bad regex");
+    assert.equal(searchMessage(""), "");
+    assert.equal(runSearch(noSearch, chips, () => ["c0"], () => "", () => "").error, "");
 });

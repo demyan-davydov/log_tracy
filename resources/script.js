@@ -16,6 +16,7 @@ import { showMenuBar } from "menu-bar.js";
 import { shortcutTextOf } from "menu-shortcuts.js";
 import { pseudoLocale, setCatalog, tr, trParts } from "i18n/i18n.js";
 import { translateTree } from "i18n/dom.js";
+import { fileFilter, allFiles } from "file-types.js";
 import { requestedLocale } from "i18n/languages.js";
 
 // The table whose context menu is open: "Copy Row" copies its selected rows
@@ -305,8 +306,8 @@ function openSettingsAction() {
 }
 
 function openFileAction() {
-    const fn = platform.chooseFileToOpen(
-        "Log Files (*.dlt;*.log;*.txt)|*.dlt;*.log;*.txt|DLT Files (*.dlt)|*.dlt|Text Logs (*.log;*.txt)|*.log;*.txt|All Files (*.*)|*.*");
+    const fn = platform.chooseFileToOpen(fileFilter([[tr("Log Files"), "*.dlt;*.log;*.txt"],
+        [tr("DLT Files"), "*.dlt"], [tr("Text Logs"), "*.log;*.txt"], allFiles()]));
     if (fn) {
         console.log("File selected:", fn);
         openFile(fn);
