@@ -24,6 +24,8 @@
     --bg-input: #fff;
     --border-input: #ddd;
     --border-focus: #0078d7;
+    /* the chosen option of an open <select> list (the hovered one has the accent) */
+    --option-current: #dce9f8;
 
     /* Buttons */
     --btn-default-bg: #f0f0f0;

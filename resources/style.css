@@ -576,6 +576,21 @@ main {
     padding: 5px;
 }
 
+/* The open list of a <select> (behavior: select-dropdown): the chosen option
+   is tinted pale, the option under the mouse has the accent of the menu items
+   and wins over the tint. !important: the options are styled by Sciter's own
+   style set, which beats the rules of the document even when the selector
+   matches */
+select > popup > option:current {
+    background-color: var(--option-current) !important;
+    color: var(--text-main) !important;
+}
+
+select > popup > option:hover {
+    background-color: var(--btn-primary-bg) !important;
+    color: var(--btn-primary-text) !important;
+}
+
 footer {
     flow: horizontal;
     background: var(--bg-header);
