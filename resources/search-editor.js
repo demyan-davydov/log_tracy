@@ -10,7 +10,7 @@ import {
     moveCaret, moveTo, typeInGap, typeBarInChip, deleteInGap, searchChips,
     sameQuery, assignColors, historyIndex, selection, extendCaret, selectChipsFrom, selectTo, selectAll, selectedChips, deleteSelection, insertChips,
 } from "search-editing.js";
-import { formatQuery, parseQuery, makeChip } from "search-query.js";
+import { formatQuery, parseQuery, makeChip, pastedText } from "search-query.js";
 import { EditHistory } from "edit-history.js";
 import { matchColorCount, matchColorClass } from "match-colors.js";
 
@@ -62,6 +62,11 @@ export class SearchEditor {
     // The chips the search runs with (their colors are no part of the query)
     searchChips() {
         return searchChips(this.state.chips).map(({ text, isRegex, ignoreCase }) => ({ text, isRegex, ignoreCase }));
+    }
+
+    // The match colors of the chips the search runs with, in the same order
+    searchChipColors() {
+        return searchChips(this.state.chips).map(chip => chip.color);
     }
 
     // @returns the error of the first invalid regex chip, "" if there is none
@@ -531,19 +536,33 @@ export class SearchEditor {
         return true;
     }
 
-    // Cmd/Ctrl+V: a query (with its prefix) is pasted as chips; any other text into
-    // the chip the caret is in, as it is, or as a new chip in a gap
+    // Cmd/Ctrl+V: a query (with its prefix) is pasted as chips; any other text
+    // as one line of at most pasteLimit characters (pastedText), into the chip the
+    // caret is in or as a new chip in a gap
     paste() {
         // Sciter's readText ends the text with a NUL character
-        const text = (Clipboard.readText() ?? "").replace(/\0+$/, "");
-        if (text === "") return true;
+        const raw = (Clipboard.readText() ?? "").replace(/\0+$/, "");
+        if (raw === "") return true;
         const synced = this.syncedState();
-        const chips = parseQuery(text);
+        const chips = parseQuery(raw);
         if (chips) {
             this.go(insertChips(synced, chips));
             return true;
         }
-        if (synced.pos.gap === undefined) return false; // the edit's own paste
+        if (synced.pos.gap === undefined) {
+            // in the chip, instead of its selected text: not the edit's own paste,
+            // which would keep the line breaks and the whole text
+            const i = synced.pos.chip;
+            const text = pastedText(raw, synced.chips[i]); // a regex chip isn't cut
+            const edit = this.chipEdit(i).edit;
+            const from = edit.selectionStart, to = edit.selectionEnd;
+            const old = synced.chips[i].text;
+            const next = [...synced.chips];
+            next[i] = { ...next[i], text: old.slice(0, from) + text + old.slice(to) };
+            this.go({ chips: next, pos: { chip: i, offset: from + text.length } });
+            return true;
+        }
+        const text = pastedText(raw); // a new chip is a text one
         const inserted = insertChips(synced, [makeChip(text)]);
         const i = inserted.pos.gap - 1;
         this.go({ chips: inserted.chips, pos: { chip: i, offset: text.length } });

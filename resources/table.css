@@ -209,3 +209,12 @@ popup.notice {
     margin-bottom: 12dip;
     box-shadow: 0 2dip 8dip rgba(0, 0, 0, 0.25);
 }
+
+/* What a search chip found in the payload of a row of the results: the chip's
+   match color behind the text (match-colors.css), see matchPieces */
+.log-table td > span.match {
+    border-radius: 2dip;
+    /* the text of the theme, not the row's: a selected row has light text, the
+       match colors are pale, and what was found must stay readable */
+    color: var(--text-main);
+}

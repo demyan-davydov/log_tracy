@@ -2,7 +2,7 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { queryPrefix, makeChip, formatQuery, parseQuery, typeBar } from "../../resources/search-query.js";
+import { queryPrefix, makeChip, formatQuery, parseQuery, typeBar, pastedText, pasteLimit } from "../../resources/search-query.js";
 
 const text = (t, ignoreCase = false) => makeChip(t, { ignoreCase });
 const regex = (t, ignoreCase = false) => makeChip(t, { isRegex: true, ignoreCase });
@@ -83,4 +83,27 @@ test("typeBar: '|' right after '\\' replaces it with '|'", () => {
 test("typeBar: '|' in a regex chip is a part of the regex", () => {
     assert.deepEqual(typeBar(regex("ab", true), 1), { chip: regex("a|b", true), caret: 2 });
     assert.deepEqual(typeBar(regex("a\\"), 2), { chip: regex("a\\|"), caret: 3 }, "an escaped '|' of the regex");
+});
+
+test("pastedText: a short line is pasted as it is", () => {
+    assert.equal(pastedText("timeout after 30s"), "timeout after 30s");
+    assert.equal(pastedText(""), "");
+});
+
+test("pastedText: line breaks become spaces", () => {
+    assert.equal(pastedText("a\nb\r\nc\rd"), "a b c d");
+});
+
+test("pastedText: a long text is cut, an ellipsis shows it was", () => {
+    const long = "x".repeat(pasteLimit + 10);
+    assert.equal(pastedText(long), "x".repeat(pasteLimit) + "…");
+    assert.equal(pastedText("x".repeat(pasteLimit)), "x".repeat(pasteLimit), "exactly the limit is kept whole");
+    assert.equal(pastedText("😀".repeat(pasteLimit + 1)), "😀".repeat(pasteLimit) + "…", "by characters, not halves of them");
+    assert.equal(pastedText("a\n".repeat(pasteLimit)), "a ".repeat(pasteLimit / 2) + "…", "the breaks first, then the cut");
+});
+
+test("pastedText: a regex is not cut, its line breaks become spaces", () => {
+    const pattern = "(" + "alpha|".repeat(20) + "omega)";
+    assert.equal(pastedText(pattern, { isRegex: true }), pattern);
+    assert.equal(pastedText("a\nb", { isRegex: true }), "a b");
 });

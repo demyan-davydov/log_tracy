@@ -2,7 +2,8 @@ console.log("Loading virtual-dlt-view.js...");
 import { VirtualList } from "virtual-select.js";
 import { VirtualSelect } from "virtual-select.js";
 import * as env from "@env";
-import { cellClass, cellText, itemText, rowLayout } from "cell-format.js";
+import { cellClass, cellText, itemText, rowLayout, matchPieces } from "cell-format.js";
+import { matchColorClass } from "match-colors.js";
 import { RowSelection, selectedText, autoScrollSpeed } from "row-selection.js";
 
 // Columns the tables of the active document show, from Window.xcall("getTableColumns"):
@@ -24,6 +25,16 @@ export function setRuleColors(colors) {
     ruleColorById = colors;
 }
 
+// The match colors of the chips of the search the results of the active
+// document were found by, by the place of the chip in that query: a fragment
+// of a chip is shown in its color (see matchPieces)
+let matchColorByChip = [];
+
+// Sets them; the rows on screen are refreshed by the caller
+export function setMatchColors(colors) {
+    matchColorByChip = colors;
+}
+
 // The header row of a log table for the current columns
 export function renderHeader() {
     return <tr>
@@ -35,14 +46,24 @@ export function renderHeader() {
 
 
 // A cell of `column`; `level` (a LogLevel of the record) colors it if the
-// column asks for it (byLevel: an HTTP status shown as it is)
-function renderCell(column, value, level) {
+// column asks for it (byLevel: an HTTP status shown as it is). `matches` are
+// what the search chips found in the payload (rows of the search results only).
+function renderCell(column, value, level, matches) {
     const text = cellText(column, value);
     if (column.kind === "Level") {
         if (!value) return <td class="aux"></td>; // LogLevel.None: the record has no level
         return <td class={`level-${text.toLowerCase()}`}>{text}</td>;
     }
-    if (column.kind === "Payload" && value !== null) return <td selectable>{text}</td>;
+    if (column.kind === "Payload" && value !== null) {
+        // the cell after the columns may be no fragments if the columns of the
+        // script and the backend differ for a moment: matchPieces checks it
+        if (!Array.isArray(matches) || matches.length === 0) return <td selectable>{text}</td>;
+        return <td selectable>{matchPieces(text, matches).map(piece => {
+            const color = piece.chip === null ? undefined : matchColorByChip[piece.chip];
+            // no color known for the chip: plain text rather than another chip's color
+            return color === undefined ? piece.text : <span class={`match ${matchColorClass(color)}`}>{piece.text}</span>;
+        })}</td>;
+    }
     return <td class={cellClass(column, level)}>{text}</td>;
 }
 
@@ -99,7 +120,8 @@ export class VirtualDltTBody extends VirtualSelect {
             rule-color={ruleColor ? "true" : "false"} style={ruleColor ? `--rule-color: ${ruleColor}` : ""}>
             <td class="anchor" has-anchor={item[rowLayout.anchored] ? "true" : "false"} msg-index={item[rowLayout.messageIndex]}></td>
             <td class="aux">{item[rowLayout.messageIndex]}</td>
-            {columns.map((column, i) => renderCell(column, item[rowLayout.firstColumn + i], item[rowLayout.level]))}
+            {columns.map((column, i) => renderCell(column, item[rowLayout.firstColumn + i], item[rowLayout.level],
+                item[rowLayout.matches(columns.length)]))}
         </tr>
     }
 

@@ -2,7 +2,7 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { formatTime, formatDuration, levelName, cellClass, rowText, cellText, itemText } from "../../resources/cell-format.js";
+import { formatTime, formatDuration, levelName, cellClass, rowText, cellText, itemText, matchPieces, rowLayout } from "../../resources/cell-format.js";
 
 // TimeKind values of the backend (log_core/log_message)
 const Absolute = 1, Local = 2, LocalNoYear = 3, SinceBoot = 4;
@@ -84,4 +84,38 @@ test("a row of the backend is copied as Index and its columns, without the fixed
     const item = [true, 3, 7, 1234, 4, "ECU1", "hello"];
     assert.equal(itemText(item, columns), "1234\tECU1\thello");
     assert.equal(itemText(null, columns), null, "no such row");
+});
+
+// ---- what the search chips found in the payload ----
+
+test("matchPieces: the text cut at the fragments, each with its chip", () => {
+    assert.deepEqual(matchPieces("timeout after 30s", [[0, 4, 0], [4, 7, 1], [8, 17, 2]]), [
+        { text: "time", chip: 0 }, { text: "out", chip: 1 }, { text: " ", chip: null },
+        { text: "after 30s", chip: 2 },
+    ]);
+    assert.deepEqual(matchPieces("a b", [[2, 3, 0]]), [{ text: "a ", chip: null }, { text: "b", chip: 0 }]);
+});
+
+test("matchPieces: no fragments, the text as one piece", () => {
+    assert.deepEqual(matchPieces("abc", []), [{ text: "abc", chip: null }]);
+    assert.deepEqual(matchPieces("abc", undefined), [{ text: "abc", chip: null }], "a main view row has none");
+    assert.deepEqual(matchPieces("", []), []);
+});
+
+test("matchPieces: fragments out of the text or out of order are not trusted", () => {
+    assert.deepEqual(matchPieces("abc", [[1, 9, 0]]), [{ text: "a", chip: null }, { text: "bc", chip: 0 }]);
+    assert.deepEqual(matchPieces("abcd", [[2, 3, 1], [0, 1, 0]]),
+        [{ text: "a", chip: 0 }, { text: "b", chip: null }, { text: "c", chip: 1 }, { text: "d", chip: null }]);
+    assert.deepEqual(matchPieces("abc", [[0, 2, 0], [1, 3, 1]]), [{ text: "ab", chip: 0 }, { text: "c", chip: 1 }],
+        "an overlap is cut off");
+});
+
+test("rowLayout: the fragments of a search row come after the cells", () => {
+    assert.equal(rowLayout.matches(3), rowLayout.firstColumn + 3);
+});
+
+test("matchPieces: a cell that isn't a list of fragments shows the text as it is", () => {
+    // e.g. a Time cell, while the columns of the script and the backend differ
+    assert.deepEqual(matchPieces("abc", [1700000000000000, 1]), [{ text: "abc", chip: null }]);
+    assert.deepEqual(matchPieces("abc", "abc"), [{ text: "abc", chip: null }]);
 });

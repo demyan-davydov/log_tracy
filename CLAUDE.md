@@ -148,7 +148,11 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
     gives the columns of all of them.
   - Dragging to reorder (tabs, columns in Settings) shares the Sciter-free
     `resources/drag-order.js`.
-- A row is: anchored, rule id, view index, message index, level, then one cell per column.
+- A row is: anchored, rule id, view index, message index, level, then one cell per column
+  (`rowLayout` in `resources/cell-format.js`). A row of the search results (`getSearchViewItem`
+  only) has one more cell after the columns: what the chips of the search found in the payload,
+  `[[start, end, chip]]` in UTF-16 units (`SearchFilter.matchRanges`), shown in the chips' match
+  colors; main view rows don't have it and compute nothing.
   - The rule id is the first rule with a color the record matches (null if none); the script
     looks its color up in the rules of the panel (`resources/rule-colors.js`) and sets it on the
     row, `table.css` shows it on the Index cell only, as a fade from the left edge.

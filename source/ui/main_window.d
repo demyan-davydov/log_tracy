@@ -15,7 +15,7 @@ import log_core.rule_filter : RuleId;
 import domain.log_document;
 
 import ui.filter_commands : DocumentFilters;
-import log_core.search_filter : checkRegex, SearchFilter;
+import log_core.search_filter : checkRegex, MatchRange, SearchFilter;
 import ui.search_chips : chipsFromJson, chipsToJson;
 import ui.main_view_fsm;
 import ui.search_view_fsm;
@@ -48,6 +48,11 @@ private final class DocumentUi : MainViewSink, MainViewCommands, SearchViewSink,
     SearchViewModel searchViewShown; // likewise for the search view
     bool searchViewChanged;
     bool closeRequested; // the machine asked to close the document
+    // The search the results were found by, to show what its chips found in
+    // them; null without one. The same filter the indexing thread searches with:
+    // its rules are only read, and std.regex keeps the state of a search in the
+    // matcher of each call, not in the compiled regex
+    SearchFilter searchShown;
 
     this(Workspace workspace, DocumentId docId)
     {
@@ -449,7 +454,13 @@ class MainWindow : SciterWindow
                 const int index = getParamInt(0);
                 DocumentItem docItem; // null if there is no such row, as above
                 if (_workspace.current.searchView.fetchItem(index, docItem))
-                    resultView.set(asSciterRow(index, docItem, tableColumns(), ruleOf(docItem)));
+                {
+                    // the fragments the chips found, after the cells (main view rows have none)
+                    auto ui = _documentUis.get(_workspace.currentId, null);
+                    const search = ui is null ? null : ui.searchShown;
+                    resultView.set(asSciterRow(index, docItem, tableColumns(), ruleOf(docItem),
+                        true, search is null ? null : search.matchRanges(docItem.message())));
+                }
                 else
                     resultView.set(SciterValue.makeNull());
 
@@ -636,15 +647,6 @@ class MainWindow : SciterWindow
                 // cancelSearchView(docId): Cancel pressed in the search view of the document
                 if (auto ui = _documentUis.get(findDocumentId(getParamInt(0)), null))
                     ui.pressSearchCancel();
-                return true;
-            }
-            if (method == "startSearch")
-            {
-                // startSearch(query, isRegex, caseInsensitive) -> error message, "" on success
-                const query = getParamString(0);
-                const isRegex = getParamBool(1);
-                const caseInsensitive = getParamBool(2);
-                resultView = onStartSearch(query, isRegex, caseInsensitive).toUTF16();
                 return true;
             }
             if (method == "startChipSearch")
@@ -862,25 +864,6 @@ class MainWindow : SciterWindow
         }
     }
 
-    /// Starts the search in the active document; an empty query clears it.
-    /// Returns: an error message for the UI, or "" if the search was started
-    private string onStartSearch(string query, bool isRegex, bool caseInsensitive)
-    {
-        writeln("startSearch request: '", query, "' regex: ", isRegex, " ignore case: ", caseInsensitive);
-        try
-        {
-            // An invalid regex throws here, before any background work starts
-            auto filter = SearchFilter.fromQuery(query, isRegex, caseInsensitive);
-            _workspace.current.applySearchFilter(filter); // null clears the search
-            return "";
-        }
-        catch (Exception e)
-        {
-            writeln("Error starting search: ", e.msg);
-            return e.msg;
-        }
-    }
-
     /// Starts the search for the chips of the search editor in the active document.
     /// Returns: an error message for the UI, or "" if the search was started
     private string onStartChipSearch(string chipsJson)
@@ -892,6 +875,8 @@ class MainWindow : SciterWindow
             const chips = chipsFromJson(chipsJson);
             auto filter = SearchFilter.fromChips(chips);
             _workspace.current.applySearchFilter(filter); // null clears the search
+            if (auto ui = _documentUis.get(_workspace.currentId, null))
+                ui.searchShown = filter;
             // the history of the file, remembered at once as its filters are
             // (the latest query again changes nothing: no write of the settings then)
             if (filter !is null)
@@ -1087,13 +1072,15 @@ unittest
 //! colors the cells of the columns that ask for it (ColumnInfo.byLevel).
 //! @param rule - the first filter rule with a color the record matches (the
 //! script shows it by its color); none is sent as null
+//! @param withMatches - a row of the search results: after the cells comes what
+//! the chips found in the payload, [[start, end, chip]] (see MatchRange)
 SciterValue asSciterRow(int index, ref const(DocumentItem) item, const(ColumnInfo)[] columns,
-    RuleId rule)
+    RuleId rule, bool withMatches = false, const(MatchRange)[] matches = null)
 {
     enum fixedCells = 5;
     const msg = &item.message();
 
-    SciterValue row = SciterValue.makeArrayWithSize(fixedCells + columns.length);
+    SciterValue row = SciterValue.makeArrayWithSize(fixedCells + columns.length + (withMatches ? 1 : 0));
     auto cells = AsArrayView(row);
     cells.opIndex(0, item.anchored);
     if (rule.isValid())
@@ -1151,6 +1138,17 @@ SciterValue asSciterRow(int index, ref const(DocumentItem) item, const(ColumnInf
             cells.opIndex(cell, cast(double) msg.number(column.field));
             break;
         }
+    }
+    if (withMatches)
+    {
+        SciterValue list = SciterValue.makeArrayWithSize(matches.length);
+        auto view = AsArrayView(list);
+        foreach (i, const ref m; matches)
+        {
+            SciterValue fragment = SciterValue.makeArray(cast(int) m.start, cast(int) m.end, cast(int) m.chip);
+            view.opIndex(i, fragment);
+        }
+        cells.opIndex(fixedCells + columns.length, list);
     }
     return row;
 }

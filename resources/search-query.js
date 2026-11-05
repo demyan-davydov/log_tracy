@@ -100,3 +100,18 @@ export function typeBar(chip, caret) {
     const right = after ? { ...chip, text: after } : makeChip("");
     return { split: [{ ...chip, text: before }, right] };
 }
+
+// The most characters of plain text a paste puts into a chip: pasting a whole
+// log is a mistake, the cut text with an ellipsis shows it
+export const pasteLimit = 64;
+
+// Plain text pasted into the search editor (not a query): one line, at most
+// pasteLimit characters and an ellipsis after them if it was longer. Into a
+// regex chip it isn't cut: long patterns are real, and a piece of a log pasted
+// into a regex shows itself anyway, as an invalid one mostly.
+export function pastedText(text, { isRegex = false } = {}) {
+    const line = text.replace(/\r\n|\r|\n/g, " ");
+    if (isRegex) return line;
+    const chars = [...line]; // by characters: a surrogate pair is never cut in two
+    return chars.length > pasteLimit ? chars.slice(0, pasteLimit).join("") + "…" : line;
+}

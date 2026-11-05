@@ -58,8 +58,12 @@ export function rowText(cellTexts) {
 }
 
 // The cells of a row of the backend (asSciterRow in main_window.d): the fixed
-// cells by their position, then a cell per column from firstColumn on
-export const rowLayout = { anchored: 0, rule: 1, viewIndex: 2, messageIndex: 3, level: 4, firstColumn: 5 };
+// cells by their position, then a cell per column from firstColumn on; a row of
+// the search results then has what the chips found in its payload (matches)
+export const rowLayout = {
+    anchored: 0, rule: 1, viewIndex: 2, messageIndex: 3, level: 4, firstColumn: 5,
+    matches(columnCount) { return this.firstColumn + columnCount; },
+};
 
 // The text a cell of `column` shows for `value` (a cell of the backend row)
 export function cellText(column, value) {
@@ -79,4 +83,28 @@ export function itemText(item, columns) {
     if (!item) return null;
     return rowText([String(item[rowLayout.messageIndex]),
         ...columns.map((column, i) => cellText(column, item[rowLayout.firstColumn + i]))]);
+}
+
+// The payload cut at the fragments the search chips found in it, for the
+// table to show them in the colors of their chips.
+// @param fragments - [[start, end, chip]] of the backend (UTF-16 positions, by
+//   start, not overlapping); undefined for a row of the main view
+// @returns [{text, chip}], chip null for the text between the fragments
+export function matchPieces(text, fragments) {
+    // not a list of fragments (e.g. a Time cell, while the columns of the script
+    // and the backend differ for a moment): the text as it is
+    if (!Array.isArray(fragments) || !fragments.every(Array.isArray)) fragments = [];
+    const pieces = [];
+    const push = (from, to, chip) => { if (to > from) pieces.push({ text: text.slice(from, to), chip }); };
+    let at = 0;
+    const sorted = [...(fragments ?? [])].sort((a, b) => a[0] - b[0]);
+    for (const [start, end, chip] of sorted) {
+        const from = Math.max(start, at), to = Math.min(end, text.length);
+        if (to <= from) continue; // out of the text, or covered by the one before
+        push(at, from, null);
+        push(from, to, chip);
+        at = to;
+    }
+    push(at, text.length, null);
+    return pieces;
 }

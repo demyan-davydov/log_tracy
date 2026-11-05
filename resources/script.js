@@ -1,5 +1,5 @@
 import { $, $$ } from "@sciter";
-import { VirtualDltTBody, VirtualMainViewTBody, VirtualSearchViewTBody, setColumns, renderHeader, setRuleColors, moveRowDrag, endRowDrag } from "virtual-dlt-view.js";
+import { VirtualDltTBody, VirtualMainViewTBody, VirtualSearchViewTBody, setColumns, renderHeader, setRuleColors, setMatchColors, moveRowDrag, endRowDrag } from "virtual-dlt-view.js";
 import { scrollTarget } from "row-selection.js";
 import { ruleColors } from "rule-colors.js";
 import {
@@ -77,7 +77,6 @@ const searchViewStates = new Map();
 document.on("ready", function () {
     console.log("Starting DLT Explorer UI...");
     initApp();
-    initSearch();
     initChipSearch();
 
     console.log(Window.this.frameType, Window.this.blurBehind)
@@ -130,103 +129,19 @@ function initApp() {
     refreshTabs();
 }
 
-// Search panel: a text or regex query over the payload of the active document.
-// The query (text and modes) is committed only by Enter or the Search button;
-// editing the controls doesn't touch the results, the panel just shows that
-// what's typed isn't what the results were found by (updateSearchPending).
-// Both the controls and the committed query belong to the document: switching
-// tabs puts the document's own draft into the controls (showSearchDraft).
-//   docId -> { query, isRegex, ignoreCase } of the search shown in the document
-const committedSearches = new Map();
-//   docId -> { query, isRegex, ignoreCase, message } as last left in the controls
-const searchDrafts = new Map();
-// The document whose draft the controls show
-let searchControlsDocId = null;
-
-const emptySearch = { query: "", isRegex: false, ignoreCase: false };
-
-function searchControls() {
-    return {
-        query: $("#search-input").value || "",
-        isRegex: $("#search-regex").state.checked,
-        ignoreCase: $("#search-ignore-case").state.checked
-    };
-}
-
-// Whether the controls differ from the search committed in the active document.
-// Without a query the modes don't matter: there's nothing they would change.
-function isSearchPending() {
-    if (activeDocId === null) return false;
-    const typed = searchControls();
-    const shown = committedSearches.get(activeDocId) || emptySearch;
-    if (typed.query !== shown.query) return true;
-    return typed.query !== "" && (typed.isRegex !== shown.isRegex || typed.ignoreCase !== shown.ignoreCase);
-}
-
-function updateSearchPending() {
-    const toolbar = $(".search-toolbar");
-    const button = $("#btn-search");
-    if (isSearchPending()) {
-        toolbar.classList.add("pending");
-        button.classList.add("primary");
-    } else {
-        toolbar.classList.remove("pending");
-        button.classList.remove("primary");
-    }
-}
-
-// Remembers the controls as the draft of the document they belong to
-function saveSearchDraft() {
-    if (searchControlsDocId === null || !docStatus.has(searchControlsDocId)) return;
-    searchDrafts.set(searchControlsDocId,
-        { ...searchControls(), message: $("#search-message").innerText || "" });
-}
-
-// Fills the controls with the draft of the active document (empty for a new one)
-function showSearchDraft() {
-    if (searchControlsDocId === activeDocId) return;
-    const draft = searchDrafts.get(activeDocId) || { ...emptySearch, message: "" };
-    $("#search-input").value = draft.query;
-    $("#search-regex").state.checked = draft.isRegex;
-    $("#search-ignore-case").state.checked = draft.ignoreCase;
-    $("#search-message").innerText = draft.message;
-    searchControlsDocId = activeDocId;
-}
-
-function initSearch() {
-    const runSearch = () => {
-        const typed = searchControls();
-        // Returns an error message (e.g. an invalid regex) or "" when started;
-        // on an error the document keeps its previous search
-        const error = Window.this.xcall("startSearch", typed.query, typed.isRegex, typed.ignoreCase);
-        $("#search-message").innerText = error ? `Search error: ${error}` : "";
-        if (!error && activeDocId !== null) committedSearches.set(activeDocId, typed);
-        saveSearchDraft();
-        updateSearchPending();
-    };
-    const onEdited = () => {
-        saveSearchDraft();
-        updateSearchPending();
-    };
-
-    document.on("keydown", "#search-input", (evt) => {
-        if (evt.code === "Enter") {
-            runSearch();
-            return true;
-        }
-    });
-    document.on("click", "#btn-search", runSearch);
-    document.on("input", "#search-input", onEdited);
-    document.on("change", "#search-input, #search-regex, #search-ignore-case", onEdited);
-}
-
-// The chip search editor (docs/stories/advanced-search.md), tried side by side
-// with the search field above it. Its draft and its committed chips belong to
-// the document as those of the field do:
+// Search panel: the chip search editor (search-editor.js, docs/stories/advanced-search.md),
+// a query of chips over the payload of the active document. The query is
+// committed only by Enter or the Search button; editing it doesn't touch the
+// results, the panel just shows that what's typed isn't what the results were
+// found by (updateChipPending). Both the draft and the committed query belong
+// to the document: switching tabs puts the document's own draft into the editor.
 //   docId -> { chips, message, history } of the editor (history: its undo steps)
 const chipDrafts = new Map();
 //   docId -> JSON of the chips the shown search was run with
 const committedChips = new Map();
+//   docId -> the match colors of those chips, by their place: the results show
+//   what each chip found in its color (setMatchColors)
+const committedColors = new Map();
 // The document whose draft the editor shows
 let chipEditorDocId = null;
 let chipEditor = null;
@@ -256,7 +171,11 @@ function runChipSearch() {
     let error = chipEditor.firstError();
     if (!error) error = Window.this.xcall("startChipSearch", JSON.stringify(chips));
     $("#chip-search-message").innerText = error ? `Search error: ${error}` : "";
-    if (!error && activeDocId !== null) committedChips.set(activeDocId, JSON.stringify(chips));
+    if (!error && activeDocId !== null) {
+        committedChips.set(activeDocId, JSON.stringify(chips));
+        committedColors.set(activeDocId, chipEditor.searchChipColors());
+        setMatchColors(committedColors.get(activeDocId)); // before the results come
+    }
     saveChipDraft();
     updateChipPending();
 }
@@ -903,8 +822,7 @@ function refreshTabs() {
     docCount = docs.length;
     newTab = documentsCounted(newTab, docCount);
 
-    saveSearchDraft(); // the controls may be about to show another document
-    saveChipDraft();
+    saveChipDraft(); // the editor may be about to show another document
     docStatus.clear();
     activeDocId = null;
     for (const doc of docs) {
@@ -914,6 +832,7 @@ function refreshTabs() {
     // The filters first: the rows the columns re-render refer to its rules
     if (activeDocId !== filtersDocId) showFilters(); // the sets change by commands only
     applyColumns();
+    setMatchColors(committedColors.get(activeDocId) ?? []); // before the results are shown
 
     // Same documents in the same order (e.g. another tab was activated): the
     // elements are kept, so a tab being pressed or dragged stays in the DOM
@@ -948,21 +867,17 @@ function refreshTabs() {
         if (!docStatus.has(docId)) mainViewStates.delete(docId); // closed
     for (const docId of searchViewStates.keys())
         if (!docStatus.has(docId)) searchViewStates.delete(docId);
-    for (const docId of committedSearches.keys())
-        if (!docStatus.has(docId)) committedSearches.delete(docId); // closed
-    for (const docId of searchDrafts.keys())
-        if (!docStatus.has(docId)) searchDrafts.delete(docId);
     for (const docId of chipDrafts.keys())
         if (!docStatus.has(docId)) chipDrafts.delete(docId);
     for (const docId of committedChips.keys())
         if (!docStatus.has(docId)) committedChips.delete(docId);
+    for (const docId of committedColors.keys())
+        if (!docStatus.has(docId)) committedColors.delete(docId);
     for (const docId of filterMessages.keys())
         if (!docStatus.has(docId)) filterMessages.delete(docId);
 
     updateViewMode();
     updateSearchViewMode();
-    showSearchDraft();
-    updateSearchPending();
     showChipDraft();
     updateChipPending();
 }

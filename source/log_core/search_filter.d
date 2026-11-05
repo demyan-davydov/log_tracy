@@ -15,6 +15,18 @@ struct SearchChip
     bool ignoreCase;
 }
 
+//! A fragment of the payload a chip found: [start, end) in UTF-16 code units of
+//! the payload, `chip` is the place of the chip in the query (empty chips counted)
+struct MatchRange
+{
+    uint start;
+    uint end;
+    uint chip;
+}
+
+//! The most fragments matchRanges gives for one message
+enum maxMatchRanges = 20;
+
 //! @brief Checks a regular expression of a chip with the engine the search uses.
 //! @return the error message, "" for a valid one
 string checkRegex(const(char)[] pattern, bool ignoreCase)
@@ -37,6 +49,7 @@ final class SearchFilter : LogFilter!wchar
         Regex!wchar regex; // regex rule, compiled once when the rule is added
         bool isRegex;
         bool caseInsensitive;
+        uint chip; // the place of its chip in the query
     }
 
     alias Message = LogMessage!wchar;
@@ -56,25 +69,6 @@ final class SearchFilter : LogFilter!wchar
         _rules = other._rules.map!(r => cast(Rule) r).array;
     }
 
-    //! @brief Builds the filter for a search query typed by the user.
-    //! @param query - text to find in the payload, or a regular expression
-    //! @param isRegex - treat `query` as a regular expression
-    //! @param caseInsensitive - ignore letter case (both for text and regex)
-    //! @return null for an empty query, which means "no search"
-    //! @throws RegexException if `query` is not a valid regular expression
-    static SearchFilter fromQuery(const(char)[] query, bool isRegex, bool caseInsensitive)
-    {
-        if (query.length == 0)
-            return null;
-
-        auto filter = new SearchFilter();
-        if (isRegex)
-            filter.addRegex(query, caseInsensitive);
-        else
-            filter.addText(query, caseInsensitive);
-        return filter;
-    }
-
     //! @brief Builds the filter for the chips of a query: a message matches if any
     //! chip does. Empty chips are skipped.
     //! @return null if no chip is left, which means "no search"
@@ -82,7 +76,7 @@ final class SearchFilter : LogFilter!wchar
     static SearchFilter fromChips(const(SearchChip)[] chips)
     {
         auto filter = new SearchFilter();
-        foreach (const ref chip; chips)
+        foreach (i, const ref chip; chips)
         {
             if (chip.text.length == 0)
                 continue;
@@ -90,6 +84,7 @@ final class SearchFilter : LogFilter!wchar
                 filter.addRegex(chip.text, chip.ignoreCase);
             else
                 filter.addText(chip.text, chip.ignoreCase);
+            filter._rules[$ - 1].chip = cast(uint) i;
         }
         return filter._rules.length ? filter : null;
     }
@@ -120,6 +115,27 @@ final class SearchFilter : LogFilter!wchar
         _rules ~= rule;
     }
 
+    private static size_t chipChars(scope ref const(Rule) rule) pure
+    {
+        import std.utf : count;
+
+        return rule.text.count;
+    }
+
+    // The position `chars` characters after `at` in `text`
+    private static size_t afterChars(const(wchar)[] text, size_t at, size_t chars) pure
+    {
+        import std.utf : stride;
+
+        foreach (_; 0 .. chars)
+        {
+            if (at >= text.length)
+                break;
+            at += text.stride(at);
+        }
+        return at;
+    }
+
     private static bool matches(scope ref const(Rule) rule, scope ref const(Message) msg)
     {
         import std.string : CaseSensitive, indexOf;
@@ -129,6 +145,77 @@ final class SearchFilter : LogFilter!wchar
 
         const cs = rule.caseInsensitive ? CaseSensitive.no : CaseSensitive.yes;
         return msg.payloadText.indexOf(rule.text, cs) != -1;
+    }
+
+    //! @brief The fragments of the payload of `msg` the chips found, to show them:
+    //! the chips in their order, each over the whole payload; the part of a match
+    //! already found by an earlier chip is left out, the rest of it is kept.
+    //! Empty matches are skipped.
+    //! @param limit - the most fragments, taken in the order of the chips
+    //! @return the fragments by their start
+    MatchRange[] matchRanges(scope ref const(Message) msg, size_t limit = maxMatchRanges) const
+    {
+        import std.regex : matchAll;
+        import std.string : CaseSensitive, indexOf;
+
+        MatchRange[] found; // kept by start: they never overlap
+        const text = msg.payloadText;
+
+        // Adds the parts of [start, end) no fragment covers yet, each at its place
+        // by start (no copy, no sort); false once there are `limit` fragments
+        bool add(size_t start, size_t end, uint chip)
+        {
+            import std.array : insertInPlace;
+
+            size_t from = start, i = 0;
+            while (from < end)
+            {
+                while (i < found.length && found[i].end <= from)
+                    i++; // before the part left
+                const covering = i < found.length && found[i].start < end;
+                const gapEnd = covering ? found[i].start : end;
+                if (gapEnd > from)
+                {
+                    found.insertInPlace(i, MatchRange(cast(uint) from, cast(uint) gapEnd, chip));
+                    i++;
+                    if (found.length >= limit)
+                        return false;
+                }
+                if (!covering)
+                    break;
+                from = found[i].end; // the covered part is the earlier chip's
+            }
+            return true;
+        }
+
+        rules: foreach (const ref rule; _rules)
+        {
+            if (found.length >= limit)
+                break;
+            if (rule.isRegex)
+            {
+                foreach (m; matchAll(text, rule.regex))
+                {
+                    const start = m.pre.length, end = start + m.hit.length;
+                    if (end > start && !add(start, end, rule.chip))
+                        break rules;
+                }
+            }
+            else
+            {
+                const cs = rule.caseInsensitive ? CaseSensitive.no : CaseSensitive.yes;
+                for (ptrdiff_t at = text.indexOf(rule.text, cs); at >= 0;)
+                {
+                    // as many characters as the chip has, counted in the payload:
+                    // a letter of another case may take other code units
+                    const end = afterChars(text, at, chipChars(rule));
+                    if (!add(at, end, rule.chip))
+                        break rules;
+                    at = text.indexOf(rule.text, end, cs);
+                }
+            }
+        }
+        return found;
     }
 
     // implement LogFilter
@@ -173,38 +260,31 @@ version (unittest)
     }
 }
 
-@("SearchFilter: an empty query means no search")
-unittest
-{
-    assert(SearchFilter.fromQuery("", false, false) is null);
-    assert(SearchFilter.fromQuery("", true, true) is null);
-}
-
-@("SearchFilter: text search, with and without case")
+@("SearchFilter: a text chip, with and without case")
 unittest
 {
     auto msg = messageWithPayload("Connection Timeout after 30s");
 
-    assert(SearchFilter.fromQuery("Timeout", false, false).matches(msg));
-    assert(!SearchFilter.fromQuery("timeout", false, false).matches(msg), "case-sensitive by default");
-    assert(SearchFilter.fromQuery("timeout", false, true).matches(msg));
-    assert(!SearchFilter.fromQuery("refused", false, true).matches(msg));
+    assert(SearchFilter.fromChips([SearchChip("Timeout", false, false)]).matches(msg));
+    assert(!SearchFilter.fromChips([SearchChip("timeout", false, false)]).matches(msg), "case-sensitive by default");
+    assert(SearchFilter.fromChips([SearchChip("timeout", false, true)]).matches(msg));
+    assert(!SearchFilter.fromChips([SearchChip("refused", false, true)]).matches(msg));
 
     // Regex metacharacters are plain text in a text search
-    assert(!SearchFilter.fromQuery("Time.*", false, false).matches(msg));
-    assert(SearchFilter.fromQuery("30s", false, false).matches(msg));
+    assert(!SearchFilter.fromChips([SearchChip("Time.*", false, false)]).matches(msg));
+    assert(SearchFilter.fromChips([SearchChip("30s", false, false)]).matches(msg));
 }
 
-@("SearchFilter: regex search, with and without case")
+@("SearchFilter: a regex chip, with and without case")
 unittest
 {
     auto msg = messageWithPayload("Connection Timeout after 30s");
 
-    assert(SearchFilter.fromQuery(`Time\w+ after \d+s`, true, false).matches(msg));
-    assert(!SearchFilter.fromQuery(`^Timeout`, true, false).matches(msg), "anchors work");
-    assert(!SearchFilter.fromQuery(`timeout`, true, false).matches(msg), "case-sensitive by default");
-    assert(SearchFilter.fromQuery(`timeout`, true, true).matches(msg));
-    assert(SearchFilter.fromQuery(`refused|timeout`, true, true).matches(msg));
+    assert(SearchFilter.fromChips([SearchChip(`Time\w+ after \d+s`, true, false)]).matches(msg));
+    assert(!SearchFilter.fromChips([SearchChip(`^Timeout`, true, false)]).matches(msg), "anchors work");
+    assert(!SearchFilter.fromChips([SearchChip(`timeout`, true, false)]).matches(msg), "case-sensitive by default");
+    assert(SearchFilter.fromChips([SearchChip(`timeout`, true, true)]).matches(msg));
+    assert(SearchFilter.fromChips([SearchChip(`refused|timeout`, true, true)]).matches(msg));
 }
 
 @("SearchFilter: an invalid regex is reported when the filter is built")
@@ -213,8 +293,8 @@ unittest
     import std.exception : assertThrown;
     import std.regex : RegexException;
 
-    assertThrown!RegexException(SearchFilter.fromQuery("(unclosed", true, false));
-    assert(SearchFilter.fromQuery("(unclosed", false, false) !is null, "fine as plain text");
+    assertThrown!RegexException(SearchFilter.fromChips([SearchChip("(unclosed", true, false)]));
+    assert(SearchFilter.fromChips([SearchChip("(unclosed", false, false)]) !is null, "fine as plain text");
 }
 
 @("SearchFilter: a chip query matches a message if any chip does")
@@ -266,10 +346,83 @@ unittest
     assert(checkRegex("[a-", true).length > 0);
 }
 
+@("matchRanges: every match of every chip, by its start")
+unittest
+{
+    auto msg = messageWithPayload("error: disk error, net ok");
+    const filter = SearchFilter.fromChips([SearchChip("error"), SearchChip(`n\w+`, true)]);
+    assert(filter.matchRanges(msg) == [MatchRange(0, 5, 0), MatchRange(12, 17, 0), MatchRange(19, 22, 1)]);
+}
+
+@("matchRanges: an earlier chip wins, a later one keeps only what is left")
+unittest
+{
+    auto msg = messageWithPayload("timeout after 30s");
+    // "time" first; "timeout" is shown only for "out"; "after 30s" is whole
+    const filter = SearchFilter.fromChips([SearchChip("time"), SearchChip("timeout"), SearchChip(`after \d+s`, true)]);
+    assert(filter.matchRanges(msg) == [MatchRange(0, 4, 0), MatchRange(4, 7, 1), MatchRange(8, 17, 2)]);
+
+    // a later match covered in the middle is split around it
+    const inside = SearchFilter.fromChips([SearchChip("out"), SearchChip("timeout after")]);
+    assert(inside.matchRanges(msg) == [MatchRange(0, 4, 1), MatchRange(4, 7, 0), MatchRange(7, 13, 1)]);
+
+    // a later match covered whole is not shown
+    const covered = SearchFilter.fromChips([SearchChip("timeout"), SearchChip("time")]);
+    assert(covered.matchRanges(msg) == [MatchRange(0, 7, 0)]);
+}
+
+@("matchRanges: a regex sees the whole payload, its anchors too")
+unittest
+{
+    auto msg = messageWithPayload("foo bar foo");
+    // "bar" is found first; ^foo is still the foo at the start only
+    const filter = SearchFilter.fromChips([SearchChip("bar"), SearchChip("^foo", true)]);
+    assert(filter.matchRanges(msg) == [MatchRange(0, 3, 1), MatchRange(4, 7, 0)]);
+}
+
+@("matchRanges: the case of each chip, empty regex matches skipped")
+unittest
+{
+    auto msg = messageWithPayload("Error ERROR error");
+    assert(SearchFilter.fromChips([SearchChip("error", false, true)]).matchRanges(msg)
+        == [MatchRange(0, 5, 0), MatchRange(6, 11, 0), MatchRange(12, 17, 0)]);
+    assert(SearchFilter.fromChips([SearchChip("error")]).matchRanges(msg) == [MatchRange(12, 17, 0)]);
+    assert(SearchFilter.fromChips([SearchChip("x*", true)]).matchRanges(msg).length == 0, "only empty matches");
+}
+
+@("matchRanges: the chip is its place in the query, empty chips counted")
+unittest
+{
+    auto msg = messageWithPayload("abc");
+    const filter = SearchFilter.fromChips([SearchChip(""), SearchChip("b")]);
+    assert(filter.matchRanges(msg) == [MatchRange(1, 2, 1)]);
+}
+
+@("matchRanges: at most `limit` fragments, the earlier chips first")
+unittest
+{
+    auto msg = messageWithPayload("a a a b");
+    const filter = SearchFilter.fromChips([SearchChip("a"), SearchChip("b")]);
+    assert(filter.matchRanges(msg, 2) == [MatchRange(0, 1, 0), MatchRange(2, 3, 0)]);
+    assert(filter.matchRanges(msg).length == 4);
+}
+
+@("matchRanges: positions in UTF-16 code units, as the script counts them")
+unittest
+{
+    LogMessage!wchar wide;
+    wide.beginRecord();
+    auto builder = wide.payloadBuilder();
+    builder.appendUtf8("щит 😀 ok");
+    builder.storePayload();
+    // "щит " is 4 units, the emoji 2, then a space
+    assert(SearchFilter.fromChips([SearchChip("ok")]).matchRanges(wide) == [MatchRange(7, 9, 0)]);
+}
+
 @("SearchFilter: dup keeps the rules")
 unittest
 {
     auto msg = messageWithPayload("disk error");
-    const filter = SearchFilter.fromQuery("ERROR", true, true);
+    const filter = SearchFilter.fromChips([SearchChip("ERROR", true, true)]);
     assert(filter.dup().matches(msg));
 }
