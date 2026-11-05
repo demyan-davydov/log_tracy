@@ -105,11 +105,11 @@
 }
 
 /* The color of the filter rule a record matches (as dlt-viewer colors the
-   rows): set on the row, shown on its first cell only, fading out from the
-   left edge to a third of the cell; the background of the row shows through.
-   Sciter takes var() in a gradient only in `background`, not in
-   `background-image`. */
-.log-table>tbody>tr[rule-color="true"]>td:first-child {
+   rows): set on the row, shown on its Index cell only (the second one, after
+   the anchor), fading out from the left edge to a third of the cell; the
+   background of the row shows through. Sciter takes var() in a gradient only
+   in `background`, not in `background-image`. */
+.log-table>tbody>tr[rule-color="true"]>td:nth-child(2) {
     background: linear-gradient(to right, var(--rule-color), transparent 33%);
 }
 

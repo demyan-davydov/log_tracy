@@ -151,7 +151,7 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
 - A row is: anchored, rule id, view index, message index, level, then one cell per column.
   - The rule id is the first rule with a color the record matches (null if none); the script
     looks its color up in the rules of the panel (`resources/rule-colors.js`) and sets it on the
-    row, `table.css` shows it on the first cell only, as a fade from the left edge.
+    row, `table.css` shows it on the Index cell only, as a fade from the left edge.
   - A time cell is `[microseconds, TimeKind]`: it is shown by the kind of the record, not of
     the column.
   - Hex cells are formatted by the backend: 64-bit values don't fit a script number.

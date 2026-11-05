@@ -107,7 +107,7 @@ export class VirtualDltTBody extends VirtualSelect {
         const idx_level = 4; // LogLevel of the record: colors the columns with byLevel
         const idx_firstColumn = 5;
 
-        // The color of the rule is set on the row, table.css shows it on the first cell
+        // The color of the rule is set on the row, table.css shows it on the Index cell
         const ruleColor = ruleColorById.get(item[idx_rule]); // undefined: no rule, or no color
         return <tr state-current={isCurrent} state-checked={isSelected} view-index={item[idx_viewIndex]}
             rule-color={ruleColor ? "true" : "false"} style={ruleColor ? `--rule-color: ${ruleColor}` : ""}>
