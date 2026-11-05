@@ -223,6 +223,16 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
   other modules render the DOM. Logic worth a test goes into a module free of both, tested by
   `tests/js` (it imports its neighbours with `./`).
 
+### Translations
+- What the user sees is written in English in the code and translated as in Qt
+  (`resources/i18n/i18n.js`): `tr("Open File...")`, `tr("Found {count}", { count })`,
+  `trc("noun", "Filter")`, `trn("{n} match", "{n} matches", n)`. The text is always a string
+  literal: `scripts/i18n-extract.mjs` finds the texts by it and brings the catalogs
+  (`resources/i18n/translations/<BCP 47 tag>.json`) up to them; `tests/js` fail when a catalog
+  is out of date. The story and the decisions: `docs/stories/i18n.md`.
+- Not translated: the contents of logs, the column titles of formats, levels, the texts of
+  shortcuts.
+
 ## Conventions
 
 - The main branch is `master`. Work goes on a branch and is merged with `--no-ff`. The story of
