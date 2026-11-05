@@ -836,8 +836,10 @@ class MainWindow : SciterWindow
         {
             writeln("Error opening file: ", e.msg);
             error = e.msg;
-            // Listed on top with the reason (and its format and time of the last success), to retry or see
-            rememberRecentFile(RecentFile(path));
+            // Listed with the reason, to retry or see: a file of the list stays
+            // where it is, a new one goes on top
+            _settings.recentFiles = withFailedFile(_settings.recentFiles, path);
+            saveSettings();
             return DocumentId.init;
         }
     }

@@ -292,8 +292,9 @@ function renderPlaceholder() {
 // shown under its item in the recent files until a file opens or "+" is pressed
 let openFailure = null;
 
-// Opens a file in a new tab. On failure the backend puts it on top of the
-// recent files, and the placeholder (brought up if needed) shows why.
+// Opens a file in a new tab. On failure the backend keeps it in the recent
+// files (where it was, or on top if it is new there), and the placeholder
+// (brought up if needed) shows why under it.
 function openFile(path) {
     const result = Window.this.xcall("openFile", path);
     if (typeof result !== "string") return; // the id of the document: opened
