@@ -62,98 +62,11 @@
 
     <!-- Instead of all the panels below while no document is open; filled by
          renderPlaceholder() -->
-    <div id="empty-placeholder" style="display:none;"></div>
+    <div id="empty-placeholder" tabindex="-1" style="display:none;"></div>
 
-    <frameset id="document-views" cols="200px, *">
-        <section class="left-panel" id="sidebar">
-            <header>Filters</header>
-            <!-- the filter sets of the active document: showFilters() in script.js -->
-            <div id="filter-sets"></div>
-            <div id="filter-message"></div>
-            <div class="filter-actions">
-                <button id="btn-new-dlf">New Filter</button>
-                <button id="btn-dlf">Load Filter</button>
-            </div>
-
-            <header class="sidebar-section">Decoding</header>
-            <div class="filter-actions">
-                <button id="btn-fibex">Load FIBEX</button>
-            </div>
-        </section>
-
-        <!-- right side -->
-        <frameset rows="*, 250dip">
-            <section id="main-content">
-                <div id="tab-content" class="tab-content">
-                    <!-- Status views: see .status-view in tab-content.css -->
-                    <div id="loading-container" class="status-view" style="display:none;">
-                        <div class="status-body">
-                            <div id="doc-load-status" class="status-title">Loading file...</div>
-                            <progress id="doc-load-progress" value="0" max="100"></progress>
-                            <div id="doc-load-detail" class="status-detail"></div>
-                            <div class="status-actions">
-                                <button id="btn-cancel-load">Cancel</button>
-                            </div>
-                        </div>
-                    </div>
-                    <div id="source-lost" class="status-view" style="display:none;">
-                        <div class="status-body">
-                            <div class="status-title">The file is no longer available</div>
-                            <div id="source-lost-path" class="status-detail status-path"></div>
-                            <div id="source-lost-error" class="status-detail status-error"></div>
-                            <div class="status-actions">
-                                <button id="btn-lost-retry">Retry</button>
-                                <button id="btn-lost-close">Close</button>
-                            </div>
-                        </div>
-                    </div>
-                    <table class="log-table main-view" fixed-layout="true">
-                        <thead>
-                            <!-- the columns of the format: applyColumns() in script.js -->
-                            <tr>
-                                <th width="20px">⚓</th>
-                                <th width="80px">Index</th>
-                                <th width="*">Payload</th>
-                            </tr>
-                        </thead>
-                        <tbody />
-                    </table>
-                </div>
-            </section>
-
-            <section id="search-results-panel">
-                <div class="toolbar search-toolbar chip-search-toolbar">
-                    <div id="chip-search" class="chip-editor" tabindex="0"></div>
-                    <button id="btn-chip-history" title="Search history (↓)">▾</button>
-                    <button id="btn-chip-search">Search</button>
-                </div>
-                <div id="chip-search-message"></div>
-
-                <header>Details / Search Results</header>
-                <div id="search-loading-container" class="status-view compact" style="display:none;">
-                    <div class="status-body">
-                        <div id="search-view-status" class="status-title">Searching...</div>
-                        <progress id="search-view-progress" value="0" max="100"></progress>
-                        <div id="search-view-detail" class="status-detail"></div>
-                        <div class="status-actions">
-                            <button id="btn-cancel-search">Cancel</button>
-                        </div>
-                    </div>
-                </div>
-                <table class="log-table search-view" fixed-layout="true">
-                    <thead>
-                        <!-- the columns of the format: applyColumns() in script.js -->
-                        <tr>
-                            <th width="20px">⚓</th>
-                            <th width="80px">Index</th>
-                            <th width="*">Payload</th>
-                        </tr>
-                    </thead>
-                    <tbody />
-                </table>
-            </section>
-        </frameset>
-    </frameset>
+    <!-- The panels of the open documents, one per tab, only the active one
+         shown: DocumentPane in document-pane.js -->
+    <div id="document-panes" style="display:none;"></div>
 </body>
 
 </html>

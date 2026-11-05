@@ -86,6 +86,16 @@ export class SearchEditor {
 
     focus() { this.placeFocus(); }
 
+    // The editor is removed with its document: stops its timer and its
+    // handlers of the document
+    destroy() {
+        this.destroyed = true; // what is still posted (focusout, chip sync) does nothing
+        this.closeHistory({ refocus: false });
+        this.endDrag();
+        this.restartBlink(false);
+        for (const handler of Object.values(this.documentHandlers)) document.off(handler);
+    }
+
     // ---- state and rendering ----
 
     regexError(chip) {
@@ -182,7 +192,7 @@ export class SearchEditor {
     restartBlink(shown) {
         this.root.classList.remove("blink-off");
         if (this.blinkTimer) clearInterval(this.blinkTimer);
-        this.blinkTimer = shown
+        this.blinkTimer = shown && !this.destroyed
             ? setInterval(() => this.root.classList.toggle("blink-off"), blinkHalfPeriod)
             : null;
     }
@@ -222,11 +232,14 @@ export class SearchEditor {
             this.onMouseMove(evt);
             return this.drag !== null && (this.drag.anchor !== undefined || this.drag.left);
         });
-        // outside the editor: the drag goes on there
-        document.on("mousemove", evt => {
-            if (this.drag && !this.isInside(evt.target)) this.onMouseMove(evt);
-        });
-        document.on("mouseup", () => this.endDrag());
+        // outside the editor: the drag goes on there (removed by destroy())
+        this.documentHandlers = {
+            mousemove: evt => {
+                if (this.drag && !this.isInside(evt.target)) this.onMouseMove(evt);
+            },
+            mouseup: () => this.endDrag(),
+        };
+        for (const [name, handler] of Object.entries(this.documentHandlers)) document.on(name, handler);
         root.on("focusin", () => this.markState());
         root.on("focusout", () => {
             // posted: the focus may be moving to another chip of this editor
@@ -707,6 +720,7 @@ export class SearchEditor {
     }
 
     onFocusLeft() {
+        if (this.destroyed) return;
         if (this.root.state.focus || this.root.$(":focus")) return;
         // the list itself may have the focus (a click on it)
         if (this.historyPopup) this.closeHistory({ refocus: false }); // the focus stays where it went

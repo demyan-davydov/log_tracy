@@ -1,14 +1,13 @@
 import { $, $$ } from "@sciter";
 import { VirtualDltTBody, VirtualMainViewTBody, VirtualSearchViewTBody, moveRowDrag, endRowDrag } from "virtual-dlt-view.js";
-import { scrollTarget } from "row-selection.js";
-import { ruleColors } from "rule-colors.js";
 import {
     noNewTab, plusShown, openNewTab, activateNewTab, activateDocument,
     closeNewTab, documentOpened, documentsCounted, showsPlaceholder,
     shownDocument, fileFailed, failureReason
 } from "new-tab.js";
 import { lastUsedText } from "recent-time.js";
-import { SearchEditor } from "search-editor.js";
+import { DocumentPane } from "document-pane.js";
+import { paneChanges } from "pane-state.js";
 import { clampShift, dragTarget, settleShift } from "drag-order.js";
 
 // The table whose context menu is open: "Copy Row" copies its selected rows
@@ -59,25 +58,12 @@ globalThis.VirtualSearchViewTBody = VirtualSearchViewTBody;
 let currentTheme = "light";
 // Font size of the log tables, % of the normal one (Settings)
 let tableFontSize = 100;
-// Main view rendered last time: the table is reloaded when another document is
-// shown or the content of the shown one changes (dataVersion of the ready view).
-// shownDataVersion is null while the view isn't the table.
-let shownDocId = null;
 // The placeholder rendered last: "start", "newTab", null while a document is shown
 let shownPlaceholder = null;
-let shownDataVersion = null;
-// State of the table of each document when another one was shown:
-//   docId -> { dataVersion, index, selection }, index is the first visible row,
-//   selection comes from VirtualDltTBody.saveSelection().
-// Restored only for the same content (dataVersion), otherwise the table starts over.
-const mainViewStates = new Map();
-// The same for the search results of each document
-const searchViewStates = new Map();
 
 document.on("ready", function () {
     console.log("Starting DLT Explorer UI...");
     initApp();
-    initChipSearch();
 
     console.log(Window.this.frameType, Window.this.blurBehind)
 });
@@ -102,7 +88,12 @@ Window.this.on("close", (evt) => {
 
     // 1. Останавливаем инерционный скролл
     // Перебрасываем скролл в текущую позицию без анимации
-    const logList = getMainViewList();
+    for (const pane of panes.values()) for (const list of pane.lists) stopList(list);
+
+    console.log("Окно закрывается, ресурсы зачищены");
+});
+
+function stopList(logList) {
     stopScroll(logList);
     logList.style.behavior = "none";
     logList.state.disabled = true;
@@ -119,88 +110,12 @@ Window.this.on("close", (evt) => {
     logList.remove(); // remove from DOM
     // 2. Если есть специфические таймеры в виртуальной таблице:
     // logList.stopTimers(); // если вы их создавали
-
-    console.log("Окно закрывается, ресурсы зачищены");
-});
+}
 
 function initApp() {
     restoreSettings();
     setupEvents();
     refreshTabs();
-}
-
-// Search panel: the chip search editor (search-editor.js, docs/stories/advanced-search.md),
-// a query of chips over the payload of the active document. The query is
-// committed only by Enter or the Search button; editing it doesn't touch the
-// results, the panel just shows that what's typed isn't what the results were
-// found by (updateChipPending). Both the draft and the committed query belong
-// to the document: switching tabs puts the document's own draft into the editor.
-//   docId -> { chips, message, history } of the editor (history: its undo steps)
-const chipDrafts = new Map();
-//   docId -> JSON of the chips the shown search was run with
-const committedChips = new Map();
-//   docId -> the match colors of those chips, by their place: the results show
-//   what each chip found in its color (matchColors of the search table)
-const committedColors = new Map();
-// The document whose draft the editor shows
-let chipEditorDocId = null;
-let chipEditor = null;
-
-function initChipSearch() {
-    chipEditor = new SearchEditor($("#chip-search"), {
-        checkRegex: (pattern, ignoreCase) => Window.this.xcall("checkRegex", pattern, ignoreCase),
-        onEdited: () => {
-            saveChipDraft();
-            updateChipPending();
-        },
-        onCommit: runChipSearch,
-        history: () => activeDocId === null ? []
-            : JSON.parse(Window.this.xcall("getSearchHistory", activeDocId) || "[]"),
-        historyButton: $("#btn-chip-history"),
-    });
-    document.on("click", "#btn-chip-search", () => {
-        chipEditor.closeChip();
-        runChipSearch();
-    });
-    showChipDraft();
-    updateChipPending();
-}
-
-function runChipSearch() {
-    const chips = chipEditor.searchChips();
-    // an invalid regex chip is refused here; the backend checks again
-    let error = chipEditor.firstError();
-    if (!error) error = activeDocId === null ? "no document"
-        : Window.this.xcall("startChipSearch", activeDocId, JSON.stringify(chips));
-    $("#chip-search-message").innerText = error ? `Search error: ${error}` : "";
-    if (!error && activeDocId !== null) {
-        committedChips.set(activeDocId, JSON.stringify(chips));
-        committedColors.set(activeDocId, chipEditor.searchChipColors());
-        getSearchViewList().matchColors = committedColors.get(activeDocId); // before the results come
-    }
-    saveChipDraft();
-    updateChipPending();
-}
-
-function updateChipPending() {
-    const pending = activeDocId !== null && chipEditor !== null
-        && JSON.stringify(chipEditor.searchChips()) !== (committedChips.get(activeDocId) ?? "[]");
-    $(".chip-search-toolbar").classList.toggle("pending", pending);
-    $("#btn-chip-search").classList.toggle("primary", pending);
-}
-
-function saveChipDraft() {
-    if (chipEditorDocId === null || !docStatus.has(chipEditorDocId) || chipEditor === null) return;
-    chipDrafts.set(chipEditorDocId,
-        { chips: chipEditor.chips, message: $("#chip-search-message").innerText || "", history: chipEditor.history });
-}
-
-function showChipDraft() {
-    if (chipEditorDocId === activeDocId || chipEditor === null) return;
-    const draft = chipDrafts.get(activeDocId) || { chips: [], message: "", history: null };
-    chipEditor.setChips(draft.chips, draft.history);
-    $("#chip-search-message").innerText = draft.message;
-    chipEditorDocId = activeDocId;
 }
 
 function restoreSettings() {
@@ -329,44 +244,10 @@ function setTheme(theme) {
 // they are: they are minimums, the auxiliary columns keep their values on one line
 function setTableFontSize(percent) {
     tableFontSize = percent;
-    for (const table of $$("table.log-table"))
-        table.style.fontSize = `${percent}%`;
+    for (const pane of panes.values()) pane.applyFontSize(percent);
     console.log("Table font size set to:", percent);
 }
 
-globalThis.getTabContent = function () {
-    const tabContent = $("#tab-content");
-    return tabContent;
-}
-
-globalThis.getLoadingContainer = function () {
-    const tabContent = getTabContent();
-    const loading = tabContent.$("#loading-container");
-    return loading;
-}
-
-globalThis.getMainViewTable = function () {
-    const tabContent = getTabContent();
-    const list = tabContent.$("table.main-view");
-    return list;
-}
-
-globalThis.getMainViewList = function () {
-    const logTable = getMainViewTable();
-    const list = logTable.$("tbody");
-    return list;
-}
-
-globalThis.getSearchViewTable = function () {
-    const list = $("table.search-view");
-    return list;
-}
-
-globalThis.getSearchViewList = function () {
-    const logTable = getSearchViewTable();
-    const list = logTable.$("tbody");
-    return list;
-}
 
 // The Settings dialog; Save applies all its sections at once
 function openSettingsAction() {
@@ -383,7 +264,7 @@ function openSettingsAction() {
     if (result.tableFontSize) setTableFontSize(result.tableFontSize);
     if (result.columnLayouts) {
         Window.this.xcall("setColumnLayouts", JSON.stringify(result.columnLayouts));
-        applyColumns(); // the tables show the columns as arranged now
+        for (const pane of panes.values()) pane.columnsChanged(); // as arranged now
     }
 }
 
@@ -423,26 +304,6 @@ function setupEvents() {
 
     document.on("click", ".recent-file", (evt, item) => openFile(item.getAttribute("path")));
 
-    // Anchor column: toggles the anchor of the message in both views. Ignored by
-    // the backend while an operation runs or at the anchor limit.
-    document.on("click", "table.log-table td.anchor", (evt, cell) => {
-        const index = Number(cell.getAttribute("msg-index"));
-        const anchored = cell.getAttribute("has-anchor") === "true";
-        const lists = [getMainViewList(), getSearchViewList()].filter(list => list);
-        const counts = lists.map(list => list.totalItems());
-        const docId = cell.closest("tbody")?.docId;
-        if (docId == null) return true;
-        if (Window.this.xcall("setAnchor", docId, index, !anchored)) {
-            for (const [i, list] of lists.entries()) {
-                // The view gained or lost the row: the selected positions show other rows
-                if (list.totalItems() !== counts[i]) list.resetSelection();
-                list.componentUpdate(); // the view may gain or lose the row
-                list.refreshVisibleRows(); // rows kept on screen show the new anchor
-            }
-        }
-        return true; // don't change the row selection
-    });
-
     // Context menu of a log row: "Copy Row" after the default items of a
     // selectable cell (Copy, Select All), alone on the other cells.
     // "contextmenu" comes before the default menu is set, so a menu given there
@@ -465,154 +326,6 @@ function setupEvents() {
     });
     // Cmd+C (Ctrl+C) in a table, see VirtualDltTBody.onkeydown
     document.on("copyrows", "table.log-table > tbody", (evt, list) => copySelectedRows(list));
-
-    // A double click on a search result shows its message in the main view:
-    // current and the only one selected, near the top
-    document.on("dblclick", "table.search-view > tbody > tr", (evt, row) => {
-        if (evt.target.closest("td.anchor")) return; // toggles the anchor only
-        const msgIndex = Number(row.$("td.anchor")?.getAttribute("msg-index"));
-        if (!Number.isFinite(msgIndex)) return;
-        // Only into a main view that shows its rows: while it is rebuilt the
-        // positions belong to the content being replaced
-        if (docStatus.get(activeDocId)?.mainView?.status !== "ready") return;
-        const list = getMainViewList();
-        if (!list) return;
-        const position = Window.this.xcall("getMainViewPosition", list.docId, msgIndex);
-        if (position === null || position === undefined) return;
-        list.selection.moveTo(position);
-        list.navigateTarget = scrollTarget(position, list.visibleRowCount());
-        list.componentUpdate();
-        list.updateRowStates();
-        list.state.focus = true;
-        return true;
-    });
-
-    document.on("click", "#btn-lost-close", () => {
-        if (activeDocId !== null) closeTab(activeDocId);
-    });
-
-    document.on("click", "#btn-lost-retry", () => {
-        if (activeDocId === null) return;
-        // Reopens the file in the same tab; fails while the disk is still missing
-        const retryStart = Date.now();
-        const error = Window.this.xcall("retryDocument", activeDocId);
-        const retryTime = Date.now() - retryStart;
-        if (error) {
-            console.log(`Retry failed after ${retryTime} ms: ${error}`);
-            $("#source-lost-error").innerText = `Still unavailable: ${error}`;
-            return;
-        }
-        const refreshStart = Date.now();
-        refreshTabs(); // the reopened document starts loading: the table reloads when it is ready
-        showFilters(); // a new document with the same id: its filters are restored
-        console.log(`Retry: xcall ${retryTime} ms, views refresh ${Date.now() - refreshStart} ms`);
-    });
-
-    document.on("click", "#btn-cancel-search", () => {
-        if (activeDocId !== null) Window.this.xcall("cancelSearchView", activeDocId);
-    });
-
-    // What Cancel means (stop the filter, close a loading document) is decided
-    // by the main view machine of the document
-    document.on("click", "#btn-cancel-load", () => {
-        if (activeDocId !== null) Window.this.xcall("cancelMainView", activeDocId);
-    });
-
-    document.on("click", "#btn-fibex", () => {
-        const fn = Window.this.selectFile({
-            mode: "open",
-            filter: "XML Files (*.xml)|*.xml|All Files (*.*)|*.*"
-        });
-        if (fn) {
-            Window.this.xcall("loadFibex", fn);
-            reloadLogTable();
-        }
-    });
-
-    // Filter sets are only appended; each one has its remove button. A filter
-    // file of DLT Explorer for any log, a .dlf of dlt-viewer for a DLT one.
-    document.on("click", "#btn-dlf", () => {
-        const filter = shownFilters.canDlf
-            ? "Filter Files (*.logfilter;*.dlf)|*.logfilter;*.dlf|DLT Explorer Filters (*.logfilter)|*.logfilter|dlt-viewer Filters (*.dlf)|*.dlf|All Files (*.*)|*.*"
-            : "DLT Explorer Filters (*.logfilter)|*.logfilter|All Files (*.*)|*.*";
-        const fn = Window.this.selectFile({ mode: "open", filter });
-        if (fn) filterCommand("loadFilterFile", fn);
-    });
-
-    // An empty set, kept with the log like a loaded one; its first rule is
-    // asked for right away
-    document.on("click", "#btn-new-dlf", () => {
-        if (activeDocId === null) return;
-        filterCommand("newFilterSet");
-        if (filterMessages.get(activeDocId)) return;
-        const set = shownFilters.sets.length - 1;
-        // No first rule: no set either, so cancelled tries don't pile up
-        if (!editRule(set, -1)) filterCommand("removeFilterSet", set);
-    });
-
-    document.on("click", ".filter-add", (evt, button) => {
-        editRule(parseInt(button.parentElement.getAttribute("set-index")), -1);
-        return true;
-    });
-
-    // A set is a copy kept with the log: exported to share it, to a filter file
-    // of DLT Explorer or (DLT logs) to a .dlf for dlt-viewer
-    document.on("click", ".filter-export", (evt, button) => {
-        const set = parseInt(button.parentElement.getAttribute("set-index"));
-        // Offered the file the set was loaded from or exported to last, or
-        // <name>.<format>.logfilter; its kind is offered first
-        const fileName = shownFilters.sets[set]?.fileName || "";
-        const dlf = shownFilters.canDlf && /\.dlf$/i.test(fileName);
-        const native = "DLT Explorer Filters (*.logfilter)|*.logfilter";
-        const dlt = "dlt-viewer Filters (*.dlf)|*.dlf";
-        const kinds = !shownFilters.canDlf ? [native] : dlf ? [dlt, native] : [native, dlt];
-        const params = {
-            mode: "save",
-            caption: "Export Filter",
-            extension: dlf ? "dlf" : "logfilter",
-            filter: kinds.join("|") + "|All Files (*.*)|*.*"
-        };
-        // Without its extension: the dialog adds it itself (name.dlf.dlf otherwise)
-        if (fileName) params.path = fileName.replace(/\.(dlf|logfilter)$/i, "");
-        const fn = Window.this.selectFile(params);
-        if (fn) filterCommand("exportFilterSet", set, fn);
-        return true;
-    });
-
-    document.on("click", ".filter-rule-edit", (evt, button) => {
-        const row = button.parentElement;
-        editRule(parseInt(row.getAttribute("set-index")), parseInt(row.getAttribute("rule-index")));
-        return true;
-    });
-
-    document.on("dblclick", ".filter-rule", (evt, row) => {
-        if (evt.target.tag === "input") return; // the switch
-        editRule(parseInt(row.getAttribute("set-index")), parseInt(row.getAttribute("rule-index")));
-        return true;
-    });
-
-    document.on("click", ".filter-rule-remove", (evt, button) => {
-        const row = button.parentElement;
-        filterCommand("removeFilterRule", parseInt(row.getAttribute("set-index")),
-            parseInt(row.getAttribute("rule-index")));
-        return true;
-    });
-
-    document.on("change", ".filter-set-switch", (evt, input) => {
-        const row = input.parentElement;
-        filterCommand("enableFilterSet", parseInt(row.getAttribute("set-index")), input.value);
-    });
-
-    document.on("change", ".filter-rule-switch", (evt, input) => {
-        const row = input.parentElement;
-        filterCommand("enableFilterRule", parseInt(row.getAttribute("set-index")),
-            parseInt(row.getAttribute("rule-index")), input.value);
-    });
-
-    document.on("click", ".filter-remove", (evt, button) => {
-        filterCommand("removeFilterSet", parseInt(button.parentElement.getAttribute("set-index")));
-        return true;
-    });
 
     // A tab is activated on mousedown (as in browsers) and can then be dragged;
     // click only handles the close button
@@ -667,135 +380,11 @@ function setupEvents() {
     });
 }
 
-// The filter sets live in the backend (DocumentFilters), per document; the
-// panel shows those of the active document. Only the error message of the last
-// filter command is kept here: docId -> message
-const filterMessages = new Map();
-let filtersDocId; // the document the panel shows; undefined: not shown yet
-
-const ruleKindMarks = { include: "+", exclude: "\u2212", marker: "\u25C6" };
-const ruleKindTitles = {
-    include: "Shows the records it matches",
-    exclude: "Hides the records it matches",
-    marker: "Marks the records it matches with its color"
-};
-
-// Runs a filter command of the active document and shows the sets again; the
-// table reloads when the filter operation reports completion
-function filterCommand(name, ...args) {
-    if (activeDocId === null) return;
-    const error = Window.this.xcall(name, activeDocId, ...args);
-    filterMessages.set(activeDocId, error || "");
-    showFilters();
-    refreshRuleColors();
-}
-
-// The rows on screen refer to the rules again: a change of a rule may change
-// the rule with a color a row matches without filtering the view again
-function refreshRuleColors() {
-    for (const list of [getMainViewList(), getSearchViewList()])
-        list?.refreshVisibleRows?.();
-}
-
-let shownFilters = { canFilter: false, canDlf: false, sets: [] }; // what showFilters() got last
-
-// Opens the editor of a rule of a set of the active document (rule -1: a new
-// one) and applies what it closes with. A rule the backend refuses (e.g. an
-// invalid regular expression) opens the editor again with the error.
-// @returns true if the rule was applied, false if the editor was cancelled
-function editRule(set, rule) {
-    if (activeDocId === null) return false;
-    const docId = activeDocId;
-    let values = JSON.parse(Window.this.xcall("getFilterRule", docId, set, rule) || "null");
-    if (!values) return false;
-    let error = "";
-    for (;;) {
-        const result = Window.this.modal({
-            url: "rule-editor.htm",
-            alignment: "center",
-            parameters: {
-                title: rule < 0 ? "New Rule" : "Edit Rule", theme: currentTheme, rule: values, error,
-                columns: JSON.parse(Window.this.xcall("getColumns", docId) || "[]"),
-                // What is wrong with the rule, while it is edited: the editor
-                // marks it at once instead of being reopened with the error
-                check: rule => Window.this.xcall("checkFilterRule", docId, JSON.stringify(rule))
-            }
-        });
-        if (!result) return false;
-        const json = JSON.stringify(result);
-        error = rule < 0 ? Window.this.xcall("addFilterRule", docId, set, json)
-            : Window.this.xcall("updateFilterRule", docId, set, rule, json);
-        if (!error) break;
-        values = result;
-    }
-    filterMessages.set(activeDocId, "");
-    showFilters();
-    refreshRuleColors();
-    return true;
-}
-
-// Shows the filter sets of the active document: a set is a row with its
-// switch, name and remove button, followed by a row per rule
-function showFilters() {
-    const info = activeDocId === null
-        ? { canFilter: false, canDlf: false, sets: [] }
-        : JSON.parse(Window.this.xcall("getFilters", activeDocId) || "{}");
-    shownFilters = info;
-    const colors = ruleColors(info.sets); // the rows refer to the rules by id
-    for (const list of [getMainViewList(), getSearchViewList()]) list.ruleColors = colors;
-    const panel = $("#filter-sets");
-    // Built from scratch, as the quick filter was: reused inputs keep their state
-    panel.clear();
-    if (!info.sets || info.sets.length === 0)
-        panel.append(<div class="filters-empty">{info.canFilter
-            ? "No filters: load a filter file or create a new one"
-            : "This log has no columns to filter by"}</div>);
-    (info.sets || []).forEach((set, s) => {
-        const element = <div class={set.enabled ? "filter-set" : "filter-set off"}>
-            <div class="filter-row filter-set-head" set-index={s}>
-                <input type="checkbox" class="filter-set-switch" />
-                <span class="filter-name" title={set.source ? `Loaded from ${set.source}` : ""}>{set.name}</span>
-                <span class="filter-button filter-export" title="Export to a filter file">⤓</span>
-                <span class="filter-button filter-add" title="Add a rule">+</span>
-                <span class="filter-button filter-remove" title="Remove this filter">×</span>
-            </div>
-        </div>;
-        panel.append(element);
-        const block = panel.lastElementChild;
-        block.$(".filter-set-switch").value = set.enabled;
-        set.rules.forEach((rule, r) => {
-            const classes = ["filter-row", "filter-rule"];
-            if (!rule.enabled) classes.push("off");
-            if (rule.error) classes.push("error");
-            block.append(<div class={classes.join(" ")} set-index={s} rule-index={r}>
-                <input type="checkbox" class="filter-rule-switch" />
-                <span class="filter-kind" title={ruleKindTitles[rule.kind]}>{ruleKindMarks[rule.kind]}</span>
-                <span class="filter-swatch" />
-                <span class="filter-name">{rule.name || "(no name)"}</span>
-                <span class="filter-button filter-rule-edit" title="Edit this rule (or double-click it)">✎</span>
-                <span class="filter-button filter-rule-remove" title="Remove this rule">×</span>
-            </div>);
-            const row = block.lastElementChild;
-            row.$(".filter-rule-switch").value = rule.enabled;
-            if (rule.color) row.$(".filter-swatch").style.setProperty("background-color", rule.color);
-            if (rule.error)
-                block.append(<div class="filter-note">{`Not applied: ${rule.error}`}</div>);
-        });
-    });
-    $("#btn-dlf").style.display = info.canFilter ? "" : "none";
-    $("#btn-new-dlf").style.display = info.canFilter ? "" : "none";
-    $("#filter-message").innerText = filterMessages.get(activeDocId) ?? "";
-    filtersDocId = activeDocId;
-}
-
-// Status of every open document, kept up to date for all documents, not only
-// the active one:
-//   docId -> { mainView, searchView, path }
-// mainView and searchView are the views shown by the machines of the document
-// (onMainViewChanged, onSearchViewChanged): { status, canCancel, <fields of the
-// view> }, see source/ui/main_view_fsm.d and source/ui/search_view_fsm.d.
-// Snapshot comes from getWorkspaceInfo in refreshTabs().
-const docStatus = new Map();
+// The panels of the open documents: docId -> DocumentPane (document-pane.js).
+// Each keeps the views its document shows, the snapshot comes from
+// getWorkspaceInfo in refreshTabs(), the changes from onMainViewChanged and
+// onSearchViewChanged.
+const panes = new Map();
 let activeDocId = null; // active in the backend; hidden while the New Tab is shown
 let docCount = 0;
 
@@ -810,11 +399,20 @@ function findTab(docId) {
     return $(`#tabs-container > .tab[id="${docId}"]`);
 }
 
-// Exposes the status on the tab element for CSS: main-status, search-status
-function applyTabStatus(tab, status) {
-    tab.setAttribute("main-status", status.mainView ? status.mainView.status : "");
-    tab.setAttribute("search-status", status.searchView ? status.searchView.status : "");
+// Exposes the status of the document (its panel) on the tab element for CSS:
+// main-status, search-status
+function applyTabStatus(tab, pane) {
+    tab.setAttribute("main-status", pane.mainView ? pane.mainView.status : "");
+    tab.setAttribute("search-status", pane.searchView ? pane.searchView.status : "");
 }
+
+// What a panel asks of the window
+const paneHost = {
+    closeTab: (docId) => closeTab(docId),
+    refreshTabs: () => refreshTabs(),
+    theme: () => currentTheme,
+    tableFontSize: () => tableFontSize,
+};
 
 function refreshTabs() {
     if (tabDrag) { // the tabs are being dragged: render them after the drop
@@ -828,20 +426,23 @@ function refreshTabs() {
     docCount = docs.length;
     newTab = documentsCounted(newTab, docCount);
 
-    saveChipDraft(); // the editor may be about to show another document
-    docStatus.clear();
-    activeDocId = null;
-    for (const doc of docs) {
-        docStatus.set(doc.id, { mainView: doc.mainView, searchView: doc.searchView, path: doc.path });
-        if (doc.active) activeDocId = doc.id;
+    activeDocId = docs.find(doc => doc.active)?.id ?? null;
+    // A panel per open document
+    const changes = paneChanges([...panes.keys()], docs.map(doc => doc.id));
+    for (const docId of changes.remove) {
+        const pane = panes.get(docId);
+        if (pane === shownPane) {
+            splitters = pane.hide(); // the next panel looks the same
+            shownPane = null;
+        }
+        pane.destroy();
+        panes.delete(docId);
     }
-    // The tables show the rows of the active document
-    for (const list of [getMainViewList(), getSearchViewList()])
-        if (list) list.docId = activeDocId;
-    // The filters first: the rows the columns re-render refer to its rules
-    if (activeDocId !== filtersDocId) showFilters(); // the sets change by commands only
-    applyColumns();
-    getSearchViewList().matchColors = committedColors.get(activeDocId) ?? []; // before the results are shown
+    for (const docId of changes.create)
+        panes.set(docId, new DocumentPane(docId, $("#document-panes"), splitters, paneHost));
+    for (const doc of docs)
+        panes.get(doc.id).setViews({ mainView: doc.mainView, searchView: doc.searchView, path: doc.path },
+            false); // rendered by showDocument() below
 
     // Same documents in the same order (e.g. another tab was activated): the
     // elements are kept, so a tab being pressed or dragged stays in the DOM
@@ -868,48 +469,13 @@ function refreshTabs() {
         if (doc.active && !newTab.active) tab.classList.add("active");
         else tab.classList.remove("active");
         tab.$(".tab-name").textContent = doc.name;
-        applyTabStatus(tab, docStatus.get(doc.id));
+        applyTabStatus(tab, panes.get(doc.id));
     });
     renderNewTab();
 
-    for (const docId of mainViewStates.keys())
-        if (!docStatus.has(docId)) mainViewStates.delete(docId); // closed
-    for (const docId of searchViewStates.keys())
-        if (!docStatus.has(docId)) searchViewStates.delete(docId);
-    for (const docId of chipDrafts.keys())
-        if (!docStatus.has(docId)) chipDrafts.delete(docId);
-    for (const docId of committedChips.keys())
-        if (!docStatus.has(docId)) committedChips.delete(docId);
-    for (const docId of committedColors.keys())
-        if (!docStatus.has(docId)) committedColors.delete(docId);
-    for (const docId of filterMessages.keys())
-        if (!docStatus.has(docId)) filterMessages.delete(docId);
-
-    updateViewMode();
-    updateSearchViewMode();
-    showChipDraft();
-    updateChipPending();
+    showDocument();
 }
 
-// The columns of the log tables follow the format of the active document, as
-// the layout of the format in Settings arranges them. The tables are rebuilt
-// only when they change: switching between documents of the same format keeps
-// them as they are.
-// @returns the JSON of the columns of the tables, "[]" if no document
-let appliedColumns = null; // JSON of the columns the tables show
-function applyColumns() {
-    const json = activeDocId === null ? "[]" : Window.this.xcall("getTableColumns", activeDocId) || "[]";
-    if (json === "[]" || json === appliedColumns) return json; // none, or unchanged
-    appliedColumns = json;
-    const columns = JSON.parse(json);
-    for (const table of $$("table.log-table")) {
-        const list = table.$("tbody");
-        list.setColumns(columns);
-        list.componentUpdate?.();
-        list.refreshVisibleRows?.(); // rows on screen get the new cells
-    }
-    return json;
-}
 
 // The New Tab element: after all the document tabs while open
 function renderNewTab() {
@@ -1085,226 +651,70 @@ function finishTabDrag(moved) {
     if (d.refreshPending) refreshTabs();
 }
 
-// Texts of the main view statuses other than the table and the lost file
-const mainViewTexts = {
-    loadingFile: (vm) => `Loading file... ${percent(vm.progress)}%`,
-    loadFailed: () => "Failed to load the file",
-    filtering: (vm) => `Filtering... ${percent(vm.progress)}%`,
-    filterCancelled: () => "Filter cancelled",
-    filterFailed: () => "Filter failed",
-};
+// The panel shown: that of the document of the active tab, none while the
+// placeholder is (no document, or the New Tab)
+let shownPane = null;
+// The sizes of the splitters of the panel shown last: a panel shown next
+// gets them, so the panels look the same (see DocumentPane.show)
+let splitters = { cols: "200px, *", rows: "*, 250dip", colsState: null, rowsState: null };
 
-// Line under the text of a status: what the user can do, or the error
-const mainViewDetails = {
-    loadingFile: () => "Cancel closes the file",
-    loadFailed: (vm) => vm.error || "",
-    filterCancelled: () => "Change or clear the filters to show messages again",
-    filterFailed: (vm) => vm.error || "",
-};
-
-const searchViewDetails = {
-    searchCancelled: () => "Run the search again to see results",
-    searchFailed: (vm) => vm.error || "",
-};
-
-// Fills a status view: text, progress (hidden without one), detail, Cancel
-// (its row hidden when the status can't be cancelled)
-function showStatus(ids, vm, texts, details) {
-    const progress = $(ids.progress);
-    const hasProgress = vm.progress !== undefined;
-    progress.style.display = hasProgress ? "" : "none";
-    if (hasProgress) progress.value = percent(vm.progress);
-    const text = texts[vm.status];
-    $(ids.status).innerText = text ? text(vm) : vm.status;
-    const detail = details[vm.status];
-    $(ids.detail).innerText = detail ? detail(vm) : "";
-    $(ids.cancel).parentElement.style.display = vm.canCancel ? "" : "none";
-}
-
-function percent(progress) {
-    return Math.round(progress * 100);
-}
-
-// Remembers in `states` the scroll and the selection of `list` for `docId`;
-// call while the list still shows that document
-function saveListState(list, states, docId, dataVersion) {
-    const index = list?.vlist?.firstVisibleItemIndex;
-    if (typeof index === "number")
-        states.set(docId, { dataVersion, index, selection: list.saveSelection() });
-}
-
-// Returns: the state to restore when the list shows `docId` again, null if
-// it wasn't shown before or its content has changed since
-function savedListState(states, docId, dataVersion) {
-    const saved = states.get(docId);
-    return saved && saved.dataVersion === dataVersion ? saved : null;
-}
-
-// Reloads the rows of `list` after its data changed. scrollTo: null keeps the
-// scroll position, "start" scrolls to the top, a number scrolls to that row
-function reloadList(list, scrollTo = null) {
-    if (scrollTo === "start") list.scrollTo(0, 0);
-    // Carried out by the render that componentUpdate() posts, see VirtualList.navigateTarget
-    if (scrollTo !== null) list.navigateTarget = scrollTo;
-    list.componentUpdate();
-    list.refreshVisibleRows(); // the rows may show other messages now
-}
-
-// Renders the main view of the active document as its machine shows it, or
-// the placeholder instead of all the panels while no document is open
-function updateViewMode() {
-    const table = getMainViewTable();
-    const loading = getLoadingContainer();
-    const empty = $("#empty-placeholder");
-    const lostView = $("#source-lost");
-    // The document shown: none while the placeholder is (the New Tab too)
+// Shows the panel of the active document, or the placeholder instead of all
+// the panels while no document is shown
+function showDocument() {
     const docId = shownDocument(newTab, docCount, activeDocId);
-    const status = docStatus.get(docId);
-    const vm = status ? status.mainView : null;
-
-    // Leaving the table of another document: the rows on screen are still its own
-    if (shownDocId !== null && shownDocId !== docId && shownDataVersion !== null)
-        saveListState(getMainViewList(), mainViewStates, shownDocId, shownDataVersion);
-
-    // No document shown: the placeholder replaces all the panels, the filters too
-    empty.style.display = vm ? "none" : "flex";
-    $("#document-views").style.display = vm ? "" : "none";
-
-    const showOnly = (shown) => {
-        for (const element of [table, loading, lostView])
-            element.style.display = element !== shown ? "none" : "block";
-    };
-
-    if (!vm) {
-        // Rendered on entering it only: not on every event of a hidden
-        // document, which would rebuild the list under the mouse
-        const mode = newTab.active ? "newTab" : "start";
-        if (shownPlaceholder !== mode) renderPlaceholder();
-        shownPlaceholder = mode;
-        shownDocId = null;
-        shownDataVersion = null;
+    const pane = docId === null ? null : panes.get(docId) ?? null;
+    const empty = $("#empty-placeholder");
+    empty.style.display = pane ? "none" : "flex";
+    $("#document-panes").style.display = pane ? "" : "none";
+    if (pane !== shownPane) {
+        if (shownPane) splitters = shownPane.hide();
+        shownPane = pane;
+        if (pane) pane.show(splitters.colsState ? splitters : null);
+    } else if (pane) {
+        pane.refresh();
+    }
+    if (pane) {
+        shownPlaceholder = null;
         return;
     }
-
-    shownPlaceholder = null;
-    if (vm.status !== "sourceLost") $("#source-lost-error").innerText = "";
-
-    if (vm.status === "ready") {
-        showOnly(table);
-        if (docId !== shownDocId) {
-            console.log("View update: doc", docId, "content", vm.dataVersion);
-            const saved = savedListState(mainViewStates, docId, vm.dataVersion);
-            getMainViewList().restoreSelection(saved ? saved.selection : null);
-            reloadLogTable(saved ? saved.index : "start");
-        } else if (vm.dataVersion !== shownDataVersion) {
-            console.log("View update: content", vm.dataVersion, "of doc", docId);
-            getMainViewList().resetSelection(); // the rows are other messages now
-            reloadLogTable();
-        }
-        shownDocId = docId;
-        shownDataVersion = vm.dataVersion;
-        return;
+    // Rendered on entering it only: not on every event of a hidden
+    // document, which would rebuild the list under the mouse
+    const mode = newTab.active ? "newTab" : "start";
+    if (shownPlaceholder !== mode) {
+        renderPlaceholder();
+        empty.state.focus = true; // keys don't go to a hidden panel
     }
-
-    if (vm.status === "sourceLost") {
-        showOnly(lostView);
-        $("#source-lost-path").innerText = status.path || "";
-    } else {
-        showOnly(loading);
-        showStatus({ status: "#doc-load-status", progress: "#doc-load-progress",
-            detail: "#doc-load-detail", cancel: "#btn-cancel-load" }, vm, mainViewTexts, mainViewDetails);
-    }
-    shownDocId = docId;
-    shownDataVersion = null; // the next table is reloaded, whatever its dataVersion
-}
-
-// Texts of the search view statuses other than the results
-const searchViewTexts = {
-    waitingForView: () => "Waiting for the log view...",
-    searching: (vm) => `Searching... ${percent(vm.progress)}%`,
-    searchCancelled: () => "Search cancelled",
-    searchFailed: () => "Search failed",
-    sourceLost: () => "The file is no longer available",
-};
-
-// Search results rendered last time, as shownDocId / shownDataVersion for the
-// main view: the list reloads when another document or content is shown
-let shownSearchDocId = null;
-let shownSearchDataVersion = null;
-
-// Renders the search view of the active document as its machine shows it.
-// No document: an empty result, same as a document before any search.
-function updateSearchViewMode() {
-    const table = getSearchViewTable();
-    if (!table) return;
-
-    const loading = $("#search-loading-container");
-    const status = docStatus.get(activeDocId);
-    const vm = status ? status.searchView : { status: "ready", canCancel: false, dataVersion: null };
-    const searchList = getSearchViewList();
-
-    // Leaving the results of another document: the rows on screen are still its own
-    if (searchList && shownSearchDocId !== null && shownSearchDocId !== activeDocId
-            && shownSearchDataVersion !== null)
-        saveListState(searchList, searchViewStates, shownSearchDocId, shownSearchDataVersion);
-
-    if (vm.status === "ready") {
-        table.style.display = "block";
-        loading.style.display = "none";
-        if (searchList && activeDocId !== shownSearchDocId) {
-            const saved = savedListState(searchViewStates, activeDocId, vm.dataVersion);
-            searchList.restoreSelection(saved ? saved.selection : null);
-            reloadList(searchList, saved ? saved.index : "start");
-        } else if (searchList && vm.dataVersion !== shownSearchDataVersion) {
-            searchList.resetSelection(); // the rows are other messages now
-            reloadList(searchList);
-        }
-        shownSearchDocId = activeDocId;
-        shownSearchDataVersion = vm.dataVersion;
-        return;
-    }
-
-    table.style.display = "none";
-    loading.style.display = "block";
-    showStatus({ status: "#search-view-status", progress: "#search-view-progress",
-        detail: "#search-view-detail", cancel: "#btn-cancel-search" }, vm, searchViewTexts, searchViewDetails);
-
-    shownSearchDocId = activeDocId;
-    shownSearchDataVersion = null; // the next result is reloaded, whatever its dataVersion
+    shownPlaceholder = mode;
 }
 
 // Native: the search view of a document shows something else now.
 // json: { status, canCancel, <fields of the view> }, see source/ui/search_view_fsm.d
-// Arrives for every document; only the active one is rendered.
+// Arrives for every document; a hidden panel renders it when shown.
 globalThis.onSearchViewChanged = function (docId, json) {
-    const status = docStatus.get(docId);
-    if (!status) return; // tab not rendered yet: refreshTabs() will take the snapshot
+    const pane = panes.get(docId);
+    if (!pane) return; // tab not rendered yet: refreshTabs() will take the snapshot
 
-    status.searchView = JSON.parse(json);
-    if (status.searchView.status !== "searching")
+    const vm = JSON.parse(json);
+    if (vm.status !== "searching")
         console.log("Native: onSearchViewChanged", docId, json);
-
+    pane.setViews({ searchView: vm });
     const tab = findTab(docId);
-    if (tab) applyTabStatus(tab, status);
-
-    if (docId === shownDocument(newTab, docCount, activeDocId)) updateSearchViewMode();
+    if (tab) applyTabStatus(tab, pane);
 };
 
 // Native: the main view of a document shows something else now.
 // json: { status, canCancel, <fields of the view> }, see source/ui/main_view_fsm.d
-// Arrives for every document; only the active one is rendered.
+// Arrives for every document; a hidden panel renders it when shown.
 globalThis.onMainViewChanged = function (docId, json) {
-    const status = docStatus.get(docId);
-    if (!status) return; // tab not rendered yet: refreshTabs() will take the snapshot
+    const pane = panes.get(docId);
+    if (!pane) return; // tab not rendered yet: refreshTabs() will take the snapshot
 
-    status.mainView = JSON.parse(json);
-    if (status.mainView.status !== "loadingFile" && status.mainView.status !== "filtering")
+    const vm = JSON.parse(json);
+    if (vm.status !== "loadingFile" && vm.status !== "filtering")
         console.log("Native: onMainViewChanged", docId, json);
-
+    pane.setViews({ mainView: vm });
     const tab = findTab(docId);
-    if (tab) applyTabStatus(tab, status);
-
-    if (docId === shownDocument(newTab, docCount, activeDocId)) updateViewMode();
+    if (tab) applyTabStatus(tab, pane);
 };
 
 // Native: a file was opened, in a new document or in the one that had it open
@@ -1324,30 +734,14 @@ globalThis.onDocumentClosed = function (docId) {
     refreshTabs();
 };
 
-// scrollTo: null keeps the scroll position, "start" scrolls to the top,
-// a number scrolls to that row
-globalThis.reloadLogTable = function (scrollTo = null) {
-    const logList = getMainViewList();
-    if (logList) {
-        console.log("Reloading log table", scrollTo !== null ? `(scroll to ${scrollTo})` : "");
-        reloadList(logList, scrollTo);
-
-        // Print DOM tree of the table after a short delay so vlist has time to render
-        /*setTimeout(() => {
-            const table = getMainViewTable();
-            if (table) {
-                console.log("\n--- DOM TREE DUMP (table) ---");
-                console.log(table.outerHTML);
-                console.log("-----------------------------\n");
-            }
-        }, 500);
-        */
-    }
+// Native: the rows of the main view shown look different now (decoding)
+globalThis.reloadLogTable = function () {
+    shownPane?.reloadMainRows();
 };
 
 globalThis.getAppState = function () {
     const [left, top, width, height] = Window.this.box("xywh", "border", "screen", true);
-    const list = getMainViewList();
+    const list = panes.get(activeDocId)?.mainList; // shown or under the New Tab
     return JSON.stringify({
         windowRect: { left, top, width, height },
         theme: currentTheme,

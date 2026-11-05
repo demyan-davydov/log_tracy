@@ -93,18 +93,6 @@ export class VirtualDltTBody extends VirtualSelect {
         return this._selection ??= new RowSelection();
     }
 
-    // The selection, to be restored by restoreSelection() while the list shows
-    // the same content: it refers to positions in the view
-    saveSelection() {
-        return this.selection.copy();
-    }
-
-    // Restores a selection from saveSelection(); null clears the selection.
-    // Takes effect on the next render of the rows.
-    restoreSelection(selection) {
-        this._selection = selection ? selection.copy() : new RowSelection();
-    }
-
     // Nothing is selected or current any more: the view shows other rows now
     resetSelection() {
         this.selection.reset();

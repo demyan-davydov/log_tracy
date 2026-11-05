@@ -36,16 +36,16 @@ header {
     background: var(--bg-search-pending);
 }
 
-#filter-message:empty {
+.filter-message:empty {
     display: none;
 }
 
-#filter-message {
+.filter-message {
     color: red;
     padding: 2px 4px;
 }
 
-#main-content {
+.main-content {
     size: *;
     position: relative;
     overflow: hidden;
@@ -388,14 +388,19 @@ frameset {
     height: *;
 }
 
-#sidebar {
+/* The panels of the documents: one shown, the others display: none */
+#document-panes {
+    size: *;
+}
+
+.sidebar {
     background: var(--bg-sidebar);
     border-right: 1px solid var(--border-color);
     padding: 10px;
     width: 250px;
 }
 
-#sidebar header {
+.sidebar header {
     background: transparent;
     border-bottom: 2px solid var(--border-sidebar-header);
     margin-bottom: 10px;
@@ -405,9 +410,9 @@ frameset {
     font-weight: 600;
 }
 
-/* ---- Filter sets of the active document: showFilters() in script.js ---- */
+/* ---- Filter sets of a document: DocumentPane.showFilters() in document-pane.js ---- */
 
-#filter-sets {
+.filter-sets {
     flow: vertical;
 }
 
@@ -513,15 +518,15 @@ frameset {
 }
 
 /* A further section of the sidebar, below the filters */
-#sidebar header.sidebar-section {
+.sidebar header.sidebar-section {
     margin-top: 24px;
 }
 
-#sidebar header + .filter-actions {
+.sidebar header + .filter-actions {
     margin-top: 0;
 }
 
-#sidebar .filter-actions button {
+.sidebar .filter-actions button {
     padding: 6px 12px;
     background: var(--btn-default-bg);
     border: 1px solid var(--border-color);
@@ -530,18 +535,18 @@ frameset {
     color: var(--text-main);
 }
 
-#sidebar .filter-actions button:hover {
+.sidebar .filter-actions button:hover {
     background: var(--btn-default-hover);
 }
 
 
 
-#search-results-panel {
+.search-results-panel {
     border-top: 1px solid var(--border-color);
     background: var(--bg-details);
 }
 
-#search-results-panel header {
+.search-results-panel header {
     padding: 4px;
     background: var(--bg-details-header);
     font-weight: bold;

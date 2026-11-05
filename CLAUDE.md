@@ -47,7 +47,8 @@ LogIndex (domain/log_index)                offset/filter/search indexes, built o
 LogDocument (domain/log_document)          a log + its main view and search view, operation events
 Workspace (domain/workspace)               open documents, the current one
 MainWindow (ui/main_window)                Sciter window: xcall bridge to the script
-resources/script.js, virtual-dlt-view.js   tabs, panels, virtual table built from the column schema
+resources/script.js, document-pane.js     tabs; a panel per document (filters, tables, search)
+resources/virtual-dlt-view.js              virtual table built from the column schema
 ```
 
 ### Where things live
@@ -163,8 +164,18 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
     it is).
   - How a cell shows its value lives in the Sciter-free `resources/cell-format.js`, tested
     by `tests/js`.
-- Per-document UI state lives in `Map`s keyed by document id in `script.js` (search drafts,
-  quick filter values, scroll/selection).
+- Every open document has its own panel, `DocumentPane` (`resources/document-pane.js`): the
+  filters of the sidebar, both tables, the search editor, and the state behind them. Only the
+  panel of the active tab is shown, the others are `display: none` and keep their rows, scroll,
+  selection and draft as they are; a hidden panel renders what changed when it is shown.
+  `script.js` keeps the tabs, the placeholder and the settings.
+  - The calls of a document's views, filters and search take its id first
+    (`getMainViewItem(docId, index)`, ...); only the menu and Settings use the active document.
+  - The sizes of the splitters follow from the panel shown before.
+  - Never hide a log table itself: one hidden by `display: none` before it was ever laid out
+    keeps its cells 1px wide for good (Sciter). Status views cover it instead
+    (`.status-view.overlay`).
+  - What a table does on a change of its view is the Sciter-free `resources/pane-state.js`.
 - The view status shown to the user comes from the state machines `ui/main_view_fsm` and
   `ui/search_view_fsm` (on `utils/fsm`). They are kept free of Sciter so they can be unit-tested.
 - UI command logic that needs testing goes into Sciter-free modules (e.g. `ui/filter_commands`),

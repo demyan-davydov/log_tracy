@@ -17,6 +17,31 @@
     color: var(--text-main);
 }
 
+/* A status view over the table it replaces: the table is never hidden itself
+   (see renderPane in document-pane.js), the view covers it whole */
+.tab-content,
+.search-body {
+    position: relative;
+}
+
+.search-body {
+    size: *;
+}
+
+.status-view.overlay {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    size: auto; /* by the four edges: Sciter gives height: 100% no height here */
+}
+
+/* It takes the focus from the table it covers (DocumentPane.takeFocus): no ring */
+.status-view.overlay:focus {
+    outline: none;
+}
+
 .status-body {
     flow: vertical;
     width: 380dip;
