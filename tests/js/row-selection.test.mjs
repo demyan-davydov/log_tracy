@@ -2,7 +2,7 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { RowSelection, selectedText, scrollTarget } from "../../resources/row-selection.js";
+import { RowSelection, selectedText, scrollTarget, autoScrollSpeed, autoScroll } from "../../resources/row-selection.js";
 
 const click = (selection, index, modifiers = {}) => selection.click(index, modifiers);
 
@@ -192,4 +192,15 @@ test("a first row longer than the limit copies nothing, and says so", () => {
     click(selection, 0);
     const result = selectedText(selection, () => "abcdef", 3);
     assert.deepEqual(result, { text: "", copied: 0, total: 1, truncated: true });
+});
+
+test("dragging past the edge scrolls at a steady speed near it, then faster up to a limit", () => {
+    const { nearDistance, minSpeed, maxSpeed, acceleration } = autoScroll;
+    assert.equal(autoScrollSpeed(0), 0, "on the edge: no scroll");
+    assert.equal(autoScrollSpeed(1), minSpeed);
+    assert.equal(autoScrollSpeed(nearDistance), minSpeed, "the same speed up to the threshold");
+    assert.equal(autoScrollSpeed(nearDistance + 10), minSpeed + 10 * acceleration, "then grows linearly");
+    assert.equal(autoScrollSpeed(100000), maxSpeed, "and stops at the limit");
+    assert.ok(autoScrollSpeed(nearDistance + 1) > minSpeed && autoScrollSpeed(nearDistance + 1) < minSpeed + 2 * acceleration,
+        "no jump at the threshold");
 });

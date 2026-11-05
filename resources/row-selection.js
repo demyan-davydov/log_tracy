@@ -171,3 +171,17 @@ export function scrollTarget(position, visibleRows) {
     const above = Math.max(0, Math.min(2, Math.floor((visibleRows - 1) / 3)));
     return Math.max(0, position - above);
 }
+
+// Auto-scroll while dragging past the edge of a list, in pixels (rows differ in
+// height: a speed in rows would rush over tall ones). Up to nearDistance from
+// the edge the speed is minSpeed, then it grows by `acceleration` per pixel
+// farther, up to maxSpeed. Speeds in px per second.
+export const autoScroll = { nearDistance: 40, minSpeed: 300, maxSpeed: 6000, acceleration: 20 };
+
+// The scroll speed with the mouse `distance` pixels past the edge
+export function autoScrollSpeed(distance) {
+    const { nearDistance, minSpeed, maxSpeed, acceleration } = autoScroll;
+    if (distance <= 0) return 0;
+    if (distance <= nearDistance) return minSpeed;
+    return Math.min(maxSpeed, minSpeed + (distance - nearDistance) * acceleration);
+}

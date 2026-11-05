@@ -3,7 +3,7 @@ import { VirtualList } from "virtual-select.js";
 import { VirtualSelect } from "virtual-select.js";
 import * as env from "@env";
 import { cellClass, cellText, itemText, rowLayout } from "cell-format.js";
-import { RowSelection, selectedText } from "row-selection.js";
+import { RowSelection, selectedText, autoScrollSpeed } from "row-selection.js";
 
 // Columns the tables of the active document show, from Window.xcall("getTableColumns"):
 // [{ id, title, kind, width, timeKind?, unitsPerSecond?, labels? }]
@@ -242,19 +242,29 @@ function beginRowDrag(list, toggle, y) {
     endRowDrag();
     list.selection.beginDrag({ toggle });
     list.state.capture(true);
-    rowDrag = { list, y, timer: setInterval(autoScrollRowDrag, 50) };
+    rowDrag = { list, y, timer: setInterval(autoScrollRowDrag, 16) };
 }
 
 // A mouse move of the document: selects up to the row under the mouse
 export function moveRowDrag(evt) {
     if (!rowDrag) return;
-    if (!(evt.buttons & 1)) return endRowDrag(); // released outside the window
+    // A move without the button inside the window: the release was missed.
+    // Outside the window the moves of the captured mouse may come without the
+    // button state, so only mouseup ends the drag there.
+    if (!(evt.buttons & 1) && insideWindow(evt)) return endRowDrag();
     rowDrag.y = evt.clientY;
     const { list } = rowDrag;
     const viewIndex = list.viewIndexAt(evt.clientY);
     if (viewIndex === null || viewIndex === list.selection.current) return;
     list.selection.dragTo(viewIndex);
     list.updateRowStates();
+}
+
+// True if the mouse event is over the window's client area
+function insideWindow(evt) {
+    const box = document.documentElement.getBoundingClientRect();
+    return evt.clientX >= box.left && evt.clientX < box.right
+        && evt.clientY >= box.top && evt.clientY < box.bottom;
 }
 
 export function endRowDrag() {
@@ -264,16 +274,27 @@ export function endRowDrag() {
     rowDrag = null;
 }
 
-// While the mouse is above or below the list, scrolls it towards the mouse,
-// faster the farther it is, and selects up to the row at that edge
+// While the mouse is above or below the list, scrolls it towards the mouse by
+// pixels, faster the farther it is (autoScrollSpeed), and selects up to the
+// row at that edge
 function autoScrollRowDrag() {
+    const now = Date.now();
+    const elapsed = Math.min(100, now - (rowDrag.tickTime ?? now)); // ms; a stalled tick doesn't jump
+    rowDrag.tickTime = now;
     const { list, y } = rowDrag;
     const box = list.getBoundingClientRect();
-    const distance = y < box.top ? box.top - y : y > box.bottom ? y - box.bottom : 0;
-    if (distance === 0 || !list.vlist) return;
     const up = y < box.top;
-    const steps = Math.min(10, 1 + Math.floor(distance / 20));
-    for (let i = 0; i < steps; ++i) list.vlist.navigate(up ? "itemprior" : "itemnext");
+    const distance = up ? box.top - y : y > box.bottom ? y - box.bottom : 0;
+    if (distance === 0 || !list.vlist) {
+        rowDrag.pixels = 0;
+        return;
+    }
+    // Whole pixels only: the fraction is kept for the next tick
+    rowDrag.pixels = (rowDrag.pixels ?? 0) + autoScrollSpeed(distance) * elapsed / 1000;
+    const pixels = Math.floor(rowDrag.pixels);
+    if (pixels === 0) return;
+    rowDrag.pixels -= pixels;
+    list.vlist.scrollBy(up ? -pixels : pixels);
     const range = list.visibleRange();
     if (!range) return;
     list.selection.dragTo(up ? range[0] : range[1]);
