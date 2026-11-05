@@ -8,6 +8,8 @@
 
 import { SearchEditor } from "search-editor.js";
 import * as backend from "backend.js";
+import * as platform from "platform.js";
+import { noSearch, runSearch, searchPending, editRule } from "pane-commands.js";
 import { ruleColors } from "rule-colors.js";
 import { scrollTarget } from "row-selection.js";
 import { noTable, tableStep } from "pane-state.js";
@@ -206,8 +208,7 @@ export class DocumentPane {
         this.filters = noFilters; // what showFilters() got last
         this.filterMessage = ""; // the error of the last filter command
         this.ruleColors = new Map(); // of the rules of the filters, by rule id
-        this.committedChips = "[]"; // JSON of the chips the shown search was run with
-        this.committedColors = []; // their match colors, by their place
+        this.search = noSearch; // the search the results were found by (pane-commands.js)
         this.lastFocus = null; // focused in the panel when it was hidden
         this.coveredFocus = new Set(); // the lists a status view took the focus from
 
@@ -294,7 +295,7 @@ export class DocumentPane {
         if (!this.filtersShown) this.showFilters();
         // The rules first: the rows the columns re-render refer to them
         for (const list of this.lists) list.ruleColors = this.ruleColors;
-        this.searchList.matchColors = this.committedColors;
+        this.searchList.matchColors = this.search.colors;
         // The columns before the rows: a reload of a view renders them with these
         const changed = this.setColumns();
         this.updateMainView();
@@ -405,26 +406,20 @@ export class DocumentPane {
         else showStatus(loading, vm, searchViewTexts, searchViewDetails);
     }
 
-    // Runs the search for the chips of the editor. The query is committed only
-    // by Enter or the Search button; editing it doesn't touch the results, the
-    // toolbar just shows that what's typed isn't what the results were found
-    // by (updateChipPending). See docs/stories/advanced-search.md.
+    // Runs the search for the chips of the editor (Enter, the Search button),
+    // see runSearch
     runChipSearch() {
-        const chips = this.chipEditor.searchChips();
-        // an invalid regex chip is refused here; the backend checks again
-        let error = this.chipEditor.firstError();
-        if (!error) error = backend.startChipSearch(this.docId, chips);
-        this.root.$(".chip-search-message").innerText = error ? `Search error: ${error}` : "";
-        if (!error) {
-            this.committedChips = JSON.stringify(chips);
-            this.committedColors = this.chipEditor.searchChipColors();
-            this.searchList.matchColors = this.committedColors; // before the results come
-        }
+        const editor = this.chipEditor;
+        const run = runSearch(this.search, editor.searchChips(), () => editor.searchChipColors(),
+            () => editor.firstError(), chips => backend.startChipSearch(this.docId, chips));
+        this.search = run.search;
+        this.root.$(".chip-search-message").innerText = run.message;
+        if (run.started) this.searchList.matchColors = this.search.colors; // before the results come
         this.updateChipPending();
     }
 
     updateChipPending() {
-        const pending = JSON.stringify(this.chipEditor.searchChips()) !== this.committedChips;
+        const pending = searchPending(this.search, this.chipEditor.searchChips());
         this.root.$(".chip-search-toolbar").classList.toggle("pending", pending);
         this.root.$(".btn-chip-search").classList.toggle("primary", pending);
     }
@@ -447,32 +442,22 @@ export class DocumentPane {
     }
 
     // Opens the editor of a rule of a set (rule -1: a new one) and applies
-    // what it closes with. A rule the backend refuses (e.g. an invalid regular
-    // expression) opens the editor again with the error.
+    // what it closes with, see editRule in pane-commands.js.
     // @returns true if the rule was applied, false if the editor was cancelled
     editRule(set, rule) {
         const docId = this.docId;
-        let values = backend.filterRule(docId, set, rule);
+        const values = backend.filterRule(docId, set, rule);
         if (!values) return false;
-        let error = "";
-        for (;;) {
-            const result = Window.this.modal({
-                url: "rule-editor.htm",
-                alignment: "center",
-                parameters: {
-                    title: rule < 0 ? "New Rule" : "Edit Rule", theme: this.host.theme(), rule: values, error,
-                    columns: backend.columns(docId),
-                    // What is wrong with the rule, while it is edited: the editor
-                    // marks it at once instead of being reopened with the error
-                    check: rule => backend.checkFilterRuleJson(docId, rule)
-                }
-            });
-            if (!result) return false;
-            error = rule < 0 ? backend.addFilterRule(docId, set, result)
-                : backend.updateFilterRule(docId, set, rule, result);
-            if (!error) break;
-            values = result;
-        }
+        const open = (values, error) => platform.showModal("rule-editor.htm", {
+            title: rule < 0 ? "New Rule" : "Edit Rule", theme: this.host.theme(), rule: values, error,
+            columns: backend.columns(docId),
+            // What is wrong with the rule, while it is edited: the editor
+            // marks it at once instead of being reopened with the error
+            check: rule => backend.checkFilterRuleJson(docId, rule)
+        });
+        const apply = result => rule < 0 ? backend.addFilterRule(docId, set, result)
+            : backend.updateFilterRule(docId, set, rule, result);
+        if (!editRule(values, open, apply)) return false;
         this.filterMessage = "";
         this.showFilters();
         this.refreshRuleColors();
@@ -598,8 +583,7 @@ export class DocumentPane {
             this.mainShown = noTable;
             this.searchShown = noTable;
             this.appliedColumns = null;
-            this.committedChips = "[]";
-            this.committedColors = [];
+            this.search = noSearch;
             this.updateChipPending();
             this.showFilters();
             const refreshStart = Date.now();
@@ -614,10 +598,7 @@ export class DocumentPane {
         on("click", ".main-status .btn-cancel", () => backend.cancelMainView(this.docId));
 
         on("click", ".btn-fibex", () => {
-            const fn = Window.this.selectFile({
-                mode: "open",
-                filter: "XML Files (*.xml)|*.xml|All Files (*.*)|*.*"
-            });
+            const fn = platform.chooseFileToOpen("XML Files (*.xml)|*.xml|All Files (*.*)|*.*");
             if (fn) {
                 backend.loadFibex(fn);
                 this.reloadMainRows();
@@ -630,7 +611,7 @@ export class DocumentPane {
             const filter = this.filters.canDlf
                 ? "Filter Files (*.logfilter;*.dlf)|*.logfilter;*.dlf|DLT Explorer Filters (*.logfilter)|*.logfilter|dlt-viewer Filters (*.dlf)|*.dlf|All Files (*.*)|*.*"
                 : "DLT Explorer Filters (*.logfilter)|*.logfilter|All Files (*.*)|*.*";
-            const fn = Window.this.selectFile({ mode: "open", filter });
+            const fn = platform.chooseFileToOpen(filter);
             if (fn) this.showFilterResult(backend.loadFilterFile(this.docId, fn));
         });
 
@@ -662,14 +643,13 @@ export class DocumentPane {
             const dlt = "dlt-viewer Filters (*.dlf)|*.dlf";
             const kinds = !canDlf ? [native] : dlf ? [dlt, native] : [native, dlt];
             const params = {
-                mode: "save",
                 caption: "Export Filter",
                 extension: dlf ? "dlf" : "logfilter",
                 filter: kinds.join("|") + "|All Files (*.*)|*.*"
             };
             // Without its extension: the dialog adds it itself (name.dlf.dlf otherwise)
             if (fileName) params.path = fileName.replace(/\.(dlf|logfilter)$/i, "");
-            const fn = Window.this.selectFile(params);
+            const fn = platform.chooseFileToSave(params);
             if (fn) this.showFilterResult(backend.exportFilterSet(this.docId, set, fn));
             return true;
         });

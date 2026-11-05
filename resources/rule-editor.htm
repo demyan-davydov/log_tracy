@@ -78,8 +78,9 @@
     <script type="module">
         import { $, $$ } from "@sciter";
         import { editableColumns, rowsFromRule, conditionsFromRows, describeCondition, errorsOfRows, levelNames } from "rule-form.js";
+        import * as platform from "platform.js";
 
-        const params = Window.this.parameters || {};
+        const params = platform.dialogParameters() || {};
         // Without parameters (opened on its own to look at it): a sample log
         const columns = params.columns || [
             { id: "ecu", title: "EcuId", kind: "Text" },
@@ -222,7 +223,7 @@
 
         document.on("ready", () => {
             if (params.theme === "dark") $("#theme-style").attributes["src"] = "theme-dark.css";
-            Window.this.caption = params.title || "Filter Rule";
+            platform.setDialogTitle(params.title || "Filter Rule");
             const conditions = $("#conditions");
             for (const column of editable) conditions.append(renderRow(column));
 
@@ -261,13 +262,13 @@
         document.on("change", "#color", () => { $("#has-color").value = true; });
 
         function accept() {
-            if (!$("#btn-ok").state.disabled) Window.this.close(read());
+            if (!$("#btn-ok").state.disabled) platform.closeDialog(read());
         }
         $("#btn-ok").on("click", accept);
-        $("#btn-cancel").on("click", () => Window.this.close(null));
+        $("#btn-cancel").on("click", () => platform.closeDialog(null));
 
         document.on("keydown", (evt) => {
-            if (evt.code === "Escape") { Window.this.close(null); return true; }
+            if (evt.code === "Escape") { platform.closeDialog(null); return true; }
             if (evt.code === "Enter" && evt.target.tag === "input") { accept(); return true; }
         });
     </script>

@@ -5,7 +5,7 @@
 // functions of search-editing.js, this module only binds them to the DOM.
 // Story: docs/stories/advanced-search.md.
 
-import * as env from "@env";
+import * as platform from "platform.js";
 import {
     moveCaret, moveTo, typeInGap, typeBarInChip, deleteInGap, searchChips,
     sameQuery, assignColors, historyIndex, selection, extendCaret, selectChipsFrom, selectTo, selectAll, selectedChips, deleteSelection, insertChips,
@@ -17,7 +17,7 @@ import { matchColorCount, matchColorClass } from "match-colors.js";
 // The blink of the caret between chips, as a text field's: half a period on, half off
 const blinkHalfPeriod = 530;
 
-const isMac = () => env.PLATFORM === "OSX";
+const isMac = platform.isMac;
 
 export class SearchEditor {
     // @param root - the editor element (focusable: tabindex="0")
@@ -544,7 +544,7 @@ export class SearchEditor {
     copy(cut) {
         const chips = selectedChips(this.state);
         if (this.state.pos.gap === undefined || chips.length === 0) return this.state.pos.gap !== undefined;
-        Clipboard.writeText(formatQuery(chips));
+        platform.copyText(formatQuery(chips));
         if (cut) this.go(deleteSelection(this.state));
         return true;
     }
@@ -553,8 +553,7 @@ export class SearchEditor {
     // as one line of at most pasteLimit characters (pastedText), into the chip the
     // caret is in or as a new chip in a gap
     paste() {
-        // Sciter's readText ends the text with a NUL character
-        const raw = (Clipboard.readText() ?? "").replace(/\0+$/, "");
+        const raw = platform.clipboardText();
         if (raw === "") return true;
         const synced = this.syncedState();
         const chips = parseQuery(raw);

@@ -12,15 +12,16 @@ import domain.document : Document;
 import domain.document_id : DocumentId;
 import domain.log_document : LogDocument;
 import domain.document_item : DocumentItem;
-import log_core.log_format : ColumnInfo, ColumnKind, FormatChoice;
+import log_core.log_format : ColumnInfo, FormatChoice;
 import log_core.log_message : TimeKind;
 import log_core.rule_filter : RuleId;
 import log_core.search_filter : checkRegex, MatchRange;
 import ui.app_session : AppSession;
 import ui.app_settings : AppSettings, toJSON;
 import ui.filter_commands : DocumentFilters;
+import ui.table_rows : columnsJson, rowLength, writeRow;
 
-import std.algorithm : count, startsWith;
+import std.algorithm : startsWith;
 import std.array : empty;
 import std.conv : to;
 import std.json : JSONValue;
@@ -358,147 +359,54 @@ class MainWindow : SciterWindow
     }
 }
 
-//! @brief The text of a hex cell: all 64 bits, as typed into the quick filter
-//! (FieldFilter reads FFFFFFFFFFFFFFFF as -1). A script number would round
-//! values above 2^53 and show -1 as "-1".
-string hexCellText(long value) pure
+/// The cells of a row as Sciter values (see ui.table_rows.writeRow)
+private struct SciterCells
 {
-    import std.format : format;
+    SciterValue row;
+    AsArrayView cells;
 
-    return format("%X", cast(ulong) value);
-}
+    this(size_t length)
+    {
+        row = SciterValue.makeArrayWithSize(length);
+        cells = AsArrayView(row);
+    }
 
-@("hexCellText: the 64 bits in upper case hex")
-unittest
-{
-    assert(hexCellText(0x1F) == "1F");
-    assert(hexCellText(0) == "0");
-    assert(hexCellText(-1) == "FFFFFFFFFFFFFFFF");
-    assert(hexCellText(0x1234_5678_9ABC_DEF1) == "123456789ABCDEF1", "no rounding above 2^53");
-}
-
-//! @brief A row of the log table: anchored, rule id, view index, message
-//! index, level, then a cell per column (see virtual-dlt-view.js). The level
-//! colors the cells of the columns that ask for it (ColumnInfo.byLevel).
-//! @param rule - the first filter rule with a color the record matches (the
-//! script shows it by its color); none is sent as null
-//! @param withMatches - a row of the search results: after the cells comes what
-//! the chips found in the payload, [[start, end, chip]] (see MatchRange)
-SciterValue asSciterRow(int index, ref const(DocumentItem) item, const(ColumnInfo)[] columns,
-    RuleId rule, bool withMatches = false, const(MatchRange)[] matches = null)
-{
-    enum fixedCells = 5;
-    const msg = &item.message();
-
-    SciterValue row = SciterValue.makeArrayWithSize(fixedCells + columns.length + (withMatches ? 1 : 0));
-    auto cells = AsArrayView(row);
-    cells.opIndex(0, item.anchored);
-    if (rule.isValid())
-        cells.opIndex(1, cast(double) rule.toInt());
-    else
+    void nothing(size_t cell)
     {
         SciterValue none = SciterValue.makeNull();
-        cells.opIndex(1, none);
+        cells.opIndex(cell, none);
     }
-    cells.opIndex(2, index);
-    cells.opIndex(3, cast(double) item.realIndex);
-    cells.opIndex(4, cast(int) msg.level);
 
-    foreach (i, ref column; columns)
+    void boolean(size_t cell, bool value) { cells.opIndex(cell, value); }
+    void integer(size_t cell, int value) { cells.opIndex(cell, value); }
+    void number(size_t cell, double value) { cells.opIndex(cell, value); }
+    void text(size_t cell, const(wchar)[] value) { cells.opIndex(cell, value); }
+    void text(size_t cell, const(char)[] value) { cells.opIndex(cell, value); }
+
+    void time(size_t cell, double microseconds, TimeKind kind)
     {
-        const cell = fixedCells + i;
-        if (column.isField && !msg.hasField(column.field))
-        {
-            SciterValue none = SciterValue.makeNull(); // e.g. a line without a header
-            cells.opIndex(cell, none);
-            continue;
-        }
-        final switch (column.kind)
-        {
-        case ColumnKind.Time:
-            // [microseconds, TimeKind]: the kind of this record, the column's
-            // is only the usual one. Microseconds are exact in a double (a
-            // script number) for 285 years.
-            if (msg.timeKind == TimeKind.None)
-            {
-                SciterValue none = SciterValue.makeNull();
-                cells.opIndex(cell, none);
-            }
-            else
-            {
-                SciterValue time = SciterValue.makeArray(cast(double)(msg.timeNs / 1000), cast(int) msg.timeKind);
-                cells.opIndex(cell, time);
-            }
-            break;
-        case ColumnKind.Level:
-            cells.opIndex(cell, cast(int) msg.level);
-            break;
-        case ColumnKind.Payload:
-            cells.opIndex(cell, msg.payloadText);
-            break;
-        case ColumnKind.Text:
-            cells.opIndex(cell, msg.text(column.field));
-            break;
-        case ColumnKind.Hex:
-            cells.opIndex(cell, hexCellText(msg.number(column.field)));
-            break;
-        case ColumnKind.Integer:
-        case ColumnKind.Duration:
-        case ColumnKind.Enum:
-            cells.opIndex(cell, cast(double) msg.number(column.field));
-            break;
-        }
+        SciterValue time = SciterValue.makeArray(microseconds, cast(int) kind);
+        cells.opIndex(cell, time);
     }
-    if (withMatches)
+
+    void matches(size_t cell, const(MatchRange)[] ranges)
     {
-        SciterValue list = SciterValue.makeArrayWithSize(matches.length);
+        SciterValue list = SciterValue.makeArrayWithSize(ranges.length);
         auto view = AsArrayView(list);
-        foreach (i, const ref m; matches)
+        foreach (i, const ref m; ranges)
         {
             SciterValue fragment = SciterValue.makeArray(cast(int) m.start, cast(int) m.end, cast(int) m.chip);
             view.opIndex(i, fragment);
         }
-        cells.opIndex(fixedCells + columns.length, list);
+        cells.opIndex(cell, list);
     }
-    return row;
 }
 
-//! @brief The columns as JSON for the script (see virtual-dlt-view.js)
-string columnsJson(const(ColumnInfo)[] columns)
+/// A row of the log table as a Sciter array, see ui.table_rows.writeRow
+SciterValue asSciterRow(int index, ref const(DocumentItem) item, const(ColumnInfo)[] columns,
+    RuleId rule, bool withMatches = false, const(MatchRange)[] matches = null)
 {
-    import std.conv : to;
-
-    JSONValue[] result;
-    foreach (ref column; columns)
-    {
-        JSONValue c = [
-            "id": JSONValue(column.id),
-            "title": JSONValue(column.title),
-            "kind": JSONValue(column.kind.to!string),
-            "width": JSONValue(column.width),
-        ];
-        if (column.kind == ColumnKind.Time)
-            c["timeKind"] = JSONValue(column.timeKind.to!string);
-        if (column.kind == ColumnKind.Duration)
-            c["unitsPerSecond"] = JSONValue(column.unitsPerSecond);
-        if (column.kind == ColumnKind.Enum)
-            c["labels"] = JSONValue(column.labels);
-        if (column.byLevel)
-            c["byLevel"] = JSONValue(true);
-        result ~= c;
-    }
-    return JSONValue(result).toString();
-}
-
-@("columnsJson: a column colored by the level says so")
-unittest
-{
-    import std.algorithm.searching : canFind;
-
-    const json = columnsJson([
-        ColumnInfo("status", "Status", ColumnKind.Integer, 0, 50, TimeKind.None, 0, null, true),
-        ColumnInfo("bytes", "Bytes", ColumnKind.Integer, 1, 70),
-    ]);
-    assert(json.canFind(`"byLevel":true`), json);
-    assert(json.count(`"byLevel"`) == 1, "only for the flagged column");
+    auto cells = SciterCells(rowLength(columns.length, withMatches));
+    writeRow(cells, index, item.message, item.anchored, item.realIndex, columns, rule, withMatches, matches);
+    return cells.row;
 }

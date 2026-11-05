@@ -110,9 +110,10 @@
         import { $, $$ } from "@sciter";
         import { toggleColumn, moveColumn, resetColumns, isDefaultLayout, layoutsOf, initialFormat, formatLabel } from "column-settings.js";
         import { setShift, pressItem, dragTo, drop, showDropMarker } from "drag-strip.js";
+        import * as platform from "platform.js";
 
         // Without parameters (opened on its own to look at it): a sample DLT log
-        const params = Window.this.parameters || {
+        const params = platform.dialogParameters() || {
             theme: "light", tableFontSize: 100, columns: {
                 current: "dlt", formats: [{
                     id: "dlt", name: "DLT", payload: "Payload",
@@ -300,11 +301,11 @@
                 $("#columns-content").style.display = "none";
                 $("#no-columns").style.display = "block";
             }
-            showSection(Window.this.parameters ? "appearance" : "columns");
+            showSection(platform.dialogParameters() ? "appearance" : "columns");
         });
 
         $("#btn-save").on("click", () => {
-            Window.this.close({
+            platform.closeDialog({
                 theme: $("select#theme").value,
                 tableFontSize: parseInt($("select#table-font-size").value),
                 columnLayouts: formats.length ? layoutsOf(formats) : null,
@@ -312,7 +313,7 @@
         });
 
         $("#btn-cancel").on("click", () => {
-            Window.this.close(null);
+            platform.closeDialog(null);
         });
     </script>
 </head>
