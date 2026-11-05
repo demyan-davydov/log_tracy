@@ -5,7 +5,6 @@ module ui.document_ui;
 
 import domain.workspace : Workspace;
 import domain.document_id : DocumentId;
-import domain.log_document : LogDocument;
 import log_core.log_message : LogMessage;
 import log_core.rule_filter : RuleId;
 import log_core.search_filter : SearchFilter;
@@ -57,9 +56,7 @@ final class DocumentUi : MainViewSink, MainViewCommands, SearchViewSink, SearchV
         if (_filters is null)
         {
             auto doc = _workspace.doc(_docId);
-            auto log = cast(LogDocument) doc;
-            const formatId = log is null ? "" : log.formatChoice.id;
-            _filters = new DocumentFilters(doc.format, formatId, (filter) { doc.applyViewFilter(filter); });
+            _filters = new DocumentFilters(doc.format, doc.formatChoice.id, (filter) { doc.applyViewFilter(filter); });
         }
         return _filters;
     }

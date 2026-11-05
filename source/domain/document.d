@@ -1,25 +1,23 @@
+//! What the UI knows of an open log: the Document (its views, filter,
+//! search, anchors, the format it was opened with), the DocumentView (the
+//! rows of one view) and the operation events a document publishes.
 module domain.document;
 
 import log_core.log_message;
 import log_core.log_filter : LogFilter;
 
 import domain.document_id;
-import log_core.log_format : ColumnInfo, LogFormat;
+import log_core.log_format : ColumnInfo, FormatChoice, LogFormat;
 import domain.document_item;
 import domain.anchors;
 
 import utils.event_bus.event_bus_interface : SignalConsumer;
 
+//! The rows of one view of a document. What the view shows (loading, ready,
+//! failed...) is told by the operation events of the document, see
+//! ui.main_view_fsm and ui.search_view_fsm.
 interface DocumentView
 {
-    enum State
-    {
-        NotReady, // corresponded index not yet builded
-        Ready, // corresponded index is builded
-        BuildingIndex, // corresponded index is building
-        Error,
-    }
-
     size_t itemsCount() nothrow @nogc;
 
     bool fetchItem(size_t index, scope ref DocumentItem item);
@@ -28,14 +26,6 @@ interface DocumentView
     //! @return false if the view doesn't show that message
     bool positionOf(size_t realIndex, out size_t position);
 
-    State state();
-
-    float progress(); // return 1.0 if ready
-
-    /// Operation that brought the view to its current state: the running one
-    /// while BuildingIndex, the last one afterwards (None if there was none).
-    Document.Operation operation();
-
     void enableFilter(bool enable);
 
     bool isFilterEnabled() const;
@@ -43,11 +33,6 @@ interface DocumentView
     void applyFilter(LogFilter!wchar filter);
 
     void resetFilter();
-
-    final bool ready()
-    {
-        return state() == State.Ready;
-    }
 }
 
 interface Document
@@ -72,6 +57,10 @@ interface Document
 
     //! The format of the document, null if there is none
     const(LogFormat) format();
+
+    //! The format the document was opened with, to open its file the same
+    //! way again; unset for a document without one
+    FormatChoice formatChoice() const;
 
     //! Columns of the log table, as declared by the format of the document
     final const(ColumnInfo)[] columns()

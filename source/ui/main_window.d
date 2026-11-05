@@ -8,9 +8,11 @@ import sciter.value;
 import sciter.capi.types;
 import sciter.capi.behavior;
 
+import domain.document : Document;
 import domain.document_id : DocumentId;
+import domain.log_document : LogDocument;
 import domain.document_item : DocumentItem;
-import log_core.log_format : ColumnInfo, ColumnKind;
+import log_core.log_format : ColumnInfo, ColumnKind, FormatChoice;
 import log_core.log_message : TimeKind;
 import log_core.rule_filter : RuleId;
 import log_core.search_filter : checkRegex, MatchRange;
@@ -36,7 +38,8 @@ class MainWindow : SciterWindow
 
     this(AppSettings settings)
     {
-        _session = new AppSession(settings);
+        _session = new AppSession(settings,
+            (string path, FormatChoice choice) => cast(Document) new LogDocument(path, choice));
 
         import sciter.capi.def;
 

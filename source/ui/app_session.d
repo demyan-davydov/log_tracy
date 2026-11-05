@@ -14,7 +14,6 @@ module ui.app_session;
 import domain.document;
 import domain.document_id;
 import domain.document_item : DocumentItem;
-import domain.log_document : LogDocument;
 import domain.workspace;
 import log_core.log_format : ColumnInfo, FormatChoice;
 import log_core.rule_filter : RuleId;
@@ -68,14 +67,15 @@ final class AppSession
     private bool _settingsChanged; // since they were last written
     private bool _closing; // the window closes: no more calls of the script
 
-    /// @param open - opens a document, a LogDocument if not given
+    /// @param open - opens a document (a LogDocument in the app)
     /// @param write - writes the settings, to their file if not given
-    this(AppSettings settings, DocumentFactory open = null, SettingsWriter write = null)
+    this(AppSettings settings, DocumentFactory open, SettingsWriter write = null)
     {
+        assert(open !is null);
         _settings = settings;
         _workspace = new Workspace();
         _tableColumns = new TableColumns();
-        _open = open !is null ? open : (string path, FormatChoice choice) => cast(Document) new LogDocument(path, choice);
+        _open = open;
         _write = write !is null ? write : (in AppSettings s) { ui.app_settings.saveSettings(s); };
         subscribeToDocumentEvents();
     }
@@ -216,7 +216,7 @@ final class AppSession
         if (existing.isValid)
         {
             _workspace.setCurrent(existing);
-            rememberRecentFile(RecentFile(path, formatChoiceOf(_workspace.doc(existing)), nowMs()));
+            rememberRecentFile(RecentFile(path, _workspace.doc(existing).formatChoice, nowMs()));
             _scriptCalls ~= ScriptCall("onDocumentOpened", idOf(existing));
             return OpenResult(existing);
         }
@@ -230,7 +230,7 @@ final class AppSession
             // The filters loaded for the file last time, before the list moves it
             _documentUis[docId].filters.restore(savedFilters(_settings.recentFiles, path));
             _workspace.setCurrent(docId);
-            rememberRecentFile(RecentFile(path, formatChoiceOf(document), nowMs()));
+            rememberRecentFile(RecentFile(path, document.formatChoice, nowMs()));
             _scriptCalls ~= ScriptCall("onDocumentOpened", idOf(docId));
             return OpenResult(docId);
         }
@@ -261,7 +261,7 @@ final class AppSession
             return "the document is not open";
         const path = sourcePathOf(docId);
         // reopened in the format it had, not detected again
-        const choice = formatChoiceOf(_workspace.doc(docId));
+        const choice = _workspace.doc(docId).formatChoice;
         try
         {
             // Timings: both steps run on the UI thread and may block on a disk
@@ -347,7 +347,7 @@ final class AppSession
     /// layout of the format arranges them
     const(ColumnInfo)[] tableColumns(Document document)
     {
-        return _tableColumns.of(document.columns, formatChoiceOf(document).id, _settings.columnLayouts);
+        return _tableColumns.of(document.columns, document.formatChoice.id, _settings.columnLayouts);
     }
 
     /// The first filter rule with a color a row of the document matches
@@ -472,7 +472,7 @@ final class AppSession
     /// The Columns section of the Settings dialog, the format of the active document first
     string columnSettingsJson()
     {
-        return ui.app_settings.columnSettingsJson(_settings.columnLayouts, formatChoiceOf(_workspace.current).id);
+        return ui.app_settings.columnSettingsJson(_settings.columnLayouts, _workspace.current.formatChoice.id);
     }
 
     /// Saved by the Settings dialog: {format id: [{"id", "visible"}]}
@@ -585,13 +585,6 @@ final class AppSession
         return null;
     }
 
-    /// The format a document was opened with; unset for a document without one
-    private static FormatChoice formatChoiceOf(const Document document)
-    {
-        auto log = cast(const LogDocument) document;
-        return log is null ? FormatChoice.init : log.formatChoice;
-    }
-
     private static int idOf(DocumentId docId)
     {
         return cast(int) docId.toInt();
@@ -618,9 +611,6 @@ version (unittest)
         size_t itemsCount() nothrow @nogc { return 0; }
         bool fetchItem(size_t index, scope ref DocumentItem item) { return false; }
         bool positionOf(size_t realIndex, out size_t position) { return false; }
-        State state() { return State.Ready; }
-        float progress() { return 1; }
-        Document.Operation operation() { return Document.Operation.None; }
         void enableFilter(bool enable) {}
         bool isFilterEnabled() const { return false; }
         void applyFilter(LogFilter!wchar filter) {}
@@ -649,6 +639,7 @@ version (unittest)
         void importAnchors(const(size_t[]) anchors) {}
         bool requestCancel() { cancelAsked = true; return true; }
         bool sourceLost() { return false; }
+        FormatChoice formatChoice() const { return FormatChoice("plain-text", 0); }
     }
 
     /// A session over fake documents: a path with "missing" in it can't be opened
@@ -660,6 +651,7 @@ version (unittest)
         {
             FakeDocument[string] opened; // by path
             AppSettings[] written;
+            FormatChoice lastChoice; // asked of the factory
         }
 
         AppSession session;
@@ -671,6 +663,7 @@ version (unittest)
             auto records = new Records();
             f.records = records;
             f.session = new AppSession(settings, (string path, FormatChoice choice) {
+                records.lastChoice = choice;
                 if (path.canFind("missing"))
                     throw new Exception("no such file");
                 auto doc = new FakeDocument();
@@ -682,6 +675,7 @@ version (unittest)
 
         FakeDocument docOf(string path) { return records.opened[path]; }
         AppSettings[] writes() { return records.written; }
+        FormatChoice lastChoice() { return records.lastChoice; }
     }
 
     private string[] paths(const RecentFile[] list)
@@ -886,8 +880,12 @@ unittest
     write(path, "first line\nsecond line\n");
     scope (exit) remove(path);
 
+    import domain.log_document : LogDocument;
+
     AppSettings[] written;
-    auto session = new AppSession(AppSettings.init, null, (in AppSettings s) { written ~= AppSettings(s); });
+    auto session = new AppSession(AppSettings.init,
+        (string path, FormatChoice choice) => cast(Document) new LogDocument(path, choice),
+        (in AppSettings s) { written ~= AppSettings(s); });
     scope (exit) session.closeAll();
     const id = session.openFile(path).docId;
     assert(id.isValid);
@@ -906,4 +904,18 @@ unittest
     assert(status == "ready", status);
     assert(session.doc(id).mainView.itemsCount == 2);
     assert(session.settings.recentFiles[0].format.id.length, "the format detected is remembered");
+}
+
+@("AppSession: the recent list remembers the format the document was opened with")
+unittest
+{
+    // The format saved last time is only asked for: the document opened in
+    // another one (the saved one can't be made any more, say)
+    AppSettings settings;
+    settings.recentFiles = [RecentFile("/logs/a.log", FormatChoice("logcat", 1), 1)];
+    auto f = Fixture.make(settings);
+    f.session.openFile("/logs/a.log");
+    assert(f.lastChoice == FormatChoice("logcat", 1), "the saved format is asked for");
+    assert(f.session.settings.recentFiles[0].format == FormatChoice("plain-text", 0),
+        "the format of the document is remembered");
 }

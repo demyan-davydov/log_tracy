@@ -12,7 +12,6 @@ import domain.log_index;
 import formats.registry : createFormat, detectFormat;
 import log_core.byte_source;
 import log_core.log_format : LogFormat, ColumnInfo, FormatChoice;
-import domain.view_status;
 
 import utils.lock_guard;
 
@@ -21,7 +20,6 @@ import utils.event_bus.event_bus_interface : SignalConsumer;
 
 import std.parallelism : Task, TaskPool;
 import std.typecons : scoped, Unique, Proxy;
-import std.meta : AliasSeq;
 
 //! A log document: a log of any format with its main and search views
 class LogDocument : Document
@@ -37,8 +35,9 @@ class LogDocument : Document
     private FormatChoice _formatChoice;
 
     private EventBusAsync _events; // must outlive _index: its worker publishes here
-    private ViewStatus _mainStatus = ViewStatus(ViewStatus.State.NotReady); // offset index not built yet
-    private ViewStatus _searchStatus; // Ready: empty search result until a search runs
+    // The latest search completed (no search yet: an empty result): a new
+    // filter repeats it. False while it runs, after it was cancelled or failed.
+    private bool _searchShown = true;
     private LogIndex _index;
 
     //! A filter request waiting for the background slot. Only the latest
@@ -82,8 +81,7 @@ class LogDocument : Document
         _formatChoice = choice;
     }
 
-    //! The format the document was opened with, to open its file the same way again
-    FormatChoice formatChoice() const pure nothrow @nogc
+    override FormatChoice formatChoice() const pure nothrow @nogc
     {
         return _formatChoice;
     }
@@ -93,13 +91,15 @@ class LogDocument : Document
     this(string path, ByteSource source, LogFormat format)
     {
         _events = new EventBusAsync();
-        // Subscribed before anyone else: views are updated before external
-        // subscribers see the event, so they can read the new state right away.
-        static foreach (E; AliasSeq!(OperationStarted, OperationProgress, OperationFinished))
-        {
-            _events.subscribe((const E e) { statusOf(e.operation).on(e); });
-        }
+        // Subscribed before anyone else: the document is up to date before
+        // external subscribers see the event
+        _events.subscribe((const OperationStarted e) {
+            if (isSearchOperation(e.operation))
+                _searchShown = false;
+        });
         _events.subscribe((const OperationFinished e) {
+            if (isSearchOperation(e.operation))
+                _searchShown = e.result == OperationFinished.Result.Completed;
             _running = Operation.None;
             startPending();
         });
@@ -108,11 +108,6 @@ class LogDocument : Document
         _sourcePath = path;
         _mainView = new MainDocumentView();
         _searchView = new SearchDocumentView();
-    }
-
-    private ref ViewStatus statusOf(Operation operation) return
-    {
-        return isSearchOperation(operation) ? _searchStatus : _mainStatus;
     }
 
     override SignalConsumer events()
@@ -171,7 +166,7 @@ class LogDocument : Document
             return;
         _pendingViewFilter = PendingRequest(filter, true);
         const bool searchShown = _running == Operation.BuildSearchIndex
-            || _searchStatus.state == ViewStatus.State.Ready;
+            || _searchShown;
         if (!_pendingSearch.requested && _searchFilter !is null && searchShown)
             _pendingSearch = PendingRequest(_searchFilter, true);
         if (_running == Operation.BuildFilterIndex || _running == Operation.BuildSearchIndex)
@@ -284,21 +279,6 @@ class LogDocument : Document
             return this.outer._index.mainViewPositionOf(realIndex, position);
         }
 
-        override DocumentView.State state()
-        {
-            return this.outer._mainStatus.state;
-        }
-
-        override float progress()
-        {
-            return this.outer._mainStatus.progress;
-        }
-
-        override Operation operation()
-        {
-            return this.outer._mainStatus.operation;
-        }
-
         override void enableFilter(bool enable)
         {
             this.outer._index.enableFilter(enable);
@@ -338,21 +318,6 @@ class LogDocument : Document
         override bool positionOf(size_t realIndex, out size_t position)
         {
             return this.outer._index.searchViewPositionOf(realIndex, position);
-        }
-
-        override DocumentView.State state()
-        {
-            return this.outer._searchStatus.state;
-        }
-
-        override float progress()
-        {
-            return this.outer._searchStatus.progress;
-        }
-
-        override Operation operation()
-        {
-            return this.outer._searchStatus.operation;
         }
 
         override void enableFilter(bool enable)
@@ -410,6 +375,42 @@ version (unittest)
         set.rules = [FilterRule("", FilterRule.init.kind, true, "",
                 [Condition("ecu", Check.Equals, ecuId)])];
         return RuleFilter.compile(new DltFormat().columns, [set]);
+    }
+
+    /// What the views of a document show, as its operation events tell (the
+    /// machines of the UI see the same). Subscribed when made: make it before
+    /// the events are dispatched.
+    private final class Views
+    {
+        enum State
+        {
+            NotReady, // its index isn't built: loading, or the build was cancelled
+            Ready,
+            Building,
+            Failed,
+        }
+
+        State main; // NotReady: the file is loading
+        State search = State.Ready; // an empty result until a search runs
+
+        /// @param main - what the main view shows now: Ready for a loaded document
+        this(Document doc, State main = State.NotReady)
+        {
+            this.main = main;
+            doc.events.subscribe((const OperationStarted e) { stateOf(e.operation) = State.Building; });
+            doc.events.subscribe((const OperationFinished e) {
+                stateOf(e.operation) = e.result == OperationFinished.Result.Completed ? State.Ready
+                    : e.result == OperationFinished.Result.Cancelled ? State.NotReady : State.Failed;
+            });
+        }
+
+        bool mainReady() const { return main == State.Ready; }
+        bool searchReady() const { return search == State.Ready; }
+
+        private ref State stateOf(Document.Operation operation) return
+        {
+            return isSearchOperation(operation) ? search : main;
+        }
     }
 
     /// Test filter that accepts all or no messages
@@ -475,7 +476,6 @@ unittest
     string[] log;
     float lastProgress = -1;
     OperationFinished finished;
-    bool readyOnFinish;
     size_t countOnFinish;
 
     // Subscribing after construction is fine: nothing is delivered before dispatchEvents()
@@ -491,8 +491,7 @@ unittest
     });
     doc.events.subscribe((const OperationFinished e) {
         finished = e;
-        // Finished is published after the slot is idle: views are already updated
-        readyOnFinish = doc.mainView.ready;
+        // Finished is published after the slot is idle: the index is complete
         countOnFinish = doc.mainView.itemsCount;
         log ~= "finished";
     });
@@ -503,7 +502,6 @@ unittest
     assert(finished.operation == Document.Operation.BuildOffsetIndex);
     assert(finished.result == OperationFinished.Result.Completed);
     assert(lastProgress == 1.0f, "last progress event must report completion");
-    assert(readyOnFinish, "main view must be ready when OperationFinished is delivered");
     assert(countOnFinish == messageCount);
 }
 
@@ -523,35 +521,6 @@ unittest
     assert(MonoTime.currTime - start < 1.seconds, "destroy must not wait for indexing to complete");
 }
 
-@("LogDocument: each view has its own state and progress")
-unittest
-{
-    import std.file : remove;
-
-    auto path = writeTestDlt("dlt_document_views.dlt", 500);
-    scope (exit)
-        remove(path);
-
-    auto doc = new LogDocument(path);
-    assert(doc.mainView.state == DocumentView.State.NotReady, "nothing delivered yet");
-    assert(doc.searchView.ready, "search view starts Ready with an empty result");
-
-    bool loaded;
-    doc.events.subscribe((const OperationFinished e) { loaded = true; });
-    dispatchUntil(doc, () => loaded);
-    assert(doc.mainView.ready && doc.mainView.progress == 1.0f);
-
-    // A search operation moves only the search view
-    enum search = Document.Operation.BuildSearchIndex;
-    doc._events.publish(OperationStarted(search));
-    doc._events.publish(OperationProgress(search, 0.3f));
-    doc.dispatchEvents();
-
-    assert(doc.searchView.state == DocumentView.State.BuildingIndex);
-    assert(doc.searchView.progress == 0.3f);
-    assert(doc.mainView.ready && doc.mainView.progress == 1.0f, "main view must not change");
-}
-
 @("LogDocument: a search requested while loading waits for the load, latest request wins")
 unittest
 {
@@ -563,6 +532,8 @@ unittest
         remove(path);
 
     auto doc = new LogDocument(path);
+
+    auto views = new Views(doc);
     string[] log;
     doc.events.subscribe((const OperationStarted e) {
         import std.conv : to;
@@ -583,7 +554,7 @@ unittest
         "BuildOffsetIndex started", "BuildOffsetIndex Completed",
         "BuildSearchIndex started", "BuildSearchIndex Completed"
     ], "unexpected operations order");
-    assert(doc.searchView.ready);
+    assert(views.searchReady);
     assert(doc.searchView.itemsCount == messageCount, "the latest (match-all) search must have run");
 }
 
@@ -599,6 +570,8 @@ unittest
         remove(path);
 
     auto doc = new LogDocument(path);
+
+    auto views = new Views(doc);
     string[] log;
     doc.events.subscribe((const OperationStarted e) {
         import std.conv : to;
@@ -608,7 +581,7 @@ unittest
         import std.conv : to;
         log ~= e.operation.to!string ~ " " ~ e.result.to!string;
     });
-    dispatchUntil(doc, () => doc.mainView.ready);
+    dispatchUntil(doc, () => views.mainReady);
 
     doc.applySearchFilter(new ConstFilter(false)); // starts right away
     doc.applySearchFilter(new ConstFilter(true)); // cancels it and waits for its Finished
@@ -633,9 +606,11 @@ unittest
         remove(path);
 
     auto doc = new LogDocument(path);
+
+    auto views = new Views(doc);
     OperationFinished[] finished;
     doc.events.subscribe((const OperationFinished e) { finished ~= e; });
-    dispatchUntil(doc, () => doc.mainView.ready);
+    dispatchUntil(doc, () => views.mainReady);
     finished = null;
 
     doc.applySearchFilter(new ConstFilter(true));
@@ -647,8 +622,8 @@ unittest
     assert(finished[0].operation == Document.Operation.BuildSearchIndex);
     assert(finished[0].result == OperationFinished.Result.Cancelled,
         "search must stop at the next batch, not complete");
-    assert(doc.searchView.state == DocumentView.State.NotReady, "cancelled search leaves the view not ready");
-    assert(doc.mainView.ready, "main view is not affected");
+    assert(views.search == Views.State.NotReady, "cancelled search leaves the view not ready");
+    assert(views.mainReady, "main view is not affected");
     assert(!doc.requestCancel(), "nothing left to cancel");
 }
 
@@ -663,6 +638,8 @@ unittest
         remove(path);
 
     auto doc = new LogDocument(path);
+
+    auto views = new Views(doc);
     Document.Operation[] started;
     OperationFinished[] finished;
     doc.events.subscribe((const OperationStarted e) { started ~= e.operation; });
@@ -679,7 +656,7 @@ unittest
     assert(finished.length == 1 && finished[0].result == OperationFinished.Result.Completed,
         "the load must complete");
     assert(started == [Document.Operation.BuildOffsetIndex], "the pending search must be dropped");
-    assert(doc.mainView.ready && doc.mainView.itemsCount == messageCount);
+    assert(views.mainReady && doc.mainView.itemsCount == messageCount);
 }
 
 @("LogDocument: resetFilter (null filter) clears the result instead of crashing")
@@ -693,6 +670,8 @@ unittest
         remove(path);
 
     auto doc = new LogDocument(path);
+
+    auto views = new Views(doc);
     OperationFinished[] finished;
     doc.events.subscribe((const OperationFinished e) { finished ~= e; });
     dispatchUntil(doc, () => finished.length == 1); // file loaded
@@ -706,13 +685,13 @@ unittest
     dispatchUntil(doc, () => finished.length == 3);
     assert(finished[2].operation == Document.Operation.BuildSearchIndex);
     assert(finished[2].result == OperationFinished.Result.Completed);
-    assert(doc.searchView.ready && doc.searchView.itemsCount == 0, "search result must be empty");
+    assert(views.searchReady && doc.searchView.itemsCount == 0, "search result must be empty");
 
     doc.mainView.resetFilter();
     dispatchUntil(doc, () => finished.length == 4);
     assert(finished[3].operation == Document.Operation.BuildFilterIndex);
     assert(finished[3].result == OperationFinished.Result.Completed);
-    assert(doc.mainView.ready);
+    assert(views.mainReady);
     assert(!doc.mainView.isFilterEnabled, "reset filter shows the unfiltered view");
     assert(doc.mainView.itemsCount == messageCount, "all messages are visible");
 }
@@ -728,6 +707,8 @@ unittest
         remove(path);
 
     auto doc = new LogDocument(path);
+
+    auto views = new Views(doc);
     size_t finished;
     doc.events.subscribe((const OperationFinished e) { ++finished; });
     dispatchUntil(doc, () => finished == 1);
@@ -736,7 +717,7 @@ unittest
 
     doc.applyViewFilter(ecuFilter("ECU2"));
     dispatchUntil(doc, () => finished == 2);
-    assert(doc.mainView.ready && doc.mainView.isFilterEnabled, "a built filter is applied to the view");
+    assert(views.mainReady && doc.mainView.isFilterEnabled, "a built filter is applied to the view");
     assert(doc.mainView.itemsCount == 0, "no message has ECU2");
     assert(!doc.mainView.fetchItem(0, item));
 
@@ -763,6 +744,7 @@ unittest
         remove(path);
 
     auto doc = new LogDocument(path);
+
     size_t finished;
     doc.events.subscribe((const OperationFinished e) { ++finished; });
     dispatchUntil(doc, () => finished == 1);
@@ -783,7 +765,8 @@ version (unittest)
     {
         path = writeTestDlt(name, messageCount);
         auto doc = new LogDocument(path);
-        dispatchUntil(doc, () => doc.mainView.ready);
+        auto views = new Views(doc);
+        dispatchUntil(doc, () => views.mainReady);
         return doc;
     }
 
@@ -913,6 +896,7 @@ unittest
     enum messageCount = 2000;
     string path;
     auto doc = openLoaded("dlt_document_refilter_search.dlt", messageCount, path);
+    auto views = new Views(doc, Views.State.Ready); // loaded
     scope (exit)
         remove(path);
 
@@ -923,10 +907,10 @@ unittest
     runAndWait(doc, () => doc.applyViewFilter(ecuFilter("ECU2")));
     assert(started.operations == [Document.Operation.BuildFilterIndex, Document.Operation.BuildSearchIndex],
         "the search must be repeated after the filter");
-    assert(doc.searchView.ready && doc.searchView.itemsCount == 0, "the search runs over the filtered view");
+    assert(views.searchReady && doc.searchView.itemsCount == 0, "the search runs over the filtered view");
 
     runAndWait(doc, () => doc.mainView.resetFilter());
-    assert(doc.searchView.ready && doc.searchView.itemsCount == messageCount,
+    assert(views.searchReady && doc.searchView.itemsCount == messageCount,
         "the search follows the reset of the filter as well");
 }
 
@@ -939,6 +923,7 @@ unittest
     enum messageCount = 200_000;
     string path;
     auto doc = openLoaded("dlt_document_refilter_running.dlt", messageCount, path);
+    auto views = new Views(doc, Views.State.Ready); // loaded
     scope (exit)
         remove(path);
 
@@ -950,7 +935,7 @@ unittest
     // first. Either way it is repeated after the filter.
     assert(started.operations.count(Document.Operation.BuildSearchIndex) == 2, "the search must be repeated");
     assert(started.operations[$ - 1] == Document.Operation.BuildSearchIndex);
-    assert(doc.searchView.ready && doc.searchView.itemsCount == messageCount);
+    assert(views.searchReady && doc.searchView.itemsCount == messageCount);
 }
 
 @("LogDocument: a cancelled search is not repeated by a new filter")
@@ -960,13 +945,14 @@ unittest
 
     string path;
     auto doc = openLoaded("dlt_document_refilter_cancelled.dlt", 200_000, path);
+    auto views = new Views(doc, Views.State.Ready); // loaded
     scope (exit)
         remove(path);
 
     doc.applySearchFilter(new ConstFilter(true));
     assert(doc.requestCancel());
     waitIdle(doc);
-    assert(doc.searchView.state == DocumentView.State.NotReady, "the search must be cancelled");
+    assert(views.search == Views.State.NotReady, "the search must be cancelled");
 
     auto started = recordStarted(doc);
     runAndWait(doc, () => doc.mainView.resetFilter());
@@ -980,11 +966,12 @@ unittest
 
     string path;
     auto doc = openLoaded("dlt_document_refilter_cancel_filter.dlt", 200_000, path);
+    auto views = new Views(doc, Views.State.Ready); // loaded
     scope (exit)
         remove(path);
 
     runAndWait(doc, () => doc.applySearchFilter(new ConstFilter(false)));
-    assert(doc.searchView.ready);
+    assert(views.searchReady);
 
     auto started = recordStarted(doc);
     doc.applyViewFilter(ecuFilter("ECU1"));
@@ -1004,8 +991,10 @@ unittest
         remove(path);
 
     auto doc = new LogDocument(path);
+
+    auto views = new Views(doc);
     assert(!doc.setAnchor(1, true), "not while the file loads");
-    dispatchUntil(doc, () => doc.mainView.ready);
+    dispatchUntil(doc, () => views.mainReady);
 
     bool searched;
     doc.events.subscribe((const OperationFinished e) { searched = true; });
@@ -1025,6 +1014,7 @@ unittest
 
     string path;
     auto doc = openLoaded("dlt_document_anchors_limit.dlt", 100, path);
+    auto views = new Views(doc, Views.State.Ready); // loaded
     scope (exit)
         remove(path);
 
@@ -1090,6 +1080,7 @@ version (Posix)
             remove(path);
 
         auto doc = new LogDocument(path);
+        auto views = new Views(doc);
         bool truncated, lost;
         OperationFinished finished;
         bool done;
@@ -1110,7 +1101,7 @@ version (Posix)
         assert(finished.result == OperationFinished.Result.Failed, "the load can't complete");
         assert(finished.error == LogIndex.sourceLostMessage);
         assert(lost, "SourceLost is published");
-        assert(doc.mainView.state == DocumentView.State.Error);
+        assert(views.main == Views.State.Failed);
     }
 }
 
@@ -1130,7 +1121,9 @@ unittest
         remove(path);
 
     auto doc = new LogDocument(path);
-    dispatchUntil(doc, () => doc.mainView.ready);
+
+    auto views = new Views(doc);
+    dispatchUntil(doc, () => views.mainReady);
     assert(doc.mainView.itemsCount == 2);
 
     DocumentItem item;
@@ -1223,7 +1216,9 @@ unittest
         remove(path);
 
     auto doc = new LogDocument(path);
-    dispatchUntil(doc, () => doc.mainView.ready);
+
+    auto views = new Views(doc);
+    dispatchUntil(doc, () => views.mainReady);
 
     size_t position;
     assert(doc.mainView.positionOf(42, position) && position == 42, "unfiltered: the message index");

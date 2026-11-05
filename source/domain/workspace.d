@@ -6,7 +6,7 @@ import domain.document_item : DocumentItem;
 import domain.anchors;
 
 import log_core.log_filter : LogFilter;
-import log_core.log_format : LogFormat;
+import log_core.log_format : FormatChoice, LogFormat;
 
 import utils.event_bus.event_bus_interface : SignalConsumer, SubscriptionToken;
 import utils.event_bus.event_bus_sync : EventBusSync;
@@ -42,21 +42,6 @@ private class NullDocumentView : DocumentView
     override bool positionOf(size_t realIndex, out size_t position)
     {
         return false;
-    }
-
-    override State state()
-    {
-        return State.Ready;
-    }
-
-    override float progress()
-    {
-        return 1.0f;
-    }
-
-    override Document.Operation operation()
-    {
-        return Document.Operation.None;
     }
 
     override void enableFilter(bool enable)
@@ -101,6 +86,11 @@ private class NullDocument : Document
     override const(LogFormat) format()
     {
         return null;
+    }
+
+    override FormatChoice formatChoice() const
+    {
+        return FormatChoice.init;
     }
 
     override void applyViewFilter(LogFilter!wchar filter)
