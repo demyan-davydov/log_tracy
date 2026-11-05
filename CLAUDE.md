@@ -159,7 +159,8 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
   for future streaming sources (growing file, serial port), so keep that contract.
 
 ### UI side
-- The table columns and the row cells (`asSciterRow` in `main_window`) are built from the
+- The table columns and the row cells (`ui/table_rows`: `writeRow` over a cell writer,
+  `main_window` writes them as Sciter values) are built from the
   format's `ColumnInfo` schema as the user's layout of that format arranges it
   (`log_core/column_layout`, `AppSettings.columnLayouts` by format id, edited in the Columns
   section of Settings): `backend.tableColumnsJson(docId)`, arranged once per format and variant
@@ -198,12 +199,19 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
   - Never hide a log table itself: one hidden by `display: none` before it was ever laid out
     keeps its cells 1px wide for good (Sciter). Status views cover it instead
     (`.status-view.overlay`).
-  - What a table does on a change of its view is the Sciter-free `resources/pane-state.js`.
+  - What a table does on a change of its view is the Sciter-free `resources/pane-state.js`;
+    the flows of its search and rule commands are `resources/pane-commands.js`.
 - The view status shown to the user comes from the state machines `ui/main_view_fsm` and
   `ui/search_view_fsm` (on `utils/fsm`). They are kept free of Sciter so they can be unit-tested.
 - UI command logic that needs testing goes into Sciter-free modules (`ui/app_session`,
   `ui/filter_commands`), not into `MainWindow`: a new xcall is a method of the session, the
   window only reads its parameters and answers.
+- The script is split the same way: what the window shows is the state machine
+  `resources/window-state.js` (the documents, the New Tab, the failed file; `script.js` only
+  renders it), the services of Sciter (dialogs, clipboard, window frame, OS) are reached
+  through `resources/platform.js` only, as the backend is through `resources/backend.js`; the
+  other modules render the DOM. Logic worth a test goes into a module free of both, tested by
+  `tests/js` (it imports its neighbours with `./`).
 
 ## Conventions
 
