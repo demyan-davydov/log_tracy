@@ -43,10 +43,10 @@ class MainWindow : SciterWindow
             (string path, FormatChoice choice) => cast(Document) new LogDocument(path, choice));
         {
             import std.process : environment;
-            import ui.app_menu : hostMenuPlatform, sciterMenuBarPlatform;
+            import ui.app_menu : hostMenuPlatform, windowMenu;
 
             // DLT_MENU_BAR=windows|linux: that menu bar in the window, for a try on any platform
-            _session.showMenuBar(sciterMenuBarPlatform(hostMenuPlatform(), environment.get("DLT_MENU_BAR", "")));
+            _session.showMenu(windowMenu(hostMenuPlatform(), environment.get("DLT_MENU_BAR", "")));
         }
 
         import sciter.capi.def;
@@ -125,8 +125,8 @@ class MainWindow : SciterWindow
             // saveAppState(appStateJson): the window closes
             _session.saveOnClose(param!string(0));
             return true;
-        case "getMenuBar":
-            answer(_session.menuBarJson());
+        case "getMenu":
+            answer(_session.menuJson());
             return true;
         case "getColumnSettings":
             answer(_session.columnSettingsJson());

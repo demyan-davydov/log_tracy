@@ -204,8 +204,9 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
 - The main menu is described once, per platform convention, in the Sciter-free `ui/app_menu`
   (`appMenu`; commands reach the script as `onMenuCommand(id)` on every platform):
   `ui/main_menu_loader` builds the native macOS menu from it; on Windows and Linux the script
-  gets it as JSON (`menuJson`, `backend.menuBar()`: what the items are, not how they look) and
-  draws a Sciter menu bar from it (`resources/menu-bar.js`). `DLT_MENU_BAR=windows|linux`
+  gets it as JSON (`menuJson`, `backend.menu()`: what the items are, not how they look) and
+  draws a Sciter menu bar from it (`resources/menu-bar.js`); on every platform the script takes
+  the texts of shortcuts in hints from it. A label marks its mnemonic with `&` (`E&xit`). `DLT_MENU_BAR=windows|linux`
   shows that menu bar on macOS too, to try it.
 - The view status shown to the user comes from the state machines `ui/main_view_fsm` and
   `ui/search_view_fsm` (on `utils/fsm`). They are kept free of Sciter so they can be unit-tested.

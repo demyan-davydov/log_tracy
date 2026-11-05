@@ -18,7 +18,7 @@ import domain.workspace;
 import log_core.log_format : ColumnInfo, FormatChoice;
 import log_core.rule_filter : RuleId;
 import log_core.search_filter : MatchRange;
-import ui.app_menu : MenuPlatform;
+import ui.app_menu : hostMenuPlatform, MenuPlatform, WindowMenu, windowMenu;
 import ui.app_settings;
 import ui.document_ui : DocumentUi;
 import ui.filter_commands : DocumentFilters;
@@ -27,7 +27,6 @@ import ui.main_view_fsm : toJson;
 import ui.search_view_fsm : toJson;
 
 import std.json : JSONValue;
-import std.typecons : Nullable;
 
 /// A call of a global function of the script: name(docId) or name(docId, json)
 struct ScriptCall
@@ -61,7 +60,7 @@ final class AppSession
     private ScriptCall[] _scriptCalls; // queued for the idle loop
     private bool _settingsChanged; // since they were last written
     private bool _closing; // the window closes: no more calls of the script
-    private string _menuBarJson; // the menu bar of the window in Sciter; "": only the native menu
+    private WindowMenu _menu = windowMenu(hostMenuPlatform(), ""); // the menu of the window
 
     /// @param open - opens a document (a LogDocument in the app)
     /// @param write - writes the settings, to their file if not given
@@ -460,18 +459,18 @@ final class AppSession
 
     // ── Menu ─────────────────────────────────────────────────────────────────
 
-    /// The window shows the menu bar of `platform` in Sciter (none: only the native menu)
-    void showMenuBar(Nullable!MenuPlatform platform)
+    /// The window has `menu` (that of the host platform until told)
+    void showMenu(WindowMenu menu)
     {
-        import ui.app_menu : appMenu, menuJson;
-
-        _menuBarJson = platform.isNull ? "" : menuJson(appMenu(platform.get), platform.get);
+        _menu = menu;
     }
 
-    /// The menu the script shows as its menu bar (ui.app_menu.menuJson), "" if it shows none
-    string menuBarJson()
+    /// The menu of the window for the script (ui.app_menu.windowMenuJson)
+    string menuJson()
     {
-        return _menuBarJson;
+        import ui.app_menu : windowMenuJson;
+
+        return windowMenuJson(_menu);
     }
 
     // ── Columns ──────────────────────────────────────────────────────────────
@@ -694,17 +693,21 @@ version (unittest)
     }
 }
 
-@("AppSession: the menu bar is given only when the window shows one")
+@("AppSession: the menu of the window, of the host platform until told")
 unittest
 {
-    import ui.app_menu : appMenu, menuJson;
+    import std.json : parseJSON;
+    import ui.app_menu : appMenu, hostMenuPlatform, menuJson, windowMenu;
 
     auto f = Fixture.make();
-    assert(f.session.menuBarJson() == "");
-    f.session.showMenuBar(Nullable!MenuPlatform(MenuPlatform.windows));
-    assert(f.session.menuBarJson() == menuJson(appMenu(MenuPlatform.windows), MenuPlatform.windows));
-    f.session.showMenuBar(Nullable!MenuPlatform.init);
-    assert(f.session.menuBarJson() == "");
+    auto host = parseJSON(f.session.menuJson());
+    assert(host["menuBar"].boolean == windowMenu(hostMenuPlatform(), "").menuBar);
+    assert(host["menus"] == parseJSON(menuJson(appMenu(hostMenuPlatform()), hostMenuPlatform())));
+
+    f.session.showMenu(WindowMenu(MenuPlatform.windows, true));
+    auto windows = parseJSON(f.session.menuJson());
+    assert(windows["menuBar"].boolean);
+    assert(windows["menus"] == parseJSON(menuJson(appMenu(MenuPlatform.windows), MenuPlatform.windows)));
 }
 
 @("AppSession: a file opened gets a document; the script is told later, not during the call")

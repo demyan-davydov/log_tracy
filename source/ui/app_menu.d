@@ -5,7 +5,6 @@
 //! built from it by `ui/main_menu_loader`.
 module ui.app_menu;
 
-import std.typecons : Nullable;
 
 /// The platform whose conventions a menu follows.
 enum MenuPlatform
@@ -26,18 +25,59 @@ MenuPlatform hostMenuPlatform() pure nothrow @nogc @safe
         return MenuPlatform.linux;
 }
 
-/// The platform whose menu bar the window shows in Sciter, none on macOS (the native menu).
-/// @param forced - "windows" or "linux" shows that menu bar on any platform, for a try (the
-///     environment variable DLT_MENU_BAR); anything else is ignored
-Nullable!MenuPlatform sciterMenuBarPlatform(MenuPlatform host, string forced) pure nothrow @safe
+/// The menu the window has: of which platform, and whether the script draws it as its menu
+/// bar (not on macOS, where the menu is native; the script still uses its shortcut texts).
+struct WindowMenu
+{
+    MenuPlatform platform;
+    bool menuBar;
+}
+
+/// The menu of the window on `host`.
+/// @param forced - "windows" or "linux": the menu bar of that platform on any platform, for a
+///     try (the environment variable DLT_MENU_BAR); anything else is ignored
+WindowMenu windowMenu(MenuPlatform host, string forced) pure nothrow @safe
 {
     if (forced == "windows")
-        return Nullable!MenuPlatform(MenuPlatform.windows);
+        return WindowMenu(MenuPlatform.windows, true);
     if (forced == "linux")
-        return Nullable!MenuPlatform(MenuPlatform.linux);
-    if (host == MenuPlatform.mac)
-        return Nullable!MenuPlatform.init;
-    return Nullable!MenuPlatform(host);
+        return WindowMenu(MenuPlatform.linux, true);
+    return WindowMenu(host, host != MenuPlatform.mac);
+}
+
+/// A label as shown, with its mnemonic.
+struct Label
+{
+    string text; /// without the `&` of the mnemonic
+    ptrdiff_t mnemonic = -1; /// the index of its letter in `text`, in UTF-16 units (as script strings); -1: none
+}
+
+/// The label "E&xit": "Exit" with the mnemonic "x" (after `&`); "&&" is a `&`, a trailing `&` is dropped.
+Label parseLabel(string label) pure @safe
+{
+    import std.array : appender;
+    import std.utf : codeLength, decode;
+
+    auto text = appender!string;
+    Label parsed;
+    size_t units; // of the text so far, in UTF-16
+    for (size_t i = 0; i < label.length;)
+    {
+        if (label[i] == '&')
+        {
+            i++;
+            if (i == label.length)
+                break; // a trailing &
+            if (label[i] != '&' && parsed.mnemonic < 0)
+                parsed.mnemonic = units;
+        }
+        const start = i;
+        const c = decode(label, i);
+        text.put(label[start .. i]);
+        units += codeLength!wchar(c);
+    }
+    parsed.text = text[];
+    return parsed;
 }
 
 /// The commands of the menu, given to the script's `onMenuCommand(id)` on every platform.
@@ -87,15 +127,18 @@ struct MenuItem
 {
     MenuItemKind kind;
     string id; /// the command; empty for a separator or a submenu
-    string label;
+    string label; /// as shown, without the `&` of its mnemonic
+    ptrdiff_t mnemonic = -1; /// see Label
     Shortcut shortcut;
     MenuItem[] items; /// of a submenu
     MenuRole role;
 }
 
-MenuItem command(string id, string label, Shortcut shortcut = Shortcut.init) pure nothrow @safe
+/// A command; `&` in its label marks the mnemonic letter (Windows, Linux): parseLabel
+MenuItem command(string id, string label, Shortcut shortcut = Shortcut.init) pure @safe
 {
-    return MenuItem(MenuItemKind.command, id, label, shortcut);
+    const parsed = parseLabel(label);
+    return MenuItem(MenuItemKind.command, id, parsed.text, parsed.mnemonic, shortcut);
 }
 
 MenuItem separator() pure nothrow @safe
@@ -103,11 +146,14 @@ MenuItem separator() pure nothrow @safe
     return MenuItem(MenuItemKind.separator);
 }
 
-MenuItem submenu(string label, MenuItem[] items, MenuRole role = MenuRole.none) pure nothrow @safe
+/// A submenu; `&` in its label marks the mnemonic letter, as of a command
+MenuItem submenu(string label, MenuItem[] items, MenuRole role = MenuRole.none) pure @safe
 {
+    const parsed = parseLabel(label);
     MenuItem item;
     item.kind = MenuItemKind.submenu;
-    item.label = label;
+    item.label = parsed.text;
+    item.mnemonic = parsed.mnemonic;
     item.items = items;
     item.role = role;
     return item;
@@ -136,10 +182,11 @@ MenuItem[] macAppMenuMerge(MenuItem[] items) pure nothrow @safe
 }
 
 /// The menu bar of the window on `platform`.
-MenuItem[] appMenu(MenuPlatform platform) pure nothrow @safe
+MenuItem[] appMenu(MenuPlatform platform) pure @safe
 {
-    auto openFile = command(MenuCommand.openFile, "Open File...", primary("O"));
-    auto settings = command(MenuCommand.settings, "Settings...", primary(","));
+    // `&` marks the mnemonic letter of Windows and Linux; macOS has none
+    auto openFile = command(MenuCommand.openFile, "&Open File...", primary("O"));
+    auto settings = command(MenuCommand.settings, "&Settings...", primary(","));
     final switch (platform)
     {
     case MenuPlatform.mac:
@@ -147,21 +194,21 @@ MenuItem[] appMenu(MenuPlatform platform) pure nothrow @safe
             submenu("DLT Explorer", [
                 settings, separator(), command(MenuCommand.quit, "Quit", primary("Q")),
             ], MenuRole.app),
-            submenu("File", [openFile]),
-            submenu("Window", [command(MenuCommand.minimize, "Minimize", primary("M"))]),
+            submenu("&File", [openFile]),
+            submenu("&Window", [command(MenuCommand.minimize, "&Minimize", primary("M"))]),
         ];
     case MenuPlatform.windows:
         return [
-            submenu("File", [
+            submenu("&File", [
                 openFile, separator(), settings, separator(),
-                command(MenuCommand.quit, "Exit", Shortcut("F4", false, false, true, true)),
+                command(MenuCommand.quit, "E&xit", Shortcut("F4", false, false, true, true)),
             ]),
         ];
     case MenuPlatform.linux:
         return [
-            submenu("File", [
+            submenu("&File", [
                 openFile, separator(), settings, separator(),
-                command(MenuCommand.quit, "Quit", primary("Q")),
+                command(MenuCommand.quit, "&Quit", primary("Q")),
             ]),
         ];
     }
@@ -243,11 +290,36 @@ string domKeyCode(string key) pure @safe
 
 /// The menu for the script to show as its menu bar: what the items are, not how Sciter draws
 /// them. `[{"label", "items": [...]}]`, an item `{"command", "label", "shortcut"?}`,
-/// `{"separator": true}` or `{"label", "items"}`; a shortcut `{"text" (as `platform` shows it),
+/// `{"separator": true}` or `{"label", "items"}`, a label as shown with `"mnemonic"`: the index of
+/// its letter in UTF-16 units, if it has one and `platform` shows them; a shortcut `{"text" (as `platform` shows it),
 /// "code" (`KeyboardEvent.code`), "ctrl" (the primary modifier), "shift", "alt", "bySystem"}`.
 string menuJson(MenuItem[] bar, MenuPlatform platform) @safe
 {
+    return menuJsonValue(bar, platform).toString();
+}
+
+/// The menu of the window for the script: `{"menuBar": whether it draws it as its menu bar,
+/// "menus": menuJson}`.
+string windowMenuJson(WindowMenu menu) @safe
+{
     import std.json : JSONValue;
+
+    JSONValue json;
+    json["menuBar"] = menu.menuBar;
+    json["menus"] = menuJsonValue(appMenu(menu.platform), menu.platform);
+    return json.toString();
+}
+
+private auto menuJsonValue(MenuItem[] bar, MenuPlatform platform) @safe
+{
+    import std.json : JSONValue;
+
+    void putLabel(ref JSONValue json, ref MenuItem item)
+    {
+        json["label"] = item.label;
+        if (platform != MenuPlatform.mac && item.mnemonic >= 0)
+            json["mnemonic"] = item.mnemonic;
+    }
 
     JSONValue itemJson(ref MenuItem item)
     {
@@ -258,7 +330,7 @@ string menuJson(MenuItem[] bar, MenuPlatform platform) @safe
             json["separator"] = true;
             break;
         case MenuItemKind.submenu:
-            json["label"] = item.label;
+            putLabel(json, item);
             JSONValue[] items;
             foreach (ref sub; item.items)
                 items ~= itemJson(sub);
@@ -266,7 +338,7 @@ string menuJson(MenuItem[] bar, MenuPlatform platform) @safe
             break;
         case MenuItemKind.command:
             json["command"] = item.id;
-            json["label"] = item.label;
+            putLabel(json, item);
             if (!item.shortcut.isNone)
             {
                 JSONValue s;
@@ -286,7 +358,7 @@ string menuJson(MenuItem[] bar, MenuPlatform platform) @safe
     JSONValue[] entries;
     foreach (ref entry; bar)
         entries ~= itemJson(entry);
-    return JSONValue(entries).toString();
+    return JSONValue(entries);
 }
 
 version (unittest)
@@ -388,17 +460,60 @@ unittest
     assert(macAppMenuMerge([command(MenuCommand.quit, "Quit")]).length == 0);
 }
 
-@("the Sciter menu bar: none on macOS but for a try, the host's elsewhere")
+@("the menu of the window: a menu bar but on macOS, any for a try")
 unittest
 {
-    assert(sciterMenuBarPlatform(MenuPlatform.mac, "").isNull);
-    assert(sciterMenuBarPlatform(MenuPlatform.mac, "nonsense").isNull);
-    assert(sciterMenuBarPlatform(MenuPlatform.mac, "windows").get == MenuPlatform.windows);
-    assert(sciterMenuBarPlatform(MenuPlatform.mac, "linux").get == MenuPlatform.linux);
-    assert(sciterMenuBarPlatform(MenuPlatform.windows, "").get == MenuPlatform.windows);
-    assert(sciterMenuBarPlatform(MenuPlatform.linux, "windows").get == MenuPlatform.windows);
+    assert(windowMenu(MenuPlatform.mac, "") == WindowMenu(MenuPlatform.mac, false));
+    assert(windowMenu(MenuPlatform.mac, "nonsense") == WindowMenu(MenuPlatform.mac, false));
+    assert(windowMenu(MenuPlatform.mac, "windows") == WindowMenu(MenuPlatform.windows, true));
+    assert(windowMenu(MenuPlatform.mac, "linux") == WindowMenu(MenuPlatform.linux, true));
+    assert(windowMenu(MenuPlatform.windows, "") == WindowMenu(MenuPlatform.windows, true));
+    assert(windowMenu(MenuPlatform.linux, "windows") == WindowMenu(MenuPlatform.windows, true));
 }
 
+@("labels: the & of a mnemonic is not shown, it marks the letter")
+unittest
+{
+    assert(parseLabel("E&xit") == Label("Exit", 1));
+    assert(parseLabel("&File") == Label("File", 0));
+    assert(parseLabel("Tom && Jerry") == Label("Tom & Jerry", -1));
+    assert(parseLabel("Tom && &Jerry") == Label("Tom & Jerry", 6));
+    assert(parseLabel("None") == Label("None", -1));
+    assert(parseLabel("Trailing&") == Label("Trailing", -1));
+    assert(parseLabel("&A &B") == Label("A B", 0)); // the first one
+    assert(parseLabel("\U0001D400 &x") == Label("\U0001D400 x", 3)); // a surrogate pair before it
+    // Items keep the label as shown
+    assert(command("x", "E&xit").label == "Exit" && command("x", "E&xit").mnemonic == 1);
+    assert(submenu("&File", []).label == "File" && submenu("&File", []).mnemonic == 0);
+}
+
+@("every entry and command of Windows and Linux has a mnemonic, unique in its menu")
+unittest
+{
+    import std.uni : toLower;
+
+    void check(MenuItem[] items)
+    {
+        dchar[] used;
+        foreach (ref item; items)
+        {
+            if (item.kind == MenuItemKind.separator)
+                continue;
+            const i = item.mnemonic;
+            assert(i >= 0, item.label);
+            import std.algorithm : canFind;
+            import std.conv : to;
+
+            const letter = item.label.to!wstring[i].toLower;
+            assert(!used.canFind(letter), item.label);
+            used ~= letter;
+            check(item.items);
+        }
+    }
+
+    check(appMenu(MenuPlatform.windows));
+    check(appMenu(MenuPlatform.linux));
+}
 @("DOM key codes of shortcut keys")
 unittest
 {
@@ -457,4 +572,11 @@ unittest
     ]}]`));
     auto mac = parseJSON(menuJson([submenu("File", [command("a", "A", primary("S", true))])], MenuPlatform.mac));
     assert(mac[0]["items"][0]["shortcut"]["text"].str == "⇧⌘S");
+
+    // A label is given as shown, with the index of its mnemonic; macOS has none
+    auto withMnemonics = [submenu("&File", [command("x", "E&xit")])];
+    assert(parseJSON(menuJson(withMnemonics, MenuPlatform.linux)) == parseJSON(`[{"label": "File",
+        "mnemonic": 0, "items": [{"command": "x", "label": "Exit", "mnemonic": 1}]}]`));
+    assert(parseJSON(menuJson(withMnemonics, MenuPlatform.mac)) == parseJSON(`[{"label": "File",
+        "items": [{"command": "x", "label": "Exit"}]}]`));
 }

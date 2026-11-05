@@ -12,6 +12,7 @@ import { TabStrip } from "tabs.js";
 import * as backend from "backend.js";
 import * as platform from "platform.js";
 import { showMenuBar } from "menu-bar.js";
+import { shortcutTextOf } from "menu-shortcuts.js";
 
 // The table whose context menu is open: "Copy Row" copies its selected rows
 let contextList = null;
@@ -162,10 +163,12 @@ function splitPath(path) {
 function renderPlaceholder() {
     const placeholder = $("#empty-placeholder");
     const title = win.newTab.active ? "Open a file" : "No file open";
+    const openShortcut = shortcutTextOf(windowMenu.menus, "file.open");
     placeholder.content(<div class="placeholder-body">
         <div class="placeholder-title">{title}</div>
         <div class="placeholder-hint">
-            <button class="inline-button" id="btn-placeholder-open">Open</button> a log with <kbd>⌘O</kbd>
+            <button class="inline-button" id="btn-placeholder-open">Open</button> a log{
+                openShortcut ? [" with ", <kbd>{openShortcut}</kbd>] : []}
         </div>
     </div>);
     const recentFiles = getRecentFiles();
@@ -324,11 +327,14 @@ function setupEvents() {
 
 }
 
-// The menu bar of the window on Windows and Linux, as the backend describes it;
-// none on macOS, where the menu is native
+// The menu of the window, as the backend describes it: its shortcut texts are
+// shown in hints, and on Windows and Linux it is drawn as the menu bar (macOS:
+// the native menu)
+let windowMenu = { menuBar: false, menus: [] };
+
 function setupMenuBar() {
-    const bar = backend.menuBar();
-    if (bar) showMenuBar($("#main-menu"), bar, id => onMenuCommand(id));
+    windowMenu = backend.menu();
+    if (windowMenu.menuBar) showMenuBar($("#main-menu"), windowMenu.menus, id => onMenuCommand(id));
 }
 
 // The panels of the open documents: docId -> DocumentPane (document-pane.js).
