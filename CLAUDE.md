@@ -203,9 +203,10 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
     the flows of its search and rule commands are `resources/pane-commands.js`.
 - The main menu is described once, per platform convention, in the Sciter-free `ui/app_menu`
   (`appMenu`; commands reach the script as `onMenuCommand(id)` on every platform):
-  `ui/main_menu_loader` builds the native macOS menu from it, Windows and Linux get the markup
-  of a Sciter menu bar (`menuBarHtml`; for now not shown, only printed by the macOS build at start, see
-  `docs/stories/unified-menu.md`).
+  `ui/main_menu_loader` builds the native macOS menu from it; on Windows and Linux the script
+  gets it as JSON (`menuJson`, `backend.menuBar()`: what the items are, not how they look) and
+  draws a Sciter menu bar from it (`resources/menu-bar.js`). `DLT_MENU_BAR=windows|linux`
+  shows that menu bar on macOS too, to try it.
 - The view status shown to the user comes from the state machines `ui/main_view_fsm` and
   `ui/search_view_fsm` (on `utils/fsm`). They are kept free of Sciter so they can be unit-tested.
 - UI command logic that needs testing goes into Sciter-free modules (`ui/app_session`,

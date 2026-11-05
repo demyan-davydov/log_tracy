@@ -72,3 +72,9 @@ test("results that are no JSON objects keep their shape", () => {
     assert.equal(callOf(() => backend.checkFilterRuleJson(3, { name: "r" }), `{"error": ""}`).value,
         `{"error": ""}`, "as text: the rule editor window parses it");
 });
+
+test("the menu bar: its menus, null without one", () => {
+    const bar = [{ label: "File", items: [{ command: "file.open", label: "Open File..." }] }];
+    assert.deepEqual(callOf(() => backend.menuBar(), JSON.stringify(bar)), { call: ["getMenuBar"], value: bar });
+    assert.equal(callOf(() => backend.menuBar(), "").value, null);
+});

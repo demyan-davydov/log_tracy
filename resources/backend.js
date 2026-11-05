@@ -20,6 +20,11 @@ export const settings = () => parsed(xcall("getSettings"), null);
 // The window closes: the settings are written with the state of the script,
 // the text getAppState() gives (the backend asks for the same text itself)
 export const saveAppState = appStateJson => xcall("saveAppState", appStateJson);
+// The menu the window shows as its menu bar (Windows, Linux), null if none
+// (macOS: the native menu): [{ label, items }], an item { command, label,
+// shortcut? }, { separator: true } or { label, items }; a shortcut { text,
+// code (KeyboardEvent.code), ctrl, shift, alt, bySystem (the OS handles it) }
+export const menuBar = () => parsed(xcall("getMenuBar"), null);
 // The Columns section of Settings: { current, formats: [...] }, null if none
 export const columnSettings = () => parsed(xcall("getColumnSettings"), null);
 // The layouts the Settings dialog closed with: { format id: [{ id, visible }] }

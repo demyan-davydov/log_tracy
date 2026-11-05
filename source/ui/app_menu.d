@@ -1,8 +1,11 @@
 //! The main menu of the window, described once for every platform: its entries by the
-//! conventions of each platform (`appMenu`), the texts of their shortcuts, and the menu bar
-//! markup Sciter shows on Windows and Linux. Free of Sciter: the native macOS menu is built
-//! from it by `ui/main_menu_loader`.
+//! conventions of each platform (`appMenu`), the texts of their shortcuts, and the menu as
+//! JSON for the script, which draws it as its menu bar on Windows and Linux (`menuJson`:
+//! what the items are, not how they are drawn). Free of Sciter: the native macOS menu is
+//! built from it by `ui/main_menu_loader`.
 module ui.app_menu;
+
+import std.typecons : Nullable;
 
 /// The platform whose conventions a menu follows.
 enum MenuPlatform
@@ -10,6 +13,31 @@ enum MenuPlatform
     mac,
     windows,
     linux,
+}
+
+/// The platform this build runs on.
+MenuPlatform hostMenuPlatform() pure nothrow @nogc @safe
+{
+    version (OSX)
+        return MenuPlatform.mac;
+    else version (Windows)
+        return MenuPlatform.windows;
+    else
+        return MenuPlatform.linux;
+}
+
+/// The platform whose menu bar the window shows in Sciter, none on macOS (the native menu).
+/// @param forced - "windows" or "linux" shows that menu bar on any platform, for a try (the
+///     environment variable DLT_MENU_BAR); anything else is ignored
+Nullable!MenuPlatform sciterMenuBarPlatform(MenuPlatform host, string forced) pure nothrow @safe
+{
+    if (forced == "windows")
+        return Nullable!MenuPlatform(MenuPlatform.windows);
+    if (forced == "linux")
+        return Nullable!MenuPlatform(MenuPlatform.linux);
+    if (host == MenuPlatform.mac)
+        return Nullable!MenuPlatform.init;
+    return Nullable!MenuPlatform(host);
 }
 
 /// The commands of the menu, given to the script's `onMenuCommand(id)` on every platform.
@@ -28,6 +56,7 @@ struct Shortcut
     bool primary; /// Cmd on macOS, Ctrl elsewhere
     bool shift;
     bool alt; /// Option on macOS
+    bool bySystem; /// the OS handles it itself (Alt+F4): only shown next to the item
 
     bool isNone() const scope pure nothrow @nogc @safe => key.length == 0;
 }
@@ -125,7 +154,7 @@ MenuItem[] appMenu(MenuPlatform platform) pure nothrow @safe
         return [
             submenu("File", [
                 openFile, separator(), settings, separator(),
-                command(MenuCommand.quit, "Exit", Shortcut("F4", false, false, true)),
+                command(MenuCommand.quit, "Exit", Shortcut("F4", false, false, true, true)),
             ]),
         ];
     case MenuPlatform.linux:
@@ -175,72 +204,89 @@ ulong macModifierMask(in Shortcut s) pure nothrow @nogc @safe
     return (s.primary ? cmd : 0) | (s.shift ? shift : 0) | (s.alt ? option : 0);
 }
 
-/// The markup of the Sciter menu bar (`behavior: menu-bar`) for `bar`: an item carries its
-/// command in the `command` attribute.
-string menuBarHtml(in MenuItem[] bar, MenuPlatform platform) pure @safe
+/// The `KeyboardEvent.code` of the key of a shortcut: "KeyO", "Digit1", "Comma", "F4"; null
+/// for a character that is no key of its own ("+": Shift+Equal), such a shortcut can't work.
+string domKeyCode(string key) pure @safe
 {
-    import std.array : appender;
+    import std.ascii : isAlpha, isDigit, toUpper;
 
-    auto html = appender!string;
-
-    void putEscaped(string text)
+    if (key.length == 1)
     {
-        foreach (c; text)
+        const c = key[0];
+        if (c.isAlpha)
+            return "Key" ~ c.toUpper;
+        if (c.isDigit)
+            return "Digit" ~ c;
+        switch (c)
         {
-            switch (c)
-            {
-            case '&': html.put("&amp;"); break;
-            case '<': html.put("&lt;"); break;
-            case '>': html.put("&gt;"); break;
-            case '"': html.put("&quot;"); break;
-            default: html.put(c);
-            }
+        case ',': return "Comma";
+        case '.': return "Period";
+        case '/': return "Slash";
+        case ';': return "Semicolon";
+        case '-': return "Minus";
+        case '=': return "Equal";
+        case '[': return "BracketLeft";
+        case ']': return "BracketRight";
+        case '\'': return "Quote";
+        case '`': return "Backquote";
+        case '\\': return "Backslash";
+        case ' ': return "Space";
+        default: return null;
         }
     }
+    import std.utf : count;
 
-    void putMenu(in MenuItem[] items)
+    if (key.count == 1)
+        return null; // a character with no key of its own on the US layout
+    return key; // F4, Delete, ...: named as they are
+}
+
+/// The menu for the script to show as its menu bar: what the items are, not how Sciter draws
+/// them. `[{"label", "items": [...]}]`, an item `{"command", "label", "shortcut"?}`,
+/// `{"separator": true}` or `{"label", "items"}`; a shortcut `{"text" (as `platform` shows it),
+/// "code" (`KeyboardEvent.code`), "ctrl" (the primary modifier), "shift", "alt", "bySystem"}`.
+string menuJson(MenuItem[] bar, MenuPlatform platform) @safe
+{
+    import std.json : JSONValue;
+
+    JSONValue itemJson(ref MenuItem item)
     {
-        html.put("<menu>");
-        foreach (ref item; items)
+        JSONValue json;
+        final switch (item.kind)
         {
-            if (item.kind == MenuItemKind.separator)
+        case MenuItemKind.separator:
+            json["separator"] = true;
+            break;
+        case MenuItemKind.submenu:
+            json["label"] = item.label;
+            JSONValue[] items;
+            foreach (ref sub; item.items)
+                items ~= itemJson(sub);
+            json["items"] = JSONValue(items);
+            break;
+        case MenuItemKind.command:
+            json["command"] = item.id;
+            json["label"] = item.label;
+            if (!item.shortcut.isNone)
             {
-                html.put("<hr/>");
-                continue;
+                JSONValue s;
+                s["text"] = shortcutText(item.shortcut, platform);
+                s["code"] = domKeyCode(item.shortcut.key);
+                s["ctrl"] = item.shortcut.primary;
+                s["shift"] = item.shortcut.shift;
+                s["alt"] = item.shortcut.alt;
+                s["bySystem"] = item.shortcut.bySystem;
+                json["shortcut"] = s;
             }
-            if (item.kind == MenuItemKind.submenu)
-                html.put("<li>");
-            else
-            {
-                html.put(`<li command="`);
-                putEscaped(item.id);
-                html.put(`">`);
-            }
-            putEscaped(item.label);
-            if (item.kind == MenuItemKind.submenu)
-                putMenu(item.items);
-            else if (!item.shortcut.isNone)
-            {
-                html.put(`<span class="accesskey">`);
-                putEscaped(shortcutText(item.shortcut, platform));
-                html.put("</span>");
-            }
-            html.put("</li>");
+            break;
         }
-        html.put("</menu>");
+        return json;
     }
 
-    html.put(`<ul id="menu-bar">`);
+    JSONValue[] entries;
     foreach (ref entry; bar)
-    {
-        html.put("<li><caption>");
-        putEscaped(entry.label);
-        html.put("</caption>");
-        putMenu(entry.items);
-        html.put("</li>");
-    }
-    html.put("</ul>");
-    return html[];
+        entries ~= itemJson(entry);
+    return JSONValue(entries).toString();
 }
 
 version (unittest)
@@ -325,36 +371,6 @@ unittest
     assert(macModifierMask(Shortcut("F", true, true, true)) == (1UL << 20 | 1UL << 17 | 1UL << 19));
 }
 
-@("menu bar markup: captions, commands, shortcuts, separators, escaping")
-unittest
-{
-    auto bar = [
-        submenu("File", [
-            command("file.open", "Open <File>...", primary("O")),
-            separator(),
-            command("a&b", "Tom & \"Jerry\""),
-            submenu("More", [command("x", "X")]),
-        ]),
-    ];
-    assert(menuBarHtml(bar, MenuPlatform.windows) ==
-        `<ul id="menu-bar"><li><caption>File</caption><menu>`
-        ~ `<li command="file.open">Open &lt;File&gt;...<span class="accesskey">Ctrl+O</span></li>`
-        ~ `<hr/>`
-        ~ `<li command="a&amp;b">Tom &amp; &quot;Jerry&quot;</li>`
-        ~ `<li>More<menu><li command="x">X</li></menu></li>`
-        ~ `</menu></li></ul>`);
-}
-
-@("an empty submenu stays a submenu, not a command")
-unittest
-{
-    auto bar = [submenu("File", [submenu("Recent", [])])];
-    assert(menuBarHtml(bar, MenuPlatform.windows) ==
-        `<ul id="menu-bar"><li><caption>File</caption><menu>`
-        ~ `<li>Recent<menu></menu></li>`
-        ~ `</menu></li></ul>`);
-}
-
 @("macOS application menu merged into the existing one: no Quit, one separator before the system items")
 unittest
 {
@@ -370,4 +386,75 @@ unittest
     assert(macAppMenuMerge(items).map!(i => i.kind).array == [MenuItemKind.command,
         MenuItemKind.separator, MenuItemKind.command, MenuItemKind.separator]);
     assert(macAppMenuMerge([command(MenuCommand.quit, "Quit")]).length == 0);
+}
+
+@("the Sciter menu bar: none on macOS but for a try, the host's elsewhere")
+unittest
+{
+    assert(sciterMenuBarPlatform(MenuPlatform.mac, "").isNull);
+    assert(sciterMenuBarPlatform(MenuPlatform.mac, "nonsense").isNull);
+    assert(sciterMenuBarPlatform(MenuPlatform.mac, "windows").get == MenuPlatform.windows);
+    assert(sciterMenuBarPlatform(MenuPlatform.mac, "linux").get == MenuPlatform.linux);
+    assert(sciterMenuBarPlatform(MenuPlatform.windows, "").get == MenuPlatform.windows);
+    assert(sciterMenuBarPlatform(MenuPlatform.linux, "windows").get == MenuPlatform.windows);
+}
+
+@("DOM key codes of shortcut keys")
+unittest
+{
+    assert(domKeyCode("O") == "KeyO");
+    assert(domKeyCode("o") == "KeyO");
+    assert(domKeyCode("1") == "Digit1");
+    assert(domKeyCode(",") == "Comma");
+    assert(domKeyCode(".") == "Period");
+    assert(domKeyCode("F4") == "F4");
+    assert(domKeyCode("[") == "BracketLeft");
+    assert(domKeyCode("'") == "Quote");
+    assert(domKeyCode(" ") == "Space");
+    assert(domKeyCode("+") is null); // Shift+Equal on one layout, NumpadAdd: no single code
+    assert(domKeyCode("é") is null);
+}
+
+@("every shortcut of the menu has a DOM key code")
+unittest
+{
+    void check(MenuItem[] items)
+    {
+        foreach (ref item; items)
+        {
+            check(item.items);
+            if (!item.shortcut.isNone)
+                assert(domKeyCode(item.shortcut.key) !is null, item.shortcut.key);
+        }
+    }
+
+    foreach (platform; [MenuPlatform.mac, MenuPlatform.windows, MenuPlatform.linux])
+        check(appMenu(platform));
+}
+
+@("menu for the script: submenus, commands, separators, shortcuts by platform")
+unittest
+{
+    import std.json : parseJSON;
+
+    auto bar = [
+        submenu("File", [
+            command("file.open", "Open", primary("O")),
+            separator(),
+            command("none", "None"),
+            submenu("Recent", []),
+            command("app.quit", "Exit", Shortcut("F4", false, false, true, true)),
+        ]),
+    ];
+    assert(parseJSON(menuJson(bar, MenuPlatform.windows)) == parseJSON(`[{"label": "File", "items": [
+        {"command": "file.open", "label": "Open", "shortcut": {"text": "Ctrl+O", "code": "KeyO",
+            "ctrl": true, "shift": false, "alt": false, "bySystem": false}},
+        {"separator": true},
+        {"command": "none", "label": "None"},
+        {"label": "Recent", "items": []},
+        {"command": "app.quit", "label": "Exit", "shortcut": {"text": "Alt+F4", "code": "F4",
+            "ctrl": false, "shift": false, "alt": true, "bySystem": true}}
+    ]}]`));
+    auto mac = parseJSON(menuJson([submenu("File", [command("a", "A", primary("S", true))])], MenuPlatform.mac));
+    assert(mac[0]["items"][0]["shortcut"]["text"].str == "⇧⌘S");
 }

@@ -18,6 +18,7 @@ import domain.workspace;
 import log_core.log_format : ColumnInfo, FormatChoice;
 import log_core.rule_filter : RuleId;
 import log_core.search_filter : MatchRange;
+import ui.app_menu : MenuPlatform;
 import ui.app_settings;
 import ui.document_ui : DocumentUi;
 import ui.filter_commands : DocumentFilters;
@@ -26,6 +27,7 @@ import ui.main_view_fsm : toJson;
 import ui.search_view_fsm : toJson;
 
 import std.json : JSONValue;
+import std.typecons : Nullable;
 
 /// A call of a global function of the script: name(docId) or name(docId, json)
 struct ScriptCall
@@ -59,6 +61,7 @@ final class AppSession
     private ScriptCall[] _scriptCalls; // queued for the idle loop
     private bool _settingsChanged; // since they were last written
     private bool _closing; // the window closes: no more calls of the script
+    private string _menuBarJson; // the menu bar of the window in Sciter; "": only the native menu
 
     /// @param open - opens a document (a LogDocument in the app)
     /// @param write - writes the settings, to their file if not given
@@ -455,6 +458,22 @@ final class AppSession
         return error;
     }
 
+    // ── Menu ─────────────────────────────────────────────────────────────────
+
+    /// The window shows the menu bar of `platform` in Sciter (none: only the native menu)
+    void showMenuBar(Nullable!MenuPlatform platform)
+    {
+        import ui.app_menu : appMenu, menuJson;
+
+        _menuBarJson = platform.isNull ? "" : menuJson(appMenu(platform.get), platform.get);
+    }
+
+    /// The menu the script shows as its menu bar (ui.app_menu.menuJson), "" if it shows none
+    string menuBarJson()
+    {
+        return _menuBarJson;
+    }
+
     // ── Columns ──────────────────────────────────────────────────────────────
 
     /// The Columns section of the Settings dialog, the format of the active document first
@@ -673,6 +692,19 @@ version (unittest)
             names ~= c.name;
         return names;
     }
+}
+
+@("AppSession: the menu bar is given only when the window shows one")
+unittest
+{
+    import ui.app_menu : appMenu, menuJson;
+
+    auto f = Fixture.make();
+    assert(f.session.menuBarJson() == "");
+    f.session.showMenuBar(Nullable!MenuPlatform(MenuPlatform.windows));
+    assert(f.session.menuBarJson() == menuJson(appMenu(MenuPlatform.windows), MenuPlatform.windows));
+    f.session.showMenuBar(Nullable!MenuPlatform.init);
+    assert(f.session.menuBarJson() == "");
 }
 
 @("AppSession: a file opened gets a document; the script is told later, not during the call")

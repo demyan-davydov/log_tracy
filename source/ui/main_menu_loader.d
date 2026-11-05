@@ -11,9 +11,6 @@ void loadAppMenu(MainWindow window)
     {
         setupMainMenuOSX(window, appMenu(MenuPlatform.mac));
         writeln("Native Menu: OSX menu setup completed.");
-        // A try of the unified menu: what Windows and Linux would show
-        writeln("Menu bar (windows): ", menuBarHtml(appMenu(MenuPlatform.windows), MenuPlatform.windows));
-        writeln("Menu bar (linux): ", menuBarHtml(appMenu(MenuPlatform.linux), MenuPlatform.linux));
     }
 }
 

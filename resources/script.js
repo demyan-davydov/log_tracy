@@ -11,6 +11,7 @@ import { paneChanges } from "pane-state.js";
 import { TabStrip } from "tabs.js";
 import * as backend from "backend.js";
 import * as platform from "platform.js";
+import { showMenuBar } from "menu-bar.js";
 
 // The table whose context menu is open: "Copy Row" copies its selected rows
 let contextList = null;
@@ -118,6 +119,7 @@ function stopList(logList) {
 
 function initApp() {
     restoreSettings();
+    setupMenuBar();
     setupEvents();
     refreshTabs();
 }
@@ -277,6 +279,12 @@ globalThis.onMenuCommand = function (id) {
         case "file.open":
             openFileAction();
             break;
+        case "app.quit": // Windows, Linux (macOS: terminate: of the native menu)
+            platform.closeWindow();
+            break;
+        case "window.minimize":
+            platform.minimizeWindow();
+            break;
         default:
             console.warn("Unhandled menu command:", id);
     }
@@ -314,13 +322,13 @@ function setupEvents() {
     document.on("mousemove", evt => { moveRowDrag(evt); });
     document.on("mouseup", () => { endRowDrag(); });
 
-    document.on("keydown", function (evt) {
-        const modifier = evt.metaKey || evt.ctrlKey;
-        if (modifier && (evt.code === "KeyO" || evt.code === "KeyF")) {
-            openFileAction();
-            return true;
-        }
-    });
+}
+
+// The menu bar of the window on Windows and Linux, as the backend describes it;
+// none on macOS, where the menu is native
+function setupMenuBar() {
+    const bar = backend.menuBar();
+    if (bar) showMenuBar($("#main-menu"), bar, id => onMenuCommand(id));
 }
 
 // The panels of the open documents: docId -> DocumentPane (document-pane.js).
