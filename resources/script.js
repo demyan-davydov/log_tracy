@@ -154,7 +154,8 @@ function initChipSearch() {
             updateChipPending();
         },
         onCommit: runChipSearch,
-        history: () => JSON.parse(Window.this.xcall("getSearchHistory") || "[]"),
+        history: () => activeDocId === null ? []
+            : JSON.parse(Window.this.xcall("getSearchHistory", activeDocId) || "[]"),
         historyButton: $("#btn-chip-history"),
     });
     document.on("click", "#btn-chip-search", () => {
@@ -169,7 +170,8 @@ function runChipSearch() {
     const chips = chipEditor.searchChips();
     // an invalid regex chip is refused here; the backend checks again
     let error = chipEditor.firstError();
-    if (!error) error = Window.this.xcall("startChipSearch", JSON.stringify(chips));
+    if (!error) error = activeDocId === null ? "no document"
+        : Window.this.xcall("startChipSearch", activeDocId, JSON.stringify(chips));
     $("#chip-search-message").innerText = error ? `Search error: ${error}` : "";
     if (!error && activeDocId !== null) {
         committedChips.set(activeDocId, JSON.stringify(chips));
@@ -428,7 +430,9 @@ function setupEvents() {
         const anchored = cell.getAttribute("has-anchor") === "true";
         const lists = [getMainViewList(), getSearchViewList()].filter(list => list);
         const counts = lists.map(list => list.totalItems());
-        if (Window.this.xcall("setAnchor", index, !anchored)) {
+        const docId = cell.closest("tbody")?.docId;
+        if (docId == null) return true;
+        if (Window.this.xcall("setAnchor", docId, index, !anchored)) {
             for (const [i, list] of lists.entries()) {
                 // The view gained or lost the row: the selected positions show other rows
                 if (list.totalItems() !== counts[i]) list.resetSelection();
@@ -473,7 +477,7 @@ function setupEvents() {
         if (docStatus.get(activeDocId)?.mainView?.status !== "ready") return;
         const list = getMainViewList();
         if (!list) return;
-        const position = Window.this.xcall("getMainViewPosition", msgIndex);
+        const position = Window.this.xcall("getMainViewPosition", list.docId, msgIndex);
         if (position === null || position === undefined) return;
         list.selection.moveTo(position);
         list.navigateTarget = scrollTarget(position, list.visibleRowCount());
@@ -680,7 +684,7 @@ const ruleKindTitles = {
 // table reloads when the filter operation reports completion
 function filterCommand(name, ...args) {
     if (activeDocId === null) return;
-    const error = Window.this.xcall(name, ...args);
+    const error = Window.this.xcall(name, activeDocId, ...args);
     filterMessages.set(activeDocId, error || "");
     showFilters();
     refreshRuleColors();
@@ -701,7 +705,8 @@ let shownFilters = { canFilter: false, canDlf: false, sets: [] }; // what showFi
 // @returns true if the rule was applied, false if the editor was cancelled
 function editRule(set, rule) {
     if (activeDocId === null) return false;
-    let values = JSON.parse(Window.this.xcall("getFilterRule", set, rule) || "null");
+    const docId = activeDocId;
+    let values = JSON.parse(Window.this.xcall("getFilterRule", docId, set, rule) || "null");
     if (!values) return false;
     let error = "";
     for (;;) {
@@ -710,16 +715,16 @@ function editRule(set, rule) {
             alignment: "center",
             parameters: {
                 title: rule < 0 ? "New Rule" : "Edit Rule", theme: currentTheme, rule: values, error,
-                columns: JSON.parse(Window.this.xcall("getColumns") || "[]"),
+                columns: JSON.parse(Window.this.xcall("getColumns", docId) || "[]"),
                 // What is wrong with the rule, while it is edited: the editor
                 // marks it at once instead of being reopened with the error
-                check: rule => Window.this.xcall("checkFilterRule", JSON.stringify(rule))
+                check: rule => Window.this.xcall("checkFilterRule", docId, JSON.stringify(rule))
             }
         });
         if (!result) return false;
         const json = JSON.stringify(result);
-        error = rule < 0 ? Window.this.xcall("addFilterRule", set, json)
-            : Window.this.xcall("updateFilterRule", set, rule, json);
+        error = rule < 0 ? Window.this.xcall("addFilterRule", docId, set, json)
+            : Window.this.xcall("updateFilterRule", docId, set, rule, json);
         if (!error) break;
         values = result;
     }
@@ -734,7 +739,7 @@ function editRule(set, rule) {
 function showFilters() {
     const info = activeDocId === null
         ? { canFilter: false, canDlf: false, sets: [] }
-        : JSON.parse(Window.this.xcall("getFilters") || "{}");
+        : JSON.parse(Window.this.xcall("getFilters", activeDocId) || "{}");
     shownFilters = info;
     setRuleColors(ruleColors(info.sets)); // the rows refer to the rules by id
     const panel = $("#filter-sets");
@@ -829,6 +834,9 @@ function refreshTabs() {
         docStatus.set(doc.id, { mainView: doc.mainView, searchView: doc.searchView, path: doc.path });
         if (doc.active) activeDocId = doc.id;
     }
+    // The tables show the rows of the active document
+    for (const list of [getMainViewList(), getSearchViewList()])
+        if (list) list.docId = activeDocId;
     // The filters first: the rows the columns re-render refer to its rules
     if (activeDocId !== filtersDocId) showFilters(); // the sets change by commands only
     applyColumns();
@@ -889,7 +897,7 @@ function refreshTabs() {
 // @returns the JSON of the columns of the tables, "[]" if no document
 let appliedColumns = null; // JSON of the columns the tables show
 function applyColumns() {
-    const json = Window.this.xcall("getTableColumns") || "[]";
+    const json = activeDocId === null ? "[]" : Window.this.xcall("getTableColumns", activeDocId) || "[]";
     if (json === "[]" || json === appliedColumns) return json; // none, or unchanged
     appliedColumns = json;
     setColumns(JSON.parse(json));

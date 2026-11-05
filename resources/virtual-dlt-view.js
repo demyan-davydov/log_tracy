@@ -340,32 +340,33 @@ function autoScrollRowDrag() {
     list.updateRowStates();
 }
 
+// The rows of the main view of the document `docId` (set by the script; null:
+// no document, no rows)
 export class VirtualMainViewTBody extends VirtualDltTBody {
     this(props) {
         super.this(props);
     }
 
     itemAt(at) {
-        return Window.this.xcall("getMainViewItem", at);
+        return this.docId == null ? null : Window.this.xcall("getMainViewItem", this.docId, at);
     }
 
     totalItems() {
-        const totalLogs = Window.this.xcall("getMainViewCount");
-        return totalLogs;
+        return this.docId == null ? 0 : Window.this.xcall("getMainViewCount", this.docId);
     }
 }
 
+// The rows of the search view of the document `docId`, as above
 export class VirtualSearchViewTBody extends VirtualDltTBody {
     this(props) {
         super.this(props);
     }
 
     itemAt(at) {
-        return Window.this.xcall("getSearchViewItem", at);
+        return this.docId == null ? null : Window.this.xcall("getSearchViewItem", this.docId, at);
     }
 
     totalItems() {
-        const totalLogs = Window.this.xcall("getSearchViewCount");
-        return totalLogs;
+        return this.docId == null ? 0 : Window.this.xcall("getSearchViewCount", this.docId);
     }
 }
