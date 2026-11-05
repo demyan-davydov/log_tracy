@@ -8,9 +8,10 @@
 import * as env from "@env";
 import {
     moveCaret, moveTo, typeInGap, typeBarInChip, deleteInGap, searchChips,
-    selection, extendCaret, selectChipsFrom, selectTo, selectAll, selectedChips, deleteSelection, insertChips,
+    sameQuery, selection, extendCaret, selectChipsFrom, selectTo, selectAll, selectedChips, deleteSelection, insertChips,
 } from "search-editing.js";
 import { formatQuery, parseQuery, makeChip } from "search-query.js";
+import { EditHistory } from "edit-history.js";
 
 const isMac = () => env.PLATFORM === "OSX";
 
@@ -25,6 +26,7 @@ export class SearchEditor {
         this.onEdited = onEdited;
         this.onCommit = onCommit;
         this.state = { chips: [], pos: { gap: 0 } };
+        this.history = new EditHistory(); // the undo steps of the chips shown
         this.regexErrors = new Map(); // "ignoreCase\0pattern" -> error
         this.entryText = null; // the text of the chip edited, as it was when the caret came in (Esc)
         this.textAnchor = null; // where a Shift selection inside the edited chip started
@@ -37,7 +39,9 @@ export class SearchEditor {
     get chips() { return this.state.chips; }
 
     // Shows other chips (another document), the caret after the last one
-    setChips(chips) {
+    // @param history - the undo steps of those chips (EditHistory), a new one if not given
+    setChips(chips, history = null) {
+        this.history = history ?? new EditHistory();
         this.state = { chips: chips.map(c => ({ ...c })), pos: { gap: chips.length } };
         this.entryText = null;
         this.render();
@@ -82,9 +86,13 @@ export class SearchEditor {
 
     chipEdit(i) { return this.root.$(`.chip[data-chip="${i}"] > .chip-text`); }
 
-    // Goes to a new state: renders it if the chips changed, moves the focus
-    go(next) {
+    // Goes to a new state: renders it if the chips changed, moves the focus.
+    // A change of the query is an undo step; changes of the same `kind` in a row
+    // (typing in one chip) are one step.
+    go(next, kind = null) {
         if (!next) return;
+        if (!sameQuery(this.state.chips, next.chips)) this.history.record(this.state, kind);
+        else this.history.breakMerge();
         const enteredChip = next.pos.gap === undefined
             && (this.state.pos.gap !== undefined || this.state.pos.chip !== next.pos.chip);
         const chipsChanged = next.chips !== this.state.chips;
@@ -224,6 +232,7 @@ export class SearchEditor {
         if (i < 0) return;
         const chips = [...this.state.chips];
         chips[i] = { ...chips[i], text: edit.value };
+        if (!sameQuery(this.state.chips, chips)) this.history.record(this.state, `type ${i}`);
         this.state = { chips, pos: { chip: i, offset: edit.edit.selectionStart } };
         markEdgeSpaces(edit, edit.value);
         this.onEdited?.();
@@ -236,6 +245,8 @@ export class SearchEditor {
         const command = isMac() ? evt.metaKey : evt.ctrlKey;
         if (command && !evt.altKey) {
             switch (evt.code) {
+                case "KeyZ": return evt.shiftKey ? this.redo() : this.undo();
+                case "KeyY": if (!isMac()) return this.redo(); break;
                 case "KeyA": return this.selectAllKey();
                 case "KeyC": return this.copy(false);
                 case "KeyX": return this.copy(true);
@@ -322,6 +333,30 @@ export class SearchEditor {
         return true;
     }
 
+    // Cmd/Ctrl+Z: every change of the query, the typing in a chip included; the
+    // edits' own undo is never used, so there is one history
+    undo() {
+        const back = this.history.undo(this.syncedState());
+        if (back) this.restore(back);
+        return true;
+    }
+
+    // Cmd/Ctrl+Shift+Z, Ctrl+Y
+    redo() {
+        const forth = this.history.redo(this.syncedState());
+        if (forth) this.restore(forth);
+        return true;
+    }
+
+    restore(state) {
+        this.state = state;
+        this.textAnchor = null;
+        this.entryText = state.pos.gap === undefined ? state.chips[state.pos.chip].text : null;
+        this.render();
+        this.onEdited?.();
+        this.placeFocus();
+    }
+
     // Cmd/Ctrl+A: inside a chip its text first, then every chip
     selectAllKey() {
         const synced = this.syncedState();
@@ -375,7 +410,8 @@ export class SearchEditor {
         if (evt.ctrlKey || evt.metaKey) return false;
         const synced = this.syncedState();
         if (synced.pos.gap !== undefined) {
-            this.go(typeInGap(synced, char));
+            const next = typeInGap(synced, char);
+            this.go(next, `type ${next.pos.chip}`); // the typing goes on in the new chip
             return true;
         }
         if (char !== "|") return false; // typed into the chip by its edit

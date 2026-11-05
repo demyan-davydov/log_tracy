@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { makeChip } from "../../resources/search-query.js";
 import {
     moveCaret, moveTo, typeInGap, typeBarInChip, deleteInGap, searchChips,
-    selection, extendCaret, selectChipsFrom, selectTo, selectAll, selectedChips, insertChips,
+    sameQuery, selection, extendCaret, selectChipsFrom, selectTo, selectAll, selectedChips, insertChips,
 } from "../../resources/search-editing.js";
 
 const text = (t, ignoreCase = false) => makeChip(t, { ignoreCase });
@@ -190,4 +190,11 @@ test("insertChips: in a chip they go after it, an empty chip they replace", () =
         { chips: [text("a"), regex("x"), text("b"), text("c")], pos: gap(2) });
     assert.deepEqual(insertChips({ chips: [text("a"), text("")], pos: at(1, 0) }, pasted),
         { chips: [text("a"), regex("x")], pos: gap(2) });
+});
+
+test("sameQuery: queries differ by their chips, not by the empty ones being edited", () => {
+    assert.equal(sameQuery([text("a"), text("")], [text("a")]), true);
+    assert.equal(sameQuery([text("a"), text("b")], [text("b"), text("a")]), false, "the order matters");
+    assert.equal(sameQuery([text("a")], [text("a", true)]), false, "the case matters");
+    assert.equal(sameQuery([text("a")], [regex("a")]), false, "the type matters");
 });

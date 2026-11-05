@@ -89,6 +89,13 @@ export function searchChips(chips) {
     return chips.filter(chip => chip.text !== "");
 }
 
+// @returns true if the chips make the same query: an empty chip, which lives only
+// while it is edited, is no change
+export function sameQuery(a, b) {
+    const key = chips => JSON.stringify(searchChips(chips).map(c => [c.text, c.isRegex, c.ignoreCase]));
+    return key(a) === key(b);
+}
+
 // ---- selection of whole chips ----
 // A state may have an `anchor` gap: with the caret in a gap, the chips between
 // the anchor and the caret are selected.

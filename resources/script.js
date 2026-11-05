@@ -223,7 +223,7 @@ function initSearch() {
 // The chip search editor (docs/stories/advanced-search.md), tried side by side
 // with the search field above it. Its draft and its committed chips belong to
 // the document as those of the field do:
-//   docId -> { chips, message } of the editor
+//   docId -> { chips, message, history } of the editor (history: its undo steps)
 const chipDrafts = new Map();
 //   docId -> JSON of the chips the shown search was run with
 const committedChips = new Map();
@@ -269,13 +269,13 @@ function updateChipPending() {
 function saveChipDraft() {
     if (chipEditorDocId === null || !docStatus.has(chipEditorDocId) || chipEditor === null) return;
     chipDrafts.set(chipEditorDocId,
-        { chips: chipEditor.chips, message: $("#chip-search-message").innerText || "" });
+        { chips: chipEditor.chips, message: $("#chip-search-message").innerText || "", history: chipEditor.history });
 }
 
 function showChipDraft() {
     if (chipEditorDocId === activeDocId || chipEditor === null) return;
-    const draft = chipDrafts.get(activeDocId) || { chips: [], message: "" };
-    chipEditor.setChips(draft.chips);
+    const draft = chipDrafts.get(activeDocId) || { chips: [], message: "", history: null };
+    chipEditor.setChips(draft.chips, draft.history);
     $("#chip-search-message").innerText = draft.message;
     chipEditorDocId = activeDocId;
 }
