@@ -1,0 +1,169 @@
+/* The chip search editor (search-editor.js). Story: docs/stories/advanced-search.md */
+
+.chip-editor {
+    width: *;
+    flow: horizontal-wrap;
+    vertical-align: middle;
+    min-height: 1.6em;
+    padding: 1dip 2dip;
+    background: var(--bg-input);
+    border: 1dip solid var(--border-input);
+    border-radius: 3dip;
+    cursor: text;
+}
+
+.chip-editor.focused {
+    border-color: var(--border-focus);
+}
+
+/* The place between chips; the caret is a 1dip line in the middle of it */
+.chip-editor > .gap {
+    width: 5dip;
+    height: 1.3em;
+    margin: 1dip 0;
+}
+
+.chip-editor > .gap.caret {
+    width: 1dip;
+    margin: 1dip 2dip;
+    background: var(--text-main);
+}
+
+/* The caret blinks as the one of a text field (search-editor.js toggles the class) */
+.chip-editor.blink-off > .gap.caret {
+    background: transparent;
+}
+
+.chip-editor > .placeholder {
+    color: var(--text-label);
+    margin: 1dip 0;
+    line-height: 1.3em;
+}
+
+.chip-editor > .chip {
+    flow: horizontal;
+    vertical-align: middle;
+    height: 1.3em;
+    margin: 1dip 0;
+    padding: 0 1dip;
+    /* the background is the chip's match color: a match-color-N class */
+    border: 1dip solid var(--chip-border);
+    border-radius: 3dip;
+}
+
+.chip-editor > .chip.active {
+    border-color: var(--border-focus);
+}
+
+/* Chips selected as a whole: like selected text, muted while the editor has no focus */
+.chip-editor > .chip.selected {
+    background: var(--chip-selected);
+}
+
+.chip-editor:not(.focused) > .chip.selected {
+    background: var(--chip-selected-inactive);
+}
+
+.chip-editor > .chip.invalid {
+    border-color: var(--log-error);
+}
+
+.chip-editor .chip-text {
+    behavior: edit;
+    flow: text;
+    white-space: pre;
+    width: max-content;
+    min-width: 2dip;
+    padding: 0 2dip;
+    line-height: 1.3em;
+    background: transparent;
+    border: none;
+}
+
+.chip-editor .chip.regex > .chip-text {
+    font-family: monospace;
+}
+
+/* Spaces at the edges of a chip are significant: they are shaded, the same on
+   any match color */
+.chip-editor .chip-text::mark(edge-space) {
+    background: var(--chip-edge-space);
+}
+
+/* The switches of a chip, on its left: always shown, so nothing moves when one
+   is switched; the ones on are accented */
+.chip-editor .chip-toggle {
+    font-size: 0.8em;
+    line-height: 1.6em;
+    padding: 0 2dip;
+    color: var(--text-label);
+    opacity: 0.45;
+    cursor: default;
+    border-radius: 2dip;
+}
+
+.chip-editor .chip.regex > .chip-regex,
+.chip-editor .chip.nocase > .chip-case {
+    color: var(--border-focus);
+    opacity: 1;
+}
+
+.chip-editor .chip-toggle:hover {
+    background: var(--btn-default-hover);
+}
+
+/* The search history: the queries of the document under the editor */
+popup.search-history {
+    flow: vertical;
+    max-height: 20em;
+    overflow-y: auto;
+    padding: 2dip;
+    background: var(--bg-input);
+    border: 1dip solid var(--border-input);
+    border-radius: 3dip;
+}
+
+popup.search-history > .history-empty {
+    padding: 3dip 6dip;
+    color: var(--text-label);
+}
+
+popup.search-history > .history-item {
+    flow: horizontal-wrap;
+    border-spacing: 4dip;
+    padding: 3dip 4dip;
+    border-radius: 2dip;
+    cursor: default;
+}
+
+popup.search-history > .history-item.current {
+    background: var(--chip-selected);
+}
+
+popup.search-history .history-chip {
+    flow: horizontal;
+    padding: 0 4dip;
+    white-space: pre;
+    border: 1dip solid var(--chip-border);
+    border-radius: 3dip;
+}
+
+popup.search-history .history-flag {
+    font-size: 0.8em;
+    color: var(--border-focus);
+    padding-right: 3dip;
+    vertical-align: middle;
+}
+
+popup.search-history .history-text.regex {
+    font-family: monospace;
+}
+
+#chip-search-message:empty {
+    display: none;
+}
+
+#chip-search-message {
+    color: red;
+    padding: 2px 4px;
+}

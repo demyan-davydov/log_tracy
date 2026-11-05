@@ -23,6 +23,27 @@
 @const BTN_PRIMARY_BORDER: #005a9e;
 @const BG_DETAILS: #f5f5f5;
 @const BG_SEARCH_PENDING: #fff3cd;
+@const CHIP_BORDER: #b8c4d6;
+@const CHIP_SELECTED: #cce0ff;
+@const CHIP_SELECTED_INACTIVE: #e4e8ee;
+@const CHIP_EDGE_SPACE: rgba(0,0,0,0.16);
+/* The match colors: one per search chip and the matches it finds, see match-colors.css */
+@const MATCH_COLOR_0: #ffd6d6;
+@const MATCH_COLOR_1: #ffe2c6;
+@const MATCH_COLOR_2: #fff1b0;
+@const MATCH_COLOR_3: #e8f5c0;
+@const MATCH_COLOR_4: #cdeed3;
+@const MATCH_COLOR_5: #c6ede3;
+@const MATCH_COLOR_6: #c9e8f6;
+@const MATCH_COLOR_7: #d3defa;
+@const MATCH_COLOR_8: #ddd5f8;
+@const MATCH_COLOR_9: #ebd4f5;
+@const MATCH_COLOR_10: #f8d2e8;
+@const MATCH_COLOR_11: #f2dccc;
+@const MATCH_COLOR_12: #e1e7cf;
+@const MATCH_COLOR_13: #d4e6ea;
+@const MATCH_COLOR_14: #e6e0ef;
+@const MATCH_COLOR_15: #efe5d6;
 @const BG_DETAILS_HEADER: #eee;
 @const LOG_FATAL_BG: #8b0000;
 @const LOG_FATAL_TEXT: #fff;
@@ -69,6 +90,26 @@
     --bg-details: @BG_DETAILS;
     --bg-details-header: @BG_DETAILS_HEADER;
     --bg-search-pending: @BG_SEARCH_PENDING;
+    --match-color-0: @MATCH_COLOR_0;
+    --match-color-1: @MATCH_COLOR_1;
+    --match-color-2: @MATCH_COLOR_2;
+    --match-color-3: @MATCH_COLOR_3;
+    --match-color-4: @MATCH_COLOR_4;
+    --match-color-5: @MATCH_COLOR_5;
+    --match-color-6: @MATCH_COLOR_6;
+    --match-color-7: @MATCH_COLOR_7;
+    --match-color-8: @MATCH_COLOR_8;
+    --match-color-9: @MATCH_COLOR_9;
+    --match-color-10: @MATCH_COLOR_10;
+    --match-color-11: @MATCH_COLOR_11;
+    --match-color-12: @MATCH_COLOR_12;
+    --match-color-13: @MATCH_COLOR_13;
+    --match-color-14: @MATCH_COLOR_14;
+    --match-color-15: @MATCH_COLOR_15;
+    --chip-border: @CHIP_BORDER;
+    --chip-edge-space: @CHIP_EDGE_SPACE;
+    --chip-selected: @CHIP_SELECTED;
+    --chip-selected-inactive: @CHIP_SELECTED_INACTIVE;
 
     /* Log Levels */
     --log-fatal-bg: @LOG_FATAL_BG;

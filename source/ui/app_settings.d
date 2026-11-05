@@ -13,6 +13,8 @@ import log_core.filter_file : ruleFromJson, rulesToJson;
 import log_core.rule_filter : FilterRule;
 import log_core.log_format : FormatChoice, FormatInfo;
 import log_core.column_layout : ColumnState;
+import log_core.search_filter : SearchChip;
+import ui.search_chips : chipsFromJson, chipsToJson;
 
 struct WindowRect
 {
@@ -64,13 +66,18 @@ struct RecentFile
     FormatChoice format; /// the format it was opened with last time; unset if never opened
     long lastUsed; /// when it was worked with last: ms since the Unix epoch (UTC); 0 if unknown
     SavedFilter[] filters; /// loaded for it, in the order loaded
+    SearchChip[][] searches; /// the queries searched in it, the latest first (searchHistoryMax at most)
 }
+
+/// The most queries the search history of a file keeps
+enum searchHistoryMax = 30;
 
 /// A mutable copy of a recent file entry
 RecentFile copyOf(const RecentFile file)
 {
     return RecentFile(file.path, file.format, file.lastUsed,
-        file.filters.map!(f => SavedFilter(f.name, f.source, f.enabled, copyOf(f.rules))).array);
+        file.filters.map!(f => SavedFilter(f.name, f.source, f.enabled, copyOf(f.rules))).array,
+        file.searches.map!(q => q.dup).array);
 }
 
 /// A mutable copy of rules
@@ -115,6 +122,36 @@ RecentFile[] withFilters(const RecentFile[] list, string path, SavedFilter[] fil
     return result;
 }
 
+/// Returns: the search history of `path`, the latest query first; null if it isn't in the list
+SearchChip[][] savedSearches(const RecentFile[] list, string path)
+{
+    path = recentFilePath(path);
+    foreach (file; list)
+        if (filenameCmp(file.path, path) == 0)
+            return file.searches.map!(q => q.dup).array;
+    return null;
+}
+
+/// Returns the recent list with `query` on top of the search history of `path`,
+/// in place: a query searched before moves up instead of being added again, the
+/// history keeps searchHistoryMax queries. An empty query and a file not in
+/// the list change nothing.
+RecentFile[] withSearch(const RecentFile[] list, string path, const(SearchChip)[] query)
+{
+    path = recentFilePath(path);
+    RecentFile[] result = copyOf(list);
+    if (query.length == 0)
+        return result;
+    foreach (ref file; result)
+    {
+        if (filenameCmp(file.path, path) != 0)
+            continue;
+        auto searches = [query.dup] ~ file.searches.filter!(q => q != query).array;
+        file.searches = searches[0 .. min(searches.length, searchHistoryMax)];
+    }
+    return result;
+}
+
 /// Now, as RecentFile.lastUsed counts it: UTC, so a change of the time zone or
 /// of daylight saving time doesn't move the times already saved
 long nowMs()
@@ -145,6 +182,8 @@ RecentFile[] withRecentFile(const RecentFile[] list, RecentFile file)
                 file.lastUsed = saved.lastUsed;
             if (file.filters is null)
                 file.filters = saved.filters;
+            if (file.searches is null)
+                file.searches = saved.searches;
         }
         result = [file] ~ result.filter!(f => filenameCmp(f.path, file.path) != 0).array;
     }
@@ -448,6 +487,8 @@ static JSONValue toJSON(in AppSettings settings)
                 "enabled": JSONValue(filter.enabled),
                 "rules": rulesToJson(filter.rules),
             ])).array);
+        if (f.searches.length)
+            fv.object["searches"] = JSONValue(f.searches.map!(q => chipsToJson(q)).array);
         recentArray ~= fv;
     }
     j.object["recentFiles"] = JSONValue(recentArray);
@@ -510,6 +551,29 @@ private SavedFilter[] filtersOf(const JSONValue entry)
                     } // skipped
                 }
         result ~= saved;
+    }
+    return result;
+}
+
+/// The search history saved in a recent file entry: {"searches": [[chips as
+/// the script sends them]]}; a query that can't be read, or an empty one, is skipped
+private SearchChip[][] searchesOf(const JSONValue entry)
+{
+    const searches = "searches" in entry;
+    if (searches is null || searches.type != JSONType.array)
+        return null;
+    SearchChip[][] result;
+    foreach (ref query; searches.array)
+    {
+        try
+        {
+            auto chips = chipsFromJson(query);
+            if (chips.length)
+                result ~= chips;
+        }
+        catch (Exception)
+        {
+        } // skipped
     }
     return result;
 }
@@ -589,7 +653,8 @@ static AppSettings loadSettings(string path = defaultSettingsPath())
                         const filePath = "path" in val;
                         if (filePath !is null && filePath.type == JSONType.string)
                             settings.recentFiles = withRecentFile(settings.recentFiles,
-                                RecentFile(filePath.str, formatOf(val), lastUsedOf(val), filtersOf(val)));
+                                RecentFile(filePath.str, formatOf(val), lastUsedOf(val), filtersOf(val),
+                                    searchesOf(val)));
                     }
                 }
             }
@@ -930,6 +995,56 @@ unittest
     auto changed = withFilters(list, "/a.log", []);
     assert(changed[1].path == "/a.log" && changed[1].filters.length == 0, "in place");
     assert(withFilters(list, "/c.log", filters.dup) == list, "a file not in the list isn't added");
+}
+
+/// The search history of a file: the latest query on top, a repeated one moved
+/// up, searchHistoryMax at most; kept when the file is opened again
+unittest
+{
+    const a = [SearchChip("a")], b = [SearchChip("b", true, true)], c = [SearchChip("a"), SearchChip("c")];
+    auto list = [RecentFile("/b.log"), RecentFile("/a.log")];
+    list = withSearch(list, "/a.log", a);
+    list = withSearch(list, "/a.log", b);
+    list = withSearch(list, "/logs/../a.log", c);
+    assert(savedSearches(list, "/a.log") == [c, b, a]);
+    assert(list[1].path == "/a.log", "in place");
+    assert(savedSearches(list, "/b.log").length == 0);
+    assert(savedSearches(list, "/c.log") is null);
+
+    list = withSearch(list, "/a.log", a);
+    assert(savedSearches(list, "/a.log") == [a, c, b], "a repeated query moves up");
+    assert(withSearch(list, "/a.log", [SearchChip("b", true, false)])[1].searches.length == 4,
+        "another case is another query");
+
+    assert(withSearch(list, "/a.log", a) == list, "the latest query again changes nothing");
+    assert(withSearch(list, "/a.log", []) == list, "an empty query isn't kept");
+    assert(withSearch(list, "/c.log", a) == list, "a file not in the list isn't added");
+
+    auto full = [RecentFile("/a.log")];
+    foreach (i; 0 .. searchHistoryMax + 5)
+        full = withSearch(full, "/a.log", [SearchChip(i.to!string)]);
+    assert(full[0].searches.length == searchHistoryMax);
+    assert(full[0].searches[0] == [SearchChip((searchHistoryMax + 4).to!string)], "the latest are kept");
+
+    assert(withRecentFile(list, RecentFile("/a.log", FormatChoice("dlt"), 200))[0].searches == [a, c, b]);
+    assert(withFilesUsed(list, ["/a.log"], 300)[0].searches == [a, c, b]);
+}
+
+/// The search history survives a save and a load; a query that can't be read is skipped
+unittest
+{
+    const path = buildPath(tempDir(), "dlt_explorer_settings_searches_test.json");
+    scope (exit) if (exists(path)) remove(path);
+
+    AppSettings settings;
+    settings.recentFiles = [RecentFile("/a.dlt", FormatChoice.init, 0, null,
+        [[SearchChip("x|y", true, true), SearchChip(" ")], [SearchChip("z")]])];
+    saveSettings(settings, path);
+    assert(loadSettings(path).recentFiles == settings.recentFiles);
+
+    std.file.write(path, `{"recentFiles": [{"path": "/a.dlt", "searches": [5, [{"text": 1}],
+        [{"text": "ok", "isRegex": false, "ignoreCase": false}], [], "x"]}]}`);
+    assert(loadSettings(path).recentFiles[0].searches == [[SearchChip("ok")]]);
 }
 
 /// The layouts of the columns survive a save and a load; broken entries are skipped

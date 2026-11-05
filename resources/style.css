@@ -36,17 +36,10 @@ header {
     background: var(--bg-search-pending);
 }
 
-#search-input {
-    width: *;
-    /* Sciter flex unit */
-}
-
-#search-message:empty,
 #filter-message:empty {
     display: none;
 }
 
-#search-message,
 #filter-message {
     color: red;
     padding: 2px 4px;

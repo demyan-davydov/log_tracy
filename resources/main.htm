@@ -7,6 +7,8 @@
     <style src="table.css" />
     <style src="tab-content.css" />
     <style src="menu-bar.css" />
+    <style src="match-colors.css" />
+    <style src="search-editor.css" />
     <script type="module" src="script.js" />
     <script type="module" src="virtual-dlt-view.js" />
 </head>
@@ -120,13 +122,12 @@
             </section>
 
             <section id="search-results-panel">
-                <div class="toolbar search-toolbar">
-                    <input type="text" id="search-input" placeholder="Search in payload (Enter)" />
-                    <label><input type="checkbox" id="search-regex" /> Regex</label>
-                    <label><input type="checkbox" id="search-ignore-case" /> Ignore case</label>
-                    <button id="btn-search">Search</button>
+                <div class="toolbar search-toolbar chip-search-toolbar">
+                    <div id="chip-search" class="chip-editor" tabindex="0"></div>
+                    <button id="btn-chip-history" title="Search history (↓)">▾</button>
+                    <button id="btn-chip-search">Search</button>
                 </div>
-                <div id="search-message"></div>
+                <div id="chip-search-message"></div>
 
                 <header>Details / Search Results</header>
                 <div id="search-loading-container" class="status-view compact" style="display:none;">
