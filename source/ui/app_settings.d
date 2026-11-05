@@ -196,6 +196,18 @@ RecentFile[] withRecentFile(const RecentFile[] list, string path)
     return withRecentFile(list, RecentFile(path));
 }
 
+/// Returns the recent list after `path` failed to open: a file already in the
+/// list stays where it is, as it was (its entry shows why it failed; moving it
+/// would pull it from under the mouse); a file new to it goes on top, to be
+/// tried again
+RecentFile[] withFailedFile(const RecentFile[] list, string path)
+{
+    const normalized = recentFilePath(path);
+    if (list.canFind!(f => filenameCmp(f.path, normalized) == 0))
+        return copyOf(list);
+    return withRecentFile(list, path);
+}
+
 /// Returns the recent list with the files in `paths` (e.g. the open ones)
 /// used at `now`: on top, in the order they had in the list, with that time
 RecentFile[] withFilesUsed(const RecentFile[] list, const string[] paths, long now)
@@ -715,6 +727,22 @@ unittest
     assert(withRecentFile(recent("/a.dlt", "/b.dlt"), "/c.dlt").paths == ["/c.dlt", "/a.dlt", "/b.dlt"]);
     assert(withRecentFile(recent("/a.dlt", "/b.dlt", "/c.dlt"), "/b.dlt").paths == ["/b.dlt", "/a.dlt", "/c.dlt"]);
     assert(withRecentFile(recent("/a.dlt"), "").paths == ["/a.dlt"]);
+}
+
+/// A file of the list that fails to open stays where it is, as it was
+unittest
+{
+    auto list = [RecentFile("/a.dlt", FormatChoice("dlt"), 10), RecentFile("/b.dlt", FormatChoice("logcat"), 20)];
+    const failed = withFailedFile(list, "/b.dlt");
+    assert(failed.paths == ["/a.dlt", "/b.dlt"], "not moved on top");
+    assert(failed[1] == list[1], "its format and time are kept");
+    assert(withFailedFile(list, "/logs/../b.dlt").paths == ["/a.dlt", "/b.dlt"], "the same file spelled otherwise");
+}
+
+/// A file new to the list that fails to open goes on top, to be tried again
+unittest
+{
+    assert(withFailedFile(recent("/a.dlt"), "/new.dlt").paths == ["/new.dlt", "/a.dlt"]);
 }
 
 /// The recent list keeps the newest recentFilesMax files
