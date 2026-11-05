@@ -23,6 +23,8 @@ import ui.app_settings;
 import ui.document_ui : DocumentUi;
 import ui.filter_commands : DocumentFilters;
 import ui.table_columns : TableColumns;
+import ui.translations : Translation, findTranslations, catalogLanguagesJson = languagesJson,
+    catalogTranslationJson = translationJson;
 import ui.main_view_fsm : toJson;
 import ui.search_view_fsm : toJson;
 
@@ -61,6 +63,7 @@ final class AppSession
     private bool _settingsChanged; // since they were last written
     private bool _closing; // the window closes: no more calls of the script
     private WindowMenu _menu = windowMenu(hostMenuPlatform(), ""); // the menu of the window
+    private Translation[] _translations; // of the interface, by locale
 
     /// @param open - opens a document (a LogDocument in the app)
     /// @param write - writes the settings, to their file if not given
@@ -471,6 +474,27 @@ final class AppSession
         import ui.app_menu : windowMenuJson;
 
         return windowMenuJson(_menu);
+    }
+
+    // ── Translations ─────────────────────────────────────────────────────────
+
+    /// The translations of the interface are the catalogs of `dir` (resources/i18n/translations)
+    void useTranslations(string dir)
+    {
+        _translations = findTranslations(dir);
+    }
+
+    /// The languages there are translations to: [{"locale", "name"}]
+    string languagesJson()
+    {
+        return catalogLanguagesJson(_translations);
+    }
+
+    /// The text of the catalog the language `requested` (a BCP 47 tag) takes, null if none:
+    /// the english source
+    string translationJson(string requested)
+    {
+        return catalogTranslationJson(_translations, requested);
     }
 
     // ── Columns ──────────────────────────────────────────────────────────────
@@ -940,4 +964,28 @@ unittest
     assert(f.writes.length == 2);
     assert(f.writes[1].theme == "dark" && f.writes[1].tableFontSize == 130,
         "not the preferences the session started with");
+}
+
+@("AppSession: the languages of its translations, and the catalog a language takes")
+unittest
+{
+    import std.file : rmdirRecurse, write;
+    import std.json : parseJSON;
+    import std.path : buildPath;
+    import ui.translations : makeTestDir;
+
+    auto f = Fixture.make();
+    assert(parseJSON(f.session.languagesJson()).array.length == 0, "none until told where they are");
+    assert(f.session.translationJson("ru") is null);
+
+    const dir = makeTestDir("session");
+    scope (exit) rmdirRecurse(dir);
+    const text = `{"locale": "ru", "name": "Русский", "messages": {}}`;
+    write(buildPath(dir, "ru.json"), text);
+
+    f.session.useTranslations(dir);
+    const languages = parseJSON(f.session.languagesJson());
+    assert(languages.array.length == 1 && languages[0]["locale"].str == "ru");
+    assert(f.session.translationJson("ru-RU") == text);
+    assert(f.session.translationJson("de") is null);
 }

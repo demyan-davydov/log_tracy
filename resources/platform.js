@@ -10,6 +10,9 @@ import * as env from "@env";
 // macOS: Cmd instead of Ctrl, Ctrl+click as a right click
 export const isMac = () => env.PLATFORM === "OSX";
 
+// The language of the user in the system and its country: two letters each ("ru", "KZ")
+export const systemLanguage = () => ({ language: env.language() || "", country: env.country() || "" });
+
 // ── Dialogs ──────────────────────────────────────────────────────────────────
 
 // The path of the file to open, null if cancelled

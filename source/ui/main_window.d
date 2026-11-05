@@ -37,6 +37,12 @@ class MainWindow : SciterWindow
 {
     private AppSession _session;
 
+    /// The translations of the interface are the catalogs of `dir`
+    void useTranslations(string dir)
+    {
+        _session.useTranslations(dir);
+    }
+
     this(AppSettings settings)
     {
         _session = new AppSession(settings,
@@ -127,6 +133,14 @@ class MainWindow : SciterWindow
             return true;
         case "getMenu":
             answer(_session.menuJson());
+            return true;
+        case "getLanguages":
+            answer(_session.languagesJson());
+            return true;
+        case "getTranslation":
+            // getTranslation(locale): the catalog that language takes, null: none
+            if (const text = _session.translationJson(param!string(0)))
+                answer(text);
             return true;
         case "getColumnSettings":
             answer(_session.columnSettingsJson());

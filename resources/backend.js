@@ -27,6 +27,12 @@ export const saveAppState = appStateJson => xcall("saveAppState", appStateJson);
 // in the label; a shortcut { text, code (KeyboardEvent.code), ctrl, shift,
 // alt, bySystem (the OS handles it) }
 export const menu = () => parsed(xcall("getMenu"), { menuBar: false, menus: [] });
+// The languages there are translations to: [{ locale, name }] (english, the
+// source, is none of them)
+export const languages = () => parsed(xcall("getLanguages"), []);
+// The catalog of translations a language (BCP 47 tag: "ru-KZ") takes:
+// { locale, name, messages }, see i18n/i18n.js; null: none, the english source
+export const translation = locale => parsed(xcall("getTranslation", locale), null);
 // The Columns section of Settings: { current, formats: [...] }, null if none
 export const columnSettings = () => parsed(xcall("getColumnSettings"), null);
 // The layouts the Settings dialog closed with: { format id: [{ id, visible }] }

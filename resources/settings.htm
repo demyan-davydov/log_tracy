@@ -2,9 +2,12 @@
 
 <!-- The Settings dialog, opened modal by openSettingsAction() in script.js.
      Its sections are listed on the left; Save applies all of them at once.
-     Parameters: { theme, tableFontSize, columns (as getColumnSettings gives
-     them, see column-settings.js) }.
-     Closes with { theme, tableFontSize, columnLayouts }, or null on Cancel. -->
+     Parameters: { theme, tableFontSize, language (the setting, "": the
+     system's), languages (of the translations, as getLanguages gives them),
+     catalog (of the translations the texts are in, null: english), columns (as
+     getColumnSettings gives them, see column-settings.js) }.
+     Closes with { theme, tableFontSize, language, columnLayouts }, or null on
+     Cancel. -->
 
 <head>
     <title>Settings</title>
@@ -112,6 +115,8 @@
         import { setShift, pressItem, dragTo, drop, showDropMarker } from "drag-strip.js";
         import * as platform from "platform.js";
         import { applyTheme } from "theme.js";
+        import { setCatalog } from "i18n/i18n.js";
+        import { languageOptions } from "i18n/languages.js";
 
         // Without parameters (opened on its own to look at it): a sample DLT log
         const params = platform.dialogParameters() || {
@@ -286,7 +291,22 @@
 
         // ── The dialog ───────────────────────────────────────────────────────
 
+        setCatalog(params.catalog || null);
+
+        // The options of the language: the system's, english, the translations
+        function renderLanguages() {
+            const select = $("select#language");
+            for (const { value, label } of languageOptions(params.languages || [], params.language || "")) {
+                const option = document.createElement("option");
+                option.setAttribute("value", value); // an <option> has no value of its own in Sciter
+                option.textContent = label;
+                select.append(option);
+            }
+            select.value = params.language || "";
+        }
+
         document.on("ready", () => {
+            renderLanguages();
             if (params.theme === "dark") {
                 applyTheme("dark");
                 $("select#theme").value = "dark";
@@ -308,6 +328,7 @@
         $("#btn-save").on("click", () => {
             platform.closeDialog({
                 theme: $("select#theme").value,
+                language: $("select#language").value,
                 tableFontSize: parseInt($("select#table-font-size").value),
                 columnLayouts: formats.length ? layoutsOf(formats) : null,
             });
@@ -328,6 +349,10 @@
         <main>
             <div class="section active" id="appearance">
                 <div class="section-title">Appearance</div>
+                <div class="setting-group">
+                    <label>Language</label>
+                    <select id="language"></select>
+                </div>
                 <div class="setting-group">
                     <label>Theme</label>
                     <select id="theme">

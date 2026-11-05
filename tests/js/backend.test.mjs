@@ -78,3 +78,12 @@ test("the menu of the window: whether it is a menu bar, its menus", () => {
     assert.deepEqual(callOf(() => backend.menu(), JSON.stringify(menu)), { call: ["getMenu"], value: menu });
     assert.deepEqual(callOf(() => backend.menu(), "").value, { menuBar: false, menus: [] });
 });
+
+test("the languages of the translations and the catalog a language takes", () => {
+    assert.deepEqual(callOf(() => backend.languages(), `[{"locale": "ru", "name": "Русский"}]`),
+        { call: ["getLanguages"], value: [{ locale: "ru", name: "Русский" }] });
+    assert.deepEqual(callOf(() => backend.languages(), undefined).value, []);
+    assert.deepEqual(callOf(() => backend.translation("ru-RU"), `{"locale": "ru", "messages": {}}`),
+        { call: ["getTranslation", "ru-RU"], value: { locale: "ru", messages: {} } });
+    assert.equal(callOf(() => backend.translation("de"), undefined).value, null, "none: the english source");
+});

@@ -14,6 +14,8 @@ import * as platform from "platform.js";
 import { applyTheme } from "theme.js";
 import { showMenuBar } from "menu-bar.js";
 import { shortcutTextOf } from "menu-shortcuts.js";
+import { pseudoLocale, setCatalog } from "i18n/i18n.js";
+import { requestedLocale } from "i18n/languages.js";
 
 // The table whose context menu is open: "Copy Row" copies its selected rows
 let contextList = null;
@@ -61,6 +63,8 @@ globalThis.VirtualMainViewTBody = VirtualMainViewTBody;
 globalThis.VirtualSearchViewTBody = VirtualSearchViewTBody;
 
 let currentTheme = "light";
+let currentLanguage = ""; // the setting: a BCP 47 tag, "": the language of the system
+let currentCatalog = null; // of the translations the texts are in, null: english
 // Font size of the log tables, % of the normal one (Settings)
 let tableFontSize = 100;
 // The state of the window (window-state.js): the documents, the New Tab, the
@@ -121,6 +125,7 @@ function stopList(logList) {
 
 function initApp() {
     restoreSettings();
+    restoreLanguage();
     setupMenuBar();
     setupEvents();
     refreshTabs();
@@ -233,6 +238,33 @@ function setTheme(theme) {
     platform.repaintWindow(); // a switch while the window is shown
 }
 
+// The language of the settings, apart from the rest of them: whatever fails
+// there, the setting must be known, or closing would save the system's instead
+function restoreLanguage() {
+    let setting = "";
+    try {
+        setting = backend.settings()?.language || "";
+    } catch (e) {
+        console.error("Failed to read the language:", e);
+    }
+    currentLanguage = setting;
+    try {
+        setLanguage(setting);
+    } catch (e) {
+        console.error("Failed to set the language:", e);
+    }
+}
+
+// The texts are in the language `setting` asks for (see i18n/languages.js)
+function setLanguage(setting) {
+    const { language, country } = platform.systemLanguage();
+    const locale = requestedLocale(setting, language, country);
+    currentCatalog = locale === pseudoLocale ? { locale, messages: {} } : backend.translation(locale);
+    currentLanguage = setting;
+    setCatalog(currentCatalog);
+    console.log("Language set to:", setting || "system", "->", currentCatalog?.locale ?? "en");
+}
+
 // Scales the log tables: the font of each column keeps its proportion to the
 // others (the cells set theirs in % of the table's). The column widths stay as
 // they are: they are minimums, the auxiliary columns keep their values on one line
@@ -247,10 +279,12 @@ function setTableFontSize(percent) {
 function openSettingsAction() {
     const result = platform.showModal("settings.htm", {
         theme: currentTheme, tableFontSize,
+        language: currentLanguage, languages: backend.languages(), catalog: currentCatalog,
         columns: backend.columnSettings()
     });
     if (!result) return; // Cancel
     if (result.theme) setTheme(result.theme);
+    if (typeof result.language === "string" && result.language !== currentLanguage) setLanguage(result.language);
     if (result.tableFontSize) setTableFontSize(result.tableFontSize);
     if (result.columnLayouts) {
         backend.setColumnLayouts(result.columnLayouts);
@@ -509,6 +543,7 @@ globalThis.getAppState = function () {
         windowRect,
         theme: currentTheme,
         tableFontSize,
+        language: currentLanguage,
         scrollPosition: list ? (list.state.scrollPos || 0) : 0
     });
 }
