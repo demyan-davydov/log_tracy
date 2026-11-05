@@ -1,15 +1,15 @@
+//! Puts the main menu of `ui/app_menu` into the window: the native menu on macOS.
 module ui.main_menu_loader;
 
+import ui.app_menu;
 import ui.main_window;
-import std.json;
 import std.stdio;
 
 void loadAppMenu(MainWindow window)
 {
     version (OSX)
     {
-        writeln("Native Menu: Loading menu.json for OSX...");
-        setupMainMenuOSX(window, import("menu.json"));
+        setupMainMenuOSX(window, appMenu(MenuPlatform.mac));
         writeln("Native Menu: OSX menu setup completed.");
     }
 }
@@ -18,7 +18,6 @@ version (OSX):
 
 import std.string : toStringz, fromStringz;
 import std.utf : toUTF16;
-import std.uni : toLower;
 
 extern (C) void* objc_getClass(const char* name);
 extern (C) void* sel_registerName(const char* name);
@@ -54,12 +53,6 @@ private void* makeNSString(string str)
     return msg(alloc("NSString"), "initWithUTF8String:", toStringz(str));
 }
 
-private string getStr(JSONValue obj, string key)
-{
-    auto p = key in obj;
-    return p ? p.str : "";
-}
-
 private extern (C) void menuItemClicked(void* self, void* _cmd, void* sender)
 {
     void* nsStrId = msg(sender, "representedObject");
@@ -81,26 +74,21 @@ private extern (C) void menuItemClicked(void* self, void* _cmd, void* sender)
     win.callScript("onMenuCommand", id.toUTF16());
 }
 
-private void* makeItem(JSONValue sub, MainWindow window)
+private void* makeItem(in MenuItem sub, MainWindow window)
 {
-    string id = getStr(sub, "id");
-
-    string keyEq;
-    if (auto acc = "accelerator" in sub)
-    {
-        keyEq = getStr(*acc, "mac");
-        if (keyEq.length > 0)
-            keyEq = keyEq[$ - 1 .. $].toLower();
-    }
+    string id = sub.id;
 
     const(char)* action = "menuItemClicked:";
-    if (id == "app.quit")
+    if (id == MenuCommand.quit)
         action = "terminate:";
-    else if (id == "window.minimize")
+    else if (id == MenuCommand.minimize)
         action = "performMiniaturize:";
 
     auto item = msg(alloc("NSMenuItem"), "initWithTitle:action:keyEquivalent:",
-        makeNSString(getStr(sub, "label")), sel_registerName(action), makeNSString(keyEq));
+        makeNSString(sub.label), sel_registerName(action),
+        makeNSString(macKeyEquivalent(sub.shortcut)));
+    if (!sub.shortcut.isNone)
+        msg!void(item, "setKeyEquivalentModifierMask:", macModifierMask(sub.shortcut));
     msg!void(item, "setRepresentedObject:", makeNSString(id));
     // Pass window pointer using the tag
     msg!void(item, "setTag:", cast(long)(cast(void*) window));
@@ -123,7 +111,7 @@ private void registerDelegateClass()
         objc_registerClassPair(clsDelegate);
 }
 
-private void setupMainMenuOSX(MainWindow window, string menuJson)
+private void setupMainMenuOSX(MainWindow window, MenuItem[] bar)
 {
     auto app = msg(cls("NSApplication"), "sharedApplication");
     msg!void(app, "setActivationPolicy:", 0L); // NSApplicationActivationPolicyRegular
@@ -147,10 +135,10 @@ private void setupMainMenuOSX(MainWindow window, string menuJson)
             msg!void(menubar, "removeItemAtIndex:", i);
     }
 
-    foreach (menuObj; parseJSON(menuJson).array)
+    foreach (ref menuObj; bar)
     {
         // Existing app menu: our items are inserted at the top, before the system ones
-        bool patchAppMenu = getStr(menuObj, "id") == "menu.app" && !createdMenubar;
+        bool patchAppMenu = menuObj.role == MenuRole.app && !createdMenubar;
 
         void* menu = null;
         if (patchAppMenu)
@@ -163,12 +151,11 @@ private void setupMainMenuOSX(MainWindow window, string menuJson)
             patchAppMenu = false;
             auto menuItem = make("NSMenuItem");
             msg!void(menubar, "addItem:", menuItem);
-            menu = msg(alloc("NSMenu"), "initWithTitle:", makeNSString(getStr(menuObj, "label")));
+            menu = msg(alloc("NSMenu"), "initWithTitle:", makeNSString(menuObj.label));
             msg!void(menuItem, "setSubmenu:", menu);
         }
 
-        auto submenu = "submenu" in menuObj;
-        if (!submenu)
+        if (menuObj.kind != MenuItemKind.submenu)
             continue;
 
         long insertIdx = 0;
@@ -180,15 +167,13 @@ private void setupMainMenuOSX(MainWindow window, string menuJson)
                 msg!void(menu, "addItem:", item);
         }
 
-        if (patchAppMenu)
-            msg!void(menu, "insertItem:atIndex:", msg(cls("NSMenuItem"), "separatorItem"), 0L);
-
-        foreach (sub; submenu.array)
+        // The existing app menu has its own Quit and separators of its own
+        auto items = patchAppMenu ? macAppMenuMerge(menuObj.items) : menuObj.items;
+        foreach (ref sub; items)
         {
-            if (getStr(sub, "type") == "separator")
+            if (sub.kind == MenuItemKind.separator)
                 put(msg(cls("NSMenuItem"), "separatorItem"));
-            // Skip our quit item when the existing app menu already has one
-            else if (!(patchAppMenu && getStr(sub, "id") == "app.quit"))
+            else if (sub.kind == MenuItemKind.command)
                 put(makeItem(sub, window));
         }
     }

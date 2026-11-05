@@ -20,6 +20,13 @@ export const settings = () => parsed(xcall("getSettings"), null);
 // The window closes: the settings are written with the state of the script,
 // the text getAppState() gives (the backend asks for the same text itself)
 export const saveAppState = appStateJson => xcall("saveAppState", appStateJson);
+// The menu of the window: { menuBar: whether the script draws it as its menu
+// bar (Windows, Linux; macOS: the native menu), menus: [{ label, mnemonic?,
+// items }] }. An item { command, label, mnemonic?, shortcut? }, { separator:
+// true } or { label, mnemonic?, items }; a mnemonic is the index of its letter
+// in the label; a shortcut { text, code (KeyboardEvent.code), ctrl, shift,
+// alt, bySystem (the OS handles it) }
+export const menu = () => parsed(xcall("getMenu"), { menuBar: false, menus: [] });
 // The Columns section of Settings: { current, formats: [...] }, null if none
 export const columnSettings = () => parsed(xcall("getColumnSettings"), null);
 // The layouts the Settings dialog closed with: { format id: [{ id, visible }] }

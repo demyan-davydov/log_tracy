@@ -18,6 +18,7 @@ import domain.workspace;
 import log_core.log_format : ColumnInfo, FormatChoice;
 import log_core.rule_filter : RuleId;
 import log_core.search_filter : MatchRange;
+import ui.app_menu : hostMenuPlatform, MenuPlatform, WindowMenu, windowMenu;
 import ui.app_settings;
 import ui.document_ui : DocumentUi;
 import ui.filter_commands : DocumentFilters;
@@ -59,6 +60,7 @@ final class AppSession
     private ScriptCall[] _scriptCalls; // queued for the idle loop
     private bool _settingsChanged; // since they were last written
     private bool _closing; // the window closes: no more calls of the script
+    private WindowMenu _menu = windowMenu(hostMenuPlatform(), ""); // the menu of the window
 
     /// @param open - opens a document (a LogDocument in the app)
     /// @param write - writes the settings, to their file if not given
@@ -455,6 +457,22 @@ final class AppSession
         return error;
     }
 
+    // ── Menu ─────────────────────────────────────────────────────────────────
+
+    /// The window has `menu` (that of the host platform until told)
+    void showMenu(WindowMenu menu)
+    {
+        _menu = menu;
+    }
+
+    /// The menu of the window for the script (ui.app_menu.windowMenuJson)
+    string menuJson()
+    {
+        import ui.app_menu : windowMenuJson;
+
+        return windowMenuJson(_menu);
+    }
+
     // ── Columns ──────────────────────────────────────────────────────────────
 
     /// The Columns section of the Settings dialog, the format of the active document first
@@ -673,6 +691,23 @@ version (unittest)
             names ~= c.name;
         return names;
     }
+}
+
+@("AppSession: the menu of the window, of the host platform until told")
+unittest
+{
+    import std.json : parseJSON;
+    import ui.app_menu : appMenu, hostMenuPlatform, menuJson, windowMenu;
+
+    auto f = Fixture.make();
+    auto host = parseJSON(f.session.menuJson());
+    assert(host["menuBar"].boolean == windowMenu(hostMenuPlatform(), "").menuBar);
+    assert(host["menus"] == parseJSON(menuJson(appMenu(hostMenuPlatform()), hostMenuPlatform())));
+
+    f.session.showMenu(WindowMenu(MenuPlatform.windows, true));
+    auto windows = parseJSON(f.session.menuJson());
+    assert(windows["menuBar"].boolean);
+    assert(windows["menus"] == parseJSON(menuJson(appMenu(MenuPlatform.windows), MenuPlatform.windows)));
 }
 
 @("AppSession: a file opened gets a document; the script is told later, not during the call")

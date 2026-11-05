@@ -11,6 +11,8 @@ import { paneChanges } from "pane-state.js";
 import { TabStrip } from "tabs.js";
 import * as backend from "backend.js";
 import * as platform from "platform.js";
+import { showMenuBar } from "menu-bar.js";
+import { shortcutTextOf } from "menu-shortcuts.js";
 
 // The table whose context menu is open: "Copy Row" copies its selected rows
 let contextList = null;
@@ -118,6 +120,7 @@ function stopList(logList) {
 
 function initApp() {
     restoreSettings();
+    setupMenuBar();
     setupEvents();
     refreshTabs();
 }
@@ -160,10 +163,12 @@ function splitPath(path) {
 function renderPlaceholder() {
     const placeholder = $("#empty-placeholder");
     const title = win.newTab.active ? "Open a file" : "No file open";
+    const openShortcut = shortcutTextOf(windowMenu.menus, "file.open");
     placeholder.content(<div class="placeholder-body">
         <div class="placeholder-title">{title}</div>
         <div class="placeholder-hint">
-            <button class="inline-button" id="btn-placeholder-open">Open</button> a log with <kbd>⌘O</kbd>
+            <button class="inline-button" id="btn-placeholder-open">Open</button> a log{
+                openShortcut ? [" with ", <kbd>{openShortcut}</kbd>] : []}
         </div>
     </div>);
     const recentFiles = getRecentFiles();
@@ -268,7 +273,7 @@ function openFileAction() {
     }
 }
 
-// Called from the native (macOS) menu: see source/ui/main_menu_loader.d
+// Called from the main menu (source/ui/app_menu.d): the native one on macOS
 globalThis.onMenuCommand = function (id) {
     switch (id) {
         case "app.settings":
@@ -276,6 +281,12 @@ globalThis.onMenuCommand = function (id) {
             break;
         case "file.open":
             openFileAction();
+            break;
+        case "app.quit": // Windows, Linux (macOS: terminate: of the native menu)
+            platform.closeWindow();
+            break;
+        case "window.minimize":
+            platform.minimizeWindow();
             break;
         default:
             console.warn("Unhandled menu command:", id);
@@ -314,13 +325,16 @@ function setupEvents() {
     document.on("mousemove", evt => { moveRowDrag(evt); });
     document.on("mouseup", () => { endRowDrag(); });
 
-    document.on("keydown", function (evt) {
-        const modifier = evt.metaKey || evt.ctrlKey;
-        if (modifier && (evt.code === "KeyO" || evt.code === "KeyF")) {
-            openFileAction();
-            return true;
-        }
-    });
+}
+
+// The menu of the window, as the backend describes it: its shortcut texts are
+// shown in hints, and on Windows and Linux it is drawn as the menu bar (macOS:
+// the native menu)
+let windowMenu = { menuBar: false, menus: [] };
+
+function setupMenuBar() {
+    windowMenu = backend.menu();
+    if (windowMenu.menuBar) showMenuBar($("#main-menu"), windowMenu.menus, id => onMenuCommand(id));
 }
 
 // The panels of the open documents: docId -> DocumentPane (document-pane.js).

@@ -41,6 +41,12 @@ export function windowFrame() {
     return { left, top, width, height };
 }
 
+// Closes the window, as its close button does (closerequest, then close)
+export const closeWindow = () => Window.this.close();
+
+// Minimizes the window
+export const minimizeWindow = () => { Window.this.state = Window.WINDOW_MINIMIZED; };
+
 // Renders the window again at once (e.g. after its stylesheet changed)
 export const repaintWindow = () => Window.this.update();
 

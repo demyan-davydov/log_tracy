@@ -1,13 +1,14 @@
-ul#menu-bar
-
-/*top level menu*/
-    {
+/* The menu bar of Windows and Linux (resources/menu-bar.js); colors of the
+   themes, the layout of the Sciter sample */
+ul#menu-bar {
     font: system;
     font-rendering-mode: classic;
     behavior: menu-bar;
     flow: horizontal;
-    color: windowtext;
+    color: var(--text-main);
+    background: var(--bg-header);
     margin: 0;
+    padding: 0;
 }
 
 ul#menu-bar>li
@@ -24,8 +25,8 @@ ul#menu-bar>li
 
 ul#menu-bar:focus>li:current,
 ul#menu-bar>li:owns-popup {
-    background-color: highlight;
-    color: highlighttext;
+    background-color: var(--btn-primary-bg);
+    color: var(--btn-primary-text);
 }
 
 
@@ -43,9 +44,9 @@ menu
     padding: 0;
     max-width: max-content;
     /*min-width: max-content;*/
-    border: 1px solid color(widget-border);
-    background-color: window;
-    color: windowtext;
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-main);
+    color: var(--text-main);
     margin: -1px 2px;
     /* to offset it from parent li */
 }
@@ -77,7 +78,7 @@ menu li {
     padding-bottom: 4px;
     foreground-repeat: no-repeat;
     foreground-position: left 2px top 50%;
-    color: windowtext;
+    color: var(--text-main);
 }
 
 menu li:rtl {
@@ -89,12 +90,13 @@ menu li:rtl {
     foreground-repeat: no-repeat;
     foreground-position: right 2px top 50%;
     text-align: right;
-    color: windowtext;
+    color: var(--text-main);
 }
 
 
 menu li:disabled {
-    color: graytext;
+    color: var(--text-main);
+    opacity: 0.4; /* unlike the shortcut texts, in --text-label */
     foreground-image: none;
 }
 
@@ -106,11 +108,11 @@ menu li span.accesskey {
     margin-left: *;
     /* spring to attach it to the right */
     padding-left: 1em;
-    color: threedshadow;
+    color: var(--text-label);
 }
 
 menu li:current span.accesskey {
-    color: #FFD700;
+    color: var(--btn-primary-text);
 }
 
 /* menu with single <menu> inside - submenu */
@@ -131,11 +133,20 @@ menu li:has-child-of-type(menu):rtl {
 /* current menu item */
 menu li:hover:owns-popup,
 menu li:current {
-    background-color: highlight;
-    color: highlighttext;
+    background-color: var(--btn-primary-bg);
+    color: var(--btn-primary-text);
 }
 
 /* menu separator */
 menu hr {
     margin: 2px;
+}
+/* Mnemonic letters are underlined only once Alt was pressed, as in Windows
+   (class "cues" of #main-menu, resources/menu-bar.js) */
+#main-menu u {
+    text-decoration: none;
+}
+
+#main-menu.cues u {
+    text-decoration: underline;
 }
