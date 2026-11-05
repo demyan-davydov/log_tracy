@@ -201,6 +201,11 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
     (`.status-view.overlay`).
   - What a table does on a change of its view is the Sciter-free `resources/pane-state.js`;
     the flows of its search and rule commands are `resources/pane-commands.js`.
+- The main menu is described once, per platform convention, in the Sciter-free `ui/app_menu`
+  (`appMenu`; commands reach the script as `onMenuCommand(id)` on every platform):
+  `ui/main_menu_loader` builds the native macOS menu from it, Windows and Linux get the markup
+  of a Sciter menu bar (`menuBarHtml`; for now not shown, only printed by the macOS build at start, see
+  `docs/stories/unified-menu.md`).
 - The view status shown to the user comes from the state machines `ui/main_view_fsm` and
   `ui/search_view_fsm` (on `utils/fsm`). They are kept free of Sciter so they can be unit-tested.
 - UI command logic that needs testing goes into Sciter-free modules (`ui/app_session`,

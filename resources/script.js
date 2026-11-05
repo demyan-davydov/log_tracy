@@ -268,7 +268,7 @@ function openFileAction() {
     }
 }
 
-// Called from the native (macOS) menu: see source/ui/main_menu_loader.d
+// Called from the main menu (source/ui/app_menu.d): the native one on macOS
 globalThis.onMenuCommand = function (id) {
     switch (id) {
         case "app.settings":

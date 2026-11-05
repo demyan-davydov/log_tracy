@@ -12,8 +12,9 @@ describe() {
 }
 
 imports=()
-while IFS= read -r path; do imports+=("-I$path"); done < <(describe import-paths)
-while IFS= read -r path; do imports+=("-J$path"); done < <(describe string-import-paths)
+# dub may list no paths at all (an empty line): a bare -I/-J would take the next flag
+while IFS= read -r path; do [[ -n "$path" ]] && imports+=("-I$path"); done < <(describe import-paths)
+while IFS= read -r path; do [[ -n "$path" ]] && imports+=("-J$path"); done < <(describe string-import-paths)
 dflags=()
 while IFS= read -r flag; do dflags+=("$flag"); done < <(describe dflags)
 sources=()
