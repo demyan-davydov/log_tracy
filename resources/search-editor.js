@@ -421,6 +421,9 @@ export class SearchEditor {
         // the popup is a child of its owner, as in the samples; filled on each show
         button.append(<popup class="search-history"></popup>);
         this.historyElement = button.lastElementChild;
+        // a press on the list stops at the list: the button below sees only
+        // presses on itself (the click on an item still comes and takes it)
+        this.historyElement.on("mousedown", () => true);
         // a press on the button shows the list, or hides it
         button.on("mousedown", () => {
             if (button.state.ownspopup) this.closeHistory();

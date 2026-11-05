@@ -112,6 +112,13 @@
     background: var(--btn-default-hover);
 }
 
+/* The button of the history takes no focus: a focusable button (behavior: button)
+   took it from the editor after a press when the focus was elsewhere, and the
+   editor, left by the focus, closed the list it had just shown */
+button.btn-chip-history {
+    behavior: clickable;
+}
+
 /* The search history: the queries of the document under the editor */
 popup.search-history {
     flow: vertical;
