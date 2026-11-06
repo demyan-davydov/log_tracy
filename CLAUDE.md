@@ -151,6 +151,9 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
 - `LogIndex` runs one operation at a time in a `BackgroundSlot`: build the offset, filter or
   search index. Progress and finish are reported as events on an `EventBusAsync`;
   `Document.dispatchEvents()` delivers them on the UI thread.
+- The filter and search indexes are built in parallel blocks on `std.parallelism`'s task pool
+  (`utils/parallel_scan`), appended in order as the blocks before them are done; the
+  offset index is built sequentially. A format and a filter are called from several threads.
 - The indexes are `BaseIndex` over `utils/chunked_array`:
   - they grow by 64K-entry chunks (mmap / VirtualAlloc) up to 2^32 entries;
   - entries never move, which is what lets the indexing thread read the offset index without
