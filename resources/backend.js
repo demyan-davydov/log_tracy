@@ -31,10 +31,16 @@ export const menu = () => parsed(xcall("getMenu"), { menuBar: false, menus: [] }
 // source, is none of them)
 export const languages = () => parsed(xcall("getLanguages"), []);
 // The texts of the backend (the menu) are in the language `locale` (BCP 47 tag:
-// "ru-KZ", the pseudo locale) from now on. Gives the catalog of translations
-// it takes for the script: { locale, name, messages }, see i18n/i18n.js; null:
-// none, the english source (or the pseudo locale: the script makes it itself)
-export const useLanguage = locale => parsed(xcall("useLanguage", locale), null);
+// "ru-KZ", the pseudo locale) from now on; `setting` is the language setting it
+// comes from ("": the system's), for the dialogs of the OS (macOS: from the next
+// start). Gives the catalog of translations it takes for the script: { locale,
+// name, messages }, see i18n/i18n.js; null: none, the english source (or the
+// pseudo locale: the script makes it itself)
+export const useLanguage = (locale, setting) => parsed(xcall("useLanguage", locale, setting), null);
+// The language of the user in the system as the OS keeps it, a BCP 47 tag
+// ("ru-RU"), "" if the backend doesn't know it: on macOS the language the app
+// set for its dialogs (AppleLanguages) would be told otherwise
+export const systemLanguage = () => message(xcall("getSystemLanguage"));
 // The Columns section of Settings: { current, formats: [...] }, null if none
 export const columnSettings = () => parsed(xcall("getColumnSettings"), null);
 // The layouts the Settings dialog closed with: { format id: [{ id, visible }] }

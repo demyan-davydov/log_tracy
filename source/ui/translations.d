@@ -216,6 +216,23 @@ string pseudoize(string text) pure @safe
     return "[" ~ body[] ~ " " ~ "~".replicate(padding) ~ "]";
 }
 
+/// The languages the dialogs of macOS (the file dialogs, the items AppKit adds) are to be in, as
+/// the AppleLanguages of the app: the language of the translation `setting` (a BCP 47 tag)
+/// takes among `available` (the locales of the catalogs), or english; null for the language of
+/// the system (""), for the pseudo locale and for a language with no translation: the key is
+/// removed, macOS follows the order of the system. They take it at the next start.
+string[] appleLanguagesFor(string setting, const string[] available)
+{
+    import std.uni : sicmp;
+
+    if (setting.length == 0 || sicmp(setting, pseudoLocale) == 0)
+        return null;
+    if (resolveLocale(setting, ["en"]) !is null)
+        return ["en"];
+    const locale = resolveLocale(setting, available);
+    return locale is null ? null : [locale];
+}
+
 version (unittest)
 {
     import std.file : mkdirRecurse, rmdirRecurse, write, exists, tempDir;
@@ -373,4 +390,18 @@ unittest
     assert(Catalog.init.translate(t) == "Can't load the filter: no column \"ecu\" in this log");
     assert(catalogOf("x-pseudo", null).translate(uiText("Open {file}", "file", "a.dlt")) == "[Ôþéñ a.dlt ~~]",
         "pseudo: the template, not the parameters");
+}
+
+@("appleLanguagesFor: the language chosen for the dialogs of macOS, of a translation the app has")
+unittest
+{
+    const available = ["pt-BR", "ru"];
+    assert(appleLanguagesFor("ru", available) == ["ru"]);
+    assert(appleLanguagesFor("ru-KZ", available) == ["ru"], "the language of its catalog");
+    assert(appleLanguagesFor("pt-BR", available) == ["pt-BR"]);
+    assert(appleLanguagesFor("en", available) == ["en"], "english, the source");
+    assert(appleLanguagesFor("", available) is null, "the system's: the key is removed");
+    assert(appleLanguagesFor("x-pseudo", available) is null);
+    assert(appleLanguagesFor("X-Pseudo", available) is null);
+    assert(appleLanguagesFor("de", available) is null, "no translation: the order of the system stays");
 }

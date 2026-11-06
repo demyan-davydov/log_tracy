@@ -261,9 +261,11 @@ function restoreLanguage() {
 
 // The texts are in the language `setting` asks for (see i18n/languages.js)
 function setLanguage(setting) {
-    const { language, country } = platform.systemLanguage();
+    // The OS's own, if the backend knows it (a tag with its region); else as Sciter tells it
+    const own = backend.systemLanguage();
+    const { language, country } = own ? { language: own, country: "" } : platform.systemLanguage();
     const locale = requestedLocale(setting, language, country);
-    const catalog = backend.useLanguage(locale); // the menu of the backend too
+    const catalog = backend.useLanguage(locale, setting); // the menu of the backend too
     currentLanguage = setting;
     setCatalog(locale === pseudoLocale ? { locale, messages: {} } : catalog);
     console.log("Language set to:", setting || "system", "->", currentCatalog()?.locale ?? "en");

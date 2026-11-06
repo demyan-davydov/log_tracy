@@ -5,15 +5,26 @@ import assert from "node:assert/strict";
 import { languageOptions, requestedLocale, systemSetting } from "../../resources/i18n/languages.js";
 import { pseudoLocale, setCatalog } from "../../resources/i18n/i18n.js";
 
-test("the options: the system's, english, the translations, the pseudo one last", () => {
+test("the options: the system's, english, the translations, the pseudo one last if offered", () => {
     setCatalog(null);
-    assert.deepEqual(languageOptions([{ locale: "de", name: "Deutsch" }, { locale: "ru", name: "Русский" }]), [
+    const pseudo = { locale: pseudoLocale, name: "Pseudo (for testing)" };
+    assert.deepEqual(languageOptions([pseudo, { locale: "de", name: "Deutsch" }, { locale: "ru", name: "Русский" }]), [
         { value: systemSetting, label: "System" },
         { value: "en", label: "English" },
         { value: "de", label: "Deutsch" },
         { value: "ru", label: "Русский" },
         { value: pseudoLocale, label: "Pseudo (for testing)" },
     ]);
+});
+
+test("no pseudo option unless the backend offers it (DLT_PSEUDO_LOCALE)", () => {
+    assert.deepEqual(languageOptions([{ locale: "ru", name: "Русский" }]).map((o) => o.value), [systemSetting, "en", "ru"]);
+});
+
+test("the pseudo locale set while not offered stays an option, named as when offered", () => {
+    const options = languageOptions([], pseudoLocale);
+    assert.deepEqual(options.map((o) => o.value), [systemSetting, "en", pseudoLocale]);
+    assert.equal(options[2].label, "Pseudo (for testing)");
 });
 
 test("the option of the system is translated, the names of the languages are their own", () => {
@@ -27,7 +38,7 @@ test("the option of the system is translated, the names of the languages are the
 
 test("a translation of english is not listed twice", () => {
     assert.deepEqual(languageOptions([{ locale: "en", name: "English" }]).map((o) => o.value),
-        [systemSetting, "en", pseudoLocale]);
+        [systemSetting, "en"]);
 });
 
 test("the system setting asks for the language of the system, with its country", () => {
@@ -44,11 +55,10 @@ test("a language chosen is asked for as it is", () => {
 
 test("a language set but not offered (its catalog gone, set by hand) is kept as an option", () => {
     const options = languageOptions([{ locale: "ru", name: "Русский" }], "de");
-    assert.deepEqual(options.map((o) => o.value), [systemSetting, "en", "ru", "de", pseudoLocale]);
+    assert.deepEqual(options.map((o) => o.value), [systemSetting, "en", "ru", "de"]);
     assert.equal(options[3].label, "de");
-    assert.equal(languageOptions([{ locale: "ru", name: "Русский" }], "ru").length, 4, "an offered one is not added");
-    assert.equal(languageOptions([], systemSetting).length, 3);
-    assert.equal(languageOptions([], pseudoLocale).length, 3);
+    assert.equal(languageOptions([{ locale: "ru", name: "Русский" }], "ru").length, 3, "an offered one is not added");
+    assert.equal(languageOptions([], systemSetting).length, 2);
 });
 
 test("a language of the system that has its region already gets no country", () => {

@@ -243,6 +243,8 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
   `UiTextException` (its `msg` is the english) and translated where the session answers the
   script (`_catalog.translate(uiTextOf(e))`). Messages of the OS and libraries go in as
   parameters, untranslated.
+- `DLT_PSEUDO_LOCALE=1` offers the pseudo translation in Settings (every text accented and
+  lengthened: what stays plain english is not translated).
 - Not translated: the contents of logs, the column titles of formats, levels, the texts of
   shortcuts.
 
