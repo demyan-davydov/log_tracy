@@ -3,7 +3,7 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { noTable, tableStep, paneChanges } from "../../resources/pane-state.js";
+import { noTable, tableStep, paneChanges, anchorEdit } from "../../resources/pane-state.js";
 
 const ready = (dataVersion) => ({ status: "ready", dataVersion });
 
@@ -50,4 +50,26 @@ test("panels are created for new documents and removed for closed ones", () => {
     assert.deepEqual(paneChanges([], [5]), { create: [5], remove: [] });
     assert.deepEqual(paneChanges([4], []), { create: [], remove: [4] });
     assert.deepEqual(paneChanges([1, 2], [2, 1]), { create: [], remove: [] }, "a new order changes nothing");
+});
+
+const edit = (fields) => ({ before: 0, after: 0, insertAt: null, removeAt: null, ...fields });
+
+test("an anchor outside the rendered rows changes the count of rows before or after them", () => {
+    const rendered = [10, 20, 30];
+    assert.deepEqual(anchorEdit(rendered, 5, true), edit({ before: 1 }));
+    assert.deepEqual(anchorEdit(rendered, 5, false), edit({ before: -1 }));
+    assert.deepEqual(anchorEdit(rendered, 40, true), edit({ after: 1 }));
+    assert.deepEqual(anchorEdit(rendered, 40, false), edit({ after: -1 }));
+});
+
+test("an anchor among the rendered rows inserts or removes its row in place", () => {
+    const rendered = [10, 20, 30];
+    assert.deepEqual(anchorEdit(rendered, 15, true), edit({ insertAt: 1 }));
+    assert.deepEqual(anchorEdit(rendered, 25, true), edit({ insertAt: 2 }));
+    assert.deepEqual(anchorEdit(rendered, 10, false), edit({ removeAt: 0 }));
+    assert.deepEqual(anchorEdit(rendered, 30, false), edit({ removeAt: 2 }));
+});
+
+test("no rendered rows: nothing to follow", () => {
+    assert.equal(anchorEdit([], 5, true), null);
 });

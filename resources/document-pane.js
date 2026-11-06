@@ -532,10 +532,15 @@ export class DocumentPane {
             const counts = this.lists.map(list => list.totalItems());
             if (backend.setAnchor(this.docId, index, !anchored)) {
                 for (const [i, list] of this.lists.entries()) {
+                    const count = list.totalItems();
+                    if (count === counts[i]) {
+                        list.refreshVisibleRows(); // the row was in the view, and shows the new anchor
+                        continue;
+                    }
                     // The view gained or lost the row: the selected positions show other rows
-                    if (list.totalItems() !== counts[i]) list.resetSelection();
-                    list.componentUpdate(); // the view may gain or lose the row
-                    list.refreshVisibleRows(); // rows kept on screen show the new anchor
+                    list.resetSelection();
+                    // In place, so the rows on screen stay where they are
+                    if (!list.followAnchor(index, count > counts[i])) list.componentUpdate();
                 }
             }
             return true; // don't change the row selection
