@@ -31,20 +31,20 @@ test("a column is moved to another place", () => {
     assert.deepEqual(dlt.columns.map(c => c.id), ["ctx", "time", "app"], "the format itself is kept");
 });
 
-test("reset shows every column in the order of the format", () => {
+test("reset puts the columns in the order of the format and keeps them shown or hidden", () => {
     const reset = resetColumns(dlt);
     assert.deepEqual(reset.columns, [
-        { id: "time", title: "Time", visible: true },
+        { id: "time", title: "Time", visible: false },
         { id: "app", title: "AppId", visible: true },
         { id: "ctx", title: "CtxId", visible: true },
     ]);
     assert.equal(reset.payload, "Payload");
 });
 
-test("the default layout is the order of the format with every column shown", () => {
+test("the default layout is the order of the format, whatever columns are hidden", () => {
     assert.equal(isDefaultLayout(dlt), false);
-    assert.equal(isDefaultLayout(resetColumns(dlt)), true);
-    assert.equal(isDefaultLayout(toggleColumn(resetColumns(dlt), "app")), false);
+    assert.equal(isDefaultLayout(resetColumns(dlt)), true, "a hidden column stays hidden");
+    assert.equal(isDefaultLayout(toggleColumn(resetColumns(dlt), "app")), true);
     assert.equal(isDefaultLayout(moveColumn(resetColumns(dlt), 0, 1)), false);
 });
 

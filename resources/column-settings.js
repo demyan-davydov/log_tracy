@@ -17,7 +17,8 @@ export function moveColumn(format, from, to) {
     return { ...format, columns: moveItem(format.columns, from, to) };
 }
 
-// The format with its columns as they are without a layout
+// The format with its columns in the order of the format; a hidden column
+// stays hidden
 export function resetColumns(format) {
     const columns = format.defaults
         .map(id => format.columns.find(c => c.id === id))
@@ -25,10 +26,11 @@ export function resetColumns(format) {
     return { ...format, columns };
 }
 
-// true if the format shows its columns as it does without a layout
+// true if the columns are in the order of the format, shown or hidden: there
+// is nothing for resetColumns to change
 export function isDefaultLayout(format) {
     return format.columns.length === format.defaults.length
-        && format.columns.every((c, i) => c.visible && c.id === format.defaults[i]);
+        && format.columns.every((c, i) => c.id === format.defaults[i]);
 }
 
 // The layouts of `formats` for setColumnLayouts: { id: [{ id, visible }] }
