@@ -21,6 +21,7 @@
    (see renderPane in document-pane.js), the view covers it whole */
 .tab-content,
 .search-body {
+    position: relative;
     margin-right: 2dip;
 }
 
