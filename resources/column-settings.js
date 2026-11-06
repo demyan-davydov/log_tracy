@@ -21,8 +21,7 @@ export function moveColumn(format, from, to) {
 export function resetColumns(format) {
     const columns = format.defaults
         .map(id => format.columns.find(c => c.id === id))
-        .filter(c => c)
-        .map(c => ({ ...c, visible: true }));
+        .filter(c => c);
     return { ...format, columns };
 }
 
