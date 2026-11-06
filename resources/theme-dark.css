@@ -34,6 +34,11 @@
     --btn-primary-text: white;
     --btn-primary-border: #005a9e;
 
+    /* Log table: the rows, the header, every second row */
+    --bg-table: #222222;
+    --bg-table-header: #3e372d;
+    --bg-row-stripe: #2c2b28;
+
     /* Details Panel */
     --bg-details: #252526;
     --bg-details-header: #2d2d2d;

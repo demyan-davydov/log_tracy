@@ -11,6 +11,7 @@ import { paneChanges } from "pane-state.js";
 import { TabStrip } from "tabs.js";
 import * as backend from "backend.js";
 import * as platform from "platform.js";
+import { applyTheme } from "theme.js";
 import { showMenuBar } from "menu-bar.js";
 import { shortcutTextOf } from "menu-shortcuts.js";
 
@@ -226,17 +227,10 @@ function openFile(path) {
 }
 
 function setTheme(theme) {
-    const oldStyle = $("#theme-style");
-    if (oldStyle) oldStyle.remove();
-
-    const newStyle = document.createElement("style");
-    newStyle.id = "theme-style";
-    newStyle.setAttribute("src", theme === "dark" ? "theme-dark.css" : "theme-light.css");
-    document.head.prepend(newStyle);
-
+    applyTheme(theme);
     currentTheme = theme;
     console.log("Theme set to:", theme);
-    platform.repaintWindow();
+    platform.repaintWindow(); // a switch while the window is shown
 }
 
 // Scales the log tables: the font of each column keeps its proportion to the

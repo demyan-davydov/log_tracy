@@ -5,7 +5,7 @@
     width: *;
     height: *;
     border-collapse: collapse;
-    background: var(--bg-main);
+    background: var(--bg-table);
     color: var(--text-main);
     table-layout: fixed;
     flow: table;
@@ -60,7 +60,7 @@
 .column-header-row {
     cursor: default;
     font-family: 'Courier New', Courier, monospace;
-    background-color: bisque;
+    background-color: var(--bg-table-header);
 }
 
 .log-table th,
@@ -73,7 +73,7 @@
 }
 
 .log-table>tbody>tr:nth-child(even) {
-    background-color: lightgoldenrodyellow;
+    background-color: var(--bg-row-stripe);
 }
 
 .log-table>tbody>tr>td:first-child {

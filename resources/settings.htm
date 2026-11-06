@@ -1,4 +1,4 @@
-<html window-width="920" window-height="440">
+<html theme="light" window-width="920" window-height="440">
 
 <!-- The Settings dialog, opened modal by openSettingsAction() in script.js.
      Its sections are listed on the left; Save applies all of them at once.
@@ -111,6 +111,7 @@
         import { toggleColumn, moveColumn, resetColumns, isDefaultLayout, layoutsOf, initialFormat, formatLabel } from "column-settings.js";
         import { setShift, pressItem, dragTo, drop, showDropMarker } from "drag-strip.js";
         import * as platform from "platform.js";
+        import { applyTheme } from "theme.js";
 
         // Without parameters (opened on its own to look at it): a sample DLT log
         const params = platform.dialogParameters() || {
@@ -287,7 +288,7 @@
 
         document.on("ready", () => {
             if (params.theme === "dark") {
-                $("#theme-style").attributes["src"] = "theme-dark.css";
+                applyTheme("dark");
                 $("select#theme").value = "dark";
             } else {
                 $("select#theme").value = "light";

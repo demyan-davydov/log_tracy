@@ -591,6 +591,12 @@ select > popup > option:hover {
     color: var(--btn-primary-text) !important;
 }
 
+/* The list itself: in the dark theme Sciter draws it pure black */
+select > popup {
+    background-color: var(--bg-input) !important;
+    border-color: var(--border-input) !important;
+}
+
 footer {
     flow: horizontal;
     background: var(--bg-header);

@@ -1,4 +1,4 @@
-<html window-width="640" window-height="800">
+<html theme="light" window-width="640" window-height="800">
 
 <!-- The editor of one filter rule, opened modal by editRule() in script.js,
      for a log of any format: a row of conditions per column of the format
@@ -79,6 +79,7 @@
         import { $, $$ } from "@sciter";
         import { editableColumns, rowsFromRule, conditionsFromRows, describeCondition, errorsOfRows, levelNames } from "rule-form.js";
         import * as platform from "platform.js";
+        import { applyTheme } from "theme.js";
 
         const params = platform.dialogParameters() || {};
         // Without parameters (opened on its own to look at it): a sample log
@@ -222,7 +223,7 @@
         }
 
         document.on("ready", () => {
-            if (params.theme === "dark") $("#theme-style").attributes["src"] = "theme-dark.css";
+            if (params.theme === "dark") applyTheme("dark");
             platform.setDialogTitle(params.title || "Filter Rule");
             const conditions = $("#conditions");
             for (const column of editable) conditions.append(renderRow(column));
