@@ -6,6 +6,7 @@ module ui.translations;
 
 import std.json;
 import std.stdio : writeln;
+import utils.ui_text : render, UiText;
 
 /// A catalog found: its language and the file it is in.
 struct Translation
@@ -112,6 +113,13 @@ struct Catalog
 {
     string[string] messages; /// by the english text, translated ones only
     bool pseudo; /// every text pseudoized: the pseudo locale
+
+    /// `t` in the language of the catalog: its templates translated, its plain parameters
+    /// (the texts of the OS, names, paths) as they are
+    string translate(const UiText t) const @safe
+    {
+        return render(t, (string text) => translate(text));
+    }
 
     /// The translation of `text`, `text` itself if none
     string translate(string text) const pure @safe
@@ -347,4 +355,22 @@ unittest
     assert(catalogOf("x-pseudo", null).translate("Open") == "[Ôþéñ ~]");
     assert(catalogOf("X-Pseudo", null).translate("Open") == "[Ôþéñ ~]");
     assert(catalogOf("ru", `{"messages": {"Open": "Открыть"}}`).translate("Open") == "Открыть");
+}
+
+@("Catalog.translate: a text for the user, its templates translated, plain parameters as they are")
+unittest
+{
+    import utils.ui_text : uiText;
+
+    const catalog = parseCatalog(`{"messages": {
+        "Can't load the filter: {reason}": "Не удалось загрузить фильтр: {reason}",
+        "no column \"{column}\" in this log": "в этом журнале нет колонки «{column}»"}}`);
+    const t = uiText("Can't load the filter: {reason}", "reason",
+        uiText("no column \"{column}\" in this log", "column", "ecu"));
+    assert(catalog.translate(t) == "Не удалось загрузить фильтр: в этом журнале нет колонки «ecu»");
+    assert(catalog.translate(uiText("Can't load the filter: {reason}", "reason", "Permission denied"))
+        == "Не удалось загрузить фильтр: Permission denied", "the text of the OS as it is");
+    assert(Catalog.init.translate(t) == "Can't load the filter: no column \"ecu\" in this log");
+    assert(catalogOf("x-pseudo", null).translate(uiText("Open {file}", "file", "a.dlt")) == "[Ôþéñ a.dlt ~~]",
+        "pseudo: the template, not the parameters");
 }

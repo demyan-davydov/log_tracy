@@ -242,3 +242,22 @@ test("a mark's text in single quotes, or a JSX expression of a literal", () => {
     assert.deepEqual(extractTexts(`<p data-tr='Filters'></p>`, "htm").texts.map((t) => t.key), ["Filters"]);
     assert.deepEqual(keysOf(`const a = <b data-tr={"Details"} data-tr-title={'Hint'} />;`), ["Details", "Hint"]);
 });
+
+test("D: the templates of uiText, the texts for the user of the backend", () => {
+    const source = `throw new UiTextException(uiText("no column \\"{column}\\" in this log", "column", id));\n` +
+        `return uiText("Can't load the filter: {reason}", "reason", uiTextOf(e));\nauto t = uiText(name);`;
+    const { texts, errors } = extractTexts(source, "d");
+    assert.deepEqual(texts.map((t) => t.key), ['no column "{column}" in this log', "Can't load the filter: {reason}"]);
+    assert.deepEqual(errors.map((e) => e.line), [3]);
+});
+
+test("D: the texts of the unittests are no texts of the program", () => {
+    const source = `auto a = uiText("real");\n@("x")\nunittest\n{\n    auto b = uiText("in a test");\n    if (c) { tr("nested"); }\n    auto s = "}";\n}\n` +
+        `version (unittest)\n{\n    auto d = uiText("helper");\n}\nauto e = uiText("after");`;
+    assert.deepEqual(keysOf(source, "d"), ["real", "after"]);
+});
+
+test("D: a version (unittest) block with attributes before its brace is a test block too", () => {
+    const source = `version (unittest) private\n{\n    auto a = uiText("mock");\n}\nversion (unittest) static {\n    tr("b");\n}\nauto c = uiText("kept");`;
+    assert.deepEqual(keysOf(source, "d"), ["kept"]);
+});

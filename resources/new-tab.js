@@ -58,9 +58,3 @@ export function shownDocument(state, docCount, activeDocId) {
     return showsPlaceholder(state, docCount) ? null : activeDocId;
 }
 
-// The reason of a failed open for the line under the file: the backend reports
-// "Can't open <path> (<reason>)", the path is shown by the item itself
-export function failureReason(message) {
-    const match = /\(([^()]*)\)$/.exec(message);
-    return match ? match[1] : message;
-}

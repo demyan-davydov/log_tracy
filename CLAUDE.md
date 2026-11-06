@@ -238,6 +238,11 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
 - The backend translates its own texts (the menu) by the catalog the script chose
   (`backend.useLanguage`, `ui/translations.Catalog`): `appMenu(platform, tr)` writes its labels
   as `tr("&File")` with `tr` a parameter, so the extractor finds them.
+- A text for the user made by the backend (an error) is an english template with parameters,
+  `uiText("no column \"{column}\" in this log", "column", id)` (`utils/ui_text`), thrown in a
+  `UiTextException` (its `msg` is the english) and translated where the session answers the
+  script (`_catalog.translate(uiTextOf(e))`). Messages of the OS and libraries go in as
+  parameters, untranslated.
 - Not translated: the contents of logs, the column titles of formats, levels, the texts of
   shortcuts.
 

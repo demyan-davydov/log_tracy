@@ -1,5 +1,5 @@
 // Brings the catalogs of resources/i18n/translations up to the texts of the code, as lupdate
-// does: finds the tr / trc / trn / trParts calls and the marked elements (data-tr) in
+// does: finds the tr / trc / trn / trParts / uiText (D) calls and the marked elements (data-tr) in
 // resources/ (*.js, the scripts and markup of *.htm) and source/ (*.d), outside comments,
 // adds new texts untranslated (""), moves the texts gone from the code to "obsolete" (and
 // back when they return), sorts the keys. A call or mark whose text is not a literal is an
@@ -14,7 +14,7 @@ import { pluralCategories } from "../resources/i18n/plural.js";
 
 const translationsDir = "resources/i18n/translations";
 // Where the calls are defined, not made.
-const implementations = new Set(["resources/i18n/i18n.js", "resources/i18n/dom.js"]);
+const implementations = new Set(["resources/i18n/i18n.js", "resources/i18n/dom.js", "source/utils/ui_text.d"]);
 
 // The string literals a text may be: of JS (no substitutions in a template), and of D (with
 // the postfix of its width; WYSIWYG strings are not: their escapes are not escapes).
@@ -24,7 +24,7 @@ const literals = {
 };
 const comma = /\s*,/y;
 const end = /\s*[,)]/y;
-const call = /(?<![\w.$])(trn|trc|trParts|tr)\s*\(/g;
+const call = /(?<![\w.$])(trn|trc|trParts|tr|uiText)\s*\(/g;
 
 const escapes = { n: "\n", t: "\t", r: "\r", 0: "\0", b: "\b", f: "\f", v: "\v" };
 
@@ -139,6 +139,31 @@ function markedTexts(code, decode, texts, errors) {
     }
 }
 
+// D `code` (comments blanked) with its unittest blocks blanked too, and those of
+// version (unittest): their texts are no texts of the program. Lines and positions stay.
+function withoutUnittests(code) {
+    let out = code;
+    for (const m of code.matchAll(/\bunittest\b|\bversion\s*\(\s*unittest\s*\)/g)) {
+        const open = code.indexOf("{", m.index + m[0].length);
+        // Attributes may stand before the brace (version (unittest) private {)
+        const between = open < 0 ? ";" : code.slice(m.index + m[0].length, open);
+        if (!/^(\s*(private|public|package|protected|static|@\w+))*\s*$/.test(between))
+            continue; // `version (unittest):` or something else: left as it is
+        let depth = 0, i = open;
+        for (; i < code.length; i++) {
+            const c = code[i];
+            if (c === '"' || c === "'" || c === "`") {
+                i = stringEnd(code, i, "d") - 1;
+                continue;
+            }
+            if (c === "{") depth++;
+            else if (c === "}" && --depth === 0) break;
+        }
+        out = out.slice(0, m.index) + blank(out.slice(m.index, i + 1)) + out.slice(i + 1);
+    }
+    return out;
+}
+
 // The scripts of a page, the rest blanked: lines and positions stay.
 function scriptsOf(page) {
     let out = "", last = 0;
@@ -168,7 +193,8 @@ function readLiteral(source, pos, after, literal) {
 // text), plural, other (the english plural of a trn)}; and the calls and marks whose text is
 // not a literal: {line, call}. Comments are skipped.
 export function extractTexts(source, language = "js") {
-    const code = withoutComments(language === "htm" ? scriptsOf(source) : source, language === "d" ? "d" : "js");
+    const uncommented = withoutComments(language === "htm" ? scriptsOf(source) : source, language === "d" ? "d" : "js");
+    const code = language === "d" ? withoutUnittests(uncommented) : uncommented;
     const literal = literals[language === "d" ? "d" : "js"];
     const texts = [], errors = [];
     for (const m of code.matchAll(call)) {
@@ -178,7 +204,7 @@ export function extractTexts(source, language = "js") {
         const pos = m.index + m[0].length;
         const name = m[1];
         let text = null;
-        if (name === "tr" || name === "trParts") {
+        if (name === "tr" || name === "trParts" || name === "uiText") {
             const first = readLiteral(code, pos, end, literal);
             text = first && { key: first[0], source: first[0], plural: false };
         } else {

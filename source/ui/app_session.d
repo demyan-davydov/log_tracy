@@ -29,6 +29,8 @@ import ui.main_view_fsm : toJson;
 import ui.search_view_fsm : toJson;
 
 import std.json : JSONValue;
+import utils.ui_text : english, uiText, uiTextOf, UiText;
+
 
 /// A call of a global function of the script: name(docId) or name(docId, json)
 struct ScriptCall
@@ -107,12 +109,14 @@ final class AppSession
             if (ui.mainViewChanged)
             {
                 ui.mainViewChanged = false;
-                _scriptCalls ~= ScriptCall("onMainViewChanged", idOf(docId), toJson(ui.mainViewShown).toString());
+                _scriptCalls ~= ScriptCall("onMainViewChanged", idOf(docId),
+                    toJson(ui.mainViewShown, &textForUser).toString());
             }
             if (ui.searchViewChanged)
             {
                 ui.searchViewChanged = false;
-                _scriptCalls ~= ScriptCall("onSearchViewChanged", idOf(docId), toJson(ui.searchViewShown).toString());
+                _scriptCalls ~= ScriptCall("onSearchViewChanged", idOf(docId),
+                    toJson(ui.searchViewShown, &textForUser).toString());
             }
         }
         auto calls = _scriptCalls;
@@ -232,12 +236,12 @@ final class AppSession
         {
             import std.json : JSONValue;
 
-            writeln("Error opening file: ", e.msg);
+            writeln("Error opening file ", path, ": ", e.msg);
             // Listed with the reason, to retry or see: a file of the list stays
             // where it is, a new one goes on top
             _settings.recentFiles = withFailedFile(_settings.recentFiles, path);
             settingsChanged();
-            JSONValue failure = ["path": recentFilePath(path), "error": e.msg];
+            JSONValue failure = ["path": recentFilePath(path), "error": _catalog.translate(uiTextOf(e))];
             return OpenResult(DocumentId.init, failure.toString());
         }
     }
@@ -252,7 +256,7 @@ final class AppSession
 
         const docId = findDocument(id);
         if (!docId.isValid)
-            return "the document is not open";
+            return _catalog.translate(uiText("the document is not open"));
         const path = sourcePathOf(docId);
         // reopened in the format it had, not detected again
         const choice = _workspace.doc(docId).formatChoice;
@@ -282,7 +286,7 @@ final class AppSession
         catch (Exception e)
         {
             writeln("Retry failed for ", path, ": ", e.msg);
-            return e.msg;
+            return _catalog.translate(uiTextOf(e));
         }
     }
 
@@ -322,8 +326,8 @@ final class AppSession
                 "name": JSONValue(item.sourcePath.baseName),
                 "path": JSONValue(item.sourcePath),
                 "active": JSONValue(item.docId == _workspace.currentId),
-                "mainView": ui is null ? JSONValue(null) : toJson(ui.mainViewShown),
-                "searchView": ui is null ? JSONValue(null) : toJson(ui.searchViewShown)
+                "mainView": ui is null ? JSONValue(null) : toJson(ui.mainViewShown, &textForUser),
+                "searchView": ui is null ? JSONValue(null) : toJson(ui.searchViewShown, &textForUser)
             ]);
         }
         return JSONValue(docs).toString();
@@ -396,7 +400,7 @@ final class AppSession
             const chips = chipsFromJson(chipsJson);
             auto filter = SearchFilter.fromChips(chips);
             if (!docId.isValid)
-                return "the document is not open";
+                return _catalog.translate(uiText("the document is not open"));
             _workspace.doc(docId).applySearchFilter(filter); // null clears the search
             if (auto ui = _documentUis.get(docId, null))
                 ui.searchShown = filter;
@@ -417,7 +421,7 @@ final class AppSession
         catch (Exception e)
         {
             writeln("Error starting search: ", e.msg);
-            return e.msg;
+            return _catalog.translate(uiTextOf(e)); // a regex error of the library as it is
         }
     }
 
@@ -502,6 +506,12 @@ final class AppSession
         return _catalog.pseudo ? null : text;
     }
 
+    /// `t` in the language of the interface: a text for the user the session answers with
+    string textForUser(const UiText t) @safe
+    {
+        return _catalog.translate(t);
+    }
+
     /// The menu bar of the window on `platform`, in the language of the interface
     MenuItem[] menuBar(MenuPlatform platform)
     {
@@ -547,7 +557,7 @@ final class AppSession
         });
         events.subscribe((const DocumentEvent!OperationFinished e) {
             writeln("Operation ", e.event.operation, " ", e.event.result, ", doc ", e.docId.toInt(),
-                e.event.error.length ? ": " ~ e.event.error : "");
+                e.event.error.empty ? "" : ": " ~ english(e.event.error));
             processDocumentEvent(e.docId, e.event);
         });
     }
@@ -709,6 +719,11 @@ version (unittest)
                 records.lastChoice = choice;
                 if (path.canFind("missing"))
                     throw new Exception("no such file");
+                if (path.canFind("refused"))
+                {
+                    import utils.ui_text : uiText, UiTextException;
+                    throw new UiTextException(uiText("not a log of {kinds}", "kinds", "DLT or text"));
+                }
                 auto doc = new FakeDocument();
                 records.opened[path] = doc;
                 return cast(Document) doc;
@@ -1013,3 +1028,27 @@ unittest
     assert(f.session.useLanguage("de") is null);
     assert(f.session.menuBar(MenuPlatform.windows)[0].label == "File", "no catalog: english");
 }
+
+@("AppSession: the errors for the user are in the language used: of opening, of a retry, of the views")
+unittest
+{
+    import std.file : rmdirRecurse, write;
+    import std.json : parseJSON;
+    import std.path : buildPath;
+    import ui.translations : makeTestDir;
+
+    auto f = Fixture.make();
+    const dir = makeTestDir("session-errors");
+    scope (exit) rmdirRecurse(dir);
+    write(buildPath(dir, "ru.json"), `{"locale": "ru", "name": "Русский", "messages": {
+        "not a log of {kinds}": "не журнал формата {kinds}", "the document is not open": "документ не открыт"}}`);
+    f.session.useTranslations(dir);
+
+    assert(parseJSON(f.session.openFile("/refused.log").failureJson)["error"].str == "not a log of DLT or text");
+    f.session.useLanguage("ru");
+    assert(parseJSON(f.session.openFile("/refused.log").failureJson)["error"].str == "не журнал формата DLT or text");
+    assert(parseJSON(f.session.openFile("/missing.log").failureJson)["error"].str == "no such file",
+        "a message of the OS as it is");
+    assert(f.session.retryDocument(12345) == "документ не открыт");
+}
+

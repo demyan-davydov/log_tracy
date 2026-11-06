@@ -1,5 +1,7 @@
 module domain.log_index;
 
+import utils.ui_text : uiText, uiTextOf, UiText, UiTextException;
+
 import log_core.log_message;
 import log_core.log_filter;
 import log_core.log_format;
@@ -167,7 +169,7 @@ struct LogIndex
         // Stays Failed unless work returns normally: a worker killed by an
         // Error must not report success.
         auto finished = OperationFinished(op, OperationFinished.Result.Failed,
-            "operation terminated unexpectedly");
+            uiText("the operation was terminated unexpectedly"));
         auto events = _events;
 
         const bool started = _backgroundSlot.runTask((BackgroundSlot.Ctx* ctx) {
@@ -176,12 +178,12 @@ struct LogIndex
             {
                 finished.result = work(progress)
                     ? OperationFinished.Result.Completed : OperationFinished.Result.Cancelled;
-                finished.error = null;
+                finished.error = UiText.init;
             }
             catch (Exception e)
             {
                 finished.result = OperationFinished.Result.Failed;
-                finished.error = e.msg;
+                finished.error = uiTextOf(e); // its template: translated where it is shown
             }
         }, () { events.publish(finished); });
 
@@ -203,7 +205,7 @@ struct LogIndex
         auto sorted = anchors.exportAnchors.map!(i => cast(SearchIndex.Type) i).array;
         sort(sorted);
         if (!_searchIndex.append(sorted))
-            throw new Exception("the search index can't grow: too many records or not enough memory");
+            throw new UiTextException(uiText("the search index can't grow: too many records or not enough memory"));
     }
 
     //! @return true once the file can't be read any more (e.g. its disk was
@@ -217,10 +219,11 @@ struct LogIndex
     private void enforceSourceAvailable()
     {
         if (_source.lost)
-            throw new Exception(sourceLostMessage);
+            throw new UiTextException(sourceLostText());
     }
 
-    enum sourceLostMessage = "the file is no longer available";
+    /// The error of an operation the loss of the file fails
+    static UiText sourceLostText() @safe => uiText("the file is no longer available");
 
     //! @return the number of messages in the file (the offset index)
     size_t messageCount() nothrow @nogc
@@ -333,7 +336,7 @@ struct LogIndex
             synchronized (cast(Mutex)_mutex)
             {
                 if (!_offsetIndex.append(tempIndex[0 .. found.count]))
-                    throw new Exception("the offset index can't grow: too many records or not enough memory");
+                    throw new UiTextException(uiText("the offset index can't grow: too many records or not enough memory"));
                 progress.report(cast(float) pos / data.length);
             }
         }
@@ -381,7 +384,7 @@ struct LogIndex
 
         // The offset index is complete and doesn't change while this runs
         if (!collectMatches(progress, _filterIndex, _offsetIndex.length, (size_t i) => i,
-                filter, anchors, "filter"))
+                filter, anchors, uiText("the filter index can't grow: too many records or not enough memory")))
             return false;
 
         synchronized (cast(Mutex)_mutex)
@@ -400,11 +403,11 @@ struct LogIndex
     //! scanned.
     //! @param messageAt - the message index of a position; called concurrently,
     //!   so it may only read what doesn't change while the operation runs
-    //! @param what - the name of the index, for the error message
+    //! @param full - the error for the user when the index can't grow
     //! @return false if the operation was cancelled
     private bool collectMatches(Index)(ref ProgressReporter progress, ref Index index, size_t count,
         scope size_t delegate(size_t position) messageAt, Filter filter, ref const(Anchors) anchors,
-        string what)
+        UiText full)
     {
         import utils.parallel_scan : parallelScan;
 
@@ -433,8 +436,7 @@ struct LogIndex
                 synchronized (cast(Mutex)_mutex)
                 {
                     if (!index.append(found))
-                        throw new Exception("the " ~ what
-                            ~ " index can't grow: too many records or not enough memory");
+                        throw new UiTextException(full);
                     progress.report(cast(float) done / count);
                 }
                 return true;
@@ -474,7 +476,7 @@ struct LogIndex
         const size_t viewLength = viewIsFiltered ? _filterIndex.length : _offsetIndex.length;
         if (!collectMatches(progress, _searchIndex, viewLength,
                 (size_t position) => viewIsFiltered ? cast(size_t) _filterIndex[position] : position,
-                filter, anchors, "search"))
+                filter, anchors, uiText("the search index can't grow: too many records or not enough memory")))
         {
             synchronized (cast(Mutex)_mutex)
                 _searchIndex.clear();
