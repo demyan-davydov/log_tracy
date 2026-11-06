@@ -220,15 +220,6 @@ export class VirtualDltTBody extends VirtualSelect {
         return true;
     }
 
-    // Shows the anchor of message `message` set or cleared on its rendered row,
-    // if any. Only the anchor cell changes: rendering the rows again would make
-    // them blink.
-    markAnchor(message, anchored) {
-        for (const cell of this.$$("td.anchor"))
-            if (Number(cell.getAttribute("msg-index")) === message)
-                cell.setAttribute("has-anchor", anchored ? "true" : "false");
-    }
-
     // The number of rows the list has room for, by the height of a row on screen
     visibleRowCount() {
         const row = this.vlist?.firstVisibleItem;

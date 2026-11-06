@@ -534,7 +534,7 @@ export class DocumentPane {
                 for (const [i, list] of this.lists.entries()) {
                     const count = list.totalItems();
                     if (count === counts[i]) {
-                        list.markAnchor(index, !anchored); // the row was in the view, and stays
+                        list.refreshVisibleRows(); // the row was in the view, and shows the new anchor
                         continue;
                     }
                     // The view gained or lost the row: the selected positions show other rows
