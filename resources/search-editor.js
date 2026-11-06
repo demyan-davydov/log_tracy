@@ -171,7 +171,9 @@ export class SearchEditor {
             el.classList.toggle("active", edited);
             const error = edited ? "" : this.regexError(chip);
             el.classList.toggle("invalid", !!error);
-            el.attributes["title"] = error || null;
+            // the error of a regex, no tooltip otherwise (null would read "null")
+            if (error) el.setAttribute("title", error);
+            else el.removeAttribute("title");
             markEdgeSpaces(el.$(".chip-text"), chip.text);
         });
         const range = selection(this.state);

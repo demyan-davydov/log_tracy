@@ -6,8 +6,8 @@
 // The start of a query in the clipboard: a text without it is pasted as text
 export const queryPrefix = "dlt-explorer-search:";
 
-// @returns a chip; a new one is text and case-sensitive
-export function makeChip(text, { isRegex = false, ignoreCase = false } = {}) {
+// @returns a chip; a new one is text and ignores case
+export function makeChip(text, { isRegex = false, ignoreCase = true } = {}) {
     return { text, isRegex, ignoreCase };
 }
 

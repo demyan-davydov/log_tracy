@@ -7,8 +7,8 @@ import { queryPrefix, makeChip, formatQuery, parseQuery, typeBar, pastedText, pa
 const text = (t, ignoreCase = false) => makeChip(t, { ignoreCase });
 const regex = (t, ignoreCase = false) => makeChip(t, { isRegex: true, ignoreCase });
 
-test("a new chip is text and case-sensitive", () => {
-    assert.deepEqual(makeChip("error"), { text: "error", isRegex: false, ignoreCase: false });
+test("a new chip is text and ignores case", () => {
+    assert.deepEqual(makeChip("error"), { text: "error", isRegex: false, ignoreCase: true });
 });
 
 test("formatQuery: chips after the prefix, joined by ' | '", () => {
@@ -68,7 +68,7 @@ test("parseQuery: a malformed query is not a query", () => {
 });
 
 test("typeBar: '|' in a text chip closes it and starts the next one", () => {
-    assert.deepEqual(typeBar(text("abc", true), 3), { split: [text("abc", true), text("")] },
+    assert.deepEqual(typeBar(text("abc", true), 3), { split: [text("abc", true), makeChip("")] },
         "at the end the next chip is a new one");
     assert.deepEqual(typeBar(text("abcdef", true), 3), { split: [text("abc", true), text("def", true)] },
         "in the middle the rest keeps the properties of the chip");

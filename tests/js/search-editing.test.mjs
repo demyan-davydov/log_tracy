@@ -8,7 +8,7 @@ import {
     sameQuery, assignColors, historyIndex, selection, extendCaret, selectChipsFrom, selectTo, selectAll, selectedChips, insertChips,
 } from "../../resources/search-editing.js";
 
-const text = (t, ignoreCase = false) => makeChip(t, { ignoreCase });
+const text = (t, ignoreCase = true) => makeChip(t, { ignoreCase });
 const regex = (t) => makeChip(t, { isRegex: true });
 const gap = (g) => ({ gap: g });
 const at = (chip, offset) => ({ chip, offset });
@@ -195,7 +195,7 @@ test("insertChips: in a chip they go after it, an empty chip they replace", () =
 test("sameQuery: queries differ by their chips, not by the empty ones being edited", () => {
     assert.equal(sameQuery([text("a"), text("")], [text("a")]), true);
     assert.equal(sameQuery([text("a"), text("b")], [text("b"), text("a")]), false, "the order matters");
-    assert.equal(sameQuery([text("a")], [text("a", true)]), false, "the case matters");
+    assert.equal(sameQuery([text("a")], [text("a", false)]), false, "the case matters");
     assert.equal(sameQuery([text("a")], [regex("a")]), false, "the type matters");
 });
 

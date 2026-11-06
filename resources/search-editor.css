@@ -97,14 +97,14 @@
     line-height: 1.6em;
     padding: 0 2dip;
     color: var(--text-label);
-    opacity: 0.45;
+    opacity: var(--chip-toggle-off-opacity);
     cursor: default;
     border-radius: 2dip;
 }
 
 .chip-editor .chip.regex > .chip-regex,
 .chip-editor .chip.nocase > .chip-case {
-    color: var(--border-focus);
+    color: var(--chip-toggle-on);
     opacity: 1;
 }
 

@@ -29,6 +29,9 @@
     --border-focus: #0078d7;
     /* the chosen option of an open <select> list (the hovered one has the accent) */
     --option-current: #2d3f55;
+    /* the switches of a search chip (.*, Aa): off, on (20% brighter than in the light theme) */
+    --chip-toggle-off-opacity: 0.54;
+    --chip-toggle-on: #41a4f4;
 
     /* Buttons */
     --btn-default-bg: #3c3c3c;
