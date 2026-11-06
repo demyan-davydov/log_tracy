@@ -38,7 +38,6 @@
     "DLT filters (.dlf) apply to DLT logs only": "Фильтры DLT (.dlf) применяются только к журналам DLT",
     "DLT filters (.dlf) are for DLT logs only": "Фильтры DLT (.dlf) — только для журналов DLT",
     "Dark": "Темная",
-    "Decoding": "Декодирование",
     "Dec|month": "дек",
     "Details / Search Results": "Подробности / результаты поиска",
     "E&xit": "&Выход",
@@ -69,7 +68,6 @@
     "Just now": "Только что",
     "Language": "Язык",
     "Light": "Светлая",
-    "Load FIBEX": "Загрузить FIBEX",
     "Load Filter": "Загрузить фильтр",
     "Loaded from {file}": "Загружен из {file}",
     "Loading file... {percent}%": "Загрузка файла... {percent}%",
@@ -193,5 +191,8 @@
     "{open} a log": "{open} журнал",
     "{open} a log with {shortcut}": "{open} журнал ({shortcut})"
   },
-  "obsolete": {}
+  "obsolete": {
+    "Decoding": "Декодирование",
+    "Load FIBEX": "Загрузить FIBEX"
+  }
 }
