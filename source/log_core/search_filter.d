@@ -4,6 +4,7 @@ import log_core.log_filter;
 import log_core.log_message;
 
 import std.regex : Regex, regex, matchFirst;
+import utils.text_search : TextPattern;
 import std.typecons : Nullable;
 
 //! One condition of a search query (a chip of the search editor): a text or a
@@ -45,10 +46,9 @@ final class SearchFilter : LogFilter!wchar
 {
     private static struct Rule
     {
-        const(wchar)[] text; // plain text rule
+        TextPattern text; // plain text rule
         Regex!wchar regex; // regex rule, compiled once when the rule is added
         bool isRegex;
-        bool caseInsensitive;
         uint chip; // the place of its chip in the query
     }
 
@@ -95,8 +95,7 @@ final class SearchFilter : LogFilter!wchar
         import std.utf : toUTF16;
 
         Rule rule;
-        rule.text = textUtf8.toUTF16();
-        rule.caseInsensitive = caseInsensitive;
+        rule.text = TextPattern(textUtf8.toUTF16(), caseInsensitive);
         _rules ~= rule;
     }
 
@@ -111,40 +110,14 @@ final class SearchFilter : LogFilter!wchar
         Rule rule;
         rule.regex = regex(patternUtf8.toUTF16(), caseInsensitive ? "i" : "");
         rule.isRegex = true;
-        rule.caseInsensitive = caseInsensitive;
         _rules ~= rule;
-    }
-
-    private static size_t chipChars(scope ref const(Rule) rule) pure
-    {
-        import std.utf : count;
-
-        return rule.text.count;
-    }
-
-    // The position `chars` characters after `at` in `text`
-    private static size_t afterChars(const(wchar)[] text, size_t at, size_t chars) pure
-    {
-        import std.utf : stride;
-
-        foreach (_; 0 .. chars)
-        {
-            if (at >= text.length)
-                break;
-            at += text.stride(at);
-        }
-        return at;
     }
 
     private static bool matches(scope ref const(Rule) rule, scope ref const(Message) msg)
     {
-        import std.string : CaseSensitive, indexOf;
-
         if (rule.isRegex)
             return !matchFirst(msg.payloadText, rule.regex).empty;
-
-        const cs = rule.caseInsensitive ? CaseSensitive.no : CaseSensitive.yes;
-        return msg.payloadText.indexOf(rule.text, cs) != -1;
+        return rule.text.foundIn(msg.payloadText);
     }
 
     //! @brief The fragments of the payload of `msg` the chips found, to show them:
@@ -156,7 +129,6 @@ final class SearchFilter : LogFilter!wchar
     MatchRange[] matchRanges(scope ref const(Message) msg, size_t limit = maxMatchRanges) const
     {
         import std.regex : matchAll;
-        import std.string : CaseSensitive, indexOf;
 
         MatchRange[] found; // kept by start: they never overlap
         const text = msg.payloadText;
@@ -203,15 +175,14 @@ final class SearchFilter : LogFilter!wchar
             }
             else
             {
-                const cs = rule.caseInsensitive ? CaseSensitive.no : CaseSensitive.yes;
-                for (ptrdiff_t at = text.indexOf(rule.text, cs); at >= 0;)
+                if (rule.text.isEmpty)
+                    continue; // only empty matches
+                size_t end;
+                for (ptrdiff_t at = rule.text.find(text, 0, end); at >= 0;
+                    at = rule.text.find(text, end, end))
                 {
-                    // as many characters as the chip has, counted in the payload:
-                    // a letter of another case may take other code units
-                    const end = afterChars(text, at, chipChars(rule));
                     if (!add(at, end, rule.chip))
                         break rules;
-                    at = text.indexOf(rule.text, end, cs);
                 }
             }
         }
@@ -425,4 +396,14 @@ unittest
     auto msg = messageWithPayload("disk error");
     const filter = SearchFilter.fromChips([SearchChip("ERROR", true, true)]);
     assert(filter.dup().matches(msg));
+}
+
+@("matchRanges: an empty text rule finds nothing")
+unittest
+{
+    auto filter = new SearchFilter();
+    filter.addText("", true);
+    filter.addText("b", false);
+    auto msg = messageWithPayload("abc");
+    assert(filter.matchRanges(msg) == [MatchRange(1, 2, 0)]); // added without a chip
 }

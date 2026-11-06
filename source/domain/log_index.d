@@ -19,7 +19,6 @@ import utils.lock_guard;
 
 import std.typecons;
 import std.parallelism;
-import std.algorithm.comparison : min;
 
 import core.atomic : atomicLoad, atomicStore;
 import core.stdc.stdint : uint16_t, uint32_t;
@@ -60,6 +59,13 @@ struct LogIndex
     //private shared float _progress = 0.0f; // building index
 
     enum bunchSize = 32; // number of messages to process in one bunch
+
+    //! Records a thread filters or searches at a time: a block's matches are
+    //! at most 64 KB, and a few blocks per thread are held (utils/parallel_scan)
+    enum scanBlockLength = 16 * 1024;
+
+    //! Records a block scans between its checks of a cancel and of a lost file
+    enum stopCheckRecords = 256;
 
     alias Operation = Document.Operation;
 
@@ -348,7 +354,6 @@ struct LogIndex
     //! @return true if the build process was completed successfully, false otherwise
     private bool buildFilterIndex(ref ProgressReporter progress, Filter filter, Anchors anchors)
     {
-        auto ctx = progress.ctx;
         if (filter is null)
         {
             synchronized (cast(Mutex)_mutex)
@@ -374,48 +379,11 @@ struct LogIndex
             _searchIndex.isReady = false;
         }
 
-        auto isMatched = (ref const(Message) msg, size_t fileIndex) {
-            const bool isAnchoredMsg = anchors.has(fileIndex);
-            return isAnchoredMsg || filter.matches(msg);
-        };
-
         // The offset index is complete and doesn't change while this runs
-        const size_t indexLen = _offsetIndex.length;
-        Message parsedMsg;
-        size_t pos = 0;
+        if (!collectMatches(progress, _filterIndex, _offsetIndex.length, (size_t i) => i,
+                filter, anchors, "filter"))
+            return false;
 
-        while (pos < indexLen)
-        {
-            if (ctx.cancelled)
-            {
-                return false;
-            }
-            enforceSourceAvailable();
-
-            const size_t batchEnd = min(pos + bunchSize, indexLen);
-            FilterIndex.Type[bunchSize] tempIndex;
-            size_t n = 0; // items written into tempIndex this batch
-
-            for (size_t i = pos; i < batchEnd; ++i)
-            {
-                if (!decodeAt(parsedMsg, _offsetIndex[i].offset))
-                    continue;
-
-                if (isMatched(parsedMsg, i))
-                    tempIndex[n++] = cast(FilterIndex.Type) i;
-            }
-
-            synchronized (cast(Mutex)_mutex)
-            {
-                if (!_filterIndex.append(tempIndex[0 .. n])) // only matched entries
-                    throw new Exception("the filter index can't grow: too many records or not enough memory");
-                progress.report(cast(float) batchEnd / indexLen);
-            }
-
-            pos = batchEnd;
-        }
-
-        enforceSourceAvailable(); // the last batch may have read zeros
         synchronized (cast(Mutex)_mutex)
         {
             _filterIndex.isReady = true;
@@ -425,13 +393,63 @@ struct LogIndex
         return true;
     }
 
+    //! @brief Appends to `index`, in order, the messages of the positions
+    //! [0, count) that are anchored or match `filter`. The positions are
+    //! scanned in parallel blocks (utils/parallel_scan); what a block found is
+    //! appended under the mutex as soon as it and the blocks before it are
+    //! scanned.
+    //! @param messageAt - the message index of a position; called concurrently,
+    //!   so it may only read what doesn't change while the operation runs
+    //! @param what - the name of the index, for the error message
+    //! @return false if the operation was cancelled
+    private bool collectMatches(Index)(ref ProgressReporter progress, ref Index index, size_t count,
+        scope size_t delegate(size_t position) messageAt, Filter filter, ref const(Anchors) anchors,
+        string what)
+    {
+        import utils.parallel_scan : parallelScan;
+
+        auto ctx = progress.ctx;
+        const completed = parallelScan!(Index.Type)(count, scanBlockLength,
+            (size_t lo, size_t hi, Index.Type[] found) {
+                Message msg; // a buffer per block: blocks run on several threads
+                size_t n = 0;
+                foreach (position; lo .. hi)
+                {
+                    // The delivery of this block stops the scan, or fails it
+                    if ((position - lo) % stopCheckRecords == 0 && (ctx.cancelled || _source.lost))
+                        break;
+                    const message = messageAt(position);
+                    if (!decodeAt(msg, _offsetIndex[message].offset))
+                        continue;
+                    if (anchors.has(message) || filter.matches(msg))
+                        found[n++] = cast(Index.Type) message;
+                }
+                return n;
+            },
+            (size_t done, const(Index.Type)[] found) {
+                if (ctx.cancelled)
+                    return false;
+                enforceSourceAvailable();
+                synchronized (cast(Mutex)_mutex)
+                {
+                    if (!index.append(found))
+                        throw new Exception("the " ~ what
+                            ~ " index can't grow: too many records or not enough memory");
+                    progress.report(cast(float) done / count);
+                }
+                return true;
+            });
+
+        enforceSourceAvailable(); // the last block may have read zeros
+        return completed;
+    }
+
     //! @brief build search index
     //! @param progress - progress reporter, also gives access to the cancel flag
     //! @param filter - null resets the search: the search view shows the anchors only
     //! @return true if the build process was completed successfully, false otherwise
     private bool buildSearchIndex(ref ProgressReporter progress, Filter filter, Anchors anchors)
     {
-        auto ctx = progress.ctx;
         if (filter is null)
         {
             synchronized (cast(Mutex)_mutex)
@@ -450,55 +468,19 @@ struct LogIndex
             _searchIndex.isReady = false;
         }
 
-        auto isMatched = (ref const(Message) msg, size_t fileIndex) {
-            const bool isAnchoredMsg = anchors.has(fileIndex);
-            return isAnchoredMsg || filter.matches(msg);
-        };
-
-        // Build a read-only list of file offsets to iterate over
-        const size_t indexLen = _viewIsFiltered ? _filterIndex.length : _offsetIndex.length;
-
-        Message parsedMsg;
-        SearchIndex.Type[bunchSize] tempIndex;
-        size_t pos = 0;
-
-        while (pos < indexLen)
+        // The search runs over the main view; neither the filter index nor
+        // the offset index changes while this runs
+        const bool viewIsFiltered = _viewIsFiltered;
+        const size_t viewLength = viewIsFiltered ? _filterIndex.length : _offsetIndex.length;
+        if (!collectMatches(progress, _searchIndex, viewLength,
+                (size_t position) => viewIsFiltered ? cast(size_t) _filterIndex[position] : position,
+                filter, anchors, "search"))
         {
-            if (ctx.cancelled)
-            {
-                _searchIndex.clear();
-                return false;
-            }
-            enforceSourceAvailable();
-
-            size_t batchEnd = pos + bunchSize;
-            if (batchEnd > indexLen)
-                batchEnd = indexLen;
-
-            size_t tempLen = 0;
-            for (size_t i = pos; i < batchEnd; ++i)
-            {
-                const uint32_t globalIndex = _viewIsFiltered ? _filterIndex[i] : cast(uint32_t) i;
-                if (!decodeAt(parsedMsg, _offsetIndex[globalIndex].offset))
-                    continue;
-
-                if (isMatched(parsedMsg, globalIndex))
-                {
-                    tempIndex[tempLen++] = globalIndex;
-                }
-            }
-
             synchronized (cast(Mutex)_mutex)
-            {
-                if (!_searchIndex.append(tempIndex[0 .. tempLen]))
-                    throw new Exception("the search index can't grow: too many records or not enough memory");
-                progress.report(cast(float) batchEnd / indexLen);
-            }
-
-            pos = batchEnd;
+                _searchIndex.clear();
+            return false;
         }
 
-        enforceSourceAvailable(); // the last batch may have read zeros
         synchronized (cast(Mutex)_mutex)
         {
             _searchIndex.isReady = true;
@@ -628,32 +610,203 @@ struct LogIndex
     ///
 }
 
+version (unittest)
+{
+    //! Builds the operation `run` starts and waits for it to finish
+    private void waitForOperation(ref LogIndex index, scope bool delegate() run)
+    {
+        import core.thread : Thread;
+        import core.time : msecs, MonoTime;
+
+        while (!run()) // the offset index may still be building
+            Thread.sleep(1.msecs);
+        const deadline = MonoTime.currTime + 30_000.msecs;
+        while (index._backgroundSlot.busy && MonoTime.currTime < deadline)
+            Thread.sleep(1.msecs);
+        assert(!index._backgroundSlot.busy, "the operation hangs");
+    }
+
+    //! Writes a log of `lines` lines, given by `line` without their end, to a
+    //! file named after the test and the process
+    //! @return its path
+    private string writeLines(string name, size_t lines, scope string delegate(size_t) line)
+    {
+        import std.array : appender;
+        import std.file : tempDir, write;
+        import std.format : format;
+        import std.path : buildPath;
+        import std.process : thisProcessID;
+
+        auto text = appender!string;
+        foreach (i; 0 .. lines)
+        {
+            text ~= line(i);
+            text ~= '\n';
+        }
+        const path = buildPath(tempDir(), format("%s-%s.log", name, thisProcessID));
+        write(path, text[]);
+        return path;
+    }
+
+    //! Matches nothing; on its first call does `onFirst`, counts its calls
+    private final class CountingFilter : Filter
+    {
+        private shared size_t* _calls;
+        private void delegate() _onFirst;
+
+        this(shared size_t* calls, void delegate() onFirst)
+        {
+            _calls = calls;
+            _onFirst = onFirst;
+        }
+
+        override bool matches(scope ref const(Message) item) const
+        {
+            import core.atomic : atomicOp;
+
+            if (atomicOp!"+="(*cast(shared size_t*) _calls, 1) == 1)
+                (cast() _onFirst)();
+            return false;
+        }
+
+        override Nullable!uint matchIndex(scope ref const(Message) item) const
+        {
+            return Nullable!uint.init;
+        }
+
+        override immutable(Filter) idup() const pure
+        {
+            assert(false);
+        }
+
+        override Filter dup() const pure
+        {
+            assert(false);
+        }
+    }
+
+    //! A file that can be lost on demand
+    private final class LosableSource : ByteSource
+    {
+        private FileSource _file;
+        shared bool isLost;
+
+        this(string path)
+        {
+            _file = new FileSource(path);
+        }
+
+        override const(ubyte)[] data() const pure nothrow @nogc
+        {
+            return _file.data;
+        }
+
+        override bool lost() const nothrow @nogc
+        {
+            import core.atomic : atomicLoad;
+
+            return atomicLoad(isLost);
+        }
+
+        override void close() nothrow @nogc
+        {
+            _file.close();
+        }
+    }
+}
+
 @("LogIndex: the indexes take memory as they fill, not for the whole file")
 unittest
 {
-    import core.thread : Thread;
-    import core.time : msecs, MonoTime;
     import utils.event_bus.event_bus_async : EventBusAsync;
     import formats.plain_text : PlainTextFormat;
     import std.array : replicate;
-    import std.file : remove, tempDir, write;
-    import std.path : buildPath;
+    import std.file : remove;
 
     // 16 MB of text in 1600 lines: a reserve for a record per byte would be
     // 16M entries per index
-    const path = buildPath(tempDir(), "log_index_memory.log");
-    write(path, ("x".replicate(10 * 1024 - 1) ~ "\n").replicate(1600));
+    const line = "x".replicate(10 * 1024 - 1);
+    const path = writeLines("log_index_memory", 1600, (size_t i) => line);
     scope (exit)
         remove(path);
 
-    auto events = new EventBusAsync();
-    auto index = LogIndex(new FileSource(path), new PlainTextFormat(), events);
-    const deadline = MonoTime.currTime + 10_000.msecs;
-    while (index.messageCount < 1600 && MonoTime.currTime < deadline)
-        Thread.sleep(1.msecs);
+    auto index = LogIndex(new FileSource(path), new PlainTextFormat(), new EventBusAsync());
+    waitForOperation(index, () => true); // the offset index is being built
     assert(index.messageCount == 1600);
 
     const used = index._offsetIndex.reservedBytes + index._filterIndex.reservedBytes
         + index._searchIndex.reservedBytes;
     assert(used < 4 * 1024 * 1024, "indexes reserve memory for the whole file");
+}
+
+@("LogIndex: filter and search over many blocks keep the order of the log")
+unittest
+{
+    import utils.event_bus.event_bus_async : EventBusAsync;
+    import formats.plain_text : PlainTextFormat;
+    import log_core.search_filter : SearchChip, SearchFilter;
+    import std.algorithm : filter, map;
+    import std.array : array;
+    import std.file : remove;
+    import std.format : format;
+    import std.range : iota;
+
+    // Enough lines for many blocks of every thread
+    enum lines = 300_000;
+    const path = writeLines("log_index_order", lines, (size_t i) => format("line %s%s%s",
+        i, i % 7 == 0 ? " seven" : "", i % 5 == 0 ? " five" : ""));
+    scope (exit)
+        remove(path);
+
+    auto index = LogIndex(new FileSource(path), new PlainTextFormat(), new EventBusAsync());
+    Anchors anchors;
+    anchors.set(3, true); // shown whatever the filter
+
+    auto sevens = SearchFilter.fromChips([SearchChip("seven")]);
+    waitForOperation(index, () => index.runBuildFilterIndex(sevens, anchors));
+    const expectedView = iota(lines).filter!(i => i % 7 == 0 || i == 3).array;
+    assert(index.mainViewItemsCount == expectedView.length);
+    assert(iota(expectedView.length).map!(p => index._filterIndex[p]).array == expectedView);
+
+    // The search runs over the filtered view
+    auto fives = SearchFilter.fromChips([SearchChip("five")]);
+    waitForOperation(index, () => index.runBuildSearchIndex(fives, anchors));
+    const expectedFound = expectedView.filter!(i => i % 5 == 0 || i == 3).array;
+    assert(index.searchViewItemsCount == expectedFound.length);
+    assert(iota(expectedFound.length).map!(p => index._searchIndex[p]).array == expectedFound);
+}
+
+@("LogIndex: a cancel or a lost file stops the blocks being scanned, not only the next ones")
+unittest
+{
+    import core.atomic : atomicLoad, atomicStore;
+    import utils.event_bus.event_bus_async : EventBusAsync;
+    import formats.plain_text : PlainTextFormat;
+    import std.file : remove;
+    import std.format : format;
+    import std.parallelism : totalCPUs;
+
+    const path = writeLines("log_index_stop", 400_000, (size_t i) => format("line %s", i));
+    scope (exit)
+        remove(path);
+    // Each thread may go on to the next check of its block
+    const enoughCalls = (totalCPUs + 1) * LogIndex.stopCheckRecords * 2;
+    assert(enoughCalls < LogIndex.scanBlockLength * 2, "too many cores for this test");
+
+    {
+        auto index = LogIndex(new FileSource(path), new PlainTextFormat(), new EventBusAsync());
+        auto indexPtr = &index;
+        shared size_t calls;
+        auto filter = new CountingFilter(&calls, () { indexPtr.cancelCurrentOperation(); });
+        waitForOperation(index, () => index.runBuildFilterIndex(filter, Anchors.init));
+        assert(atomicLoad(calls) < enoughCalls, "a cancelled block goes on");
+    }
+    {
+        auto source = new LosableSource(path);
+        auto index = LogIndex(source, new PlainTextFormat(), new EventBusAsync());
+        shared size_t calls;
+        auto filter = new CountingFilter(&calls, () { atomicStore(source.isLost, true); });
+        waitForOperation(index, () => index.runBuildSearchIndex(filter, Anchors.init));
+        assert(atomicLoad(calls) < enoughCalls, "a block of a lost file goes on");
+    }
 }

@@ -19,8 +19,9 @@ import std.array : array;
 import std.format : format;
 import std.regex : matchFirst, regex, Regex;
 import std.typecons : Nullable;
-import std.uni : icmp, toLower;
+import std.uni : icmp;
 import std.utf : toUTF16;
+import utils.text_search : TextPattern;
 
 //! What a rule does with the records it matches
 enum RuleKind : ubyte
@@ -99,12 +100,12 @@ private struct CompiledCondition
     ColumnKind kind;
     int field = -1;
     Check check;
-    wstring text; // Equals and Contains on texts; in lower case for Contains with ignoreCase
+    wstring text; // Equals and Regex on texts
     long min, max; // Equals (min) and Range on numbers, levels and enums
     bool ignoreCase;
-    //! Contains with ignoreCase on a text with letters beyond the BMP: their
-    //! case is found by decoding (see containsIgnoringCase)
-    bool beyondBmp;
+    //! Contains on texts: looked for by code units, cheap for every row shown
+    //! and every record a filter goes through
+    TextPattern substring;
     Regex!wchar regex;
 
     //! How much a check costs, roughly: a number, a field, the payload, a
@@ -154,14 +155,7 @@ private struct CompiledCondition
         case Check.Equals:
             return ignoreCase ? icmp(value, text) == 0 : value == text;
         case Check.Contains:
-        {
-            import std.algorithm.searching : canFind;
-
-            if (!ignoreCase)
-                return contains(value, text);
-            return beyondBmp ? value.canFind!((a, b) => toLower(a) == toLower(b))(text)
-                : containsIgnoringCase(value, text);
-        }
+            return substring.foundIn(value);
         case Check.Regex:
             return !matchFirst(value, regex).empty;
         default:
@@ -174,63 +168,6 @@ private struct CompiledCondition
         // Equals sets max = min
         return value >= min && value <= max;
     }
-}
-
-// Substrings are looked for by code units: a substring of UTF-16 is found
-// without decoding it. Most places differ at the first code unit, so it is
-// checked alone first. This runs for every row on screen and every record a
-// filter goes through.
-
-//! @returns true if `text` is in `value`
-private bool contains(const(wchar)[] value, const(wchar)[] text) pure nothrow @nogc
-{
-    if (text.length == 0)
-        return true;
-    if (value.length < text.length)
-        return false;
-    const first = text[0];
-    foreach (i; 0 .. value.length - text.length + 1)
-        if (value[i] == first && value[i + 1 .. i + text.length] == text[1 .. $])
-            return true;
-    return false;
-}
-
-//! @returns `c` in lower case
-private wchar lowerOf(wchar c) pure nothrow @nogc
-{
-    if (c < 0x80)
-        return c >= 'A' && c <= 'Z' ? cast(wchar)(c + ('a' - 'A')) : c;
-    return cast(wchar) toLower(cast(dchar) c);
-}
-
-//! @returns true if `lowerText` (in lower case) is in `value`, in any case.
-//! Exact for a text in the BMP: a surrogate of `value` is never one of its code
-//! units, and no letter beyond the BMP is a letter of the BMP in another case.
-private bool containsIgnoringCase(const(wchar)[] value, const(wchar)[] lowerText) pure nothrow @nogc
-{
-    import std.uni : toUpper;
-
-    if (lowerText.length == 0)
-        return true;
-    if (value.length < lowerText.length)
-        return false;
-    const first = lowerText[0];
-    // Its upper case is a quick yes only if it is lowered back to it (not for ı: I is i)
-    wchar firstUpper = cast(wchar) toUpper(cast(dchar) first);
-    if (lowerOf(firstUpper) != first)
-        firstUpper = first;
-    outer: foreach (i; 0 .. value.length - lowerText.length + 1)
-    {
-        const c = value[i];
-        // Beyond ASCII a letter may have more upper cases (K and the Kelvin sign)
-        if (c != first && c != firstUpper && (c < 0x80 || lowerOf(c) != first))
-            continue;
-        foreach (j; 1 .. lowerText.length)
-            if (lowerOf(value[i + j]) != lowerText[j])
-                continue outer;
-        return true;
-    }
-    return false;
 }
 
 //! @throws Exception if the condition can't be applied to the columns
@@ -258,18 +195,10 @@ private CompiledCondition compileCondition(const(ColumnInfo)[] columns, ref cons
         throw new Exception(format("%s: can't be filtered", column.title));
     case ColumnKind.Text:
     case ColumnKind.Payload:
-        compiled.text = condition.text.toUTF16;
-        if (condition.check == Check.Contains && condition.ignoreCase)
-            foreach (wchar c; compiled.text) // by code units: canFind would decode the pairs
-                compiled.beyondBmp |= c >= 0xD800 && c <= 0xDFFF;
-        if (condition.check == Check.Contains && condition.ignoreCase && !compiled.beyondBmp)
-        {
-            // As containsIgnoringCase lowers the value: code unit by code unit
-            auto lower = compiled.text.dup;
-            foreach (ref c; lower)
-                c = lowerOf(c);
-            compiled.text = lower.idup;
-        }
+        if (condition.check == Check.Contains)
+            compiled.substring = TextPattern(condition.text.toUTF16, condition.ignoreCase);
+        else
+            compiled.text = condition.text.toUTF16;
         if (condition.check == Check.Regex)
             compiled.regex = regex(compiled.text, condition.ignoreCase ? "i" : ""); // throws
         else if (condition.check == Check.Range)
