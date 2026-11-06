@@ -9,44 +9,27 @@
     color: var(--text-main);
     table-layout: fixed;
     flow: table;
-}
-
-@set dropdown-scrollbar {
-
-    .prev,
-    .next {
-        display: none;
-    }
-
-    .slider {
-        background-color: #D6D6D6;
-        border-radius: 6dip;
-        border: none;
-        width: 6dip;
-        min-height: 20dip;
-    }
-
-    .base {
-        width: 16dip;
-        border: none;
-    }
+    overflow-y: auto;
+    overflow-x: auto;
 }
 
 .log-table tbody {
     display: block;
-    -flow: vertical;
     behavior: virtual-list;
-    overflow-y: scroll;
+    overflow-y: auto;
     overflow-x: auto;
     width: *;
     height: *;
-    vertical-scrollbar: dropdown-scrollbar;
+}
+
+/* Payload column: break long lines */
+.log-table td:last-child {
+    word-break: break-all;
 }
 
 /* tr/td must be explicit blocks — display:table-row inside display:block has no layout box */
 .log-table>tbody>tr {
     display: table-row;
-    -flow: horizontal;
     width: *;
 }
 
@@ -75,7 +58,6 @@
    same look to the columns of Settings, which imitate it */
 .log-table>thead>tr,
 .column-header-row {
-    -user-select: none;
     cursor: default;
     font-family: 'Courier New', Courier, monospace;
     background-color: bisque;
@@ -83,13 +65,10 @@
 
 .log-table th,
 .column-header {
-    -user-select: none;
     cursor: default;
     padding: 2px 4px;
     white-space: nowrap;
     font-family: 'Courier New', Courier, monospace;
-    -overflow: hidden;
-    -text-overflow: ellipsis;
     border-right: 1px solid var(--border-color);
 }
 
@@ -119,7 +98,7 @@
 }
 
 .log-table>tbody>tr>td.anchor[has-anchor="false"]:hover:before {
-    content: "⚓";
+    content: ".";
     opacity: 0.3;
 }
 
@@ -137,10 +116,7 @@
 .log-table>tbody>tr>td {
     -user-select: none;
     cursor: text;
-    padding: 2px 4px;
-    -white-space: nowrap;
-    -overflow: hidden;
-    -text-overflow: ellipsis;
+    padding: 1dip 2dip;
     border-right: 1px solid var(--border-color);
 }
 
@@ -212,7 +188,7 @@ popup.notice {
 
 /* What a search chip found in the payload of a row of the results: the chip's
    match color behind the text (match-colors.css), see matchPieces */
-.log-table td > span.match {
+.log-table td>span.match {
     border-radius: 2dip;
     /* the text of the theme, not the row's: a selected row has light text, the
        match colors are pale, and what was found must stay readable */

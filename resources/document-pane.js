@@ -76,11 +76,6 @@ function renderPane(splitters) {
                 <button class="btn-new-dlf">New Filter</button>
                 <button class="btn-dlf">Load Filter</button>
             </div>
-
-            <header class="sidebar-section">Decoding</header>
-            <div class="filter-actions">
-                <button class="btn-fibex">Load FIBEX</button>
-            </div>
         </section>
 
         <frameset rows={splitters.rows}>
@@ -134,26 +129,26 @@ function renderPane(splitters) {
 
                 <header>Details / Search Results</header>
                 <div class="search-body">
-                <div class="status-view overlay compact search-status" tabindex="0" style="display:none;">
-                    <div class="status-body">
-                        <div class="status-title"></div>
-                        <progress value="0" max="100"></progress>
-                        <div class="status-detail"></div>
-                        <div class="status-actions">
-                            <button class="btn-cancel">Cancel</button>
+                    <div class="status-view overlay compact search-status" tabindex="0" style="display:none;">
+                        <div class="status-body">
+                            <div class="status-title"></div>
+                            <progress value="0" max="100"></progress>
+                            <div class="status-detail"></div>
+                            <div class="status-actions">
+                                <button class="btn-cancel">Cancel</button>
+                            </div>
                         </div>
                     </div>
-                </div>
-                <table class="log-table search-view" fixed-layout="true">
-                    <thead>
-                        <tr>
-                            <th width="20px">⚓</th>
-                            <th width="80px">Index</th>
-                            <th width="*">Payload</th>
-                        </tr>
-                    </thead>
-                    <tbody />
-                </table>
+                    <table class="log-table search-view" fixed-layout="true">
+                        <thead>
+                            <tr>
+                                <th width="20px">⚓</th>
+                                <th width="80px">Index</th>
+                                <th width="*">Payload</th>
+                            </tr>
+                        </thead>
+                        <tbody />
+                    </table>
                 </div>
             </section>
         </frameset>

@@ -21,7 +21,7 @@
    (see renderPane in document-pane.js), the view covers it whole */
 .tab-content,
 .search-body {
-    position: relative;
+    margin-right: 2dip;
 }
 
 .search-body {
@@ -34,7 +34,8 @@
     top: 0;
     right: 0;
     bottom: 0;
-    size: auto; /* by the four edges: Sciter gives height: 100% no height here */
+    size: auto;
+    /* by the four edges: Sciter gives height: 100% no height here */
 }
 
 /* It takes the focus from the table it covers (DocumentPane.takeFocus): no ring */
@@ -56,7 +57,7 @@
     font-weight: 600;
 }
 
-.status-body > progress {
+.status-body>progress {
     width: *;
     height: 6dip;
     margin-top: 10dip;
@@ -86,7 +87,8 @@
 .status-actions {
     flow: horizontal;
     width: max-content;
-    margin: 12dip * 0; /* centered */
+    margin: 12dip * 0;
+    /* centered */
     border-spacing: 8dip;
 }
 
@@ -99,7 +101,7 @@
     font-size: 13dip;
 }
 
-.status-view.compact .status-body > progress {
+.status-view.compact .status-body>progress {
     margin-top: 6dip;
 }
 
