@@ -13,6 +13,9 @@
     --tab-separator: #a8a8a8;
     --tab-close: #555;
     --tab-close-hover: #c4c4c4;
+    /* the bar of the loading progress on a tab: the track, the loaded part */
+    --tab-progress-bg: #d0d0d0;
+    --tab-progress-done: #0078d7;
 
     /* Sidebar */
     --bg-sidebar: #f9f9f9;

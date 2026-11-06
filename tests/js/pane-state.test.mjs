@@ -73,3 +73,15 @@ test("an anchor among the rendered rows inserts or removes its row in place", ()
 test("no rendered rows: nothing to follow", () => {
     assert.equal(anchorEdit([], 5, true), null);
 });
+
+test("a tab shows the progress of loading its file, nothing otherwise", async () => {
+    const { tabProgress } = await import("../../resources/pane-state.js");
+    assert.equal(tabProgress({ status: "loadingFile", progress: 0.25 }), 0.25);
+    assert.equal(tabProgress({ status: "loadingFile", progress: 1.5 }), 1);
+    assert.equal(tabProgress({ status: "loadingFile", progress: -1 }), 0);
+    assert.equal(tabProgress({ status: "loadingFile" }), 0);
+    assert.equal(tabProgress({ status: "ready" }), null);
+    assert.equal(tabProgress({ status: "filtering", progress: 0.5 }), null);
+    assert.equal(tabProgress(null), null);
+    assert.equal(tabProgress(undefined), null);
+});

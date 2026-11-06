@@ -48,3 +48,10 @@ export function anchorEdit(rendered, message, added) {
     else result.removeAt = rendered.indexOf(message);
     return result;
 }
+
+// The progress a tab shows under its name: the part of the file loaded (0..1)
+// while the main view (vm: { status, progress }) loads it, null otherwise (no bar)
+export function tabProgress(vm) {
+    if (vm?.status !== "loadingFile") return null;
+    return Math.min(1, Math.max(0, vm.progress || 0));
+}

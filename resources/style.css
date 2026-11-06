@@ -319,6 +319,27 @@ body > header {
     background: var(--tab-close-hover);
 }
 
+/* The progress of loading the file of a document, under its name. Out of
+   the flow: shown and hidden without moving anything */
+.tab > .tab-progress {
+    display: none; /* tabs.js shows it while there is a progress */
+    position: absolute;
+    left: 8dip;
+    right: 8dip;
+    bottom: 3dip;
+    height: 3dip;
+    border-radius: 1.5dip;
+    overflow: hidden;
+    background: var(--tab-progress-bg);
+}
+
+.tab > .tab-progress > .tab-progress-done {
+    display: block;
+    width: 0;
+    height: 100%;
+    background: var(--tab-progress-done);
+}
+
 /* Dragging: the tab follows the mouse, the others slide out of the way */
 .tab.shifting {
     transition: transform cubic-out 150ms;

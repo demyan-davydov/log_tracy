@@ -120,6 +120,7 @@ export class TabStrip {
                     <span class="tab-sep"></span>
                     <span class="tab-name"></span>
                     <span class="tab-close">×</span>
+                    <span class="tab-progress"><span class="tab-progress-done"></span></span>
                 </div>);
                 if (newTabElement) container.insertBefore(container.lastElementChild, newTabElement);
             }
@@ -135,12 +136,16 @@ export class TabStrip {
         this.renderNewTab(newTab);
     }
 
-    // Exposes the status of a document on its tab for CSS: main-status, search-status
-    setStatus(docId, mainStatus, searchStatus) {
+    // Exposes the status of a document on its tab for CSS: main-status,
+    // search-status; progress (0..1, null: none) is the bar at its bottom
+    setStatus(docId, mainStatus, searchStatus, progress) {
         const tab = $(`#tabs-container > .tab[id="${docId}"]`);
         if (!tab) return;
         tab.setAttribute("main-status", mainStatus || "");
         tab.setAttribute("search-status", searchStatus || "");
+        const bar = tab.$(".tab-progress");
+        bar.style.display = progress === null ? "none" : "block";
+        if (progress !== null) bar.$(".tab-progress-done").style.width = `${progress * 100}%`;
     }
 
     // The New Tab element: after all the document tabs while open

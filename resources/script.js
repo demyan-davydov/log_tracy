@@ -7,7 +7,7 @@ import {
 } from "window-state.js";
 import { lastUsedText } from "recent-time.js";
 import { DocumentPane } from "document-pane.js";
-import { paneChanges } from "pane-state.js";
+import { paneChanges, tabProgress } from "pane-state.js";
 import { TabStrip } from "tabs.js";
 import * as backend from "backend.js";
 import * as platform from "platform.js";
@@ -368,7 +368,7 @@ const tabStrip = new TabStrip({
 
 // Shows the status of the document (its panel) on its tab
 function showTabStatus(docId, pane) {
-    tabStrip.setStatus(docId, pane.mainView?.status, pane.searchView?.status);
+    tabStrip.setStatus(docId, pane.mainView?.status, pane.searchView?.status, tabProgress(pane.mainView));
 }
 
 // What a panel asks of the window
