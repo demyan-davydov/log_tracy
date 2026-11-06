@@ -1,0 +1,53 @@
+<html window-resizable>
+<head><title>vlist list crash</title>
+<!--
+  Sciter 6.0.5.5, macOS arm64: behavior:virtual-list, 160M rows of <div>.
+  Drag the scrollbar thumb to the very bottom (or top): segfault in
+  vlist_ctl::move_buffer_to -> element::border_box -> element::content_box (null element).
+  Sciter 6.0.3.12 doesn't crash.
+  The content handlers are those of samples.sciter/virtual-list.
+-->
+<style>
+html { background: white; }
+body { size: *; margin: 0 24px 40px 0; }
+rows { display: block; behavior: virtual-list; prototype: Rows; flow: vertical; overflow-y: auto; size: *; }
+rows > div { height: 20px; border-bottom: 1px solid #ddd; }
+</style>
+<script>
+const N = 160000000;
+class Rows extends Element {
+  row(i) { return <div>row {i}</div>; }
+  appendElements(index, n) {
+    if (index === undefined) index = 0;
+    const e = [];
+    for (let i = 0; i < n; ++i, ++index) { if (index >= N) break; e.push(this.row(index)); }
+    this.append(e);
+    return { moreafter: N - index };
+  }
+  prependElements(index, n) {
+    if (index === undefined) index = N - 1;
+    const e = [];
+    for (let i = 0; i < n; ++i, --index) { if (index < 0) break; e.push(this.row(index)); }
+    e.reverse();
+    this.prepend(e);
+    return { morebefore: index < 0 ? 0 : index + 1 };
+  }
+  replaceElements(index, n) {
+    const e = [];
+    const start = index;
+    for (let i = 0; i < n; ++i, ++index) { if (index >= N) break; e.push(this.row(index)); }
+    this.patch(e);
+    return { morebefore: start <= 0 ? 0 : start, moreafter: N - index };
+  }
+  oncontentrequired(evt) {
+    const { length, start, where } = evt.data;
+    if (where > 0) evt.data = this.appendElements(start, length);
+    else if (where < 0) evt.data = this.prependElements(start, length);
+    else evt.data = this.replaceElements(start, length);
+    return true;
+  }
+}
+</script></head>
+<body>
+  <rows />
+</body></html>
