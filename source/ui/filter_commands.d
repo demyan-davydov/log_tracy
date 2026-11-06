@@ -10,6 +10,9 @@ module ui.filter_commands;
 //! Each command returns a message for the user: an error, or what was lost or
 //! may not fit when it was done; "" when there is nothing to say.
 
+import utils.ui_text : english, uiText, uiTextOf, UiText;
+import std.algorithm.iteration : map;
+import std.array : array;
 import formats.dlt.dlf : canLoadDlf, fromDlf, readDlf, toDlf, writeDlf;
 import log_core.filter_file;
 import log_core.log_filter : LogFilter;
@@ -29,14 +32,25 @@ final class DocumentFilters
     private RuleMatcher _matcher; // compiled from _sets by rematch(); null: no rules
     private RuleIdGenerator _ruleIds; // the rules get their ids when they come in
 
+    //! What puts a text for the user in the language of the interface (see AppSession)
+    alias TextForUser = string delegate(const UiText) @safe;
+
     //! @param formatId - FormatInfo.id of the format of the log
     //! @param apply - filters the main view of the document (null: no filter)
-    this(const(LogFormat) format, string formatId, void delegate(LogFilter!wchar) apply)
+    //! @param text - puts the texts of the commands for the user in the language of the
+    //!     interface (their messages, the names of new sets and rules); null: english
+    this(const(LogFormat) format, string formatId, void delegate(LogFilter!wchar) apply,
+        TextForUser text = null)
     {
         _format = format;
         _formatId = formatId;
         _apply = apply;
+        _text = text !is null ? text : &englishOf;
     }
+
+    private TextForUser _text;
+
+    private string englishOf(const UiText t) @safe => english(t);
 
     const(FilterSet)[] sets() const
     {
@@ -66,17 +80,17 @@ final class DocumentFilters
         import std.path : baseName;
 
         if (!canFilter())
-            return noColumns;
+            return noColumns();
         if (_sets.canFind!((ref s) => s.source == path))
-            return baseName(path) ~ " is loaded already: remove it to load it again";
+            return _text(uiText("{file} is loaded already: remove it to load it again", "file", baseName(path)));
         FilterSet set;
-        string[] notes;
+        UiText[] notes;
         try
         {
             if (isDlf(path))
             {
                 if (!canLoadDlf(_format))
-                    return "DLT filters (.dlf) apply to DLT logs only";
+                    return _text(uiText("DLT filters (.dlf) apply to DLT logs only"));
                 set.name = baseName(path);
                 set.rules = fromDlf(readDlf(path), notes);
             }
@@ -87,12 +101,12 @@ final class DocumentFilters
                 if (set.name.length == 0)
                     set.name = baseName(path);
                 if (file.logFormat.length && file.logFormat != _formatId)
-                    notes ~= "made for " ~ file.logFormat ~ " logs: the rules on columns this log"
-                        ~ " doesn't have aren't applied";
+                    notes ~= uiText("made for {format} logs: the rules on columns this log doesn't have aren't applied",
+                        "format", file.logFormat);
             }
         }
         catch (Exception e)
-            return "Can't load the filter: " ~ e.msg;
+            return _text(uiText("Can't load the filter: {reason}", "reason", uiTextOf(e)));
         set.source = path;
         check(set);
         identify(set);
@@ -107,9 +121,9 @@ final class DocumentFilters
     string newSet()
     {
         if (!canFilter())
-            return noColumns;
+            return noColumns();
         FilterSet set;
-        set.name = "New Filter";
+        set.name = _text(uiText("New Filter")); // a name of the user's, in the language of now
         _sets ~= set;
         return "";
     }
@@ -123,20 +137,20 @@ final class DocumentFilters
         import std.path : baseName;
 
         if (set >= _sets.length)
-            return noSuchSet;
+            return noSuchSet();
         // What filters is written: the rules of a set switched off are off
         auto written = cast(FilterSet) _sets[set];
         written.rules = copyOf(_sets[set].rules);
         if (!written.enabled)
             foreach (ref rule; written.rules)
                 rule.enabled = false;
-        string[] notes;
+        UiText[] notes;
         try
         {
             if (isDlf(path))
             {
                 if (!canLoadDlf(_format))
-                    return "DLT filters (.dlf) are for DLT logs only";
+                    return _text(uiText("DLT filters (.dlf) are for DLT logs only"));
                 writeDlf(path, toDlf(written.rules, notes));
                 _sets[set].name = baseName(path); // a .dlf has no name of its own
             }
@@ -144,7 +158,7 @@ final class DocumentFilters
                 write(path, filterFileJson(written, _formatId));
         }
         catch (Exception e)
-            return "Can't export the filter: " ~ e.msg;
+            return _text(uiText("Can't export the filter: {reason}", "reason", uiTextOf(e)));
         _sets[set].source = path;
         return noteOf(baseName(path), notes);
     }
@@ -193,7 +207,7 @@ final class DocumentFilters
         import std.algorithm.mutation : remove;
 
         if (set >= _sets.length)
-            return noSuchSet;
+            return noSuchSet();
         const changed = filtersView(_sets[set]);
         _sets = _sets.remove(set);
         rematch();
@@ -206,7 +220,7 @@ final class DocumentFilters
     string enableSet(size_t set, bool enabled)
     {
         if (set >= _sets.length)
-            return noSuchSet;
+            return noSuchSet();
         _sets[set].enabled = enabled;
         rematch();
         if (filtersView(_sets[set], true))
@@ -218,7 +232,7 @@ final class DocumentFilters
     string enableRule(size_t set, size_t rule, bool enabled)
     {
         if (set >= _sets.length || rule >= _sets[set].rules.length)
-            return noSuchSet;
+            return noSuchSet();
         auto target = &_sets[set].rules[rule];
         target.enabled = enabled;
         rematch();
@@ -227,11 +241,11 @@ final class DocumentFilters
         return "";
     }
 
-    //! A new rule for the editor, as ruleJson gives a rule
-    static JSONValue newRuleJson()
+    //! A new rule for the editor, as ruleJson gives a rule; named in the language of now
+    JSONValue newRuleJson()
     {
         FilterRule rule;
-        rule.name = "New Rule";
+        rule.name = _text(uiText("New Rule"));
         return rulesToJson([rule])[0];
     }
 
@@ -247,7 +261,7 @@ final class DocumentFilters
     string addRule(size_t set, string json)
     {
         if (set >= _sets.length)
-            return noSuchSet;
+            return noSuchSet();
         return edit(set, json, (s, rule) { rule.id = _ruleIds.popId(); s.rules ~= rule; });
     }
 
@@ -255,7 +269,7 @@ final class DocumentFilters
     string updateRule(size_t set, size_t rule, string json)
     {
         if (set >= _sets.length || rule >= _sets[set].rules.length)
-            return noSuchSet;
+            return noSuchSet();
         return edit(set, json, (s, r) { r.id = s.rules[rule].id; s.rules[rule] = r; });
     }
 
@@ -274,14 +288,14 @@ final class DocumentFilters
         try
             rule = ruleFromJson(parseJSON(json));
         catch (Exception e)
-            return JSONValue(["error": JSONValue("Invalid rule: " ~ e.msg),
+            return JSONValue(["error": JSONValue(_text(uiText("Invalid rule: {reason}", "reason", uiTextOf(e)))),
                 "conditions": JSONValue.emptyArray, "missing": JSONValue.emptyArray]);
         bool[] missing;
         foreach (ref c; rule.conditions)
             missing ~= !hasColumn(c.columnId);
         return JSONValue([
             "error": JSONValue(""),
-            "conditions": JSONValue(conditionErrors(columns, rule)),
+            "conditions": JSONValue(conditionErrors(columns, rule).map!(error => _text(error)).array),
             "missing": JSONValue(missing),
         ]);
     }
@@ -292,7 +306,7 @@ final class DocumentFilters
         import std.algorithm.mutation : remove;
 
         if (set >= _sets.length || rule >= _sets[set].rules.length)
-            return noSuchSet;
+            return noSuchSet();
         const changed = _sets[set].enabled && filters(_sets[set].rules[rule]);
         _sets[set].rules = _sets[set].rules.remove(rule);
         rematch();
@@ -321,7 +335,7 @@ final class DocumentFilters
                     "enabled": JSONValue(rule.enabled),
                     // Only a color the rows take (see RuleMatcher): the script uses it as it is
                     "color": JSONValue(isRuleColor(rule.color) ? rule.color : ""),
-                    "error": JSONValue(rule.problem), // see check()
+                    "error": JSONValue(_text(rule.problem)), // see check()
                     "id": JSONValue(cast(long) rule.id.toInt()), // a row refers to the rule it matches by it
                 ]);
             sets ~= JSONValue([
@@ -339,8 +353,8 @@ final class DocumentFilters
         ]);
     }
 
-    private enum noSuchSet = "no such filter";
-    private enum noColumns = "this log has no columns to filter by";
+    private string noSuchSet() => _text(uiText("no such filter"));
+    private string noColumns() => _text(uiText("this log has no columns to filter by"));
 
     private static bool isDlf(string path)
     {
@@ -351,11 +365,11 @@ final class DocumentFilters
     }
 
     //! The notes of a command on a file, one per line, "" if there are none
-    private static string noteOf(string file, const(string)[] notes)
+    private string noteOf(string file, const(UiText)[] notes)
     {
         import std.array : join;
 
-        return notes.length ? file ~ ": " ~ notes.join("\n") : "";
+        return notes.length ? file ~ ": " ~ notes.map!(note => _text(note)).join("\n") : "";
     }
 
     //! @brief Changes the rules of a set by a rule parsed from `json`. A rule
@@ -371,14 +385,14 @@ final class DocumentFilters
         try
             rule = ruleFromJson(parseJSON(json));
         catch (Exception e)
-            return "Invalid rule: " ~ e.msg;
+            return _text(uiText("Invalid rule: {reason}", "reason", uiTextOf(e)));
         rule.problem = ruleError(_format.columns, rule);
         // A mistake in a condition on a column of the log is refused; one on a
         // column the log doesn't have only keeps the rule from being applied
         if (rule.enabled)
             foreach (i, error; conditionErrors(_format.columns, rule))
-                if (error.length && hasColumn(rule.conditions[i].columnId))
-                    return error;
+                if (!error.empty && hasColumn(rule.conditions[i].columnId))
+                    return _text(error);
 
         auto target = &_sets[set];
         const before = filtersView(*target);
@@ -409,7 +423,7 @@ final class DocumentFilters
     //! were it switched on): an include or exclude rule that can be applied
     private static bool filters(ref const(FilterRule) rule, bool anyState = false)
     {
-        return (anyState || rule.enabled) && rule.kind != RuleKind.Marker && rule.problem.length == 0;
+        return (anyState || rule.enabled) && rule.kind != RuleKind.Marker && rule.problem.empty;
     }
 
     //! @returns true if the set filters the view (or would, when `anyState`,
@@ -577,7 +591,7 @@ unittest
     auto logcat = new Fixture(new LogcatFormat(LogcatFormat.Variant.Threadtime), "logcat");
     const note = logcat.filters.loadFile(path);
     assert(note.canFind("made for dlt"), note);
-    assert(logcat.filters.sets.length == 1 && logcat.filters.sets[0].rules[0].problem.length,
+    assert(logcat.filters.sets.length == 1 && !logcat.filters.sets[0].rules[0].problem.empty,
         "logcat has no app column: not applied");
 }
 
@@ -803,7 +817,7 @@ unittest
 @("DocumentFilters: a new rule is switched on, without conditions")
 unittest
 {
-    auto rule = DocumentFilters.newRuleJson();
+    auto rule = (new Fixture).filters.newRuleJson();
     assert(rule["name"].str == "New Rule" && rule["enabled"].boolean);
     assert(rule["kind"].str == "include" && rule["conditions"].array.length == 0);
 }
@@ -823,7 +837,7 @@ unittest
 
     const off = `{"name": "Broken", "enabled": false, "conditions": [{"column": "payload", "check": "regex", "value": "(unclosed"}]}`;
     assert(fx.filters.addRule(0, off) == "");
-    assert(fx.filters.sets[0].rules[1].problem.length);
+    assert(!fx.filters.sets[0].rules[1].problem.empty);
 }
 
 @("DocumentFilters: a rule is checked for the editor, condition by condition")
@@ -850,7 +864,7 @@ unittest
     auto fx = new Fixture();
     assert(fx.filters.newSet() == "");
     assert(fx.filters.addRule(0, `{"name": "Header", "conditions": [{"column": "header", "check": "contains", "value": "X"}]}`) == "");
-    assert(fx.filters.sets[0].rules[0].enabled && fx.filters.sets[0].rules[0].problem.length);
+    assert(fx.filters.sets[0].rules[0].enabled && !fx.filters.sets[0].rules[0].problem.empty);
 }
 
 @("DocumentFilters: a set is exported to a filter file or a .dlf, with its switches")
@@ -918,4 +932,37 @@ unittest
     assert(set["rules"][0]["name"].str == "APP1" && set["rules"][0]["kind"].str == "exclude");
     assert(set["rules"][0]["enabled"].boolean && set["rules"][0]["error"].str == "");
     assert(set["rules"][1]["kind"].str == "marker" && set["rules"][1]["error"].str.length);
+}
+
+@("DocumentFilters: its texts for the user in the language of the session, a new set named in it")
+unittest
+{
+    import std.file : exists, remove, tempDir, write;
+    import std.path : buildPath;
+    import utils.ui_text : render, UiText;
+
+    string russian(const UiText t) @safe
+    {
+        return render(t, (string s) {
+            switch (s)
+            {
+            case "Can't load the filter: {reason}": return "Не удалось загрузить фильтр: {reason}";
+            case "no column \"{column}\" in this log": return "в журнале нет колонки «{column}»";
+            case "New Filter": return "Новый фильтр";
+            default: return s;
+            }
+        });
+    }
+
+    auto filters = new DocumentFilters(new DltFormat(), "dlt", (f) {}, &russian);
+    const broken = buildPath(tempDir, "dlt_explorer_filters_broken.logfilter");
+    scope (exit) if (exists(broken)) remove(broken);
+    write(broken, "not json");
+    import std.algorithm : startsWith;
+    assert(filters.loadFile(broken).startsWith("Не удалось загрузить фильтр: "));
+
+    assert(filters.newSet() == "");
+    assert(filters.sets[$ - 1].name == "Новый фильтр");
+    assert(filters.addRule(0, `{"name": "x", "enabled": true, "conditions": [{"column": "nosuch", "check": "equals", "value": "1"}]}`) == "");
+    assert(filters.toJson()["sets"][0]["rules"][0]["error"].str == "в журнале нет колонки «nosuch»");
 }

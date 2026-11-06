@@ -447,22 +447,23 @@ final class AppSession
     }
 
     /// Runs a command on the filter sets of the document; the sets are kept
-    /// in the settings of its file when it succeeds (they are copies, see
-    /// DocumentFilters). Returns: a message for the user (an error, what was
-    /// lost), "" if none
+    /// in the settings of its file when it changed them (they are copies, see
+    /// DocumentFilters), also with a note (what a loaded .dlf lost).
+    /// Returns: a message for the user (an error, a note), "" if none
     string filterCommand(DocumentId docId, scope string delegate(DocumentFilters) command)
     {
         auto filters = filters(docId);
         if (filters is null)
             return "";
-        const error = command(filters);
-        if (error.length == 0)
+        const before = filters.saved();
+        const message = command(filters);
+        if (filters.saved() != before)
         {
             if (auto path = sourcePathOf(docId))
                 _settings.recentFiles = withFilters(_settings.recentFiles, path, filters.saved());
             settingsChanged();
         }
-        return error;
+        return message;
     }
 
     // ── Menu ─────────────────────────────────────────────────────────────────
@@ -589,7 +590,7 @@ final class AppSession
 
     private void addDocumentUi(DocumentId docId)
     {
-        _documentUis[docId] = new DocumentUi(_workspace, docId);
+        _documentUis[docId] = new DocumentUi(_workspace, docId, &textForUser);
         // its machines start showing at once: their first views are queued
     }
 
@@ -914,6 +915,25 @@ unittest
     const id = f.session.openFile("/logs/a.log").docId;
     assert(f.session.filterCommand(id, (DocumentFilters filters) => filters.newSet()) == "");
     assert(savedFilters(f.session.settings.recentFiles, "/logs/a.log").length == 1);
+}
+
+@("AppSession: a filter command that changes the sets is kept even when it has a note (what was lost)")
+unittest
+{
+    auto f = Fixture.make();
+    const id = f.session.openFile("/logs/a.log").docId;
+    assert(f.session.filterCommand(id, (DocumentFilters filters) { filters.newSet(); return "a.dlf: a note"; })
+        == "a.dlf: a note");
+    assert(savedFilters(f.session.settings.recentFiles, "/logs/a.log").length == 1);
+}
+
+@("AppSession: a filter command that fails changes nothing in the settings")
+unittest
+{
+    auto f = Fixture.make();
+    const id = f.session.openFile("/logs/a.log").docId;
+    assert(f.session.filterCommand(id, (DocumentFilters filters) => filters.remove(7)).length);
+    assert(savedFilters(f.session.settings.recentFiles, "/logs/a.log").length == 0);
 }
 
 @("AppSession: a file opened again gets the filters it had")

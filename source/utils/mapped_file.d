@@ -244,7 +244,10 @@ private size_t registerRange(const(void)* begin, size_t length)
         atomicStore!(MemoryOrder.rel)(slot.state, cast(int) SlotState.active);
         return i;
     }
-    throw new Exception("Too many mapped files");
+    import utils.ui_text : uiText, UiTextException;
+
+    // The table of the mapped ranges (for the reads of a lost file) is full: not a limit of the OS
+    throw new UiTextException(uiText("too many logs are open: close some to open another"));
 }
 
 private void unregisterRange(size_t i) nothrow @nogc

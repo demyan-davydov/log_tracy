@@ -22,6 +22,7 @@ import std.typecons : Nullable;
 import std.uni : icmp;
 import std.utf : toUTF16;
 import utils.text_search : TextPattern;
+import utils.ui_text : english, plainText, uiText, uiTextOf, UiText, UiTextException;
 
 //! What a rule does with the records it matches
 enum RuleKind : ubyte
@@ -64,8 +65,8 @@ struct FilterRule
     //! saved, not written to the files
     RuleId id;
     //! Why the rule can't be applied, set by an importer for what the model
-    //! can't express (e.g. the header text of a .dlf); "" if it can
-    string problem;
+    //! can't express (e.g. the header text of a .dlf); empty if it can
+    UiText problem;
 }
 
 //! A group of rules switched on and off together: what one filter file holds
@@ -79,19 +80,19 @@ struct FilterSet
 
 //! @returns why `rule` can't be applied to a log with `columns` (an unknown
 //! column, a check the column doesn't take, an invalid regular expression or
-//! enum label), "" if it can
-string ruleError(const(ColumnInfo)[] columns, ref const(FilterRule) rule)
+//! enum label), empty if it can: a text for the user
+UiText ruleError(const(ColumnInfo)[] columns, ref const(FilterRule) rule)
 {
-    if (rule.problem.length)
+    if (!rule.problem.empty)
         return rule.problem;
     try
     {
         foreach (ref condition; rule.conditions)
             compileCondition(columns, condition);
-        return "";
+        return UiText.init;
     }
     catch (Exception e)
-        return e.msg;
+        return uiTextOf(e);
 }
 
 //! A condition resolved against the columns of the format
@@ -175,7 +176,7 @@ private CompiledCondition compileCondition(const(ColumnInfo)[] columns, ref cons
 {
     const index = columns.countUntil!(c => c.id == condition.columnId);
     if (index < 0)
-        throw new Exception(format("no column \"%s\" in this log", condition.columnId));
+        throw new UiTextException(uiText("no column \"{column}\" in this log", "column", condition.columnId));
     const column = &columns[index];
 
     CompiledCondition compiled;
@@ -184,15 +185,26 @@ private CompiledCondition compileCondition(const(ColumnInfo)[] columns, ref cons
     compiled.check = condition.check;
     compiled.ignoreCase = condition.ignoreCase;
 
+    // The check is said in words, as the rule editor shows it: one text per check
     Exception unsupported()
     {
-        return new Exception(format("%s: can't check %s", column.title, condition.check));
+        final switch (condition.check)
+        {
+        case Check.Equals:
+            return new UiTextException(uiText("{column}: can't be compared to a value", "column", column.title));
+        case Check.Contains:
+            return new UiTextException(uiText("{column}: can't contain a text", "column", column.title));
+        case Check.Regex:
+            return new UiTextException(uiText("{column}: can't match a regular expression", "column", column.title));
+        case Check.Range:
+            return new UiTextException(uiText("{column}: has no range of values", "column", column.title));
+        }
     }
 
     final switch (column.kind)
     {
     case ColumnKind.Time:
-        throw new Exception(format("%s: can't be filtered", column.title));
+        throw new UiTextException(uiText("{column}: can't be filtered", "column", column.title));
     case ColumnKind.Text:
     case ColumnKind.Payload:
         if (condition.check == Check.Contains)
@@ -209,8 +221,8 @@ private CompiledCondition compileCondition(const(ColumnInfo)[] columns, ref cons
             throw unsupported();
         const label = column.labels.countUntil!(l => icmp(l, condition.text) == 0);
         if (label < 0)
-            throw new Exception(format("%s: unknown value \"%s\", expected one of %-(%s, %)",
-                column.title, condition.text, column.labels));
+            throw new UiTextException(uiText("{column}: unknown value \"{value}\", expected one of {values}",
+                "column", column.title, "value", condition.text, "values", format("%-(%s, %)", column.labels)));
         compiled.min = compiled.max = label;
         break;
     case ColumnKind.Level:
@@ -223,8 +235,8 @@ private CompiledCondition compileCondition(const(ColumnInfo)[] columns, ref cons
         else if (condition.check == Check.Range)
         {
             if (condition.min > condition.max)
-                throw new Exception(format("%s: the range is empty, its start is above its end",
-                    column.title));
+                throw new UiTextException(uiText("{column}: the range is empty, its start is above its end",
+                    "column", column.title));
             compiled.min = condition.min;
             compiled.max = condition.max;
         }
@@ -243,7 +255,7 @@ private long parseNumber(ref const(ColumnInfo) column, string text)
     try
         return parseNumberText(text, column.kind == ColumnKind.Hex);
     catch (Exception e)
-        throw new Exception(column.title ~ ": " ~ e.msg);
+        throw new UiTextException(uiText("{column}: {reason}", "column", column.title, "reason", uiTextOf(e)));
 }
 
 //! The names of the levels, by their LogLevel value: how filter files and the
@@ -268,8 +280,8 @@ private long parseLevel(ref const(ColumnInfo) column, string text)
     catch (Exception)
     {
     }
-    throw new Exception(format("%s: \"%s\" is not a level, expected one of %-(%s, %)",
-            column.title, text, levelNames[1 .. $]));
+    throw new UiTextException(uiText("{column}: \"{value}\" is not a level, expected one of {levels}",
+        "column", column.title, "value", text, "levels", format("%-(%s, %)", levelNames[1 .. $])));
 }
 
 //! @brief A number typed as text: decimal, or hex with 0x (always hex in a
@@ -293,24 +305,25 @@ long parseNumberText(string text, bool hex)
         return hex ? cast(long) value.to!ulong(16) : value.to!long;
     }
     catch (ConvException)
-        throw new Exception(format("\"%s\" is not a%s number", text, hex ? " hex" : ""));
+        throw new UiTextException(hex ? uiText("\"{value}\" is not a hex number", "value", text)
+            : uiText("\"{value}\" is not a number", "value", text));
 }
 
 //! @returns what is wrong with each condition of the rule, "" for the right
 //! ones: an unknown column, a check it doesn't take, a value it can't read, an
 //! empty range, an invalid regular expression
-string[] conditionErrors(const(ColumnInfo)[] columns, ref const(FilterRule) rule)
+UiText[] conditionErrors(const(ColumnInfo)[] columns, ref const(FilterRule) rule)
 {
-    string[] errors;
+    UiText[] errors;
     foreach (ref condition; rule.conditions)
     {
         try
         {
             compileCondition(columns, condition);
-            errors ~= "";
+            errors ~= UiText.init;
         }
         catch (Exception e)
-            errors ~= e.msg;
+            errors ~= uiTextOf(e);
     }
     return errors;
 }
@@ -338,7 +351,7 @@ private CompiledRule[] compileApplicable(alias take)(const(ColumnInfo)[] columns
             continue;
         foreach (ref rule; set.rules)
         {
-            if (!rule.enabled || rule.problem.length || !take(rule))
+            if (!rule.enabled || !rule.problem.empty || !take(rule))
                 continue;
             CompiledRule compiled;
             compiled.kind = rule.kind;
@@ -669,13 +682,13 @@ unittest
 
     FilterRule bad;
     bad.conditions = [text("pid", Check.Equals, "12x")];
-    assert(ruleError(testColumns, bad).length, "not a number");
+    assert(!ruleError(testColumns, bad).empty, "not a number");
     bad.conditions = [text("pid", Check.Equals, "")];
-    assert(ruleError(testColumns, bad).length, "no number at all");
+    assert(!ruleError(testColumns, bad).empty, "no number at all");
     bad.conditions = [text("id", Check.Equals, "0x")];
-    assert(ruleError(testColumns, bad).length, "no hex digits either");
+    assert(!ruleError(testColumns, bad).empty, "no hex digits either");
     bad.conditions = [text("level", Check.Equals, "loud")];
-    assert(ruleError(testColumns, bad).length, "not a level");
+    assert(!ruleError(testColumns, bad).empty, "not a level");
 }
 
 @("RuleFilter: a level range, a record without a level is out of any")
@@ -698,11 +711,11 @@ unittest
 
     FilterRule r;
     r.conditions = [number("level", Check.Range, LogLevel.Verbose, LogLevel.Error)];
-    assert(ruleError(testColumns, r).canFind("empty"));
+    assert(english(ruleError(testColumns, r)).canFind("empty"));
     r.conditions = [number("pid", Check.Range, 10, 5)];
-    assert(ruleError(testColumns, r).canFind("empty"));
+    assert(english(ruleError(testColumns, r)).canFind("empty"));
     r.conditions = [number("pid", Check.Range, 5, 5)];
-    assert(ruleError(testColumns, r) == "");
+    assert(ruleError(testColumns, r).empty);
 }
 
 @("conditionErrors: what is wrong with each condition, \"\" for the right ones")
@@ -715,7 +728,7 @@ unittest
         text("payload", Check.Regex, "(unclosed"), text("nope", Check.Equals, "x")];
     const errors = conditionErrors(testColumns, r);
     assert(errors.length == 4);
-    assert(errors[0] == "" && errors[1].canFind("empty") && errors[2].length && errors[3].canFind("nope"));
+    assert(errors[0].empty && english(errors[1]).canFind("empty") && !errors[2].empty && english(errors[3]).canFind("nope"));
 }
 
 @("parseNumberText: decimal, hex with 0x or in a hex column, nothing else")
@@ -817,7 +830,7 @@ unittest
 
     string errorOf(FilterRule r)
     {
-        return ruleError(testColumns, r);
+        return english(ruleError(testColumns, r));
     }
 
     assert(errorOf(rule(RuleKind.Include, text("tag", Check.Equals, "A"))) == "");
@@ -833,8 +846,8 @@ unittest
         "no substring of numbers");
 
     auto withProblem = rule(RuleKind.Include);
-    withProblem.problem = "header text is not supported";
-    assert(errorOf(withProblem) == withProblem.problem);
+    withProblem.problem = plainText("header text is not supported");
+    assert(errorOf(withProblem) == english(withProblem.problem));
 
     LogMessage!wchar a, b;
     make(a, Record("A"));
@@ -973,7 +986,7 @@ unittest
     disabled.enabled = false;
     auto withError = numbered(2, text("nope", Check.Equals, "A"));
     auto withProblem = numbered(3);
-    withProblem.problem = "header text is not supported";
+    withProblem.problem = plainText("header text is not supported");
     set.rules = [disabled, withError, withProblem];
     assert(RuleMatcher.compile(testColumns, [set]) is null, "no rule can be matched");
 
@@ -982,4 +995,17 @@ unittest
     assert(RuleMatcher.compile(testColumns, [set]) is null, "a disabled set");
     set.enabled = true;
     assert(RuleMatcher.compile(testColumns, [set]).firstMatch(a) == RuleId(4));
+}
+
+@("ruleError, conditionErrors: what is wrong is a text for the user, its parameters apart")
+unittest
+{
+    import utils.ui_text : english;
+
+    FilterRule r;
+    r.conditions = [Condition("nosuch", Check.Equals, "x")];
+    const error = ruleError(testColumns, r);
+    assert(error.text == "no column \"{column}\" in this log");
+    assert(english(error) == "no column \"nosuch\" in this log");
+    assert(conditionErrors(testColumns, r)[0] == error);
 }

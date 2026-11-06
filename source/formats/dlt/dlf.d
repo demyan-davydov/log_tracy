@@ -21,6 +21,7 @@ module formats.dlt.dlf;
 
 import log_core.log_format : LogFormat;
 import log_core.rule_filter;
+import utils.ui_text : english, uiText, UiText, UiTextException;
 
 //! @returns true if the rules of a .dlf apply to the logs of `format`: they
 //! refer to the columns of DltFormat
@@ -88,7 +89,7 @@ DlfFilter[] parseDlfFilters(string xml)
                     filters ~= parseFilter(child);
         return filters;
     }
-    throw new Exception("not a dlt-viewer filter file: no <dltfilter>");
+    throw new UiTextException(uiText("not a dlt-viewer filter file: no <dltfilter>"));
 }
 
 //! A <filter> of a .dlf; a tag that is missing keeps the default
@@ -247,27 +248,24 @@ string toDlfXml(const(DlfFilter)[] filters)
 //! @brief The rules of the filters (see toRule)
 //! @param warnings - gets what of them isn't kept, by rule: the regex replace,
 //! which changes how the payload is shown
-FilterRule[] fromDlf(const(DlfFilter)[] filters, ref string[] warnings)
+FilterRule[] fromDlf(const(DlfFilter)[] filters, ref UiText[] warnings)
 {
     FilterRule[] rules;
     foreach (ref f; filters)
     {
         if (f.enableRegexSearchReplace)
-            warnings ~= ruleTitle(f.name) ~ ": the regex replace isn't kept";
+            warnings ~= f.name.length ? uiText("\"{rule}\": the regex replace isn't kept", "rule", f.name)
+                : uiText("a rule without a name: the regex replace isn't kept");
         rules ~= toRule(f);
     }
     return rules;
 }
 
-private string ruleTitle(string name)
-{
-    return name.length ? "\"" ~ name ~ "\"" : "a rule without a name";
-}
 
 //! @brief The filters of the rules, for a .dlf
 //! @param warnings - gets the conditions a .dlf can't hold (they are dropped),
 //! by rule
-DlfFilter[] toDlf(const(FilterRule)[] rules, ref string[] warnings)
+DlfFilter[] toDlf(const(FilterRule)[] rules, ref UiText[] warnings)
 {
     import std.algorithm.searching : canFind;
     import std.format : format;
@@ -294,8 +292,11 @@ DlfFilter[] toDlf(const(FilterRule)[] rules, ref string[] warnings)
             if (kept)
                 taken ~= c.columnId;
             else
-                warnings ~= format("%s: the condition on %s can't be written to a .dlf",
-                    ruleTitle(rule.name), c.columnId);
+                warnings ~= rule.name.length
+                    ? uiText("\"{rule}\": the condition on {column} can't be written to a .dlf",
+                        "rule", rule.name, "column", c.columnId)
+                    : uiText("a rule without a name: the condition on {column} can't be written to a .dlf",
+                        "column", c.columnId);
         }
         filters ~= f;
     }
@@ -510,7 +511,7 @@ unittest
     assert(rules[1].kind == RuleKind.Exclude && !rules[1].enabled);
     assert(rules[2].kind == RuleKind.Marker);
     foreach (ref rule; rules)
-        assert(rule.conditions.length == 0 && rule.problem == "");
+        assert(rule.conditions.length == 0 && rule.problem.empty);
 }
 
 @("toRule: a filter colors the rows as in dlt-viewer: a marker, or with enableMarker")
@@ -530,7 +531,7 @@ unittest
 {
     FilterRule colored, plain;
     colored.color = "#00ff00";
-    string[] warnings;
+    UiText[] warnings;
     auto filters = toDlf([colored, plain], warnings);
     assert(filters[0].enableMarker && filters[0].color == "#00ff00");
     assert(!filters[1].enableMarker);
@@ -618,7 +619,7 @@ unittest
     assert(header.columnId == "header" && header.check == Check.Contains && header.text == "X");
     assert(header.ignoreCase);
     auto rule = onlyRule("<headertext>X</headertext><enableheadertext>1</enableheadertext>");
-    assert(ruleError(new DltFormat().columns, rule).length, "not applied, but kept");
+    assert(!ruleError(new DltFormat().columns, rule).empty, "not applied, but kept");
 }
 
 @("fromDlf: the rules of the filters, and what of them is lost")
@@ -632,10 +633,10 @@ unittest
     replace.name = "Replacing";
     replace.enableRegexSearchReplace = true;
     replace.regexSearch = "a";
-    string[] warnings;
+    UiText[] warnings;
     auto rules = fromDlf([plain, replace], warnings);
     assert(rules.length == 2 && rules[1].name == "Replacing");
-    assert(warnings.length == 1 && warnings[0].canFind("Replacing"), "the regex replace isn't kept");
+    assert(warnings.length == 1 && english(warnings[0]).canFind("Replacing"), "the regex replace isn't kept");
 }
 
 @("toDlf: the rules written to a .dlf are read back the same")
@@ -667,7 +668,7 @@ unittest
     single.enableMessageId = true;
     single.messageIdMin = 5;
 
-    string[] warnings;
+    UiText[] warnings;
     const rules = fromDlf([f, single], warnings);
     auto filters = toDlf(rules, warnings);
     assert(warnings.length == 0);
@@ -679,9 +680,9 @@ unittest
 {
     FilterRule rule;
     rule.conditions = [Condition("msgid", Check.Equals, "5"), Condition("level", Check.Equals, "warn")];
-    string[] warnings;
+    UiText[] warnings;
     auto filters = toDlf([rule], warnings);
-    assert(warnings.length == 0, warnings.length ? warnings[0] : "");
+    assert(warnings.length == 0, warnings.length ? english(warnings[0]) : "");
     assert(filters[0].enableMessageId && filters[0].messageIdMin == 5 && filters[0].messageIdMax == 0);
     assert(filters[0].enableLevelMin && filters[0].levelMin == 3 && filters[0].levelMax == 3);
 }
@@ -695,11 +696,11 @@ unittest
     rule.name = "Wide";
     rule.conditions = [Condition("session", Check.Equals, "3"),
         Condition("ctx", Check.Equals, "CTX1"), Condition("app", Check.Equals, "APP")];
-    string[] warnings;
+    UiText[] warnings;
     auto filters = toDlf([rule], warnings);
     assert(filters.length == 1 && filters[0].enableApp && filters[0].appId == "APP");
     assert(!filters[0].enableCtx, "ctx equals: dlt-viewer only finds a part");
-    assert(warnings.length == 2 && warnings[0].canFind("Wide"));
+    assert(warnings.length == 2 && english(warnings[0]).canFind("Wide"));
 }
 
 @("parseDlfFilters: all the conditions of a filter, every one applies to DltFormat")
@@ -713,7 +714,7 @@ unittest
             ~ "<enablectrlmsgs>1</enablectrlmsgs>"
             ~ "<enableLogLevelMax>1</enableLogLevelMax><logLevelMax>2</logLevelMax>");
     assert(rule.conditions.length == 7);
-    assert(ruleError(new DltFormat().columns, rule) == "");
+    assert(ruleError(new DltFormat().columns, rule).empty);
 }
 
 @("parseDlfFilters: a file of dlt-viewer (filters/error_fatal_messages.dlf)")

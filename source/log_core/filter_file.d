@@ -29,6 +29,7 @@ import log_core.log_format : ColumnInfo, ColumnKind;
 import log_core.rule_filter;
 
 import std.json : JSONValue;
+import utils.ui_text : uiText, UiTextException;
 
 enum string filterFileType = "dlt-explorer-filter";
 enum int filterFileVersion = 1;
@@ -104,7 +105,7 @@ FilterRule[] rulesFromJson(const(JSONValue) json)
     import std.json : JSONType;
 
     if (json.type != JSONType.array)
-        throw new Exception("the rules are a list");
+        throw new UiTextException(uiText("the rules are a list"));
     FilterRule[] rules;
     foreach (ref item; json.array)
         rules ~= ruleFromJson(item);
@@ -134,7 +135,7 @@ FilterRule ruleFromJson(const(JSONValue) item)
             return otherwise;
         const index = words.countUntil(value);
         if (index < 0)
-            throw new Exception("unknown " ~ key ~ " \"" ~ value ~ "\"");
+            throw new UiTextException(uiText("unknown {key} \"{value}\"", "key", key, "value", value));
         return index;
     }
 
@@ -158,7 +159,7 @@ FilterRule ruleFromJson(const(JSONValue) item)
 
     {
         if (item.type != JSONType.object)
-            throw new Exception("a rule is an object");
+            throw new UiTextException(uiText("a rule is an object"));
         FilterRule rule;
         rule.name = text(item, "name");
         rule.kind = cast(RuleKind) word(item, "kind", kindWords, RuleKind.Include);
@@ -169,7 +170,7 @@ FilterRule ruleFromJson(const(JSONValue) item)
             foreach (ref c; conditions.array)
             {
                 if (c.type != JSONType.object)
-                    throw new Exception("a condition is an object");
+                    throw new UiTextException(uiText("a condition is an object"));
                 Condition condition;
                 condition.columnId = text(c, "column");
                 condition.check = cast(Check) word(c, "check", checkWords, Check.Equals);
@@ -224,11 +225,11 @@ FilterFile parseFilterFile(string content)
     const json = parseJSON(content); // throws JSONException
     if (json.type != JSONType.object || "type" !in json.object
         || json["type"].type != JSONType.string || json["type"].str != filterFileType)
-        throw new Exception("not a filter file of DLT Explorer");
+        throw new UiTextException(uiText("not a filter file of DLT Explorer"));
     const version_ = "version" in json.object ? json["version"].integer : 0;
     if (version_ > filterFileVersion)
-        throw new Exception("made by a later version of DLT Explorer (version "
-                ~ version_.to!string ~ ")");
+        throw new UiTextException(uiText("made by a later version of DLT Explorer (version {version})",
+            "version", version_));
 
     FilterFile file;
     if (auto logFormat = "logFormat" in json.object)

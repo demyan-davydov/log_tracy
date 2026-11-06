@@ -287,7 +287,7 @@ class MainWindow : SciterWindow
             // if there is no such rule; rule -1: a new one
             auto filters = _session.filters(docParam());
             const rule = param!int(2);
-            answer(filters is null ? "null" : rule < 0 ? DocumentFilters.newRuleJson().toString()
+            answer(filters is null ? "null" : rule < 0 ? filters.newRuleJson().toString()
                     : filters.ruleJson(param!int(1), rule).toString());
             return true;
         case "checkFilterRule":
