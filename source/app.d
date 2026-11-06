@@ -51,6 +51,9 @@ int main()
 			SCRIPT_RUNTIME_FEATURES.ALLOW_CMODULES
 	);
 
+    import sciter.capi.types;
+    sciterApi().SciterSetOption(null, SCITER_RT_OPTIONS.SCITER_SET_GFX_LAYER, GFX_LAYER.GFX_LAYER_SKIA_ANGLE);
+
 	sciterApi().SciterSetMediaType(null, "desktop,gsciter"w.ptr);
 
 	int result = 0;
@@ -141,11 +144,9 @@ int main()
 		}
 		else
 		{
-			//result = sciterApplication().runEventLoop();
 			while (sciterApplication().runIteration())
 			{
 				win.onIdle();
-				// Invalidate + sleep to cap at ~60fps, prevent busy-waiting
 			}
 			result = 0;
 		}
@@ -163,6 +164,7 @@ int main()
 	catch (Exception e)
 	{
 		writeln("Error: ", e.msg);
+		result = 1;
 	}
 
 	sciterApplication().shutdown();

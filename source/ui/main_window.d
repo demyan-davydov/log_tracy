@@ -340,7 +340,7 @@ class MainWindow : SciterWindow
     /// settings when they are due. Never inside a call of the script.
     void onIdle()
     {
-        fixMacTitlebarBackground();
+        //fixMacTitlebarBackground();
         _session.dispatchEvents();
         const calls = _session.takeScriptCalls();
         if (_session.closing)

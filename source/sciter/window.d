@@ -16,14 +16,6 @@ import std.utf : toUTF16z, toUTFz;
 /// @brief Base class for application window
 /// 
 
-//import std.string : toStringz;
-
-// Helper for toUTF8z-like behavior if missing from std.utf (Sciter sometimes expects UTF8 as well)
-/*private immutable(char)* toUTF8z(string s)
-{
-    return toStringz(s);
-}*/
-
 version (OSX)
 {
     private extern (C) void* objc_getClass(const(char)* name);
@@ -42,25 +34,15 @@ class SciterWindow : SciterEventHandler
 
     this(uint creationFlags, in RECT frame)
     {
-        //super();
-
         _hwnd = _api.SciterCreateWindow(creationFlags, &frame, null, null, null);
 
         attachEventHandler(_hwnd);
-
-        // Attach event handler
-        /*{
-            const auto res = _api.SciterWindowAttachEventHandler(_hwnd, &elementProc, cast(void*) this, 0xFFFF);
-            writeln("Window event handler attached (Direct), result: ", res);
-        }*/
     }
 
     ~this()
     {
         writeln("SciterWindow d'tor");
         super.detachEventHandler(_hwnd);
-        //detachEventHandler();
-        // _api.SciterDestroyWindow(_hwnd); // Missing in SciterAPI_T
     }
 
     private static extern (C) long sciterWindowDelegate(HWINDOW hwnd, uint msg, size_t wParam, ptrdiff_t lParam, void* pParam, int* handled)
@@ -132,7 +114,11 @@ class SciterWindow : SciterEventHandler
 
     final void bind()
     {
-        //_api.SciterBindWindow(_hwnd, this);
+      //if (_hwnd && !_bound) {
+      //  _bound = true;
+      //  setup_callback();
+      //  sciter::attach_dom_event_handler(get_hwnd(), this);
+      //}
     }
 
     final void collapse()
