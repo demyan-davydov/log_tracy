@@ -5,6 +5,7 @@ import * as platform from "platform.js";
 import { cellClass, cellText, itemText, rowLayout, matchPieces } from "cell-format.js";
 import { matchColorClass } from "match-colors.js";
 import { RowSelection, selectedText, autoScrollSpeed } from "row-selection.js";
+import { anchorEdit } from "pane-state.js";
 
 // The header row of a log table for `columns`
 function renderHeader(columns) {
@@ -188,6 +189,44 @@ export class VirtualDltTBody extends VirtualSelect {
         const first = this.viewIndexOf(this.vlist?.firstVisibleItem);
         const last = this.viewIndexOf(this.vlist?.lastVisibleItem);
         return first === null || last === null ? null : [first, last];
+    }
+
+    // Follows an anchor that added (`added`) or removed the row of message
+    // `message` from the view, keeping the rows on screen where they are: the
+    // row is inserted or removed among the rendered ones, or counted before or
+    // after them (see anchorEdit), and the rendered rows are numbered anew.
+    // Their content stays: they show the same messages. Rebuilding the list
+    // instead (componentUpdate) would scroll it, rendering the rows again
+    // would make them blink.
+    // @return false if no row is rendered: the caller rebuilds the list
+    followAnchor(message, added) {
+        const vlist = this.vlist;
+        const rows = [...this.children];
+        const rendered = rows.map(row => Number(row.$("td.anchor")?.getAttribute("msg-index")));
+        if (!vlist || rendered.some(m => !Number.isFinite(m))) return false; // an empty row
+        const edit = anchorEdit(rendered, message, added);
+        if (edit === null) return false;
+
+        vlist.itemsBefore += edit.before;
+        vlist.itemsAfter += edit.after;
+        if (edit.removeAt !== null) rows[edit.removeAt].remove();
+        if (edit.insertAt !== null) {
+            const item = this.itemAt(vlist.itemsBefore + edit.insertAt);
+            if (item) this.insertBefore(Element.create(this.renderItem(item)), rows[edit.insertAt]);
+        }
+        const first = vlist.itemsBefore;
+        for (const [i, row] of [...this.children].entries())
+            row.setAttribute("view-index", first + i);
+        return true;
+    }
+
+    // Shows the anchor of message `message` set or cleared on its rendered row,
+    // if any. Only the anchor cell changes: rendering the rows again would make
+    // them blink.
+    markAnchor(message, anchored) {
+        for (const cell of this.$$("td.anchor"))
+            if (Number(cell.getAttribute("msg-index")) === message)
+                cell.setAttribute("has-anchor", anchored ? "true" : "false");
     }
 
     // The number of rows the list has room for, by the height of a row on screen

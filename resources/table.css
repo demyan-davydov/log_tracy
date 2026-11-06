@@ -92,13 +92,22 @@
     background: linear-gradient(to right, var(--rule-color), transparent 33%);
 }
 
-/* Anchor column: the mark of an anchored message, a faint one on hover */
-.log-table>tbody>tr>td.anchor[has-anchor="true"]:before {
+/* Anchor column: the mark of an anchored message, a faint one on hover.
+   The mark is always there and only shown or hidden: an anchor set or cleared
+   then repaints the cell only, adding content would lay the table out again
+   and make the rows below blink. */
+.log-table>tbody>tr>td.anchor:before {
     content: "⚓";
+    color: transparent; /* Sciter ignores opacity and visibility on a :before */
+}
+
+.log-table>tbody>tr>td.anchor[has-anchor="true"]:before {
+    color: inherit;
 }
 
 .log-table>tbody>tr>td.anchor[has-anchor="false"]:hover:before {
     content: ".";
+    color: inherit;
     opacity: 0.3;
 }
 
