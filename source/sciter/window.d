@@ -62,7 +62,7 @@ class SciterWindow : SciterEventHandler
             if (data !is null)
                 _api.SciterDataReady(pns.hwnd, request.uri, data.ptr, cast(UINT) data.length);
         }
-        catch (Throwable e)
+        catch (Exception e)
         {
             try
                 writeln("Can't load ", request.uri.fromStringz, ": ", e.msg);
@@ -70,12 +70,24 @@ class SciterWindow : SciterEventHandler
             {
             }
         }
+        catch (Throwable e) // an Error: a bug, the program can't go on
+        {
+            import core.stdc.stdlib : abort;
+
+            try
+                writeln("Error loading ", request.uri.fromStringz, ": ", e);
+            catch (Throwable)
+            {
+            }
+            abort();
+        }
         return SC_LOAD_DATA_RETURN_CODES.LOAD_OK;
     }
 
     ~this()
     {
         writeln("SciterWindow d'tor");
+        _api.SciterSetCallback(_hwnd, null, null); // Sciter must not call a destroyed object
         super.detachEventHandler(_hwnd);
     }
 

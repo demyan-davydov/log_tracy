@@ -80,15 +80,19 @@ immutable(ubyte)[] appResource(string path)
     }
 }
 
-/// The file at `url` (`this://app/<path>`, a fragment or query after it aside), null if the url
-/// is no such address or none is built in there.
+/// The file at `url` (`this://app/<path>`, %-escapes decoded, a fragment or query after it
+/// aside), null if the url is no such address or none is built in there.
 immutable(ubyte)[] appResourceOfUrl(string url)
 {
     import std.algorithm : findSplitBefore, skipOver;
+    import std.uri : decodeComponent, URIException;
 
     if (!url.skipOver(appResourceUrl))
         return null;
-    return appResource(url.findSplitBefore("#")[0].findSplitBefore("?")[0]);
+    try
+        return appResource(decodeComponent(url.findSplitBefore("#")[0].findSplitBefore("?")[0]));
+    catch (URIException)
+        return null; // a bad escape
 }
 
 /// The catalogs of translations built in (resources/i18n/translations/*.json).
@@ -143,6 +147,8 @@ unittest
     assert(appResourceOfUrl("this://app/virtual-select.css#virtual-select") == appResource("virtual-select.css"),
         "a fragment names a part of the file");
     assert(appResourceOfUrl("this://app/main.htm?x=1") == appResource("main.htm"));
+    assert(appResourceOfUrl("this://app/i18n%2Fi18n.js") == appResource("i18n/i18n.js"), "an escaped address");
+    assert(appResourceOfUrl("this://app/main%2.htm") is null, "a bad escape names no file");
     assert(appResourceOfUrl("file:///main.htm") is null);
     assert(appResourceOfUrl("main.htm") is null);
 }

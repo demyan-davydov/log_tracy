@@ -5,6 +5,10 @@ import sciter.capi.types;
 import sciter.capi.request;
 import sciter.capi.behavior;
 
+// The functions and callbacks of the binding are extern (C): right on 64-bit systems only.
+// On 32-bit Windows Sciter's are __stdcall, and a callback would corrupt the stack.
+static assert(size_t.sizeof == 8, "the Sciter binding is for 64-bit systems only");
+
 /** #SC_LOAD_DATA notification return codes */
 enum SC_LOAD_DATA_RETURN_CODES
 {
