@@ -91,6 +91,9 @@ node scripts/build.mjs dist               # a distribution
 node scripts/build.mjs check-windows      # compiles for Windows x64 from macOS or Linux
 ```
 
+`node scripts/run.mjs` builds as `build.mjs` does, with the same `--release` and `--arch`, and
+starts the program from its build folder; its output goes to the same terminal.
+
 ### Where the build goes
 
 Every build has its own folder, `build/<platform>-<architecture>-<type>/`: for example

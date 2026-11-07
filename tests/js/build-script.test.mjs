@@ -24,6 +24,7 @@ test("what isn't understood is refused, naming it", () => {
     assert.throws(() => parseCommand(["--arch", "x86"]), /x86/);
     assert.throws(() => parseCommand(["--arch"]), /--arch/);
     assert.throws(() => parseCommand(["build", "test"]), /test/);
+    assert.throws(() => parseCommand(["run"]), /run/);
 });
 
 test("an option the command would ignore is refused", () => {

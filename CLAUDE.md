@@ -15,6 +15,7 @@ every system, `scripts/build.mjs` (for people: `docs/building.md`):
 ```sh
 node scripts/build.mjs                   # debug for this machine → build/osx-aarch64-debug/dlt_explorer
 node scripts/build.mjs --release         # release; --arch x64|arm64 for another architecture
+node scripts/run.mjs                     # builds as above (same options) and starts the app, its stdout here
 node scripts/build.mjs test              # D unittests ("N modules passed unittests") + JS tests
 node scripts/build.mjs dist              # release distribution in build/dist/<macos|linux|windows>/
 node scripts/build.mjs check-windows     # from macOS/Linux: compiles app + unittests for Windows x64, no link

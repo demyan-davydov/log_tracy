@@ -6,7 +6,7 @@
 //   node scripts/build.mjs dist [--arch ...]       a release distribution in build/dist/<system>/
 //   node scripts/build.mjs check-windows           compiles the app and its unittests for Windows x64
 //                                                  from macOS or Linux, without linking
-// Tests: tests/js/build-script.test.mjs.
+// Builds and starts the program: scripts/run.mjs. Tests: tests/js/build-script.test.mjs.
 import { spawnSync } from "node:child_process";
 import { chmodSync, closeSync, copyFileSync, cpSync, mkdirSync, mkdtempSync, openSync, readdirSync,
     readFileSync, readSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
@@ -19,7 +19,7 @@ const arches = ["x64", "arm64"];
 const dubArchOf = { x64: "x86_64", arm64: "aarch64" };
 
 /// A command line not understood, or a step that failed: told without a stack.
-class BuildError extends Error {}
+export class BuildError extends Error {}
 
 /// What the command line asks: `{ command, release, arch }`, `arch` null for this machine's.
 /// A distribution is always a release.
@@ -191,8 +191,8 @@ function checkSciterLibrary(arch) {
             + `and run "git lfs install" and "git lfs pull" (docs/building.md).`);
 }
 
-/// Builds and gives the folder of the program.
-function build(options) {
+/// Builds (`{ release, arch }`) and gives the folder of the program.
+export function build(options) {
     checkSciterLibrary(options.arch ?? process.arch);
     const args = dubArgs("build", options);
     runOrFail("dub", args, "Build failed.");

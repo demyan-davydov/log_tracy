@@ -32,6 +32,9 @@ Sciter рядом с программой и тестами, подписать 
     `check-windows-compile.sh`).
   - Чистая часть (разбор команды, аргументы dub, `Info.plist`, desktop entry) проверяется
     `tests/js/build-script.test.mjs`.
+- `scripts/run.mjs` собирает так же (те же `--release`, `--arch`; `parseCommand` и `build`
+  из `build.mjs`) и запускает программу из папки сборки, ее вывод — в тот же терминал.
+  Отдельным скриптом, а не командой `build.mjs`: тот только собирает.
 - `dist` собирает под одну архитектуру (машины или `--arch`), на маке пока только arm64.
   Universal binary (две сборки, склеенные `lipo`) отложен: для x86_64 линкеру нужен runtime
   ldc2 под x86_64, а в ldc из Homebrew его нет (только arm64). См. `docs/backlog.md`.
