@@ -9,7 +9,7 @@
 import { SearchEditor } from "search-editor.js";
 import * as backend from "backend.js";
 import * as platform from "platform.js";
-import { noSearch, runSearch, searchMessage, searchPending, editRule } from "pane-commands.js";
+import { noSearch, runSearch, searchPending, editRule } from "pane-commands.js";
 import { ruleColors } from "rule-colors.js";
 import { scrollTarget } from "row-selection.js";
 import { noTable, tableStep } from "pane-state.js";
@@ -210,8 +210,6 @@ export class DocumentPane {
         this.lastFocus = null; // focused in the panel when it was hidden
         this.coveredFocus = new Set(); // the lists a status view took the focus from
         this.textsStale = false; // the language changed while hidden: rendered again on show
-        this.searchError = ""; // of the last search run, said in the toolbar
-        this.lostError = ""; // why the lost file can't be opened again, after a retry
         this.mainStatus = null; // the view a status over the table shows, null: none
         this.searchStatus = null;
 
@@ -255,29 +253,21 @@ export class DocumentPane {
         if (searchView !== undefined) this.updateSearchView();
     }
 
-    // The language of the interface changed: what the panel rendered is
-    // rendered anew in it (its skeleton is translated by translateTree of the
-    // document),
-    // now if it is shown, when it is shown otherwise. The tables show data, no
-    // texts to translate: they stay as they are
+    // The language of the interface changed: the filters and the status shown
+    // are rendered anew in it, now if the panel is shown, when it is shown
+    // otherwise. Its skeleton is translated by translateTree of the document;
+    // the tables show data; a message of the backend (an error) stays in the
+    // language it came in, until the next one
     languageChanged() {
         if (!this.visible) {
             this.textsStale = true;
             return;
         }
         if (this.filtersShown) this.showFilters();
-        this.showMessages();
         if (this.mainStatus)
             showStatus(this.root.$(".main-status"), this.mainStatus, mainViewTexts, mainViewDetails);
         if (this.searchStatus)
             showStatus(this.root.$(".search-status"), this.searchStatus, searchViewTexts, searchViewDetails);
-    }
-
-    // The messages of the panel kept as errors: of the search, of the retry of the lost file
-    showMessages() {
-        this.root.$(".chip-search-message").innerText = searchMessage(this.searchError);
-        this.root.$(".source-lost-error").innerText =
-            this.lostError ? tr("Still unavailable: {error}", { error: this.lostError }) : "";
     }
 
     // Shows the panel, up to date. `splitters` are the sizes of the panel
@@ -293,7 +283,6 @@ export class DocumentPane {
         if (this.textsStale) { // the language changed while hidden: refresh() renders it all
             this.textsStale = false;
             this.filtersShown = false;
-            this.showMessages();
         }
         this.refresh();
         // Keys go to this panel, not to the hidden one; not into a hidden table
@@ -387,10 +376,7 @@ export class DocumentPane {
         if (!vm) return;
         const loading = this.root.$(".main-status");
         const lost = this.root.$(".source-lost");
-        if (vm.status !== "sourceLost" && this.lostError) {
-            this.lostError = "";
-            this.root.$(".source-lost-error").innerText = "";
-        }
+        if (vm.status !== "sourceLost") this.root.$(".source-lost-error").innerText = "";
         const step = tableStep(this.mainShown, vm);
         this.mainShown = step.shown;
         const cover = step.table ? null : vm.status === "sourceLost" ? lost : loading;
@@ -452,7 +438,6 @@ export class DocumentPane {
         const run = runSearch(this.search, editor.searchChips(), () => editor.searchChipColors(),
             () => editor.firstError(), chips => backend.startChipSearch(this.docId, chips));
         this.search = run.search;
-        this.searchError = run.error;
         this.root.$(".chip-search-message").innerText = run.message;
         if (run.started) this.searchList.matchColors = this.search.colors; // before the results come
         this.updateChipPending();
@@ -621,8 +606,7 @@ export class DocumentPane {
             const retryTime = Date.now() - retryStart;
             if (error) {
                 console.log(`Retry failed after ${retryTime} ms: ${error}`);
-                this.lostError = error;
-                this.showMessages();
+                root.$(".source-lost-error").innerText = tr("Still unavailable: {error}", { error });
                 return;
             }
             // A new document with the same id: its first rows start at the top,

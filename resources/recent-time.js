@@ -5,14 +5,13 @@ import { tr, trc, trn } from "./i18n/i18n.js";
 const minuteMs = 60 * 1000;
 const hourMs = 60 * minuteMs;
 const dayMs = 24 * hourMs;
-// The short names of the months, in the language now; each a literal for scripts/i18n-extract
-const monthNames = [
-    () => trc("month", "Jan"), () => trc("month", "Feb"), () => trc("month", "Mar"),
-    () => trc("month", "Apr"), () => trc("month", "May"), () => trc("month", "Jun"),
-    () => trc("month", "Jul"), () => trc("month", "Aug"), () => trc("month", "Sep"),
-    () => trc("month", "Oct"), () => trc("month", "Nov"), () => trc("month", "Dec"),
-];
-const monthName = (month) => monthNames[month]();
+// The short name of a month (0: January) in the language now; each a literal for
+// scripts/i18n-extract
+const monthName = (month) => [
+    trc("month", "Jan"), trc("month", "Feb"), trc("month", "Mar"), trc("month", "Apr"),
+    trc("month", "May"), trc("month", "Jun"), trc("month", "Jul"), trc("month", "Aug"),
+    trc("month", "Sep"), trc("month", "Oct"), trc("month", "Nov"), trc("month", "Dec"),
+][month];
 
 const minutesAgo = (n) => trn("{n} minute ago", "{n} minutes ago", n);
 const hoursAgo = (n) => trn("{n} hour ago", "{n} hours ago", n);

@@ -16,16 +16,12 @@ export const noSearch = Object.freeze({ committed: "[]", colors: [] });
 // -> its error, "" if none), the rest by the backend (start(chips) -> its error,
 // "" if the search started); colors() gives the match colors of the chips, asked
 // for a search that started only.
-// @returns { search: committed now, started, error: "" if none, message: for
-//   the toolbar (searchMessage of the error) }
+// @returns { search: committed now, started, message: for the toolbar, "" if none }
 export function runSearch(search, chips, colors, firstError, start) {
     const error = firstError() || start(chips);
-    if (error) return { search, started: false, error, message: searchMessage(error) };
-    return { search: Object.freeze({ committed: JSON.stringify(chips), colors: colors() }), started: true, error: "", message: "" };
+    if (error) return { search, started: false, message: tr("Search error: {error}", { error }) };
+    return { search: Object.freeze({ committed: JSON.stringify(chips), colors: colors() }), started: true, message: "" };
 }
-
-// What the toolbar says of the error of a search, in the language now; "" if none
-export const searchMessage = error => error ? tr("Search error: {error}", { error }) : "";
 
 // Whether the chips typed aren't those the results were found by
 export function searchPending(search, chips) {
