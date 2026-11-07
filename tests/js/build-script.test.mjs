@@ -2,7 +2,7 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseCommand, dubArgs, distArches, infoPlist, desktopEntry } from "../../scripts/build.mjs";
+import { parseCommand, dubArgs, distArch, infoPlist, desktopEntry } from "../../scripts/build.mjs";
 
 test("build in debug for the machine by default", () => {
     assert.deepEqual(parseCommand([]), { command: "build", release: false, arch: null });
@@ -40,17 +40,15 @@ test("the dub calls: ldc2 always, the build type, the architecture as dub names 
         ["test", "--compiler=ldc2", "--arch=aarch64"]);
 });
 
-test("a macOS distribution is universal unless an architecture is asked, this machine's built first", () => {
-    assert.deepEqual(distArches("darwin", null, "arm64"), ["arm64", "x64"]);
-    assert.deepEqual(distArches("darwin", null, "x64"), ["x64", "arm64"]);
-    assert.deepEqual(distArches("darwin", "arm64", "arm64"), ["arm64"]);
-    assert.deepEqual(distArches("linux", null, "x64"), ["x64"]);
-    assert.deepEqual(distArches("win32", "arm64", "x64"), ["arm64"]);
+test("a distribution is for the architecture asked, else this machine's: no universal macOS one yet", () => {
+    assert.equal(distArch(null, "arm64"), "arm64");
+    assert.equal(distArch("x64", "arm64"), "x64");
+    assert.equal(distArch(null, "x64"), "x64");
 });
 
 test("a machine of an architecture not known is told to name one", () => {
-    assert.throws(() => distArches("linux", null, "ia32"), /ia32.*--arch/);
-    assert.throws(() => distArches("darwin", null, "ppc64"), /ppc64/);
+    assert.throws(() => distArch(null, "ia32"), /ia32.*--arch/);
+    assert.equal(distArch("arm64", "ia32"), "arm64");
 });
 
 test("the Info.plist names the version and the languages", () => {

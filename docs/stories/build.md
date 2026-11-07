@@ -32,10 +32,9 @@ Sciter рядом с программой и тестами, подписать 
     `check-windows-compile.sh`).
   - Чистая часть (разбор команды, аргументы dub, `Info.plist`, desktop entry) проверяется
     `tests/js/build-script.test.mjs`.
-- На маке `dist` собирает universal binary: две сборки (`--arch=x86_64`, `--arch=aarch64`),
-  склеенные `lipo`. Для x86_64 линкеру нужен runtime ldc2 под x86_64: в ldc из Homebrew его нет
-  (только arm64), он есть в официальном пакете LDC `osx-universal`. Без него скрипт говорит
-  это прямо; `dist --arch arm64` собирает только под arm64. Debug всегда под одну архитектуру.
+- `dist` собирает под одну архитектуру (машины или `--arch`), на маке пока только arm64.
+  Universal binary (две сборки, склеенные `lipo`) отложен: для x86_64 линкеру нужен runtime
+  ldc2 под x86_64, а в ldc из Homebrew его нет (только arm64). См. `docs/backlog.md`.
 - Версия программы — файл `VERSION` в корне, `dist` подставляет ее в `Info.plist`.
 - Подпись на маке: рядом с бандлом лежит `sign.command` (открывается из Finder в Терминале):
   снимает карантин и подписывает ad-hoc `libsciter.dylib`, потом бандл. `dist` подписывает им же.
