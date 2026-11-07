@@ -32,25 +32,24 @@ final class DocumentFilters
     private RuleMatcher _matcher; // compiled from _sets by rematch(); null: no rules
     private RuleIdGenerator _ruleIds; // the rules get their ids when they come in
 
-    //! What puts a text for the user in the language of the interface (see AppSession)
+    //! What puts a text for the user in the language of the interface (AppSession.textForUser),
+    //! for what is made as text here: the JSON of the panel, the name of a new set or rule;
+    //! null: english. The commands return their messages as UiText, the session puts them.
     alias TextForUser = string delegate(const UiText) @safe;
 
     //! @param formatId - FormatInfo.id of the format of the log
     //! @param apply - filters the main view of the document (null: no filter)
-    //! @param text - puts the texts of the commands for the user in the language of the
-    //!     interface (their messages, the names of new sets and rules); null: english
-    this(const(LogFormat) format, string formatId, void delegate(LogFilter!wchar) apply,
-        TextForUser text = null)
+    this(const(LogFormat) format, string formatId, void delegate(LogFilter!wchar) apply)
     {
         _format = format;
         _formatId = formatId;
         _apply = apply;
-        _text = text !is null ? text : &englishOf;
     }
 
-    private TextForUser _text;
-
-    private string englishOf(const UiText t) @safe => english(t);
+    private static string say(TextForUser text, const UiText t) @safe
+    {
+        return text is null ? english(t) : text(t);
+    }
 
     const(FilterSet)[] sets() const
     {
@@ -73,7 +72,7 @@ final class DocumentFilters
     //! @brief Appends a copy of the rules of a file and filters the view with
     //! them: a .dlf (DLT logs only) or a filter file of DLT Explorer (any log;
     //! one made for another format is taken, with a note)
-    string loadFile(string path)
+    UiText loadFile(string path)
     {
         import std.algorithm.searching : canFind;
         import std.file : readText;
@@ -82,7 +81,7 @@ final class DocumentFilters
         if (!canFilter())
             return noColumns();
         if (_sets.canFind!((ref s) => s.source == path))
-            return _text(uiText("{file} is loaded already: remove it to load it again", "file", baseName(path)));
+            return uiText("{file} is loaded already: remove it to load it again", "file", baseName(path));
         FilterSet set;
         UiText[] notes;
         try
@@ -90,7 +89,7 @@ final class DocumentFilters
             if (isDlf(path))
             {
                 if (!canLoadDlf(_format))
-                    return _text(uiText("DLT filters (.dlf) apply to DLT logs only"));
+                    return uiText("DLT filters (.dlf) apply to DLT logs only");
                 set.name = baseName(path);
                 set.rules = fromDlf(readDlf(path), notes);
             }
@@ -106,7 +105,7 @@ final class DocumentFilters
             }
         }
         catch (Exception e)
-            return _text(uiText("Can't load the filter: {reason}", "reason", uiTextOf(e)));
+            return uiText("Can't load the filter: {reason}", "reason", uiTextOf(e));
         set.source = path;
         check(set);
         identify(set);
@@ -118,20 +117,20 @@ final class DocumentFilters
     }
 
     //! @brief Appends an empty set, to add rules to
-    string newSet()
+    UiText newSet(TextForUser text = null)
     {
         if (!canFilter())
             return noColumns();
         FilterSet set;
-        set.name = _text(uiText("New Filter")); // a name of the user's, in the language of now
+        set.name = say(text, uiText("New Filter")); // a name of the user's, in the language of now
         _sets ~= set;
-        return "";
+        return UiText.init;
     }
 
     //! @brief Writes a set to a file, with the switches of its rules (all off
     //! if the set is): a .dlf (DLT logs only; what it can't hold is dropped
     //! and named) or a filter file of DLT Explorer. The set remembers the file.
-    string exportSet(size_t set, string path)
+    UiText exportSet(size_t set, string path)
     {
         import std.file : write;
         import std.path : baseName;
@@ -150,7 +149,7 @@ final class DocumentFilters
             if (isDlf(path))
             {
                 if (!canLoadDlf(_format))
-                    return _text(uiText("DLT filters (.dlf) are for DLT logs only"));
+                    return uiText("DLT filters (.dlf) are for DLT logs only");
                 writeDlf(path, toDlf(written.rules, notes));
                 _sets[set].name = baseName(path); // a .dlf has no name of its own
             }
@@ -158,7 +157,7 @@ final class DocumentFilters
                 write(path, filterFileJson(written, _formatId));
         }
         catch (Exception e)
-            return _text(uiText("Can't export the filter: {reason}", "reason", uiTextOf(e)));
+            return uiText("Can't export the filter: {reason}", "reason", uiTextOf(e));
         _sets[set].source = path;
         return noteOf(baseName(path), notes);
     }
@@ -202,7 +201,7 @@ final class DocumentFilters
     }
 
     //! @brief Removes a set
-    string remove(size_t set)
+    UiText remove(size_t set)
     {
         import std.algorithm.mutation : remove;
 
@@ -213,11 +212,11 @@ final class DocumentFilters
         rematch();
         if (changed)
             apply();
-        return "";
+        return UiText.init;
     }
 
     //! @brief Switches a whole set on or off
-    string enableSet(size_t set, bool enabled)
+    UiText enableSet(size_t set, bool enabled)
     {
         if (set >= _sets.length)
             return noSuchSet();
@@ -225,11 +224,11 @@ final class DocumentFilters
         rematch();
         if (filtersView(_sets[set], true))
             apply();
-        return "";
+        return UiText.init;
     }
 
     //! @brief Switches one rule of a set on or off
-    string enableRule(size_t set, size_t rule, bool enabled)
+    UiText enableRule(size_t set, size_t rule, bool enabled)
     {
         if (set >= _sets.length || rule >= _sets[set].rules.length)
             return noSuchSet();
@@ -238,14 +237,14 @@ final class DocumentFilters
         rematch();
         if (_sets[set].enabled && filters(*target, true)) // markers don't change what is shown
             apply();
-        return "";
+        return UiText.init;
     }
 
     //! A new rule for the editor, as ruleJson gives a rule; named in the language of now
-    JSONValue newRuleJson()
+    JSONValue newRuleJson(TextForUser text = null) const
     {
         FilterRule rule;
-        rule.name = _text(uiText("New Rule"));
+        rule.name = say(text, uiText("New Rule"));
         return rulesToJson([rule])[0];
     }
 
@@ -258,7 +257,7 @@ final class DocumentFilters
     }
 
     //! @brief Appends a rule (as a filter file has it) to a set
-    string addRule(size_t set, string json)
+    UiText addRule(size_t set, string json)
     {
         if (set >= _sets.length)
             return noSuchSet();
@@ -266,7 +265,7 @@ final class DocumentFilters
     }
 
     //! @brief Replaces a rule of a set, as addRule takes it
-    string updateRule(size_t set, size_t rule, string json)
+    UiText updateRule(size_t set, size_t rule, string json)
     {
         if (set >= _sets.length || rule >= _sets[set].rules.length)
             return noSuchSet();
@@ -279,7 +278,7 @@ final class DocumentFilters
     //! error says why the rule can't be read at all, "" if it can. A
     //! condition on a missing column isn't a mistake: the rule isn't applied
     //! to this log, as when it is loaded.
-    JSONValue checkRule(string json) const
+    JSONValue checkRule(string json, TextForUser text = null) const
     {
         import std.json : parseJSON;
 
@@ -288,20 +287,20 @@ final class DocumentFilters
         try
             rule = ruleFromJson(parseJSON(json));
         catch (Exception e)
-            return JSONValue(["error": JSONValue(_text(uiText("Invalid rule: {reason}", "reason", uiTextOf(e)))),
+            return JSONValue(["error": JSONValue(say(text, uiText("Invalid rule: {reason}", "reason", uiTextOf(e)))),
                 "conditions": JSONValue.emptyArray, "missing": JSONValue.emptyArray]);
         bool[] missing;
         foreach (ref c; rule.conditions)
             missing ~= !hasColumn(c.columnId);
         return JSONValue([
             "error": JSONValue(""),
-            "conditions": JSONValue(conditionErrors(columns, rule).map!(error => _text(error)).array),
+            "conditions": JSONValue(conditionErrors(columns, rule).map!(error => say(text, error)).array),
             "missing": JSONValue(missing),
         ]);
     }
 
     //! @brief Removes a rule of a set
-    string removeRule(size_t set, size_t rule)
+    UiText removeRule(size_t set, size_t rule)
     {
         import std.algorithm.mutation : remove;
 
@@ -312,7 +311,7 @@ final class DocumentFilters
         rematch();
         if (changed)
             apply();
-        return "";
+        return UiText.init;
     }
 
     //! The state of the filter panel: {canFilter, canDlf, sets: [{name,
@@ -322,7 +321,7 @@ final class DocumentFilters
     //! on export: the source, or <name>.<format>.logfilter; kind is
     //! "include", "exclude" or "marker"; error says why a rule isn't
     //! applied, "" if it is.
-    JSONValue toJson() const
+    JSONValue toJson(TextForUser text = null) const
     {
         JSONValue[] sets;
         foreach (ref s; _sets)
@@ -335,7 +334,7 @@ final class DocumentFilters
                     "enabled": JSONValue(rule.enabled),
                     // Only a color the rows take (see RuleMatcher): the script uses it as it is
                     "color": JSONValue(isRuleColor(rule.color) ? rule.color : ""),
-                    "error": JSONValue(_text(rule.problem)), // see check()
+                    "error": JSONValue(say(text, rule.problem)), // see check()
                     "id": JSONValue(cast(long) rule.id.toInt()), // a row refers to the rule it matches by it
                 ]);
             sets ~= JSONValue([
@@ -353,8 +352,8 @@ final class DocumentFilters
         ]);
     }
 
-    private string noSuchSet() => _text(uiText("no such filter"));
-    private string noColumns() => _text(uiText("this log has no columns to filter by"));
+    private static UiText noSuchSet() => uiText("no such filter");
+    private static UiText noColumns() => uiText("this log has no columns to filter by");
 
     private static bool isDlf(string path)
     {
@@ -364,12 +363,15 @@ final class DocumentFilters
         return icmp(extension(path), ".dlf") == 0;
     }
 
-    //! The notes of a command on a file, one per line, "" if there are none
-    private string noteOf(string file, const(UiText)[] notes)
+    //! The notes of a command on a file, one per line; none if there are none
+    private static UiText noteOf(string file, const(UiText)[] notes)
     {
-        import std.array : join;
-
-        return notes.length ? file ~ ": " ~ notes.map!(note => _text(note)).join("\n") : "";
+        if (notes.length == 0)
+            return UiText.init;
+        UiText lines = notes[0];
+        foreach (note; notes[1 .. $])
+            lines = uiText("{lines}\n{line}", "lines", lines, "line", note);
+        return uiText("{file}: {notes}", "file", file, "notes", lines);
     }
 
     //! @brief Changes the rules of a set by a rule parsed from `json`. A rule
@@ -377,7 +379,7 @@ final class DocumentFilters
     //! one switched off is taken with its errors, as a loaded one is, so it
     //! can be renamed or switched off before it is fixed. A condition on a
     //! column the log doesn't have only keeps the rule from being applied.
-    private string edit(size_t set, string json, scope void delegate(FilterSet*, FilterRule) change)
+    private UiText edit(size_t set, string json, scope void delegate(FilterSet*, FilterRule) change)
     {
         import std.json : parseJSON;
 
@@ -385,14 +387,14 @@ final class DocumentFilters
         try
             rule = ruleFromJson(parseJSON(json));
         catch (Exception e)
-            return _text(uiText("Invalid rule: {reason}", "reason", uiTextOf(e)));
+            return uiText("Invalid rule: {reason}", "reason", uiTextOf(e));
         rule.problem = ruleError(_format.columns, rule);
         // A mistake in a condition on a column of the log is refused; one on a
         // column the log doesn't have only keeps the rule from being applied
         if (rule.enabled)
             foreach (i, error; conditionErrors(_format.columns, rule))
                 if (!error.empty && hasColumn(rule.conditions[i].columnId))
-                    return _text(error);
+                    return error;
 
         auto target = &_sets[set];
         const before = filtersView(*target);
@@ -400,7 +402,7 @@ final class DocumentFilters
         rematch();
         if (before || filtersView(*target))
             apply();
-        return "";
+        return UiText.init;
     }
 
     //! @returns true if the log has the column
@@ -563,9 +565,9 @@ unittest
     }
 
     auto fx = new Fixture();
-    assert(fx.filters.loadFile(first) == "");
+    assert(fx.filters.loadFile(first).empty);
     assert(fx.shows("APP1") && !fx.shows("APP2"));
-    assert(fx.filters.loadFile(second) == "");
+    assert(fx.filters.loadFile(second).empty);
     assert(fx.shows("APP1") && fx.shows("APP2") && !fx.shows("APP3"));
     assert(fx.filters.sets.length == 2);
     assert(fx.filters.sets[0].name == "filters_first.dlf" && fx.filters.sets[0].source == first);
@@ -584,13 +586,13 @@ unittest
         remove(path);
 
     auto fx = new Fixture();
-    assert(fx.filters.loadFile(path) == "");
+    assert(fx.filters.loadFile(path).empty);
     assert(fx.filters.sets[0].name == "Apps" && fx.filters.sets[0].source == path);
     assert(fx.shows("APP1") && !fx.shows("APP2"));
 
     auto logcat = new Fixture(new LogcatFormat(LogcatFormat.Variant.Threadtime), "logcat");
     const note = logcat.filters.loadFile(path);
-    assert(note.canFind("made for dlt"), note);
+    assert(english(note).canFind("made for dlt"), english(note));
     assert(logcat.filters.sets.length == 1 && !logcat.filters.sets[0].rules[0].problem.empty,
         "logcat has no app column: not applied");
 }
@@ -611,14 +613,14 @@ unittest
     }
 
     auto fx = new Fixture();
-    assert(fx.filters.loadFile(path) == "");
-    assert(fx.filters.loadFile(path).canFind("already"));
-    assert(fx.filters.loadFile("/nonexistent/filter.dlf").length);
-    assert(fx.filters.loadFile(broken).canFind("Can't load"));
+    assert(fx.filters.loadFile(path).empty);
+    assert(english(fx.filters.loadFile(path)).canFind("already"));
+    assert(!fx.filters.loadFile("/nonexistent/filter.dlf").empty);
+    assert(english(fx.filters.loadFile(broken)).canFind("Can't load"));
     assert(fx.filters.sets.length == 1);
 
     auto logcat = new Fixture(new LogcatFormat(LogcatFormat.Variant.Threadtime), "logcat");
-    assert(logcat.filters.loadFile(path).canFind("DLT"));
+    assert(english(logcat.filters.loadFile(path)).canFind("DLT"));
     assert(logcat.filters.sets.length == 0 && logcat.applyCount == 0);
     assert(logcat.filters.toJson()["canFilter"].boolean && !logcat.filters.toJson()["canDlf"].boolean);
 }
@@ -633,22 +635,22 @@ unittest
         remove(path);
 
     auto fx = new Fixture();
-    assert(fx.filters.loadFile(path) == "");
+    assert(fx.filters.loadFile(path).empty);
     assert(fx.shows("APP1") && fx.shows("APP2") && !fx.shows("APP3"));
 
-    assert(fx.filters.enableRule(0, 1, false) == "");
+    assert(fx.filters.enableRule(0, 1, false).empty);
     assert(fx.shows("APP1") && !fx.shows("APP2"));
     assert(!fx.filters.sets[0].rules[1].enabled);
 
-    assert(fx.filters.enableSet(0, false) == "");
+    assert(fx.filters.enableSet(0, false).empty);
     assert(fx.applied is null, "no enabled rule: no filter");
-    assert(fx.filters.enableSet(0, true) == "");
+    assert(fx.filters.enableSet(0, true).empty);
     assert(fx.shows("APP1") && !fx.shows("APP2"), "the rule states are kept");
 
-    assert(fx.filters.remove(0) == "");
+    assert(fx.filters.remove(0).empty);
     assert(fx.filters.sets.length == 0 && fx.applied is null);
-    assert(fx.filters.remove(0).length, "no such set");
-    assert(fx.filters.enableRule(5, 0, true).length);
+    assert(!fx.filters.remove(0).empty, "no such set");
+    assert(!fx.filters.enableRule(5, 0, true).empty);
 }
 
 @("DocumentFilters: switching a marker rule, or a set of markers only, doesn't filter the view again")
@@ -661,11 +663,11 @@ unittest
         remove(path);
 
     auto fx = new Fixture();
-    assert(fx.filters.loadFile(path) == "");
+    assert(fx.filters.loadFile(path).empty);
     const count = fx.applyCount;
-    assert(fx.filters.enableRule(0, 0, false) == "");
-    assert(fx.filters.enableSet(0, false) == "" && fx.filters.enableSet(0, true) == "");
-    assert(fx.filters.remove(0) == "");
+    assert(fx.filters.enableRule(0, 0, false).empty);
+    assert(fx.filters.enableSet(0, false).empty && fx.filters.enableSet(0, true).empty);
+    assert(fx.filters.remove(0).empty);
     assert(fx.applyCount == count);
 }
 
@@ -679,8 +681,8 @@ unittest
         remove(path);
 
     auto fx = new Fixture();
-    assert(fx.filters.loadFile(path) == "" && fx.filters.newSet() == "");
-    assert(fx.filters.addRule(1, appRule("Three", "APP3")) == "");
+    assert(fx.filters.loadFile(path).empty && fx.filters.newSet().empty);
+    assert(fx.filters.addRule(1, appRule("Three", "APP3")).empty);
     const ids = [fx.idOf(0, 0), fx.idOf(0, 1), fx.idOf(1, 0)];
     foreach (i, id; ids)
     {
@@ -688,7 +690,7 @@ unittest
         foreach (other; ids[0 .. i])
             assert(id != other, "unique among the sets");
     }
-    assert(fx.filters.updateRule(1, 0, appRule("Four", "APP4")) == "");
+    assert(fx.filters.updateRule(1, 0, appRule("Four", "APP4")).empty);
     assert(fx.idOf(1, 0) == ids[2], "the same rule, edited");
 
     auto restored = new Fixture();
@@ -703,9 +705,9 @@ unittest
 unittest
 {
     auto fx = new Fixture();
-    assert(fx.filters.newSet() == "");
-    assert(fx.filters.addRule(0, appRule("Green", "APP1")[0 .. $ - 1] ~ `, "color": "#00ff00"}`) == "");
-    assert(fx.filters.addRule(0, appRule("Red", "APP2")[0 .. $ - 1] ~ `, "color": "red"}`) == "");
+    assert(fx.filters.newSet().empty);
+    assert(fx.filters.addRule(0, appRule("Green", "APP1")[0 .. $ - 1] ~ `, "color": "#00ff00"}`).empty);
+    assert(fx.filters.addRule(0, appRule("Red", "APP2")[0 .. $ - 1] ~ `, "color": "red"}`).empty);
     const rules = fx.filters.toJson()["sets"][0]["rules"];
     assert(rules[0]["color"].str == "#00ff00");
     assert(rules[1]["color"].str == "", "a color the rows can't take: none");
@@ -724,31 +726,31 @@ unittest
 
     auto fx = new Fixture();
     assert(!fx.ruleOf("APP1").isValid(), "no rules yet");
-    assert(fx.filters.loadFile(path) == "");
+    assert(fx.filters.loadFile(path).empty);
     assert(fx.ruleOf("APP1") == fx.idOf(0, 0) && fx.ruleOf("APP2") == fx.idOf(0, 1));
     assert(!fx.ruleOf("APP5").isValid(), "an include filter without enableMarker has no color");
     assert(!fx.ruleOf("APP3").isValid());
 
-    assert(fx.filters.enableRule(0, 0, false) == "");
+    assert(fx.filters.enableRule(0, 0, false).empty);
     assert(!fx.ruleOf("APP1").isValid(), "a rule switched off");
-    assert(fx.filters.enableRule(0, 0, true) == "");
-    assert(fx.filters.enableSet(0, false) == "");
+    assert(fx.filters.enableRule(0, 0, true).empty);
+    assert(fx.filters.enableSet(0, false).empty);
     assert(!fx.ruleOf("APP1").isValid(), "a set switched off");
-    assert(fx.filters.enableSet(0, true) == "");
+    assert(fx.filters.enableSet(0, true).empty);
 
-    assert(fx.filters.addRule(0, coloredAppRule("Three", "APP3")) == "");
+    assert(fx.filters.addRule(0, coloredAppRule("Three", "APP3")).empty);
     assert(fx.ruleOf("APP3") == fx.idOf(0, 3), "an added rule");
-    assert(fx.filters.updateRule(0, 3, coloredAppRule("Four", "APP4")) == "");
+    assert(fx.filters.updateRule(0, 3, coloredAppRule("Four", "APP4")).empty);
     assert(!fx.ruleOf("APP3").isValid() && fx.ruleOf("APP4") == fx.idOf(0, 3), "an edited rule");
-    assert(fx.filters.updateRule(0, 3, appRule("Four", "APP4")) == "");
+    assert(fx.filters.updateRule(0, 3, appRule("Four", "APP4")).empty);
     assert(!fx.ruleOf("APP4").isValid(), "its color taken away");
-    assert(fx.filters.removeRule(0, 0) == "");
+    assert(fx.filters.removeRule(0, 0).empty);
     assert(!fx.ruleOf("APP1").isValid(), "a removed rule");
 
     auto restored = new Fixture();
     restored.filters.restore(fx.filters.saved());
     assert(restored.ruleOf("APP2") == restored.idOf(0, 0), "restored sets");
-    assert(fx.filters.remove(0) == "");
+    assert(fx.filters.remove(0).empty);
     assert(!fx.ruleOf("APP2").isValid(), "a removed set");
 }
 
@@ -761,9 +763,9 @@ unittest
     const second = makeDlf("filters_save_2.dlf", appFilter("APP3"));
 
     auto fx = new Fixture();
-    assert(fx.filters.loadFile(first) == "" && fx.filters.loadFile(second) == "");
-    assert(fx.filters.enableRule(0, 1, false) == "" && fx.filters.enableSet(1, false) == "");
-    assert(fx.filters.addRule(0, appRule("Four", "APP4")) == "");
+    assert(fx.filters.loadFile(first).empty && fx.filters.loadFile(second).empty);
+    assert(fx.filters.enableRule(0, 1, false).empty && fx.filters.enableSet(1, false).empty);
+    assert(fx.filters.addRule(0, appRule("Four", "APP4")).empty);
     const saved = fx.filters.saved();
     assert(saved.length == 2 && saved[0].name == "filters_save_1.dlf" && saved[0].source == first);
     assert(saved[0].rules.length == 3 && !saved[0].rules[1].enabled && !saved[1].enabled);
@@ -782,7 +784,7 @@ unittest
     import formats.logcat : LogcatFormat;
 
     auto fx = new Fixture(new LogcatFormat(LogcatFormat.Variant.Threadtime), "logcat");
-    assert(fx.filters.newSet() == "");
+    assert(fx.filters.newSet().empty);
     assert(fx.filters.sets.length == 1 && fx.filters.sets[0].name == "New Filter");
     assert(fx.filters.sets[0].source == "" && fx.filters.sets[0].rules.length == 0);
     assert(fx.filters.toJson()["sets"][0]["fileName"].str == "New Filter.logcat.logfilter");
@@ -793,8 +795,8 @@ unittest
 unittest
 {
     auto fx = new Fixture();
-    assert(fx.filters.newSet() == "");
-    assert(fx.filters.addRule(0, appRule("One", "APP1")) == "");
+    assert(fx.filters.newSet().empty);
+    assert(fx.filters.addRule(0, appRule("One", "APP1")).empty);
 
     auto rule = fx.filters.ruleJson(0, 0);
     assert(rule["name"].str == "One" && rule["kind"].str == "include");
@@ -802,16 +804,16 @@ unittest
     assert(fx.filters.ruleJson(0, 5).isNull, "no such rule");
     assert(fx.shows("APP1") && !fx.shows("APP2"));
 
-    assert(fx.filters.addRule(0, appRule("Two", "APP2")) == "");
+    assert(fx.filters.addRule(0, appRule("Two", "APP2")).empty);
     assert(fx.shows("APP1") && fx.shows("APP2") && !fx.shows("APP3"));
 
-    assert(fx.filters.updateRule(0, 0, appRule("Three", "APP3")) == "");
+    assert(fx.filters.updateRule(0, 0, appRule("Three", "APP3")).empty);
     assert(fx.filters.sets[0].rules[0].name == "Three");
     assert(!fx.shows("APP1") && fx.shows("APP3"));
 
-    assert(fx.filters.removeRule(0, 0) == "");
+    assert(fx.filters.removeRule(0, 0).empty);
     assert(fx.filters.sets[0].rules.length == 1 && !fx.shows("APP3") && fx.shows("APP2"));
-    assert(fx.filters.removeRule(0, 3).length && fx.filters.updateRule(2, 0, `{}`).length);
+    assert(!fx.filters.removeRule(0, 3).empty && !fx.filters.updateRule(2, 0, `{}`).empty);
 }
 
 @("DocumentFilters: a new rule is switched on, without conditions")
@@ -826,17 +828,17 @@ unittest
 unittest
 {
     auto fx = new Fixture();
-    assert(fx.filters.newSet() == "");
-    assert(fx.filters.addRule(0, appRule("One", "APP1")) == "");
+    assert(fx.filters.newSet().empty);
+    assert(fx.filters.addRule(0, appRule("One", "APP1")).empty);
     const count = fx.applyCount;
     const broken = `{"name": "Broken", "conditions": [{"column": "payload", "check": "regex", "value": "(unclosed"}]}`;
-    assert(fx.filters.addRule(0, broken).length);
-    assert(fx.filters.updateRule(0, 0, `not json`).length);
+    assert(!fx.filters.addRule(0, broken).empty);
+    assert(!fx.filters.updateRule(0, 0, `not json`).empty);
     assert(fx.filters.sets[0].rules.length == 1 && fx.filters.sets[0].rules[0].name == "One");
     assert(fx.applyCount == count);
 
     const off = `{"name": "Broken", "enabled": false, "conditions": [{"column": "payload", "check": "regex", "value": "(unclosed"}]}`;
-    assert(fx.filters.addRule(0, off) == "");
+    assert(fx.filters.addRule(0, off).empty);
     assert(!fx.filters.sets[0].rules[1].problem.empty);
 }
 
@@ -862,8 +864,8 @@ unittest
 unittest
 {
     auto fx = new Fixture();
-    assert(fx.filters.newSet() == "");
-    assert(fx.filters.addRule(0, `{"name": "Header", "conditions": [{"column": "header", "check": "contains", "value": "X"}]}`) == "");
+    assert(fx.filters.newSet().empty);
+    assert(fx.filters.addRule(0, `{"name": "Header", "conditions": [{"column": "header", "check": "contains", "value": "X"}]}`).empty);
     assert(fx.filters.sets[0].rules[0].enabled && !fx.filters.sets[0].rules[0].problem.empty);
 }
 
@@ -886,28 +888,28 @@ unittest
     }
 
     auto fx = new Fixture();
-    assert(fx.filters.newSet() == "");
-    assert(fx.filters.addRule(0, appRule("One", "APP1")) == "");
-    assert(fx.filters.addRule(0, appRule("Two", "APP2")) == "");
-    assert(fx.filters.enableRule(0, 0, false) == "");
+    assert(fx.filters.newSet().empty);
+    assert(fx.filters.addRule(0, appRule("One", "APP1")).empty);
+    assert(fx.filters.addRule(0, appRule("Two", "APP2")).empty);
+    assert(fx.filters.enableRule(0, 0, false).empty);
 
-    assert(fx.filters.exportSet(0, native) == "");
+    assert(fx.filters.exportSet(0, native).empty);
     auto file = parseFilterFile(readText(native));
     assert(file.logFormat == "dlt" && file.set.name == "New Filter" && file.set.rules.length == 2);
     assert(!file.set.rules[0].enabled && file.set.rules[1].enabled);
     assert(fx.filters.sets[0].source == native);
 
-    assert(fx.filters.addRule(0, `{"name": "Session", "conditions": [{"column": "session", "check": "equals", "value": 3}]}`) == "");
-    assert(fx.filters.enableSet(0, false) == "");
+    assert(fx.filters.addRule(0, `{"name": "Session", "conditions": [{"column": "session", "check": "equals", "value": 3}]}`).empty);
+    assert(fx.filters.enableSet(0, false).empty);
     const note = fx.filters.exportSet(0, dlf);
-    assert(note.canFind("Session"), "a .dlf can't hold the session id: " ~ note);
+    assert(english(note).canFind("Session"), "a .dlf can't hold the session id: " ~ english(note));
     const filters = readDlf(dlf);
     assert(filters.length == 3 && filters[1].appId == "APP2" && !filters[1].enabled,
         "a set switched off is exported off");
     assert(fx.filters.sets[0].name == "filters_export.dlf" && fx.filters.sets[0].rules[1].enabled);
 
-    assert(fx.filters.exportSet(0, "/nonexistent/dir/x.logfilter").length);
-    assert(fx.filters.exportSet(3, native).length);
+    assert(!fx.filters.exportSet(0, "/nonexistent/dir/x.logfilter").empty);
+    assert(!fx.filters.exportSet(3, native).empty);
 }
 
 @("DocumentFilters: the panel state of the sets and their rules")
@@ -921,7 +923,7 @@ unittest
         remove(path);
 
     auto fx = new Fixture();
-    assert(fx.filters.loadFile(path) == "");
+    assert(fx.filters.loadFile(path).empty);
     auto json = fx.filters.toJson();
     assert(json["canFilter"].boolean && json["canDlf"].boolean);
     assert(json["sets"].array.length == 1);
@@ -934,7 +936,7 @@ unittest
     assert(set["rules"][1]["kind"].str == "marker" && set["rules"][1]["error"].str.length);
 }
 
-@("DocumentFilters: its texts for the user in the language of the session, a new set named in it")
+@("DocumentFilters: its messages are texts for the user; what it makes as text is put by the text given")
 unittest
 {
     import std.file : exists, remove, tempDir, write;
@@ -954,15 +956,19 @@ unittest
         });
     }
 
-    auto filters = new DocumentFilters(new DltFormat(), "dlt", (f) {}, &russian);
+    auto filters = new DocumentFilters(new DltFormat(), "dlt", (f) {});
     const broken = buildPath(tempDir, "dlt_explorer_filters_broken.logfilter");
     scope (exit) if (exists(broken)) remove(broken);
     write(broken, "not json");
     import std.algorithm : startsWith;
-    assert(filters.loadFile(broken).startsWith("Не удалось загрузить фильтр: "));
+    const error = filters.loadFile(broken);
+    assert(error.text == "Can't load the filter: {reason}", "the template, translated by the session");
+    assert(russian(error).startsWith("Не удалось загрузить фильтр: "));
 
-    assert(filters.newSet() == "");
+    assert(filters.newSet(&russian).empty);
     assert(filters.sets[$ - 1].name == "Новый фильтр");
-    assert(filters.addRule(0, `{"name": "x", "enabled": true, "conditions": [{"column": "nosuch", "check": "equals", "value": "1"}]}`) == "");
-    assert(filters.toJson()["sets"][0]["rules"][0]["error"].str == "в журнале нет колонки «nosuch»");
+    assert(filters.newSet().empty && filters.sets[$ - 1].name == "New Filter", "no text given: english");
+    assert(filters.addRule(0, `{"name": "x", "enabled": true, "conditions": [{"column": "nosuch", "check": "equals", "value": "1"}]}`).empty);
+    assert(filters.toJson(&russian)["sets"][0]["rules"][0]["error"].str == "в журнале нет колонки «nosuch»");
+    assert(filters.toJson()["sets"][0]["rules"][0]["error"].str == "no column \"nosuch\" in this log");
 }

@@ -177,7 +177,9 @@
     "{day} {month} {year}, {time}": "{day} {month} {year}, {time}",
     "{day} {month}, {time}": "{day} {month}, {time}",
     "{file} is loaded already: remove it to load it again": "{file} уже загружен: удалите его, чтобы загрузить снова",
+    "{file}: {notes}": "{file}: {notes}",
     "{format} (current file)": "{format} (текущий файл)",
+    "{lines}\n{line}": "{lines}\n{line}",
     "{n} hour ago": {
       "one": "{n} час назад",
       "few": "{n} часа назад",

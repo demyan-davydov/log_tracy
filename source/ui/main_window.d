@@ -16,6 +16,7 @@ import log_core.log_format : ColumnInfo, FormatChoice;
 import log_core.log_message : TimeKind;
 import ui.app_menu : MenuItem, MenuPlatform;
 import ui.main_menu_loader : retitleAppMenu;
+import utils.ui_text : UiText;
 import log_core.rule_filter : RuleId;
 import log_core.search_filter : checkRegex, MatchRange;
 import ui.app_session : AppSession;
@@ -282,26 +283,26 @@ class MainWindow : SciterWindow
         case "getFilters":
             // getFilters(docId) -> {canFilter, canDlf, sets: [...]}, see DocumentFilters.toJson
             auto filters = _session.filters(docParam());
-            answer(filters is null ? `{"canFilter":false,"canDlf":false,"sets":[]}` : filters.toJson().toString());
+            answer(filters is null ? `{"canFilter":false,"canDlf":false,"sets":[]}` : filters.toJson(&_session.textForUser).toString());
             return true;
         case "getFilterRule":
             // getFilterRule(docId, set, rule) -> the fields of the rule, null
             // if there is no such rule; rule -1: a new one
             auto filters = _session.filters(docParam());
             const rule = param!int(2);
-            answer(filters is null ? "null" : rule < 0 ? filters.newRuleJson().toString()
+            answer(filters is null ? "null" : rule < 0 ? filters.newRuleJson(&_session.textForUser).toString()
                     : filters.ruleJson(param!int(1), rule).toString());
             return true;
         case "checkFilterRule":
             // checkFilterRule(docId, rule json) -> {error, conditions: [...]}
             auto filters = _session.filters(docParam());
-            answer(filters is null ? `{"error":"","conditions":[]}` : filters.checkRule(param!string(1)).toString());
+            answer(filters is null ? `{"error":"","conditions":[]}` : filters.checkRule(param!string(1), &_session.textForUser).toString());
             return true;
         case "loadFilterFile":
             answer(filterCommand(docParam(), f => f.loadFile(normalizePath(param!string(1)))));
             return true;
         case "newFilterSet":
-            answer(filterCommand(docParam(), f => f.newSet()));
+            answer(filterCommand(docParam(), f => f.newSet(&_session.textForUser)));
             return true;
         case "exportFilterSet":
             answer(filterCommand(docParam(), f => f.exportSet(param!int(1), normalizePath(param!string(2)))));
@@ -331,7 +332,7 @@ class MainWindow : SciterWindow
     }
 
     /// A command on the filter sets of a document, its message logged
-    private string filterCommand(DocumentId docId, scope string delegate(DocumentFilters) command)
+    private string filterCommand(DocumentId docId, scope UiText delegate(DocumentFilters) command)
     {
         const error = _session.filterCommand(docId, command);
         if (error.length)

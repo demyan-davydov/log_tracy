@@ -21,7 +21,6 @@ final class DocumentUi : MainViewSink, MainViewCommands, SearchViewSink, SearchV
     private MainViewFsm _mainView;
     private SearchViewFsm _searchView;
     private DocumentFilters _filters;
-    private DocumentFilters.TextForUser _text; // the texts of the filters for the user; null: english
 
     MainViewModel mainViewShown; // the latest view shown by the machine
     bool mainViewChanged; // shown since it was last sent to JS
@@ -34,11 +33,10 @@ final class DocumentUi : MainViewSink, MainViewCommands, SearchViewSink, SearchV
     // matcher of each call, not in the compiled regex
     SearchFilter searchShown;
 
-    this(Workspace workspace, DocumentId docId, DocumentFilters.TextForUser text = null)
+    this(Workspace workspace, DocumentId docId)
     {
         _workspace = workspace;
         _docId = docId;
-        _text = text;
         _mainView = makeMainViewFsm(this, this);
         _searchView = makeSearchViewFsm(this, this);
         _mainView.start();
@@ -58,8 +56,7 @@ final class DocumentUi : MainViewSink, MainViewCommands, SearchViewSink, SearchV
         if (_filters is null)
         {
             auto doc = _workspace.doc(_docId);
-            _filters = new DocumentFilters(doc.format, doc.formatChoice.id, (filter) { doc.applyViewFilter(filter); },
-                _text);
+            _filters = new DocumentFilters(doc.format, doc.formatChoice.id, (filter) { doc.applyViewFilter(filter); });
         }
         return _filters;
     }

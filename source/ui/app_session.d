@@ -450,14 +450,15 @@ final class AppSession
     /// Runs a command on the filter sets of the document; the sets are kept
     /// in the settings of its file when it changed them (they are copies, see
     /// DocumentFilters), also with a note (what a loaded .dlf lost).
-    /// Returns: a message for the user (an error, a note), "" if none
-    string filterCommand(DocumentId docId, scope string delegate(DocumentFilters) command)
+    /// Returns: its message for the user (an error, a note) in the language of the interface, ""
+    /// if none
+    string filterCommand(DocumentId docId, scope UiText delegate(DocumentFilters) command)
     {
         auto filters = filters(docId);
         if (filters is null)
             return "";
         const before = filters.saved();
-        const message = command(filters);
+        const message = textForUser(command(filters));
         if (filters.saved() != before)
         {
             if (auto path = sourcePathOf(docId))
@@ -603,7 +604,7 @@ final class AppSession
 
     private void addDocumentUi(DocumentId docId)
     {
-        _documentUis[docId] = new DocumentUi(_workspace, docId, &textForUser);
+        _documentUis[docId] = new DocumentUi(_workspace, docId);
         // its machines start showing at once: their first views are queued
     }
 
@@ -935,7 +936,7 @@ unittest
 {
     auto f = Fixture.make();
     const id = f.session.openFile("/logs/a.log").docId;
-    assert(f.session.filterCommand(id, (DocumentFilters filters) { filters.newSet(); return "a.dlf: a note"; })
+    assert(f.session.filterCommand(id, (DocumentFilters filters) { import utils.ui_text : plainText; filters.newSet(); return plainText("a.dlf: a note"); })
         == "a.dlf: a note");
     assert(savedFilters(f.session.settings.recentFiles, "/logs/a.log").length == 1);
 }
@@ -1097,4 +1098,23 @@ unittest
     const languages = parseJSON(f.session.languagesJson());
     assert(languages.array.length == 1 && languages[0]["locale"].str == "x-pseudo");
     assert(languages[0]["name"].str == "Pseudo (for testing)");
+}
+
+@("AppSession: the message of a filter command is in the language of the interface")
+unittest
+{
+    import std.file : rmdirRecurse, write;
+    import std.path : buildPath;
+    import ui.translations : makeTestDir;
+
+    auto f = Fixture.make();
+    const dir = makeTestDir("session-filters");
+    scope (exit) rmdirRecurse(dir);
+    write(buildPath(dir, "ru.json"), `{"locale": "ru", "name": "Русский", "messages": {"no such filter": "такого фильтра нет"}}`);
+    f.session.useTranslations(dir);
+    const id = f.session.openFile("/logs/a.log").docId;
+
+    assert(f.session.filterCommand(id, (DocumentFilters filters) => filters.remove(7)) == "no such filter");
+    f.session.useLanguage("ru");
+    assert(f.session.filterCommand(id, (DocumentFilters filters) => filters.remove(7)) == "такого фильтра нет");
 }
