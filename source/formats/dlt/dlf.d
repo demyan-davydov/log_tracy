@@ -511,7 +511,7 @@ unittest
     assert(rules[1].kind == RuleKind.Exclude && !rules[1].enabled);
     assert(rules[2].kind == RuleKind.Marker);
     foreach (ref rule; rules)
-        assert(rule.conditions.length == 0 && rule.problem.empty);
+        assert(rule.conditions.length == 0);
 }
 
 @("toRule: a filter colors the rows as in dlt-viewer: a marker, or with enableMarker")

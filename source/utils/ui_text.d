@@ -18,19 +18,6 @@ struct UiText
     /// Whether there is no text (no error)
     bool empty() const pure nothrow @nogc @safe => text.length == 0;
 
-    // Written out: the hash the compiler generates for this recursive type is neither nothrow
-    // nor @safe, and AppSettings (recent files, their filters, the problems of their rules)
-    // hashes it so. Keep it in step with the fields.
-    size_t toHash() const nothrow @safe
-    {
-        size_t hash = hashOf(text, plain);
-        foreach (name; names)
-            hash = hashOf(name, hash);
-        foreach (ref value; values)
-            hash = hashOf(value.toHash(), hash);
-        return hash;
-    }
-
     /// The text as an immutable one, to be a parameter of another
     immutable(UiText) frozen() const pure nothrow @safe => immutable UiText(text, plain, names, values);
 }

@@ -22,7 +22,7 @@ import std.typecons : Nullable;
 import std.uni : icmp;
 import std.utf : toUTF16;
 import utils.text_search : TextPattern;
-import utils.ui_text : english, plainText, uiText, uiTextOf, UiText, UiTextException;
+import utils.ui_text : english, uiText, uiTextOf, UiText, UiTextException;
 
 //! What a rule does with the records it matches
 enum RuleKind : ubyte
@@ -64,9 +64,6 @@ struct FilterRule
     //! Who the rule is in its document while it is open (see RuleId); not
     //! saved, not written to the files
     RuleId id;
-    //! Why the rule can't be applied, set by an importer for what the model
-    //! can't express (e.g. the header text of a .dlf); empty if it can
-    UiText problem;
 }
 
 //! A group of rules switched on and off together: what one filter file holds
@@ -83,8 +80,6 @@ struct FilterSet
 //! enum label), empty if it can: a text for the user
 UiText ruleError(const(ColumnInfo)[] columns, ref const(FilterRule) rule)
 {
-    if (!rule.problem.empty)
-        return rule.problem;
     try
     {
         foreach (ref condition; rule.conditions)
@@ -351,7 +346,7 @@ private CompiledRule[] compileApplicable(alias take)(const(ColumnInfo)[] columns
             continue;
         foreach (ref rule; set.rules)
         {
-            if (!rule.enabled || !rule.problem.empty || !take(rule))
+            if (!rule.enabled || !take(rule))
                 continue;
             CompiledRule compiled;
             compiled.kind = rule.kind;
@@ -845,15 +840,11 @@ unittest
     assert(errorOf(rule(RuleKind.Include, text("pid", Check.Contains, "1"))).length,
         "no substring of numbers");
 
-    auto withProblem = rule(RuleKind.Include);
-    withProblem.problem = plainText("header text is not supported");
-    assert(errorOf(withProblem) == english(withProblem.problem));
-
     LogMessage!wchar a, b;
     make(a, Record("A"));
     make(b, Record("B"));
     auto filter = compileRules(rule(RuleKind.Include, text("tag", Check.Regex, "(unclosed")),
-        withProblem, rule(RuleKind.Exclude, text("tag", Check.Equals, "A")));
+        rule(RuleKind.Exclude, text("tag", Check.Equals, "A")));
     assert(!filter.matches(a) && filter.matches(b), "only the exclude rule is applied");
 }
 
@@ -985,9 +976,7 @@ unittest
     auto disabled = numbered(1);
     disabled.enabled = false;
     auto withError = numbered(2, text("nope", Check.Equals, "A"));
-    auto withProblem = numbered(3);
-    withProblem.problem = plainText("header text is not supported");
-    set.rules = [disabled, withError, withProblem];
+    set.rules = [disabled, withError];
     assert(RuleMatcher.compile(testColumns, [set]) is null, "no rule can be matched");
 
     set.rules = [numbered(4)];

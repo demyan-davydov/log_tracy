@@ -28,7 +28,8 @@ final class DocumentFilters
     private const(LogFormat) _format;
     private string _formatId; // FormatInfo.id of the log, written to the filter files
     private void delegate(LogFilter!wchar) _apply;
-    private FilterSet[] _sets; // the problems of their rules are set by check()
+    private FilterSet[] _sets;
+    private UiText[RuleId] _problems; // why a rule isn't applied, by its id: found as it comes in
     private RuleMatcher _matcher; // compiled from _sets by rematch(); null: no rules
     private RuleIdGenerator _ruleIds; // the rules get their ids when they come in
 
@@ -107,7 +108,6 @@ final class DocumentFilters
         catch (Exception e)
             return uiText("Can't load the filter: {reason}", "reason", uiTextOf(e));
         set.source = path;
-        check(set);
         identify(set);
         _sets ~= set;
         rematch();
@@ -190,7 +190,6 @@ final class DocumentFilters
             set.source = saved.source;
             set.enabled = saved.enabled;
             set.rules = copyOf(saved.rules);
-            check(set);
             identify(set);
             changed |= filtersView(set);
             _sets ~= set;
@@ -208,6 +207,8 @@ final class DocumentFilters
         if (set >= _sets.length)
             return noSuchSet();
         const changed = filtersView(_sets[set]);
+        foreach (ref r; _sets[set].rules)
+            _problems.remove(r.id);
         _sets = _sets.remove(set);
         rematch();
         if (changed)
@@ -307,6 +308,7 @@ final class DocumentFilters
         if (set >= _sets.length || rule >= _sets[set].rules.length)
             return noSuchSet();
         const changed = _sets[set].enabled && filters(_sets[set].rules[rule]);
+        _problems.remove(_sets[set].rules[rule].id);
         _sets[set].rules = _sets[set].rules.remove(rule);
         rematch();
         if (changed)
@@ -334,7 +336,7 @@ final class DocumentFilters
                     "enabled": JSONValue(rule.enabled),
                     // Only a color the rows take (see RuleMatcher): the script uses it as it is
                     "color": JSONValue(isRuleColor(rule.color) ? rule.color : ""),
-                    "error": JSONValue(say(text, rule.problem)), // see check()
+                    "error": JSONValue(say(text, problemOf(rule))), // see identify()
                     "id": JSONValue(cast(long) rule.id.toInt()), // a row refers to the rule it matches by it
                 ]);
             sets ~= JSONValue([
@@ -388,7 +390,6 @@ final class DocumentFilters
             rule = ruleFromJson(parseJSON(json));
         catch (Exception e)
             return uiText("Invalid rule: {reason}", "reason", uiTextOf(e));
-        rule.problem = ruleError(_format.columns, rule);
         // A mistake in a condition on a column of the log is refused; one on a
         // column the log doesn't have only keeps the rule from being applied
         if (rule.enabled)
@@ -399,6 +400,7 @@ final class DocumentFilters
         auto target = &_sets[set];
         const before = filtersView(*target);
         change(target, rule);
+        findProblems(*target); // of the rule changed
         rematch();
         if (before || filtersView(*target))
             apply();
@@ -413,24 +415,38 @@ final class DocumentFilters
         return _format !is null && _format.columns.canFind!(c => c.id == id);
     }
 
-    //! The rules that can't be applied to this log get their error as their
-    //! problem, so it is found once, not each time the panel is shown
-    private void check(ref FilterSet set) const
+    //! @returns why the rule can't be applied to this log (see ruleError), empty if it can
+    UiText problemOf(ref const(FilterRule) rule) const
+    {
+        if (auto problem = rule.id in _problems)
+            return *problem;
+        return UiText.init;
+    }
+
+    //! The rules that can't be applied to this log get their error kept by their id, so it is
+    //! found once, not each time the panel is shown
+    private void findProblems(ref const(FilterSet) set)
     {
         foreach (ref rule; set.rules)
-            rule.problem = ruleError(_format.columns, rule);
+        {
+            const problem = ruleError(_format.columns, rule);
+            if (problem.empty)
+                _problems.remove(rule.id);
+            else
+                _problems[rule.id] = problem;
+        }
     }
 
     //! @returns true if the rule filters the view (or would, when `anyState`,
     //! were it switched on): an include or exclude rule that can be applied
-    private static bool filters(ref const(FilterRule) rule, bool anyState = false)
+    private bool filters(ref const(FilterRule) rule, bool anyState = false) const
     {
-        return (anyState || rule.enabled) && rule.kind != RuleKind.Marker && rule.problem.empty;
+        return (anyState || rule.enabled) && rule.kind != RuleKind.Marker && problemOf(rule).empty;
     }
 
     //! @returns true if the set filters the view (or would, when `anyState`,
     //! were it switched on)
-    private static bool filtersView(ref const(FilterSet) set, bool anyState = false)
+    private bool filtersView(ref const(FilterSet) set, bool anyState = false) const
     {
         import std.algorithm.searching : any;
 
@@ -438,10 +454,12 @@ final class DocumentFilters
     }
 
     //! Gives the rules of a set that comes in their ids
+    //! and finds why the ones that can't be applied can't (findProblems)
     private void identify(ref FilterSet set)
     {
         foreach (ref rule; set.rules)
             rule.id = _ruleIds.popId();
+        findProblems(set);
     }
 
     //! Compiles the matcher of the records from the rules, after a change of them
@@ -593,7 +611,7 @@ unittest
     auto logcat = new Fixture(new LogcatFormat(LogcatFormat.Variant.Threadtime), "logcat");
     const note = logcat.filters.loadFile(path);
     assert(english(note).canFind("made for dlt"), english(note));
-    assert(logcat.filters.sets.length == 1 && !logcat.filters.sets[0].rules[0].problem.empty,
+    assert(logcat.filters.sets.length == 1 && !logcat.filters.problemOf(logcat.filters.sets[0].rules[0]).empty,
         "logcat has no app column: not applied");
 }
 
@@ -839,7 +857,7 @@ unittest
 
     const off = `{"name": "Broken", "enabled": false, "conditions": [{"column": "payload", "check": "regex", "value": "(unclosed"}]}`;
     assert(fx.filters.addRule(0, off).empty);
-    assert(!fx.filters.sets[0].rules[1].problem.empty);
+    assert(!fx.filters.problemOf(fx.filters.sets[0].rules[1]).empty);
 }
 
 @("DocumentFilters: a rule is checked for the editor, condition by condition")
@@ -866,7 +884,7 @@ unittest
     auto fx = new Fixture();
     assert(fx.filters.newSet().empty);
     assert(fx.filters.addRule(0, `{"name": "Header", "conditions": [{"column": "header", "check": "contains", "value": "X"}]}`).empty);
-    assert(fx.filters.sets[0].rules[0].enabled && !fx.filters.sets[0].rules[0].problem.empty);
+    assert(fx.filters.sets[0].rules[0].enabled && !fx.filters.problemOf(fx.filters.sets[0].rules[0]).empty);
 }
 
 @("DocumentFilters: a set is exported to a filter file or a .dlf, with its switches")
@@ -971,4 +989,18 @@ unittest
     assert(filters.addRule(0, `{"name": "x", "enabled": true, "conditions": [{"column": "nosuch", "check": "equals", "value": "1"}]}`).empty);
     assert(filters.toJson(&russian)["sets"][0]["rules"][0]["error"].str == "в журнале нет колонки «nosuch»");
     assert(filters.toJson()["sets"][0]["rules"][0]["error"].str == "no column \"nosuch\" in this log");
+}
+
+@("DocumentFilters: a rule fixed by an edit has no problem any more, one broken by it has")
+unittest
+{
+    auto fx = new Fixture;
+    assert(fx.filters.newSet().empty);
+    const broken = `{"name": "x", "enabled": false, "conditions": [{"column": "nosuch", "check": "equals", "value": "1"}]}`;
+    assert(fx.filters.addRule(0, broken).empty, "taken switched off, with its error");
+    assert(!fx.filters.problemOf(fx.filters.sets[0].rules[0]).empty);
+    assert(fx.filters.updateRule(0, 0, appRule("x", "APP1")).empty);
+    assert(fx.filters.problemOf(fx.filters.sets[0].rules[0]).empty, "fixed");
+    assert(fx.filters.updateRule(0, 0, broken).empty);
+    assert(!fx.filters.problemOf(fx.filters.sets[0].rules[0]).empty, "broken again");
 }
