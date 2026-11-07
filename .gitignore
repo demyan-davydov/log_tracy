@@ -1,34 +1,13 @@
-docs.json
 docs/*
 !docs/*.md
 !docs/stories/
 docs/stories/*
 !docs/stories/*.md
 .dub
+/build/
 .DS_Store
 .vscode
 ai-spec.md
-dlt_explorer.so
-dlt_explorer.dylib
-dlt_explorer.dll
-dlt_explorer.a
-dlt_explorer.lib
-dlt_explorer
-dlt_explorer-test-*
-settings.json
-dub.selections.json
-/libsciter.dylib
-sciter-sqlite.dylib
-sciter-webview.dylib
-*.exe
-*.pdb
-*.o
-*.obj
-*.lst
-*.dlt
-*.log
-DltExplorer.app
 
-# Sciter SDK tools next to the libraries: not used by the build
-libs/*/packfolder
-libs/*/packfolder.exe
+# logs kept at hand for debugging
+*.dlt

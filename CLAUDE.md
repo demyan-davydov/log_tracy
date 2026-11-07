@@ -9,16 +9,27 @@ loads a whole log into memory.
 
 ## Commands
 
-Build and test with **ldc2** (`--compiler=ldc2`); the scripts assume it too.
+Build and test with **ldc2** (`--compiler=ldc2`); the scripts assume it too. One script on
+every system, `scripts/build.mjs` (for people: `docs/building.md`):
 
 ```sh
-dub build --compiler=ldc2          # builds ./dlt_explorer
-dub test --compiler=ldc2           # all D unittests ("N modules passed unittests")
-node --test tests/js               # JS unit tests (pure modules such as resources/new-tab.js)
-scripts/check-windows-compile.sh   # from macOS/Linux: cross-compiles app + unittests for Windows x64, no link
-scripts\test-windows.bat           # on Windows: build + unittests
+node scripts/build.mjs                   # debug for this machine → build/osx-aarch64-debug/dlt_explorer
+node scripts/build.mjs --release         # release; --arch x64|arm64 for another architecture
+node scripts/run.mjs                     # builds as above (same options) and starts the app, its stdout here
+node scripts/build.mjs test              # D unittests ("N modules passed unittests") + JS tests
+node scripts/build.mjs dist              # release distribution in build/dist/<macos|linux|windows>/
+node scripts/build.mjs check-windows     # from macOS/Linux: compiles app + unittests for Windows x64, no link
+node scripts/build.mjs --help            # the commands and options (run.mjs --help too)
+dub build --compiler=ldc2                # the same build without the script; dub test likewise
+node --test tests/js                     # JS unit tests only (pure modules such as resources/new-tab.js)
 ```
 
+- `dub.sdl` puts every build in `build/<platform>-<arch>-<build type>/` (`osx-aarch64-unittest`
+  for `dub test`) and copies the Sciter library of `libs/` next to it (`copyFiles`): a build
+  runs from there, in a fresh worktree too. `libs/` is in Git LFS (`git lfs pull` after a
+  clone), its Sciter version in `libs/VERSION`; the app's version is `VERSION`.
+- The pure part of `scripts/build.mjs` is tested by `tests/js/build-script.test.mjs`. Linux and
+  Windows `dist` were not tried on those systems yet (`docs/backlog.md`).
 - The druntime test runner has no filter, and it stops a module's tests at the first failing
   `unittest` block. To run the tests of one module that doesn't depend on Sciter, compile it on
   its own:
@@ -29,11 +40,9 @@ scripts\test-windows.bat           # on Windows: build + unittests
     imports) and served to Sciter at `this://app/<path>` (`SciterWindow.onLoadData`): a
     JS/CSS/HTML change needs a rebuild. A new file of `resources/` is added to the list of
     `ui/app_resources` (a unittest fails until it is); the icons are not built in.
-  - `libsciter.dylib` (or `sciter.dll`) must sit next to the executable, and next to the test
-    executable for `dub test` (in a fresh worktree too). The libraries of every platform are in
-    `libs/`; the bundle scripts take them from there.
-  - `settings.json` sits next to the executable and is rewritten on exit. Run a copy of the binary
-    from another folder to keep the developer's own settings.
+  - `settings.json` sits next to the executable and is rewritten on exit: every build folder
+    has its own. Run a copy of the binary from another folder to keep the developer's own
+    settings.
   - The script's `console.log` goes to the app's stdout as `info [script]: ...` lines (errors as
     `error [script]: ...`), next to the backend's `writeln`.
 
@@ -90,8 +99,8 @@ utils  ←  sciter  ←  ui
 - `sciter/` is the D wrapper over Sciter (window, application, value, ...), `sciter/capi/` the
   C API it calls.
 - `ui/` is the window and the logic behind it; the Sciter-free part of it is unit-tested.
-- `scripts/` holds the build, bundle and check scripts; they run from the project root
-  wherever they are called from.
+- `scripts/` holds the build script (`build.mjs`: build, test, dist, Windows check) and the
+  other tools; they run from the project root wherever they are called from.
 
 ### Formats and detection
 - The formats supported now and the ones planned: `docs/formats.md`. Keep it up to date
