@@ -68,7 +68,6 @@ final class AppSession
     private Translation[] _translations; // of the interface, by locale
     private Catalog _catalog; // of the language of the interface: the texts of the session
     private bool _offerPseudo; // the pseudo locale among the languages (DLT_PSEUDO_LOCALE=1)
-    private string[] _systemLanguages; // for the dialogs of the OS, see systemLanguages
 
     /// @param open - opens a document (a LogDocument in the app)
     /// @param write - writes the settings, to their file if not given
@@ -514,34 +513,11 @@ final class AppSession
     /// now on: in the catalog it takes, pseudoized for the pseudo locale, english if none.
     /// Returns: the text of that catalog for the script, null if none (the script makes the
     /// pseudo one itself)
-    /// `setting` is the language setting `requested` comes from ("": the system's): the dialogs
-    /// of the OS follow it (systemLanguages).
-    string useLanguage(string requested, string setting = "")
+    string useLanguage(string requested)
     {
-        import std.algorithm : map;
-        import std.array : array;
-        import ui.translations : appleLanguagesFor;
-
         const text = catalogTranslationJson(_translations, requested);
         _catalog = catalogOf(requested, text);
-        _systemLanguages = appleLanguagesFor(setting, _translations.map!(t => t.locale).array);
         return _catalog.pseudo ? null : text;
-    }
-
-    /// The languages the dialogs of the OS are to be in by the language used, the first
-    /// preferred; null: those of the system (ui/system_language)
-    const(string)[] systemLanguages() const
-    {
-        return _systemLanguages;
-    }
-
-    /// The language of the user in the system as a BCP 47 tag ("ru-RU"), as the OS keeps it and
-    /// not as the app overrides it; "" if the OS doesn't tell (the script asks Sciter then)
-    string systemLanguage()
-    {
-        import ui.system_language : systemLanguageTag;
-
-        return systemLanguageTag();
     }
 
     /// `t` in the language of the interface: a text for the user the session answers with
@@ -1121,25 +1097,4 @@ unittest
     const languages = parseJSON(f.session.languagesJson());
     assert(languages.array.length == 1 && languages[0]["locale"].str == "x-pseudo");
     assert(languages[0]["name"].str == "Pseudo (for testing)");
-}
-
-@("AppSession: the dialogs of the OS follow the language setting, not the locale it gives")
-unittest
-{
-    import std.file : rmdirRecurse, write;
-    import std.path : buildPath;
-    import ui.translations : makeTestDir;
-
-    auto f = Fixture.make();
-    const dir = makeTestDir("session-system");
-    scope (exit) rmdirRecurse(dir);
-    write(buildPath(dir, "ru.json"), `{"locale": "ru", "name": "Русский", "messages": {}}`);
-    f.session.useTranslations(dir);
-
-    f.session.useLanguage("ru-RU", "");
-    assert(f.session.systemLanguages is null, "the system's: the dialogs follow the system");
-    f.session.useLanguage("ru", "ru");
-    assert(f.session.systemLanguages == ["ru"]);
-    f.session.useLanguage("de", "de");
-    assert(f.session.systemLanguages is null, "no translation of it");
 }

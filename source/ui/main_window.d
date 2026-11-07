@@ -16,7 +16,6 @@ import log_core.log_format : ColumnInfo, FormatChoice;
 import log_core.log_message : TimeKind;
 import ui.app_menu : MenuItem, MenuPlatform;
 import ui.main_menu_loader : retitleAppMenu;
-import ui.system_language : setSystemLanguages;
 import log_core.rule_filter : RuleId;
 import log_core.search_filter : checkRegex, MatchRange;
 import ui.app_session : AppSession;
@@ -149,15 +148,11 @@ class MainWindow : SciterWindow
             answer(_session.languagesJson());
             return true;
         case "useLanguage":
-            // useLanguage(locale, setting): the texts of the backend in that language from now
-            // on (the native menu retitled); answers the catalog it takes, null: none
-            if (const text = _session.useLanguage(param!string(0), param!string(1)))
+            // useLanguage(locale): the texts of the backend in that language from now on (the
+            // native menu retitled); answers the catalog it takes, null: none
+            if (const text = _session.useLanguage(param!string(0)))
                 answer(text);
             retitleAppMenu(this);
-            setSystemLanguages(_session.systemLanguages);
-            return true;
-        case "getSystemLanguage":
-            answer(_session.systemLanguage());
             return true;
         case "getColumnSettings":
             answer(_session.columnSettingsJson());
