@@ -38,11 +38,16 @@ export function paneChanges(paneIds, docIds) {
 //   { before: -1, 0 or 1 rows before the rendered ones, after: the same after
 //     them, insertAt / removeAt: the place among the rendered rows, or null }
 // `rendered`: the messages of the rendered rows, in order. null if there are none.
-export function anchorEdit(rendered, message, added) {
+// `room`: the list doesn't fill the table, all its rows are rendered. A row
+// added at an end is rendered then: counted out of sight it couldn't be
+// scrolled to. In a full list it is counted, the rendered rows stay as many.
+export function anchorEdit(rendered, message, added, room) {
     if (rendered.length === 0) return null;
     const step = added ? 1 : -1;
     const result = { before: 0, after: 0, insertAt: null, removeAt: null };
-    if (message < rendered[0]) result.before = step;
+    if (added && room && message < rendered[0]) result.insertAt = 0;
+    else if (added && room && message > rendered[rendered.length - 1]) result.insertAt = rendered.length;
+    else if (message < rendered[0]) result.before = step;
     else if (message > rendered[rendered.length - 1]) result.after = step;
     else if (added) result.insertAt = rendered.findIndex(m => m > message);
     else result.removeAt = rendered.indexOf(message);
