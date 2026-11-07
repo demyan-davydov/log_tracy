@@ -56,22 +56,29 @@ const edit = (fields) => ({ before: 0, after: 0, insertAt: null, removeAt: null,
 
 test("an anchor outside the rendered rows changes the count of rows before or after them", () => {
     const rendered = [10, 20, 30];
-    assert.deepEqual(anchorEdit(rendered, 5, true), edit({ before: 1 }));
-    assert.deepEqual(anchorEdit(rendered, 5, false), edit({ before: -1 }));
-    assert.deepEqual(anchorEdit(rendered, 40, true), edit({ after: 1 }));
-    assert.deepEqual(anchorEdit(rendered, 40, false), edit({ after: -1 }));
+    assert.deepEqual(anchorEdit(rendered, 5, true, false), edit({ before: 1 }));
+    assert.deepEqual(anchorEdit(rendered, 5, false, false), edit({ before: -1 }));
+    assert.deepEqual(anchorEdit(rendered, 40, true, false), edit({ after: 1 }));
+    assert.deepEqual(anchorEdit(rendered, 40, false, false), edit({ after: -1 }));
 });
 
 test("an anchor among the rendered rows inserts or removes its row in place", () => {
     const rendered = [10, 20, 30];
-    assert.deepEqual(anchorEdit(rendered, 15, true), edit({ insertAt: 1 }));
-    assert.deepEqual(anchorEdit(rendered, 25, true), edit({ insertAt: 2 }));
-    assert.deepEqual(anchorEdit(rendered, 10, false), edit({ removeAt: 0 }));
-    assert.deepEqual(anchorEdit(rendered, 30, false), edit({ removeAt: 2 }));
+    assert.deepEqual(anchorEdit(rendered, 15, true, false), edit({ insertAt: 1 }));
+    assert.deepEqual(anchorEdit(rendered, 25, true, false), edit({ insertAt: 2 }));
+    assert.deepEqual(anchorEdit(rendered, 10, false, false), edit({ removeAt: 0 }));
+    assert.deepEqual(anchorEdit(rendered, 30, false, false), edit({ removeAt: 2 }));
+});
+
+test("a list that doesn't fill the table shows the row of a new anchor at its end", () => {
+    const rendered = [10, 20, 30];
+    assert.deepEqual(anchorEdit(rendered, 40, true, true), edit({ insertAt: 3 }));
+    assert.deepEqual(anchorEdit(rendered, 5, true, true), edit({ insertAt: 0 }));
+    assert.deepEqual(anchorEdit(rendered, 20, false, true), edit({ removeAt: 1 }));
 });
 
 test("no rendered rows: nothing to follow", () => {
-    assert.equal(anchorEdit([], 5, true), null);
+    assert.equal(anchorEdit([], 5, true, true), null);
 });
 
 test("a tab shows the progress of loading its file, nothing otherwise", async () => {

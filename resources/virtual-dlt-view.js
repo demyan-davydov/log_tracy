@@ -198,22 +198,29 @@ export class VirtualDltTBody extends VirtualSelect {
     // Their content stays: they show the same messages. Rebuilding the list
     // instead (componentUpdate) would scroll it, rendering the rows again
     // would make them blink.
-    // @return false if no row is rendered: the caller rebuilds the list
+    // @return false if no row is rendered, or the row to show can't be read: the
+    // caller rebuilds the list
     followAnchor(message, added) {
         const vlist = this.vlist;
         const rows = [...this.children];
         const rendered = rows.map(row => Number(row.$("td.anchor")?.getAttribute("msg-index")));
         if (!vlist || rendered.some(m => !Number.isFinite(m))) return false; // an empty row
-        const edit = anchorEdit(rendered, message, added);
+        const room = vlist.itemsBefore === 0 && vlist.itemsAfter === 0 && rows.length < this.visibleRowCount();
+        const edit = anchorEdit(rendered, message, added, room);
         if (edit === null) return false;
+        // The row of the anchor, before anything changes: without it the list is rebuilt
+        let row = null;
+        if (edit.insertAt !== null) {
+            const item = this.itemAt(vlist.itemsBefore + edit.insertAt);
+            if (!item) return false;
+            row = Element.create(this.renderItem(item));
+        }
 
         vlist.itemsBefore += edit.before;
         vlist.itemsAfter += edit.after;
         if (edit.removeAt !== null) rows[edit.removeAt].remove();
-        if (edit.insertAt !== null) {
-            const item = this.itemAt(vlist.itemsBefore + edit.insertAt);
-            if (item) this.insertBefore(Element.create(this.renderItem(item)), rows[edit.insertAt]);
-        }
+        if (row && edit.insertAt < rows.length) this.insertBefore(row, rows[edit.insertAt]);
+        else if (row) this.append(row); // after the last rendered row
         const first = vlist.itemsBefore;
         for (const [i, row] of [...this.children].entries())
             row.setAttribute("view-index", first + i);
