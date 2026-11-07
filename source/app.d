@@ -13,6 +13,13 @@ import sciter.debug_output;
 
 import std.stdio : writeln;
 
+// A 64-bit build only. A log is mapped into memory whole (utils/mapped_file), and logs of a
+// gigabyte with their indexes don't fit the address space of a 32-bit process. On 32-bit
+// Windows the Sciter binding would be wrong too: its functions and callbacks are extern (C),
+// Sciter's are __stdcall there.
+static assert(size_t.sizeof == 8, "DLT Explorer is built for 64-bit systems only "
+    ~ "(logs are mapped into memory whole). Build for x86_64 or arm64.");
+
 // macOS: Workaround for Sciter not calling setNeedsDisplay on NSView.
 version (OSX)
 {
