@@ -8,7 +8,7 @@ import std.json;
 import std.stdio : writeln;
 import utils.ui_text : render, UiText;
 
-/// A file that may be a catalog: its name ("ru.json") and its text.
+/// A file that may be a catalog: its name, without a folder ("ru.json"), and its text.
 struct CatalogFile
 {
     string name;
@@ -30,7 +30,7 @@ struct Translation
 Translation[] findTranslations(const CatalogFile[] files)
 {
     import std.algorithm : endsWith, sort;
-    import std.path : baseName, stripExtension;
+    import std.path : stripExtension;
 
     Translation[] found;
     foreach (file; files)
@@ -52,7 +52,7 @@ Translation[] findTranslations(const CatalogFile[] files)
     }
 
     // The file named by its locale first, then by name: the first of a locale is taken
-    const named = (const Translation t) => t.file.baseName.stripExtension == t.locale;
+    const named = (const Translation t) => t.file.stripExtension == t.locale;
     found.sort!((a, b) => a.locale != b.locale ? a.locale < b.locale
         : named(a) != named(b) ? named(a) : a.file < b.file);
     Translation[] unique;

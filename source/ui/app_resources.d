@@ -80,27 +80,27 @@ immutable(ubyte)[] appResource(string path)
     }
 }
 
-/// The file at `url` (`this://app/<path>`), null if the url is no such address or none is built
-/// in there.
+/// The file at `url` (`this://app/<path>`, a fragment or query after it aside), null if the url
+/// is no such address or none is built in there.
 immutable(ubyte)[] appResourceOfUrl(string url)
 {
-    import std.algorithm : skipOver;
+    import std.algorithm : findSplitBefore, skipOver;
 
-    return url.skipOver(appResourceUrl) ? appResource(url) : null;
+    if (!url.skipOver(appResourceUrl))
+        return null;
+    return appResource(url.findSplitBefore("#")[0].findSplitBefore("?")[0]);
 }
 
 /// The catalogs of translations built in (resources/i18n/translations/*.json).
 CatalogFile[] builtInCatalogs()
 {
-    import std.algorithm : skipOver;
+    import std.algorithm : startsWith;
 
+    enum folder = "i18n/translations/";
     CatalogFile[] catalogs;
     static foreach (file; builtIn)
-    {{
-        string name = file;
-        if (name.skipOver("i18n/translations/"))
-            catalogs ~= CatalogFile(name, import(file));
-    }}
+        static if (file.startsWith(folder))
+            catalogs ~= CatalogFile(file[folder.length .. $], import(file));
     return catalogs;
 }
 
@@ -140,6 +140,9 @@ unittest
     assert(appResourceOfUrl("this://app/main.htm") == appResource("main.htm"));
     assert(appResourceOfUrl("this://app/i18n/i18n.js") == appResource("i18n/i18n.js"));
     assert(appResourceOfUrl("this://app/no-such.js") is null);
+    assert(appResourceOfUrl("this://app/virtual-select.css#virtual-select") == appResource("virtual-select.css"),
+        "a fragment names a part of the file");
+    assert(appResourceOfUrl("this://app/main.htm?x=1") == appResource("main.htm"));
     assert(appResourceOfUrl("file:///main.htm") is null);
     assert(appResourceOfUrl("main.htm") is null);
 }

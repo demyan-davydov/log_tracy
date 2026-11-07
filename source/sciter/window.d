@@ -47,7 +47,8 @@ class SciterWindow : SciterEventHandler
         return null;
     }
 
-    private static extern (C) UINT hostCallback(SCITER_CALLBACK_NOTIFICATION* pns, void* param)
+    // Nothing may unwind through the frames of Sciter: whatever is thrown is caught here
+    private static extern (C) UINT hostCallback(SCITER_CALLBACK_NOTIFICATION* pns, void* param) nothrow
     {
         if (pns.code != SC_LOAD_DATA)
             return 0;
@@ -61,8 +62,14 @@ class SciterWindow : SciterEventHandler
             if (data !is null)
                 _api.SciterDataReady(pns.hwnd, request.uri, data.ptr, cast(UINT) data.length);
         }
-        catch (Exception e)
-            writeln("Can't load ", request.uri.fromStringz, ": ", e.msg);
+        catch (Throwable e)
+        {
+            try
+                writeln("Can't load ", request.uri.fromStringz, ": ", e.msg);
+            catch (Exception)
+            {
+            }
+        }
         return SC_LOAD_DATA_RETURN_CODES.LOAD_OK;
     }
 
