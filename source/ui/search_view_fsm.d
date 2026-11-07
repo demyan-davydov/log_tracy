@@ -15,7 +15,7 @@ import utils.fsm : Fsm, NoTransition, To, Transition;
 import domain.document : Document, OperationFinished, OperationProgress, OperationStarted, SourceLost;
 
 import std.json : JSONValue;
-import utils.ui_text : english, plainText, UiText;
+import utils.ui_text : plainText, say, TextForUser, UiText;
 import std.sumtype : SumType, match;
 
 // ─── Output ────────────────────────────────────────────────────────────────
@@ -81,7 +81,7 @@ interface SearchViewCommands
 /// Serializes the view for JS: {"status": "<name>", "canCancel": bool, <fields of the view>}
 /// A text for the user (the error of a view) is put in by `text`: translated by the session,
 /// english if none is given.
-JSONValue toJson(in SearchViewModel vm, scope string delegate(const UiText) @safe text = null)
+JSONValue toJson(in SearchViewModel vm, scope TextForUser text = null)
 {
     import std.traits : FieldNameTuple, Unqual;
 
@@ -92,7 +92,7 @@ JSONValue toJson(in SearchViewModel vm, scope string delegate(const UiText) @saf
         static foreach (name; FieldNameTuple!T)
         {
             static if (is(typeof(__traits(getMember, v, name)) : const UiText))
-                json[name] = text is null ? english(__traits(getMember, v, name)) : text(__traits(getMember, v, name));
+                json[name] = say(text, __traits(getMember, v, name));
             else
                 json[name] = JSONValue(__traits(getMember, v, name));
         }

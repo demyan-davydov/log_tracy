@@ -10,7 +10,7 @@ module ui.filter_commands;
 //! Each command returns a message for the user: an error, or what was lost or
 //! may not fit when it was done; "" when there is nothing to say.
 
-import utils.ui_text : english, uiText, uiTextOf, UiText;
+import utils.ui_text : english, say, TextForUser, uiText, uiTextOf, UiText;
 import std.algorithm.iteration : map;
 import std.array : array;
 import formats.dlt.dlf : canLoadDlf, fromDlf, readDlf, toDlf, writeDlf;
@@ -33,10 +33,9 @@ final class DocumentFilters
     private RuleMatcher _matcher; // compiled from _sets by rematch(); null: no rules
     private RuleIdGenerator _ruleIds; // the rules get their ids when they come in
 
-    //! What puts a text for the user in the language of the interface (AppSession.textForUser),
-    //! for what is made as text here: the JSON of the panel, the name of a new set or rule;
-    //! null: english. The commands return their messages as UiText, the session puts them.
-    alias TextForUser = string delegate(const UiText) @safe;
+    // The commands return their messages as UiText, the session puts them; what is made as text
+    // here (the JSON of the panel, the name of a new set or rule) is put by the TextForUser
+    // given, english if none
 
     //! @param formatId - FormatInfo.id of the format of the log
     //! @param apply - filters the main view of the document (null: no filter)
@@ -47,10 +46,6 @@ final class DocumentFilters
         _apply = apply;
     }
 
-    private static string say(TextForUser text, const UiText t) @safe
-    {
-        return text is null ? english(t) : text(t);
-    }
 
     const(FilterSet)[] sets() const
     {
@@ -262,7 +257,7 @@ final class DocumentFilters
     {
         if (set >= _sets.length)
             return noSuchSet();
-        return edit(set, json, (s, rule) { rule.id = _ruleIds.popId(); s.rules ~= rule; });
+        return edit(set, json, (s, rule) { rule.id = _ruleIds.popId(); s.rules ~= rule; return s.rules.length - 1; });
     }
 
     //! @brief Replaces a rule of a set, as addRule takes it
@@ -270,7 +265,7 @@ final class DocumentFilters
     {
         if (set >= _sets.length || rule >= _sets[set].rules.length)
             return noSuchSet();
-        return edit(set, json, (s, r) { r.id = s.rules[rule].id; s.rules[rule] = r; });
+        return edit(set, json, (s, r) { r.id = s.rules[rule].id; s.rules[rule] = r; return rule; });
     }
 
     //! @brief Checks a rule for the editor, as addRule takes it
@@ -381,7 +376,8 @@ final class DocumentFilters
     //! one switched off is taken with its errors, as a loaded one is, so it
     //! can be renamed or switched off before it is fixed. A condition on a
     //! column the log doesn't have only keeps the rule from being applied.
-    private UiText edit(size_t set, string json, scope void delegate(FilterSet*, FilterRule) change)
+    //! `change` puts the rule in the set and returns where it is.
+    private UiText edit(size_t set, string json, scope size_t delegate(FilterSet*, FilterRule) change)
     {
         import std.json : parseJSON;
 
@@ -399,8 +395,7 @@ final class DocumentFilters
 
         auto target = &_sets[set];
         const before = filtersView(*target);
-        change(target, rule);
-        findProblems(*target); // of the rule changed
+        findProblem(target.rules[change(target, rule)]);
         rematch();
         if (before || filtersView(*target))
             apply();
@@ -428,13 +423,16 @@ final class DocumentFilters
     private void findProblems(ref const(FilterSet) set)
     {
         foreach (ref rule; set.rules)
-        {
-            const problem = ruleError(_format.columns, rule);
-            if (problem.empty)
-                _problems.remove(rule.id);
-            else
-                _problems[rule.id] = problem;
-        }
+            findProblem(rule);
+    }
+
+    private void findProblem(ref const(FilterRule) rule)
+    {
+        const problem = ruleError(_format.columns, rule);
+        if (problem.empty)
+            _problems.remove(rule.id);
+        else
+            _problems[rule.id] = problem;
     }
 
     //! @returns true if the rule filters the view (or would, when `anyState`,

@@ -17,7 +17,8 @@ struct Translation
 }
 
 /// The catalogs of `dir`, by locale; a file that is no catalog (no JSON, no locale or name)
-/// is skipped. None if `dir` doesn't exist.
+/// is skipped, so is a second catalog of a locale (a copy): the one named by the locale
+/// (ru.json) is taken, else the first by name. None if `dir` doesn't exist.
 Translation[] findTranslations(string dir)
 {
     import std.algorithm : sort;
@@ -41,8 +42,19 @@ Translation[] findTranslations(string dir)
         catch (Exception e)
             writeln("Can't read the catalog ", entry.name, ": ", e.msg);
     }
-    found.sort!((a, b) => a.locale < b.locale);
-    return found;
+    import std.path : baseName, stripExtension;
+
+    // The file named by its locale first, then by name: the first of a locale is taken
+    const named = (const Translation t) => t.path.baseName.stripExtension == t.locale;
+    found.sort!((a, b) => a.locale != b.locale ? a.locale < b.locale
+        : named(a) != named(b) ? named(a) : a.path < b.path);
+    Translation[] unique;
+    foreach (t; found)
+        if (unique.length && unique[$ - 1].locale == t.locale)
+            writeln("A second catalog of ", t.locale, " is not taken: ", t.path);
+        else
+            unique ~= t;
+    return unique;
 }
 
 /// The locale of `available` that `requested` takes ("ru-KZ" takes "ru"): the tag itself, then
@@ -70,10 +82,30 @@ string resolveLocale(string requested, const string[] available)
     // "x-..." (private use) and "i-..." (grandfathered) are no language of their own
     if (!tag.length || tag == "x" || tag == "i")
         return null;
+    // Another tag of the language, but not of another script (zh-Hant is no zh-Hans)
+    const script = scriptOf(requested.replace("_", "-").toLower);
     foreach (locale; available)
-        if (locale.toLower.split("-")[0] == tag)
+    {
+        const lower = locale.toLower;
+        const other = scriptOf(lower);
+        if (lower.split("-")[0] == tag && (script.length == 0 || other.length == 0 || other == script))
             return locale;
+    }
     return null;
+}
+
+// The script subtag of a lowered tag ("hant" of "zh-hant-tw"), "" if none: four letters
+private string scriptOf(string tag)
+{
+    import std.algorithm : all, find;
+    import std.ascii : isAlpha;
+    import std.array : split;
+
+    auto parts = tag.split("-");
+    if (parts.length < 2)
+        return "";
+    auto found = parts[1 .. $].find!(p => p.length == 4 && p.all!isAlpha);
+    return found.length ? found[0] : "";
 }
 
 /// The languages of `translations` as JSON for the script: [{"locale", "name"}].
@@ -193,6 +225,16 @@ unittest
     assert(resolveLocale("pt", ["pt-BR"]) == "pt-BR");
 }
 
+@("resolveLocale: another tag of the language, but not of another script")
+unittest
+{
+    assert(resolveLocale("zh-Hant-TW", ["zh-Hans"]) is null, "traditional is not simplified");
+    assert(resolveLocale("sr-Latn", ["sr-Cyrl"]) is null);
+    assert(resolveLocale("zh-Hant-TW", ["zh-Hans", "zh-Hant"]) == "zh-Hant");
+    assert(resolveLocale("sr-Latn-RS", ["sr"]) == "sr", "a catalog of no script is the language's");
+    assert(resolveLocale("pt-PT", ["pt-BR"]) == "pt-BR", "a region is no script");
+}
+
 @("resolveLocale: none of the language: null")
 unittest
 {
@@ -225,6 +267,19 @@ unittest
     assert(found.length == 2);
     assert(found[0] == Translation("de", "Deutsch", buildPath(dir, "de.json")));
     assert(found[1] == Translation("ru", "Русский", buildPath(dir, "ru.json")));
+}
+
+@("findTranslations: a locale twice (a copy of a catalog) is listed once, by the file named so")
+unittest
+{
+    const dir = makeTestDir("twice");
+    scope (exit) rmdirRecurse(dir);
+    write(buildPath(dir, "ru.json"), `{"locale": "ru", "name": "Русский", "messages": {}}`);
+    write(buildPath(dir, "ru-old.json"), `{"locale": "ru", "name": "Русский (старый)", "messages": {}}`);
+
+    const found = findTranslations(dir);
+    assert(found.length == 1);
+    assert(found[0].path == buildPath(dir, "ru.json"), "ru.json, not the copy");
 }
 
 @("findTranslations: no folder, no catalogs")

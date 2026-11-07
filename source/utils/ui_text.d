@@ -99,6 +99,16 @@ string english(const UiText t) @safe
     return render(t, (string text) => text);
 }
 
+/// What puts a text for the user in the language of the interface (AppSession.textForUser),
+/// given to what makes text of its own (the JSON of a view, of the filter panel)
+alias TextForUser = string delegate(const UiText) @safe;
+
+/// `t` put by `text`; in english if there is none
+string say(scope TextForUser text, const UiText t) @safe
+{
+    return text is null ? english(t) : text(t);
+}
+
 /// An exception that carries a text for the user; its message is the english of the text.
 class UiTextException : Exception
 {

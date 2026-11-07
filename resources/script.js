@@ -125,16 +125,22 @@ function stopList(logList) {
 }
 
 function initApp() {
-    restoreSettings();
-    restoreLanguage();
+    let settings = null;
+    try {
+        settings = backend.settings();
+    } catch (e) {
+        console.error("Failed to read the settings:", e);
+    }
+    restoreSettings(settings);
+    restoreLanguage(settings?.language || "");
     setupMenuBar();
     setupEvents();
     refreshTabs();
 }
 
-function restoreSettings() {
+// The theme and the font size of the settings as saved (null: none)
+function restoreSettings(settings) {
     try {
-        const settings = backend.settings();
         if (settings) {
             if (settings.theme) {
                 setTheme(settings.theme);
@@ -242,13 +248,7 @@ function setTheme(theme) {
 
 // The language of the settings, apart from the rest of them: whatever fails
 // there, the setting must be known, or closing would save the system's instead
-function restoreLanguage() {
-    let setting = "";
-    try {
-        setting = backend.settings()?.language || "";
-    } catch (e) {
-        console.error("Failed to read the language:", e);
-    }
+function restoreLanguage(setting) {
     currentLanguage = setting;
     try {
         setLanguage(setting);
