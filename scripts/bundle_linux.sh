@@ -30,8 +30,18 @@ cp "libs/linux/$LIB_ARCH/libsciter.so" "$DIST_DIR/" || exit 1
 # The icon (the files of the interface are built into the binary)
 cp resources/app.png "$DIST_DIR/"
 
-# Copy desktop file
-cp dlt_explorer.desktop "$DIST_DIR/"
+# The desktop entry: what puts the app with its icon in the menu of applications
+INSTALL_DIR="/opt/$APP_NAME"
+cat > "$DIST_DIR/$APP_NAME.desktop" <<EOF
+[Desktop Entry]
+Name=DLT Explorer
+Comment=DLT file viewer and analyzer
+Exec=$INSTALL_DIR/$APP_NAME
+Icon=$INSTALL_DIR/app.png
+Terminal=false
+Type=Application
+Categories=Development;Utility;
+EOF
 
 echo "Done! Linux distribution created in '$DIST_DIR'."
-echo "To install, copy '$DIST_DIR' to /opt/$APP_NAME and link the desktop file."
+echo "To install, copy '$DIST_DIR' to $INSTALL_DIR and link $APP_NAME.desktop."

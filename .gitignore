@@ -28,7 +28,6 @@ sciter-webview.dylib
 *.dlt
 *.log
 DltExplorer.app
-dlt_explorer.desktop
 
 # Sciter SDK tools next to the libraries: not used by the build
 libs/*/packfolder
