@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseCommand, dubArgs, distArch, infoPlist, desktopEntry, sciterLibrary, isLfsPointer,
-    compilerArgs } from "../../scripts/build.mjs";
+    compilerArgs, commands, buildUsage, runUsage } from "../../scripts/build.mjs";
 
 test("build in debug for the machine by default", () => {
     assert.deepEqual(parseCommand([]), { command: "build", release: false, arch: null });
@@ -88,4 +88,24 @@ test("the compiler arguments dub describes, separated by zeros, without the reso
         + "\0\0/p/source/app.d\0/p/resources/app.rc\0/p/source/ui/x.d";
     assert.deepEqual(compilerArgs(described), ["-I/p/source/", "-I/d/source/", "-J/p/resources/",
         "-preview=in", "-mtriple=x86_64-windows-msvc", "/p/source/app.d", "/p/source/ui/x.d"]);
+});
+
+test("--help or -h asks for the help, whatever else is given", () => {
+    const help = { command: "help", release: false, arch: null };
+    assert.deepEqual(parseCommand(["--help"]), help);
+    assert.deepEqual(parseCommand(["-h"]), help);
+    assert.deepEqual(parseCommand(["dist", "--arch", "arm64", "--help"]), help);
+    assert.deepEqual(parseCommand(["pack", "-h"]), help);
+});
+
+test("the help names every command and option", () => {
+    assert.ok(commands.length >= 4);
+    for (const command of commands) assert.match(buildUsage, new RegExp(`\\b${command}\\b`), command);
+    for (const usage of [buildUsage, runUsage]) {
+        assert.match(usage, /--release/);
+        assert.match(usage, /--arch x64\|arm64/);
+        assert.match(usage, /--help/);
+    }
+    assert.match(runUsage, /run\.mjs/);
+    assert.doesNotMatch(runUsage, /check-windows/);
 });

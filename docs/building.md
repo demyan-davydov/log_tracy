@@ -89,6 +89,7 @@ node scripts/build.mjs --arch x64         # another architecture: x64 or arm64
 node scripts/build.mjs test               # the D unittests and the JS tests
 node scripts/build.mjs dist               # a distribution
 node scripts/build.mjs check-windows      # compiles for Windows x64 from macOS or Linux
+node scripts/build.mjs --help             # the commands and options
 ```
 
 `node scripts/run.mjs` builds as `build.mjs` does, with the same `--release` and `--arch`, and

@@ -1,11 +1,8 @@
 // Builds, tests and packs DLT Explorer on macOS, Linux and Windows alike: one script instead of
 // one per system. dub does the building: dub.sdl puts every build in
 // build/<platform>-<arch>-<build type>/ with the Sciter library of libs/ next to the program.
-//   node scripts/build.mjs [build] [--release] [--arch x64|arm64]   debug for this machine by default
-//   node scripts/build.mjs test [--arch ...]       the D unittests and the JS tests (tests/js)
-//   node scripts/build.mjs dist [--arch ...]       a release distribution in build/dist/<system>/
-//   node scripts/build.mjs check-windows           compiles the app and its unittests for Windows x64
-//                                                  from macOS or Linux, without linking
+// The commands and options: `node scripts/build.mjs --help` (buildUsage below), the setup and
+// more: docs/building.md.
 // Builds and starts the program: scripts/run.mjs. Tests: tests/js/build-script.test.mjs.
 import { spawnSync } from "node:child_process";
 import { chmodSync, closeSync, copyFileSync, cpSync, mkdirSync, mkdtempSync, openSync, readdirSync,
@@ -14,7 +11,42 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const commands = ["build", "test", "dist", "check-windows"];
+export const commands = ["build", "test", "dist", "check-windows"];
+
+/// What `--help` prints. Every command and option is in it: tests/js/build-script.test.mjs.
+export const buildUsage = `Builds, tests and packs DLT Explorer. More: docs/building.md.
+
+Usage: node scripts/build.mjs [command] [options]
+
+Commands:
+  build           build the program (the default) into build/<platform>-<arch>-<type>/,
+                  the Sciter library next to it
+  test            the D unittests and the JS tests (tests/js)
+  dist            a release distribution in build/dist/<macos|linux|windows>/
+  check-windows   compile the program and its unittests for Windows x64 from macOS or
+                  Linux, without linking
+
+Options:
+  --release       a release build instead of debug (build; dist always is)
+  --arch x64|arm64
+                  another architecture than this machine's (build, test, dist)
+  -h, --help      this help
+
+Build and start the program: node scripts/run.mjs (see its --help).
+`;
+
+/// What `--help` of scripts/run.mjs prints.
+export const runUsage = `Builds DLT Explorer as scripts/build.mjs does and starts it from its build folder,
+its output in this terminal.
+
+Usage: node scripts/run.mjs [options]
+
+Options:
+  --release       a release build instead of debug
+  --arch x64|arm64
+                  another architecture than this machine's
+  -h, --help      this help
+`;
 const arches = ["x64", "arm64"];
 const dubArchOf = { x64: "x86_64", arm64: "aarch64" };
 
@@ -22,8 +54,10 @@ const dubArchOf = { x64: "x86_64", arm64: "aarch64" };
 export class BuildError extends Error {}
 
 /// What the command line asks: `{ command, release, arch }`, `arch` null for this machine's.
-/// A distribution is always a release.
+/// A distribution is always a release. `--help` anywhere asks for the help (command "help")
+/// whatever else is there.
 export function parseCommand(argv) {
+    if (argv.includes("--help") || argv.includes("-h")) return { command: "help", release: false, arch: null };
     let command = null;
     let release = false;
     let arch = null;
@@ -330,7 +364,8 @@ function checkWindows() {
 function main(argv) {
     process.chdir(fileURLToPath(new URL("..", import.meta.url))); // the project root
     const { command, release, arch } = parseCommand(argv);
-    if (command === "build") console.log(`Built: ${build({ release, arch })}`);
+    if (command === "help") process.stdout.write(buildUsage);
+    else if (command === "build") console.log(`Built: ${build({ release, arch })}`);
     else if (command === "test") test({ arch });
     else if (command === "dist") dist(arch);
     else checkWindows();

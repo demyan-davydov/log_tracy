@@ -19,6 +19,7 @@ node scripts/run.mjs                     # builds as above (same options) and st
 node scripts/build.mjs test              # D unittests ("N modules passed unittests") + JS tests
 node scripts/build.mjs dist              # release distribution in build/dist/<macos|linux|windows>/
 node scripts/build.mjs check-windows     # from macOS/Linux: compiles app + unittests for Windows x64, no link
+node scripts/build.mjs --help            # the commands and options (run.mjs --help too)
 dub build --compiler=ldc2                # the same build without the script; dub test likewise
 node --test tests/js                     # JS unit tests only (pure modules such as resources/new-tab.js)
 ```
