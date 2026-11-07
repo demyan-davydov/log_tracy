@@ -1,5 +1,7 @@
 module formats.registry;
 
+import utils.ui_text : uiText, UiTextException;
+
 import log_core.log_format;
 import formats.dlt.format : DltDetector;
 import formats.access_log : AccessLogDetector;
@@ -47,7 +49,7 @@ LogFormat detectFormat(string path, const(ubyte)[] data, out FormatChoice choice
     }
 
     if (best == all.length)
-        throw new Exception("unknown log format");
+        throw new UiTextException(uiText("not a log of a format DLT Explorer can read"));
     choice = FormatChoice(all[best].info.id, bestDetection.variant);
     return all[best].create(bestDetection.variant, head);
 }
@@ -60,7 +62,7 @@ LogFormat createFormat(FormatChoice choice, const(ubyte)[] data)
     foreach (detector; detectors())
         if (detector.info.id == choice.id)
             return detector.create(choice.variant, data[0 .. min(data.length, detectionHeadSize)]);
-    throw new Exception("unknown log format \"" ~ choice.id ~ "\"");
+    throw new UiTextException(uiText("unknown log format \"{format}\"", "format", choice.id));
 }
 
 //! @returns the format with the id, or FormatInfo.init if there is none

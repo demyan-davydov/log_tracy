@@ -86,3 +86,22 @@ test("the item of a mnemonic key: Alt+letter on the bar, the letter alone in an 
     assert.equal(mnemonicOf(items, key("KeyN"), false), -1);
     assert.equal(mnemonicOf(items, key("Digit1"), false), -1);
 });
+
+test("a cyrillic mnemonic is the key of its letter on the russian layout, whatever layout is on", () => {
+    const items = [
+        { label: "Файл", mnemonic: 0, items: [] },
+        { label: "Выход", mnemonic: 1, command: "app.quit" },
+        { label: "Жёлтый", mnemonic: 1, command: "yellow" },
+        { label: "Юг", mnemonic: 0, command: "south" },
+    ];
+    assert.equal(mnemonicOf(items, key("KeyA", { altKey: true }), true), 0); // Ф
+    assert.equal(mnemonicOf(items, key("KeyS"), false), 1); // ы
+    assert.equal(mnemonicOf(items, key("Backquote"), false), 2); // ё
+    assert.equal(mnemonicOf(items, key("Period"), false), 3); // Ю
+    assert.equal(mnemonicOf(items, key("KeyF"), false), -1);
+});
+
+test("a mnemonic of no known key is none", () => {
+    assert.equal(mnemonicOf([{ label: "1st", mnemonic: 0, command: "a" }], key("Digit1"), false), -1);
+    assert.equal(mnemonicOf([{ label: "Ω", mnemonic: 0, command: "a" }], key("KeyW"), false), -1);
+});

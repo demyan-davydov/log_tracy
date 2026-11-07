@@ -5,6 +5,7 @@ module domain.document;
 
 import log_core.log_message;
 import log_core.log_filter : LogFilter;
+import utils.ui_text : UiText;
 
 import domain.document_id;
 import log_core.log_format : ColumnInfo, FormatChoice, LogFormat;
@@ -138,5 +139,5 @@ struct OperationFinished
 
     Document.Operation operation;
     Result result;
-    string error; // set when result == Failed
+    UiText error; // set when result == Failed: for the user, translated where it is shown
 }

@@ -1099,7 +1099,7 @@ version (Posix)
 
         assert(truncated);
         assert(finished.result == OperationFinished.Result.Failed, "the load can't complete");
-        assert(finished.error == LogIndex.sourceLostMessage);
+        assert(finished.error == LogIndex.sourceLostText());
         assert(lost, "SourceLost is published");
         assert(views.main == Views.State.Failed);
     }

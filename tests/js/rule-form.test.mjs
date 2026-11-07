@@ -136,3 +136,21 @@ test("only a mistake on a column of the log blocks the rule, not a column it doe
     assert.equal(errorsOfRows(rows, columns, kept, ["bad regex"], [false]).blocking, true,
         "a second condition on a column of the log");
 });
+
+test("a kept condition in words of the language of the interface", async () => {
+    const { setCatalog } = await import("../../resources/i18n/i18n.js");
+    setCatalog({ locale: "ru", messages: {
+        "{column} from {min} to {max}": "{column} от {min} до {max}",
+        "{column} contains \"{value}\"": "{column} содержит «{value}»",
+        "{condition} (any case)": "{condition} (без учета регистра)",
+    } });
+    try {
+        assert.equal(describeCondition({ column: "msgid", check: "range", min: 1, max: 5 }), "msgid от 1 до 5");
+        assert.equal(describeCondition({ column: "header", check: "contains", value: "X", ignoreCase: true }),
+            "header содержит «X» (без учета регистра)", "the quotes are those of the translation");
+        assert.equal(describeCondition({ column: "msgid", check: "equals", value: 3 }), "msgid equals 3", "not translated: english");
+        assert.equal(describeCondition({ column: "a", check: "newcheck", value: 3 }), "a newcheck 3", "a check unknown here: as it is");
+    } finally {
+        setCatalog(null);
+    }
+});

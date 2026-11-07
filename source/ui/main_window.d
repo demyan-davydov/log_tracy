@@ -14,6 +14,9 @@ import domain.log_document : LogDocument;
 import domain.document_item : DocumentItem;
 import log_core.log_format : ColumnInfo, FormatChoice;
 import log_core.log_message : TimeKind;
+import ui.app_menu : MenuItem, MenuPlatform;
+import ui.main_menu_loader : retitleAppMenu;
+import utils.ui_text : UiText;
 import log_core.rule_filter : RuleId;
 import log_core.search_filter : checkRegex, MatchRange;
 import ui.app_session : AppSession;
@@ -37,6 +40,18 @@ class MainWindow : SciterWindow
 {
     private AppSession _session;
 
+    /// The translations of the interface are the catalogs of `dir`
+    void useTranslations(string dir)
+    {
+        _session.useTranslations(dir);
+    }
+
+    /// The menu bar of the window on `platform`, in the language of the interface
+    MenuItem[] menuBar(MenuPlatform platform)
+    {
+        return _session.menuBar(platform);
+    }
+
     this(AppSettings settings)
     {
         _session = new AppSession(settings,
@@ -47,6 +62,8 @@ class MainWindow : SciterWindow
 
             // DLT_MENU_BAR=windows|linux: that menu bar in the window, for a try on any platform
             _session.showMenu(windowMenu(hostMenuPlatform(), environment.get("DLT_MENU_BAR", "")));
+            // DLT_PSEUDO_LOCALE=1: the pseudo translation among the languages of Settings
+            _session.offerPseudoLocale(environment.get("DLT_PSEUDO_LOCALE", "") == "1");
         }
 
         import sciter.capi.def;
@@ -127,6 +144,16 @@ class MainWindow : SciterWindow
             return true;
         case "getMenu":
             answer(_session.menuJson());
+            return true;
+        case "getLanguages":
+            answer(_session.languagesJson());
+            return true;
+        case "useLanguage":
+            // useLanguage(locale): the texts of the backend in that language from now on (the
+            // native menu retitled); answers the catalog it takes, null: none
+            if (const text = _session.useLanguage(param!string(0)))
+                answer(text);
+            retitleAppMenu(this);
             return true;
         case "getColumnSettings":
             answer(_session.columnSettingsJson());
@@ -256,26 +283,26 @@ class MainWindow : SciterWindow
         case "getFilters":
             // getFilters(docId) -> {canFilter, canDlf, sets: [...]}, see DocumentFilters.toJson
             auto filters = _session.filters(docParam());
-            answer(filters is null ? `{"canFilter":false,"canDlf":false,"sets":[]}` : filters.toJson().toString());
+            answer(filters is null ? `{"canFilter":false,"canDlf":false,"sets":[]}` : filters.toJson(&_session.textForUser).toString());
             return true;
         case "getFilterRule":
             // getFilterRule(docId, set, rule) -> the fields of the rule, null
             // if there is no such rule; rule -1: a new one
             auto filters = _session.filters(docParam());
             const rule = param!int(2);
-            answer(filters is null ? "null" : rule < 0 ? DocumentFilters.newRuleJson().toString()
+            answer(filters is null ? "null" : rule < 0 ? filters.newRuleJson(&_session.textForUser).toString()
                     : filters.ruleJson(param!int(1), rule).toString());
             return true;
         case "checkFilterRule":
             // checkFilterRule(docId, rule json) -> {error, conditions: [...]}
             auto filters = _session.filters(docParam());
-            answer(filters is null ? `{"error":"","conditions":[]}` : filters.checkRule(param!string(1)).toString());
+            answer(filters is null ? `{"error":"","conditions":[]}` : filters.checkRule(param!string(1), &_session.textForUser).toString());
             return true;
         case "loadFilterFile":
             answer(filterCommand(docParam(), f => f.loadFile(normalizePath(param!string(1)))));
             return true;
         case "newFilterSet":
-            answer(filterCommand(docParam(), f => f.newSet()));
+            answer(filterCommand(docParam(), f => f.newSet(&_session.textForUser)));
             return true;
         case "exportFilterSet":
             answer(filterCommand(docParam(), f => f.exportSet(param!int(1), normalizePath(param!string(2)))));
@@ -305,7 +332,7 @@ class MainWindow : SciterWindow
     }
 
     /// A command on the filter sets of a document, its message logged
-    private string filterCommand(DocumentId docId, scope string delegate(DocumentFilters) command)
+    private string filterCommand(DocumentId docId, scope UiText delegate(DocumentFilters) command)
     {
         const error = _session.filterCommand(docId, command);
         if (error.length)

@@ -5,6 +5,7 @@
 // are not in `columns`: they are always shown, first and last. Every
 // function returns a new format and leaves the one it got as it is.
 import { moveItem } from "./drag-order.js";
+import { tr } from "./i18n/i18n.js";
 
 // The format with the column `id` shown if it was hidden and hidden if shown
 export function toggleColumn(format, id) {
@@ -51,5 +52,5 @@ export function initialFormat(formats, current) {
 // The name of a format in the list of formats; that of the active document
 // (`current`) is marked
 export function formatLabel(format, current) {
-    return format.id === current ? `${format.name} (current file)` : format.name;
+    return format.id === current ? tr("{format} (current file)", { format: format.name }) : format.name;
 }

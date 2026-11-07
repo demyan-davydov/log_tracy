@@ -15,6 +15,7 @@ import utils.fsm : Fsm, NoTransition, To, Transition;
 import domain.document : Document, OperationFinished, OperationProgress, OperationStarted, SourceLost;
 
 import std.json : JSONValue;
+import utils.ui_text : plainText, say, TextForUser, UiText;
 import std.sumtype : SumType, match;
 
 // ─── Output ────────────────────────────────────────────────────────────────
@@ -31,7 +32,7 @@ struct LoadingFileView
 struct LoadFailedView
 {
     enum status = "loadFailed";
-    string error;
+    UiText error; // for the user, see toJson
 }
 
 /// The view shows the messages
@@ -60,7 +61,7 @@ struct FilterCancelledView
 struct FilterFailedView
 {
     enum status = "filterFailed";
-    string error;
+    UiText error; // for the user, see toJson
 }
 
 /// The file can't be read any more; the document has to be reopened or closed
@@ -91,7 +92,9 @@ interface MainViewCommands
 }
 
 /// Serializes the view for JS: {"status": "<name>", "canCancel": bool, <fields of the view>}
-JSONValue toJson(in MainViewModel vm)
+/// A text for the user (the error of a view) is put in by `text`: translated by the session,
+/// english if none is given.
+JSONValue toJson(in MainViewModel vm, scope TextForUser text = null)
 {
     import std.traits : FieldNameTuple, Unqual;
 
@@ -100,7 +103,12 @@ JSONValue toJson(in MainViewModel vm)
         auto json = JSONValue(["status": JSONValue(T.status)]);
         json["canCancel"] = __traits(hasMember, T, "canCancel");
         static foreach (name; FieldNameTuple!T)
-            json[name] = JSONValue(__traits(getMember, v, name));
+        {
+            static if (is(typeof(__traits(getMember, v, name)) : const UiText))
+                json[name] = say(text, __traits(getMember, v, name));
+            else
+                json[name] = JSONValue(__traits(getMember, v, name));
+        }
         return json;
     });
 }
@@ -117,7 +125,7 @@ struct MainViewContext
     MainViewSink view;
     MainViewCommands commands;
     uint dataVersion; // see ReadyView.dataVersion
-    string error; // of the failed operation, set before the transition to the failed state
+    UiText error; // of the failed operation, set before the transition to the failed state
 }
 
 alias MainViewFsm = Fsm!(MainViewContext, Loading, Ready, Filtering, FilterCancelled, FilterFailed,
@@ -364,7 +372,7 @@ version (unittest) private
 
         void finish(Document.Operation op, OperationFinished.Result result, string error = null)
         {
-            process(OperationFinished(op, result, error));
+            process(OperationFinished(op, result, error is null ? UiText.init : plainText(error)));
         }
 
         /// Loads the file and shows the view
@@ -413,7 +421,7 @@ unittest
 {
     auto f = Fixture.started();
     f.finish(loadOperation, Result.Failed, "bad file");
-    assert(f.sink.last == MainViewModel(LoadFailedView("bad file")));
+    assert(f.sink.last == MainViewModel(LoadFailedView(plainText("bad file"))));
 
     const shownCount = f.sink.shown.length;
     f.start(filterOperation);
@@ -466,7 +474,7 @@ unittest
 {
     auto f = Fixture.filtering();
     f.finish(filterOperation, Result.Failed, "bad regex");
-    assert(f.sink.last == MainViewModel(FilterFailedView("bad regex")));
+    assert(f.sink.last == MainViewModel(FilterFailedView(plainText("bad regex"))));
 
     f.start(filterOperation);
     assert(f.sink.last == MainViewModel(FilteringView(0)));
@@ -547,10 +555,25 @@ unittest
     }
 
     check(LoadingFileView(0.5), `{"status": "loadingFile", "canCancel": true, "progress": 0.5}`);
-    check(LoadFailedView("e"), `{"status": "loadFailed", "canCancel": false, "error": "e"}`);
+    check(LoadFailedView(plainText("e")), `{"status": "loadFailed", "canCancel": false, "error": "e"}`);
     check(ReadyView(3), `{"status": "ready", "canCancel": false, "dataVersion": 3}`);
     check(FilteringView(0.25), `{"status": "filtering", "canCancel": true, "progress": 0.25}`);
     check(FilterCancelledView(), `{"status": "filterCancelled", "canCancel": false}`);
-    check(FilterFailedView("e"), `{"status": "filterFailed", "canCancel": false, "error": "e"}`);
+    check(FilterFailedView(plainText("e")), `{"status": "filterFailed", "canCancel": false, "error": "e"}`);
     check(SourceLostView(), `{"status": "sourceLost", "canCancel": false}`);
+}
+
+@("MainViewModel: the error of a view is put in by the text given, its parameters as they are")
+unittest
+{
+    import utils.ui_text : uiText;
+
+    const view = MainViewModel(LoadFailedView(uiText("can't read the file: {reason}", "reason", "I/O error")));
+    assert(toJson(view)["error"].str == "can't read the file: I/O error");
+    string russian(const UiText t) @safe
+    {
+        import utils.ui_text : render;
+        return render(t, (string s) => s == "can't read the file: {reason}" ? "не удалось прочитать файл: {reason}" : s);
+    }
+    assert(toJson(view, &russian)["error"].str == "не удалось прочитать файл: I/O error");
 }

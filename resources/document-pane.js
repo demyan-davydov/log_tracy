@@ -13,43 +13,46 @@ import { noSearch, runSearch, searchPending, editRule } from "pane-commands.js";
 import { ruleColors } from "rule-colors.js";
 import { scrollTarget } from "row-selection.js";
 import { noTable, tableStep } from "pane-state.js";
+import { currentCatalog, tr } from "i18n/i18n.js";
+import { translateTree } from "i18n/dom.js";
+import { fileFilter, allFiles } from "file-types.js";
 
 // Texts of the main view statuses other than the table and the lost file
 const mainViewTexts = {
-    loadingFile: (vm) => `Loading file... ${percent(vm.progress)}%`,
-    loadFailed: () => "Failed to load the file",
-    filtering: (vm) => `Filtering... ${percent(vm.progress)}%`,
-    filterCancelled: () => "Filter cancelled",
-    filterFailed: () => "Filter failed",
+    loadingFile: (vm) => tr("Loading file... {percent}%", { percent: percent(vm.progress) }),
+    loadFailed: () => tr("Failed to load the file"),
+    filtering: (vm) => tr("Filtering... {percent}%", { percent: percent(vm.progress) }),
+    filterCancelled: () => tr("Filter cancelled"),
+    filterFailed: () => tr("Filter failed"),
 };
 
 // Line under the text of a status: what the user can do, or the error
 const mainViewDetails = {
-    loadingFile: () => "Cancel closes the file",
+    loadingFile: () => tr("Cancel closes the file"),
     loadFailed: (vm) => vm.error || "",
-    filterCancelled: () => "Change or clear the filters to show messages again",
+    filterCancelled: () => tr("Change or clear the filters to show messages again"),
     filterFailed: (vm) => vm.error || "",
 };
 
 // Texts of the search view statuses other than the results
 const searchViewTexts = {
-    waitingForView: () => "Waiting for the log view...",
-    searching: (vm) => `Searching... ${percent(vm.progress)}%`,
-    searchCancelled: () => "Search cancelled",
-    searchFailed: () => "Search failed",
-    sourceLost: () => "The file is no longer available",
+    waitingForView: () => tr("Waiting for the log view..."),
+    searching: (vm) => tr("Searching... {percent}%", { percent: percent(vm.progress) }),
+    searchCancelled: () => tr("Search cancelled"),
+    searchFailed: () => tr("Search failed"),
+    sourceLost: () => tr("The file is no longer available"),
 };
 
 const searchViewDetails = {
-    searchCancelled: () => "Run the search again to see results",
+    searchCancelled: () => tr("Run the search again to see results"),
     searchFailed: (vm) => vm.error || "",
 };
 
 const ruleKindMarks = { include: "+", exclude: "−", marker: "◆" };
 const ruleKindTitles = {
-    include: "Shows the records it matches",
-    exclude: "Hides the records it matches",
-    marker: "Marks the records it matches with its color"
+    include: () => tr("Shows the records it matches"),
+    exclude: () => tr("Hides the records it matches"),
+    marker: () => tr("Marks the records it matches with its color"),
 };
 
 const noFilters = { canFilter: false, canDlf: false, sets: [] };
@@ -69,12 +72,12 @@ function isInside(element, root) {
 function renderPane(splitters) {
     return <frameset class="document-pane" cols={splitters.cols}>
         <section class="left-panel sidebar">
-            <header>Filters</header>
+            <header data-tr="Filters" />
             <div class="filter-sets"></div>
             <div class="filter-message"></div>
             <div class="filter-actions">
-                <button class="btn-new-dlf">New Filter</button>
-                <button class="btn-dlf">Load Filter</button>
+                <button class="btn-new-dlf" data-tr="New Filter" />
+                <button class="btn-dlf" data-tr="Load Filter" />
             </div>
         </section>
 
@@ -91,18 +94,18 @@ function renderPane(splitters) {
                             <progress value="0" max="100"></progress>
                             <div class="status-detail"></div>
                             <div class="status-actions">
-                                <button class="btn-cancel">Cancel</button>
+                                <button class="btn-cancel" data-tr="Cancel" />
                             </div>
                         </div>
                     </div>
                     <div class="status-view overlay source-lost" tabindex="0" style="display:none;">
                         <div class="status-body">
-                            <div class="status-title">The file is no longer available</div>
+                            <div class="status-title" data-tr="The file is no longer available" />
                             <div class="status-detail status-path source-lost-path"></div>
                             <div class="status-detail status-error source-lost-error"></div>
                             <div class="status-actions">
-                                <button class="btn-lost-retry">Retry</button>
-                                <button class="btn-lost-close">Close</button>
+                                <button class="btn-lost-retry" data-tr="Retry" />
+                                <button class="btn-lost-close" data-tr="Close" />
                             </div>
                         </div>
                     </div>
@@ -122,12 +125,12 @@ function renderPane(splitters) {
             <section class="search-results-panel">
                 <div class="toolbar search-toolbar chip-search-toolbar">
                     <div class="chip-search chip-editor" tabindex="0"></div>
-                    <button class="btn-chip-history" title="Search history (↓)">▾</button>
-                    <button class="btn-chip-search">Search</button>
+                    <button class="btn-chip-history" data-tr-title="Search history (↓)">▾</button>
+                    <button class="btn-chip-search" data-tr="Search" />
                 </div>
                 <div class="chip-search-message"></div>
 
-                <header>Details / Search Results</header>
+                <header data-tr="Details / Search Results" />
                 <div class="search-body">
                     <div class="status-view overlay compact search-status" tabindex="0" style="display:none;">
                         <div class="status-body">
@@ -135,7 +138,7 @@ function renderPane(splitters) {
                             <progress value="0" max="100"></progress>
                             <div class="status-detail"></div>
                             <div class="status-actions">
-                                <button class="btn-cancel">Cancel</button>
+                                <button class="btn-cancel" data-tr="Cancel" />
                             </div>
                         </div>
                     </div>
@@ -206,10 +209,14 @@ export class DocumentPane {
         this.search = noSearch; // the search the results were found by (pane-commands.js)
         this.lastFocus = null; // focused in the panel when it was hidden
         this.coveredFocus = new Set(); // the lists a status view took the focus from
+        this.textsStale = false; // the language changed while hidden: rendered again on show
+        this.mainStatus = null; // the view a status over the table shows, null: none
+        this.searchStatus = null;
 
         container.append(renderPane(splitters));
         this.root = container.lastElementChild;
         this.root.style.display = "none";
+        translateTree(this.root); // the skeleton in the language now
         this.mainTable = this.root.$("table.main-view");
         this.searchTable = this.root.$("table.search-view");
         // The rows they ask the backend for are those of this document
@@ -246,6 +253,23 @@ export class DocumentPane {
         if (searchView !== undefined) this.updateSearchView();
     }
 
+    // The language of the interface changed: the filters and the status shown
+    // are rendered anew in it, now if the panel is shown, when it is shown
+    // otherwise. Its skeleton is translated by translateTree of the document;
+    // the tables show data; a message of the backend (an error) stays in the
+    // language it came in, until the next one
+    languageChanged() {
+        if (!this.visible) {
+            this.textsStale = true;
+            return;
+        }
+        if (this.filtersShown) this.showFilters();
+        if (this.mainStatus)
+            showStatus(this.root.$(".main-status"), this.mainStatus, mainViewTexts, mainViewDetails);
+        if (this.searchStatus)
+            showStatus(this.root.$(".search-status"), this.searchStatus, searchViewTexts, searchViewDetails);
+    }
+
     // Shows the panel, up to date. `splitters` are the sizes of the panel
     // shown before (colsState, rowsState: its frameset states, see hide()),
     // null to keep its own.
@@ -255,6 +279,10 @@ export class DocumentPane {
         if (splitters) {
             this.root.frameset.state = splitters.colsState;
             this.root.$("frameset").frameset.state = splitters.rowsState;
+        }
+        if (this.textsStale) { // the language changed while hidden: refresh() renders it all
+            this.textsStale = false;
+            this.filtersShown = false;
         }
         this.refresh();
         // Keys go to this panel, not to the hidden one; not into a hidden table
@@ -352,6 +380,7 @@ export class DocumentPane {
         const step = tableStep(this.mainShown, vm);
         this.mainShown = step.shown;
         const cover = step.table ? null : vm.status === "sourceLost" ? lost : loading;
+        this.mainStatus = cover === loading ? vm : null;
         for (const element of [loading, lost])
             element.style.display = element === cover ? "block" : "none";
         this.takeFocus(this.mainList, cover);
@@ -396,6 +425,7 @@ export class DocumentPane {
         const step = tableStep(this.searchShown, vm);
         this.searchShown = step.shown;
         loading.style.display = step.table ? "none" : "block"; // over the table
+        this.searchStatus = step.table ? null : vm;
         this.takeFocus(this.searchList, step.table ? null : loading);
         if (step.table) this.reloadTable(this.searchList, step);
         else showStatus(loading, vm, searchViewTexts, searchViewDetails);
@@ -444,7 +474,8 @@ export class DocumentPane {
         const values = backend.filterRule(docId, set, rule);
         if (!values) return false;
         const open = (values, error) => platform.showModal("rule-editor.htm", {
-            title: rule < 0 ? "New Rule" : "Edit Rule", theme: this.host.theme(), rule: values, error,
+            title: rule < 0 ? tr("New Rule") : tr("Edit Rule"), theme: this.host.theme(), rule: values, error,
+            catalog: currentCatalog(),
             columns: backend.columns(docId),
             // What is wrong with the rule, while it is edited: the editor
             // marks it at once instead of being reopened with the error
@@ -472,16 +503,16 @@ export class DocumentPane {
         panel.clear();
         if (!info.sets || info.sets.length === 0)
             panel.append(<div class="filters-empty">{info.canFilter
-                ? "No filters: load a filter file or create a new one"
-                : "This log has no columns to filter by"}</div>);
+                ? tr("No filters: load a filter file or create a new one")
+                : tr("This log has no columns to filter by")}</div>);
         (info.sets || []).forEach((set, s) => {
             const element = <div class={set.enabled ? "filter-set" : "filter-set off"}>
                 <div class="filter-row filter-set-head" set-index={s}>
                     <input type="checkbox" class="filter-set-switch" />
-                    <span class="filter-name" title={set.source ? `Loaded from ${set.source}` : ""}>{set.name}</span>
-                    <span class="filter-button filter-export" title="Export to a filter file">⤓</span>
-                    <span class="filter-button filter-add" title="Add a rule">+</span>
-                    <span class="filter-button filter-remove" title="Remove this filter">×</span>
+                    <span class="filter-name" title={set.source ? tr("Loaded from {file}", { file: set.source }) : ""}>{set.name}</span>
+                    <span class="filter-button filter-export" title={tr("Export to a filter file")}>⤓</span>
+                    <span class="filter-button filter-add" title={tr("Add a rule")}>+</span>
+                    <span class="filter-button filter-remove" title={tr("Remove this filter")}>×</span>
                 </div>
             </div>;
             panel.append(element);
@@ -493,17 +524,17 @@ export class DocumentPane {
                 if (rule.error) classes.push("error");
                 block.append(<div class={classes.join(" ")} set-index={s} rule-index={r}>
                     <input type="checkbox" class="filter-rule-switch" />
-                    <span class="filter-kind" title={ruleKindTitles[rule.kind]}>{ruleKindMarks[rule.kind]}</span>
+                    <span class="filter-kind" title={ruleKindTitles[rule.kind]?.() ?? ""}>{ruleKindMarks[rule.kind]}</span>
                     <span class="filter-swatch" />
-                    <span class="filter-name">{rule.name || "(no name)"}</span>
-                    <span class="filter-button filter-rule-edit" title="Edit this rule (or double-click it)">✎</span>
-                    <span class="filter-button filter-rule-remove" title="Remove this rule">×</span>
+                    <span class="filter-name">{rule.name || tr("(no name)")}</span>
+                    <span class="filter-button filter-rule-edit" title={tr("Edit this rule (or double-click it)")}>✎</span>
+                    <span class="filter-button filter-rule-remove" title={tr("Remove this rule")}>×</span>
                 </div>);
                 const row = block.lastElementChild;
                 row.$(".filter-rule-switch").value = rule.enabled;
                 if (rule.color) row.$(".filter-swatch").style.setProperty("background-color", rule.color);
                 if (rule.error)
-                    block.append(<div class="filter-note">{`Not applied: ${rule.error}`}</div>);
+                    block.append(<div class="filter-note">{tr("Not applied: {error}", { error: rule.error })}</div>);
             });
         });
         this.root.$(".btn-dlf").style.display = info.canFilter ? "" : "none";
@@ -575,7 +606,7 @@ export class DocumentPane {
             const retryTime = Date.now() - retryStart;
             if (error) {
                 console.log(`Retry failed after ${retryTime} ms: ${error}`);
-                root.$(".source-lost-error").innerText = `Still unavailable: ${error}`;
+                root.$(".source-lost-error").innerText = tr("Still unavailable: {error}", { error });
                 return;
             }
             // A new document with the same id: its first rows start at the top,
@@ -598,7 +629,7 @@ export class DocumentPane {
         on("click", ".main-status .btn-cancel", () => backend.cancelMainView(this.docId));
 
         on("click", ".btn-fibex", () => {
-            const fn = platform.chooseFileToOpen("XML Files (*.xml)|*.xml|All Files (*.*)|*.*");
+            const fn = platform.chooseFileToOpen(fileFilter([[tr("XML Files"), "*.xml"], allFiles()]));
             if (fn) {
                 backend.loadFibex(fn);
                 this.reloadMainRows();
@@ -608,10 +639,11 @@ export class DocumentPane {
         // Filter sets are only appended; each one has its remove button. A filter
         // file of DLT Explorer for any log, a .dlf of dlt-viewer for a DLT one.
         on("click", ".btn-dlf", () => {
-            const filter = this.filters.canDlf
-                ? "Filter Files (*.logfilter;*.dlf)|*.logfilter;*.dlf|DLT Explorer Filters (*.logfilter)|*.logfilter|dlt-viewer Filters (*.dlf)|*.dlf|All Files (*.*)|*.*"
-                : "DLT Explorer Filters (*.logfilter)|*.logfilter|All Files (*.*)|*.*";
-            const fn = platform.chooseFileToOpen(filter);
+            const native = [tr("DLT Explorer Filters"), "*.logfilter"];
+            const types = this.filters.canDlf
+                ? [[tr("Filter Files"), "*.logfilter;*.dlf"], native, [tr("dlt-viewer Filters"), "*.dlf"], allFiles()]
+                : [native, allFiles()];
+            const fn = platform.chooseFileToOpen(fileFilter(types));
             if (fn) this.showFilterResult(backend.loadFilterFile(this.docId, fn));
         });
 
@@ -639,13 +671,13 @@ export class DocumentPane {
             // <name>.<format>.logfilter; its kind is offered first
             const fileName = this.filters.sets[set]?.fileName || "";
             const dlf = canDlf && /\.dlf$/i.test(fileName);
-            const native = "DLT Explorer Filters (*.logfilter)|*.logfilter";
-            const dlt = "dlt-viewer Filters (*.dlf)|*.dlf";
+            const native = [tr("DLT Explorer Filters"), "*.logfilter"];
+            const dlt = [tr("dlt-viewer Filters"), "*.dlf"];
             const kinds = !canDlf ? [native] : dlf ? [dlt, native] : [native, dlt];
             const params = {
-                caption: "Export Filter",
+                caption: tr("Export Filter"),
                 extension: dlf ? "dlf" : "logfilter",
-                filter: kinds.join("|") + "|All Files (*.*)|*.*"
+                filter: fileFilter([...kinds, allFiles()])
             };
             // Without its extension: the dialog adds it itself (name.dlf.dlf otherwise)
             if (fileName) params.path = fileName.replace(/\.(dlf|logfilter)$/i, "");

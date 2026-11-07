@@ -59,7 +59,8 @@ export function shownDocument(state, docCount, activeDocId) {
 }
 
 // The reason of a failed open for the line under the file: the backend reports
-// "Can't open <path> (<reason>)", the path is shown by the item itself
+// "Can't open <path> (<reason>)" (the error of the OS), the path is shown by the
+// item itself; another message as it is
 export function failureReason(message) {
     const match = /\(([^()]*)\)$/.exec(message);
     return match ? match[1] : message;

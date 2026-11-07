@@ -9,9 +9,19 @@ void loadAppMenu(MainWindow window)
 {
     version (OSX)
     {
-        setupMainMenuOSX(window, appMenu(MenuPlatform.mac));
+        setupMainMenuOSX(window, window.menuBar(MenuPlatform.mac));
         writeln("Native Menu: OSX menu setup completed.");
     }
+}
+
+/// Puts the labels of the menu of `window` in the language of the interface now (the native
+/// menu on macOS; the script draws its menu bar on the other platforms itself). The items
+/// stay as they are, only their titles change: one may be running its action (Settings...
+/// opened from the menu), and the items of macOS stay untouched.
+void retitleAppMenu(MainWindow window)
+{
+    version (OSX)
+        retitleMenuOSX(window.menuBar(MenuPlatform.mac));
 }
 
 version (OSX):
@@ -90,6 +100,7 @@ private void* makeItem(in MenuItem sub, MainWindow window)
     if (!sub.shortcut.isNone)
         msg!void(item, "setKeyEquivalentModifierMask:", macModifierMask(sub.shortcut));
     msg!void(item, "setRepresentedObject:", makeNSString(id));
+    commandItems[id] = item;
     // Pass window pointer using the tag
     msg!void(item, "setTag:", cast(long)(cast(void*) window));
     return item;
@@ -111,17 +122,11 @@ private void registerDelegateClass()
         objc_registerClassPair(clsDelegate);
 }
 
-private void setupMainMenuOSX(MainWindow window, MenuItem[] bar)
+/// The bar of the menu of the window: our menus, our items at the top of the application
+/// menu macOS has. Built once: another language only retitles it (retitleMenuOSX).
+private void buildMenuBarOSX(MainWindow window, MenuItem[] bar)
 {
     auto app = msg(cls("NSApplication"), "sharedApplication");
-    msg!void(app, "setActivationPolicy:", 0L); // NSApplicationActivationPolicyRegular
-
-    registerDelegateClass();
-    msg!void(app, "setDelegate:", make("AppDelegate"));
-
-    // Critical for menus in non-bundled apps:
-    msg!void(app, "finishLaunching");
-
     auto menubar = msg(app, "mainMenu");
     bool createdMenubar = menubar is null;
     if (createdMenubar)
@@ -135,7 +140,7 @@ private void setupMainMenuOSX(MainWindow window, MenuItem[] bar)
             msg!void(menubar, "removeItemAtIndex:", i);
     }
 
-    foreach (ref menuObj; bar)
+    foreach (barIndex, ref menuObj; bar)
     {
         // Existing app menu: our items are inserted at the top, before the system ones
         bool patchAppMenu = menuObj.role == MenuRole.app && !createdMenubar;
@@ -153,6 +158,7 @@ private void setupMainMenuOSX(MainWindow window, MenuItem[] bar)
             msg!void(menubar, "addItem:", menuItem);
             menu = msg(alloc("NSMenu"), "initWithTitle:", makeNSString(menuObj.label));
             msg!void(menuItem, "setSubmenu:", menu);
+            barMenus[barIndex] = [menuItem, menu];
         }
 
         if (menuObj.kind != MenuItemKind.submenu)
@@ -180,6 +186,59 @@ private void setupMainMenuOSX(MainWindow window, MenuItem[] bar)
 
     if (createdMenubar)
         msg!void(app, "setMainMenu:", menubar);
+}
+
+// What of the menu is ours, to retitle: the items of the commands by id, and the entries of
+// the bar we made ([item, menu]) by their index in the bar (the application menu macOS has
+// is none of them: macOS titles it)
+private __gshared void*[string] commandItems;
+private __gshared void*[2][size_t] barMenus;
+
+// Sets the title of `obj` (an NSMenu or NSMenuItem: it copies the string)
+private void setTitle(void* obj, string title)
+{
+    auto text = makeNSString(title);
+    msg!void(obj, "setTitle:", text);
+    msg!void(text, "release");
+}
+
+// The titles of our items and menus, from `bar` (as built: the same items, other labels)
+private void retitleMenuOSX(MenuItem[] bar)
+{
+    void retitle(MenuItem[] items)
+    {
+        foreach (ref item; items)
+        {
+            if (item.kind == MenuItemKind.command)
+                if (auto native = item.id in commandItems)
+                    setTitle(*native, item.label);
+            retitle(item.items);
+        }
+    }
+
+    foreach (i, ref entry; bar)
+    {
+        if (auto menus = i in barMenus)
+        {
+            setTitle((*menus)[0], entry.label);
+            setTitle((*menus)[1], entry.label);
+        }
+        retitle(entry.items);
+    }
+}
+
+private void setupMainMenuOSX(MainWindow window, MenuItem[] bar)
+{
+    auto app = msg(cls("NSApplication"), "sharedApplication");
+    msg!void(app, "setActivationPolicy:", 0L); // NSApplicationActivationPolicyRegular
+
+    registerDelegateClass();
+    msg!void(app, "setDelegate:", make("AppDelegate"));
+
+    // Critical for menus in non-bundled apps:
+    msg!void(app, "finishLaunching");
+
+    buildMenuBarOSX(window, bar);
 
     msg!void(app, "activateIgnoringOtherApps:", true);
 

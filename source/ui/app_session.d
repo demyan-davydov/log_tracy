@@ -18,15 +18,19 @@ import domain.workspace;
 import log_core.log_format : ColumnInfo, FormatChoice;
 import log_core.rule_filter : RuleId;
 import log_core.search_filter : MatchRange;
-import ui.app_menu : hostMenuPlatform, MenuPlatform, WindowMenu, windowMenu;
+import ui.app_menu : hostMenuPlatform, MenuItem, MenuPlatform, WindowMenu, windowMenu;
 import ui.app_settings;
 import ui.document_ui : DocumentUi;
 import ui.filter_commands : DocumentFilters;
 import ui.table_columns : TableColumns;
+import ui.translations : Catalog, parseCatalog, Translation, findTranslations,
+    catalogLanguagesJson = languagesJson, catalogTranslationJson = translationJson;
 import ui.main_view_fsm : toJson;
 import ui.search_view_fsm : toJson;
 
 import std.json : JSONValue;
+import utils.ui_text : english, uiText, uiTextOf, UiText;
+
 
 /// A call of a global function of the script: name(docId) or name(docId, json)
 struct ScriptCall
@@ -61,6 +65,9 @@ final class AppSession
     private bool _settingsChanged; // since they were last written
     private bool _closing; // the window closes: no more calls of the script
     private WindowMenu _menu = windowMenu(hostMenuPlatform(), ""); // the menu of the window
+    private Translation[] _translations; // of the interface, by locale
+    private Catalog _catalog; // of the language of the interface: the texts of the session
+    private bool _offerPseudo; // the pseudo locale among the languages (DLT_PSEUDO_LOCALE=1)
 
     /// @param open - opens a document (a LogDocument in the app)
     /// @param write - writes the settings, to their file if not given
@@ -103,12 +110,14 @@ final class AppSession
             if (ui.mainViewChanged)
             {
                 ui.mainViewChanged = false;
-                _scriptCalls ~= ScriptCall("onMainViewChanged", idOf(docId), toJson(ui.mainViewShown).toString());
+                _scriptCalls ~= ScriptCall("onMainViewChanged", idOf(docId),
+                    toJson(ui.mainViewShown, &textForUser).toString());
             }
             if (ui.searchViewChanged)
             {
                 ui.searchViewChanged = false;
-                _scriptCalls ~= ScriptCall("onSearchViewChanged", idOf(docId), toJson(ui.searchViewShown).toString());
+                _scriptCalls ~= ScriptCall("onSearchViewChanged", idOf(docId),
+                    toJson(ui.searchViewShown, &textForUser).toString());
             }
         }
         auto calls = _scriptCalls;
@@ -228,12 +237,12 @@ final class AppSession
         {
             import std.json : JSONValue;
 
-            writeln("Error opening file: ", e.msg);
+            writeln("Error opening file ", path, ": ", e.msg);
             // Listed with the reason, to retry or see: a file of the list stays
             // where it is, a new one goes on top
             _settings.recentFiles = withFailedFile(_settings.recentFiles, path);
             settingsChanged();
-            JSONValue failure = ["path": recentFilePath(path), "error": e.msg];
+            JSONValue failure = ["path": recentFilePath(path), "error": _catalog.translate(uiTextOf(e))];
             return OpenResult(DocumentId.init, failure.toString());
         }
     }
@@ -248,7 +257,7 @@ final class AppSession
 
         const docId = findDocument(id);
         if (!docId.isValid)
-            return "the document is not open";
+            return _catalog.translate(uiText("the document is not open"));
         const path = sourcePathOf(docId);
         // reopened in the format it had, not detected again
         const choice = _workspace.doc(docId).formatChoice;
@@ -278,7 +287,7 @@ final class AppSession
         catch (Exception e)
         {
             writeln("Retry failed for ", path, ": ", e.msg);
-            return e.msg;
+            return _catalog.translate(uiTextOf(e));
         }
     }
 
@@ -318,8 +327,8 @@ final class AppSession
                 "name": JSONValue(item.sourcePath.baseName),
                 "path": JSONValue(item.sourcePath),
                 "active": JSONValue(item.docId == _workspace.currentId),
-                "mainView": ui is null ? JSONValue(null) : toJson(ui.mainViewShown),
-                "searchView": ui is null ? JSONValue(null) : toJson(ui.searchViewShown)
+                "mainView": ui is null ? JSONValue(null) : toJson(ui.mainViewShown, &textForUser),
+                "searchView": ui is null ? JSONValue(null) : toJson(ui.searchViewShown, &textForUser)
             ]);
         }
         return JSONValue(docs).toString();
@@ -392,7 +401,7 @@ final class AppSession
             const chips = chipsFromJson(chipsJson);
             auto filter = SearchFilter.fromChips(chips);
             if (!docId.isValid)
-                return "the document is not open";
+                return _catalog.translate(uiText("the document is not open"));
             _workspace.doc(docId).applySearchFilter(filter); // null clears the search
             if (auto ui = _documentUis.get(docId, null))
                 ui.searchShown = filter;
@@ -413,7 +422,7 @@ final class AppSession
         catch (Exception e)
         {
             writeln("Error starting search: ", e.msg);
-            return e.msg;
+            return _catalog.translate(uiTextOf(e)); // a regex error of the library as it is
         }
     }
 
@@ -439,22 +448,24 @@ final class AppSession
     }
 
     /// Runs a command on the filter sets of the document; the sets are kept
-    /// in the settings of its file when it succeeds (they are copies, see
-    /// DocumentFilters). Returns: a message for the user (an error, what was
-    /// lost), "" if none
-    string filterCommand(DocumentId docId, scope string delegate(DocumentFilters) command)
+    /// in the settings of its file when it changed them (they are copies, see
+    /// DocumentFilters), also with a note (what a loaded .dlf lost).
+    /// Returns: its message for the user (an error, a note) in the language of the interface, ""
+    /// if none
+    string filterCommand(DocumentId docId, scope UiText delegate(DocumentFilters) command)
     {
         auto filters = filters(docId);
         if (filters is null)
             return "";
-        const error = command(filters);
-        if (error.length == 0)
+        const before = filters.saved();
+        const message = textForUser(command(filters));
+        if (filters.saved() != before)
         {
             if (auto path = sourcePathOf(docId))
                 _settings.recentFiles = withFilters(_settings.recentFiles, path, filters.saved());
             settingsChanged();
         }
-        return error;
+        return message;
     }
 
     // ── Menu ─────────────────────────────────────────────────────────────────
@@ -470,7 +481,58 @@ final class AppSession
     {
         import ui.app_menu : windowMenuJson;
 
-        return windowMenuJson(_menu);
+        return windowMenuJson(_menu, &_catalog.translate);
+    }
+
+    // ── Translations ─────────────────────────────────────────────────────────
+
+    /// The translations of the interface are the catalogs of `dir` (resources/i18n/translations)
+    void useTranslations(string dir)
+    {
+        _translations = findTranslations(dir);
+    }
+
+    /// Whether the languages offered end with the pseudo locale: to look for texts not translated
+    void offerPseudoLocale(bool offer)
+    {
+        _offerPseudo = offer;
+    }
+
+    /// The languages there are translations to: [{"locale", "name"}], the pseudo locale last if
+    /// offered
+    string languagesJson()
+    {
+        import ui.translations : pseudoLocale;
+
+        auto languages = _translations.dup;
+        if (_offerPseudo)
+            languages ~= Translation(pseudoLocale, "Pseudo (for testing)");
+        return catalogLanguagesJson(languages);
+    }
+
+    /// The texts of the session (the menu, the errors) are in the language `requested` (a BCP 47
+    /// tag) from now on: in the catalog it takes, english if none (the pseudo locale too: only
+    /// the script pseudoizes, its own texts).
+    /// Returns: the text of that catalog for the script, null if none
+    string useLanguage(string requested)
+    {
+        const text = catalogTranslationJson(_translations, requested);
+        _catalog = parseCatalog(text);
+        return text;
+    }
+
+    /// `t` in the language of the interface: a text for the user the session answers with
+    string textForUser(const UiText t) @safe
+    {
+        return _catalog.translate(t);
+    }
+
+    /// The menu bar of the window on `platform`, in the language of the interface
+    MenuItem[] menuBar(MenuPlatform platform)
+    {
+        import ui.app_menu : appMenu;
+
+        return appMenu(platform, &_catalog.translate);
     }
 
     // ── Columns ──────────────────────────────────────────────────────────────
@@ -510,7 +572,7 @@ final class AppSession
         });
         events.subscribe((const DocumentEvent!OperationFinished e) {
             writeln("Operation ", e.event.operation, " ", e.event.result, ", doc ", e.docId.toInt(),
-                e.event.error.length ? ": " ~ e.event.error : "");
+                e.event.error.empty ? "" : ": " ~ english(e.event.error));
             processDocumentEvent(e.docId, e.event);
         });
     }
@@ -672,6 +734,11 @@ version (unittest)
                 records.lastChoice = choice;
                 if (path.canFind("missing"))
                     throw new Exception("no such file");
+                if (path.canFind("refused"))
+                {
+                    import utils.ui_text : uiText, UiTextException;
+                    throw new UiTextException(uiText("not a log of {kinds}", "kinds", "DLT or text"));
+                }
                 auto doc = new FakeDocument();
                 records.opened[path] = doc;
                 return cast(Document) doc;
@@ -864,6 +931,25 @@ unittest
     assert(savedFilters(f.session.settings.recentFiles, "/logs/a.log").length == 1);
 }
 
+@("AppSession: a filter command that changes the sets is kept even when it has a note (what was lost)")
+unittest
+{
+    auto f = Fixture.make();
+    const id = f.session.openFile("/logs/a.log").docId;
+    assert(f.session.filterCommand(id, (DocumentFilters filters) { import utils.ui_text : plainText; filters.newSet(); return plainText("a.dlf: a note"); })
+        == "a.dlf: a note");
+    assert(savedFilters(f.session.settings.recentFiles, "/logs/a.log").length == 1);
+}
+
+@("AppSession: a filter command that fails changes nothing in the settings")
+unittest
+{
+    auto f = Fixture.make();
+    const id = f.session.openFile("/logs/a.log").docId;
+    assert(f.session.filterCommand(id, (DocumentFilters filters) => filters.remove(7)).length);
+    assert(savedFilters(f.session.settings.recentFiles, "/logs/a.log").length == 0);
+}
+
 @("AppSession: a file opened again gets the filters it had")
 unittest
 {
@@ -940,4 +1026,95 @@ unittest
     assert(f.writes.length == 2);
     assert(f.writes[1].theme == "dark" && f.writes[1].tableFontSize == 130,
         "not the preferences the session started with");
+}
+
+@("AppSession: the languages of its translations; a language used translates the menu")
+unittest
+{
+    import std.file : rmdirRecurse, write;
+    import std.json : parseJSON;
+    import std.path : buildPath;
+    import ui.app_menu : MenuPlatform;
+    import ui.translations : makeTestDir;
+
+    auto f = Fixture.make();
+    assert(parseJSON(f.session.languagesJson()).array.length == 0, "none until told where they are");
+    assert(f.session.useLanguage("ru") is null);
+
+    const dir = makeTestDir("session");
+    scope (exit) rmdirRecurse(dir);
+    const text = `{"locale": "ru", "name": "Русский", "messages": {"&File": "&Файл"}}`;
+    write(buildPath(dir, "ru.json"), text);
+
+    f.session.useTranslations(dir);
+    const languages = parseJSON(f.session.languagesJson());
+    assert(languages.array.length == 1 && languages[0]["locale"].str == "ru");
+
+    assert(f.session.menuBar(MenuPlatform.windows)[0].label == "File");
+    assert(f.session.useLanguage("ru-RU") == text, "the catalog for the script");
+    assert(f.session.menuBar(MenuPlatform.windows)[0].label == "Файл");
+    f.session.showMenu(windowMenu(MenuPlatform.windows, ""));
+    assert(parseJSON(f.session.menuJson())["menus"][0]["label"].str == "Файл");
+
+    assert(f.session.useLanguage("x-pseudo") is null, "the script makes the pseudo catalog itself");
+    assert(f.session.menuBar(MenuPlatform.windows)[0].label == "File", "the menu stays english");
+
+    assert(f.session.useLanguage("de") is null);
+    assert(f.session.menuBar(MenuPlatform.windows)[0].label == "File", "no catalog: english");
+}
+
+@("AppSession: the errors for the user are in the language used: of opening, of a retry, of the views")
+unittest
+{
+    import std.file : rmdirRecurse, write;
+    import std.json : parseJSON;
+    import std.path : buildPath;
+    import ui.translations : makeTestDir;
+
+    auto f = Fixture.make();
+    const dir = makeTestDir("session-errors");
+    scope (exit) rmdirRecurse(dir);
+    write(buildPath(dir, "ru.json"), `{"locale": "ru", "name": "Русский", "messages": {
+        "not a log of {kinds}": "не журнал формата {kinds}", "the document is not open": "документ не открыт"}}`);
+    f.session.useTranslations(dir);
+
+    assert(parseJSON(f.session.openFile("/refused.log").failureJson)["error"].str == "not a log of DLT or text");
+    f.session.useLanguage("ru");
+    assert(parseJSON(f.session.openFile("/refused.log").failureJson)["error"].str == "не журнал формата DLT or text");
+    assert(parseJSON(f.session.openFile("/missing.log").failureJson)["error"].str == "no such file",
+        "a message of the OS as it is");
+    assert(f.session.retryDocument(12345) == "документ не открыт");
+}
+
+
+@("AppSession: the pseudo locale is offered only when asked for (DLT_PSEUDO_LOCALE)")
+unittest
+{
+    import std.json : parseJSON;
+
+    auto f = Fixture.make();
+    assert(parseJSON(f.session.languagesJson()).array.length == 0);
+    f.session.offerPseudoLocale(true);
+    const languages = parseJSON(f.session.languagesJson());
+    assert(languages.array.length == 1 && languages[0]["locale"].str == "x-pseudo");
+    assert(languages[0]["name"].str == "Pseudo (for testing)");
+}
+
+@("AppSession: the message of a filter command is in the language of the interface")
+unittest
+{
+    import std.file : rmdirRecurse, write;
+    import std.path : buildPath;
+    import ui.translations : makeTestDir;
+
+    auto f = Fixture.make();
+    const dir = makeTestDir("session-filters");
+    scope (exit) rmdirRecurse(dir);
+    write(buildPath(dir, "ru.json"), `{"locale": "ru", "name": "Русский", "messages": {"no such filter": "такого фильтра нет"}}`);
+    f.session.useTranslations(dir);
+    const id = f.session.openFile("/logs/a.log").docId;
+
+    assert(f.session.filterCommand(id, (DocumentFilters filters) => filters.remove(7)) == "no such filter");
+    f.session.useLanguage("ru");
+    assert(f.session.filterCommand(id, (DocumentFilters filters) => filters.remove(7)) == "такого фильтра нет");
 }

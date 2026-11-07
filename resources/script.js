@@ -14,12 +14,16 @@ import * as platform from "platform.js";
 import { applyTheme } from "theme.js";
 import { showMenuBar } from "menu-bar.js";
 import { shortcutTextOf } from "menu-shortcuts.js";
+import { currentCatalog, pseudoLocale, setCatalog, tr, trParts } from "i18n/i18n.js";
+import { translateTree } from "i18n/dom.js";
+import { fileFilter, allFiles } from "file-types.js";
+import { requestedLocale } from "i18n/languages.js";
 
 // The table whose context menu is open: "Copy Row" copies its selected rows
 let contextList = null;
 
 function copyRowItem() {
-    return <li class="copy-row">Copy Row</li>;
+    return <li class="copy-row">{tr("Copy Row")}</li>;
 }
 
 // The most text Copy Row puts on the clipboard, in characters (16 MB of ASCII)
@@ -42,7 +46,7 @@ function copySelectedRows(list) {
     const { text, copied, total, truncated } = list.selectedRowsText(copyLimit);
     if (copied > 0) platform.copyText(text);
     if (truncated)
-        showNotice(list, `Copied ${copied} of ${total} rows: the clipboard limit is 16 MB`);
+        showNotice(list, tr("Copied {copied} of {total} rows: the clipboard limit is 16 MB", { copied, total }));
 }
 
 // A notice over the bottom of `owner` that hides itself after a few seconds
@@ -61,6 +65,7 @@ globalThis.VirtualMainViewTBody = VirtualMainViewTBody;
 globalThis.VirtualSearchViewTBody = VirtualSearchViewTBody;
 
 let currentTheme = "light";
+let currentLanguage = ""; // the setting: a BCP 47 tag, "": the language of the system
 // Font size of the log tables, % of the normal one (Settings)
 let tableFontSize = 100;
 // The state of the window (window-state.js): the documents, the New Tab, the
@@ -120,15 +125,22 @@ function stopList(logList) {
 }
 
 function initApp() {
-    restoreSettings();
+    let settings = null;
+    try {
+        settings = backend.settings();
+    } catch (e) {
+        console.error("Failed to read the settings:", e);
+    }
+    restoreSettings(settings);
+    restoreLanguage(settings?.language || "");
     setupMenuBar();
     setupEvents();
     refreshTabs();
 }
 
-function restoreSettings() {
+// The theme and the font size of the settings as saved (null: none)
+function restoreSettings(settings) {
     try {
-        const settings = backend.settings();
         if (settings) {
             if (settings.theme) {
                 setTheme(settings.theme);
@@ -163,13 +175,14 @@ function splitPath(path) {
 // content of the New Tab otherwise
 function renderPlaceholder() {
     const placeholder = $("#empty-placeholder");
-    const title = win.newTab.active ? "Open a file" : "No file open";
+    const title = win.newTab.active ? tr("Open a file") : tr("No file open");
     const openShortcut = shortcutTextOf(windowMenu.menus, "file.open");
+    const open = <button class="inline-button" id="btn-placeholder-open">{tr("Open")}</button>;
     placeholder.content(<div class="placeholder-body">
         <div class="placeholder-title">{title}</div>
-        <div class="placeholder-hint">
-            <button class="inline-button" id="btn-placeholder-open">Open</button> a log{
-                openShortcut ? [" with ", <kbd>{openShortcut}</kbd>] : []}
+        <div class="placeholder-hint">{openShortcut
+            ? trParts("{open} a log with {shortcut}", { open, shortcut: <kbd>{openShortcut}</kbd> })
+            : trParts("{open} a log", { open })}
         </div>
     </div>);
     const recentFiles = getRecentFiles();
@@ -177,7 +190,7 @@ function renderPlaceholder() {
 
     // Items one by one: append() of JSX is known to work, nested arrays aren't
     placeholder.$(".placeholder-body").append(<div class="recent-files">
-        <div class="recent-files-header">Recent files</div>
+        <div class="recent-files-header">{tr("Recent files")}</div>
     </div>);
     const list = placeholder.$(".recent-files");
     const now = Date.now();
@@ -201,7 +214,7 @@ function renderPlaceholder() {
         // Right of the name: an open file is only switched to; the others show
         // when they were worked with last, if that is known
         if (opened)
-            added.$(".recent-file-head").append(<div class="recent-file-when opened">Opened</div>);
+            added.$(".recent-file-head").append(<div class="recent-file-when opened">{tr("Opened")}</div>);
         else if (lastUsed)
             added.$(".recent-file-head").append(<div class="recent-file-when">{lastUsedText(lastUsed, now)}</div>);
         // Under the path: why the file can't be opened
@@ -209,7 +222,7 @@ function renderPlaceholder() {
         const failed = failure && failure.path === path;
         if (failed || !exists) {
             added.classList.add(failed ? "failed" : "missing");
-            const note = failed ? `Failed to open: ${failureReason(failure.error)}` : "File not found";
+            const note = failed ? tr("Failed to open: {reason}", { reason: failureReason(failure.error) }) : tr("File not found");
             added.$(".recent-file-text").append(<div class="recent-file-note">{note}</div>);
         }
     }
@@ -233,6 +246,36 @@ function setTheme(theme) {
     platform.repaintWindow(); // a switch while the window is shown
 }
 
+// The language of the settings, apart from the rest of them: whatever fails
+// there, the setting must be known, or closing would save the system's instead
+function restoreLanguage(setting) {
+    currentLanguage = setting;
+    try {
+        setLanguage(setting);
+    } catch (e) {
+        console.error("Failed to set the language:", e);
+        setCatalog(null); // english, but the marked texts and titles still there
+        translateTree(document);
+    }
+}
+
+// The texts are in the language `setting` asks for (see i18n/languages.js)
+function setLanguage(setting) {
+    const { language, country } = platform.systemLanguage();
+    const locale = requestedLocale(setting, language, country);
+    const catalog = backend.useLanguage(locale); // the menu of the backend too
+    currentLanguage = setting;
+    setCatalog(locale === pseudoLocale ? { locale, messages: {} } : catalog);
+    console.log("Language set to:", setting || "system", "->", currentCatalog()?.locale ?? "en");
+    translateTree(document); // what is built once: the markup, the skeletons of the panels
+    if (!menuSetUp) return; // starting: the rest is rendered in this language anyway
+    // Rendered already: anew, in this language
+    setupMenuBar();
+    renderedPlaceholder = null;
+    refreshTabs();
+    for (const pane of panes.values()) pane.languageChanged();
+}
+
 // Scales the log tables: the font of each column keeps its proportion to the
 // others (the cells set theirs in % of the table's). The column widths stay as
 // they are: they are minimums, the auxiliary columns keep their values on one line
@@ -247,10 +290,12 @@ function setTableFontSize(percent) {
 function openSettingsAction() {
     const result = platform.showModal("settings.htm", {
         theme: currentTheme, tableFontSize,
+        language: currentLanguage, languages: backend.languages(), catalog: currentCatalog(),
         columns: backend.columnSettings()
     });
     if (!result) return; // Cancel
     if (result.theme) setTheme(result.theme);
+    if (typeof result.language === "string" && result.language !== currentLanguage) setLanguage(result.language);
     if (result.tableFontSize) setTableFontSize(result.tableFontSize);
     if (result.columnLayouts) {
         backend.setColumnLayouts(result.columnLayouts);
@@ -259,8 +304,8 @@ function openSettingsAction() {
 }
 
 function openFileAction() {
-    const fn = platform.chooseFileToOpen(
-        "Log Files (*.dlt;*.log;*.txt)|*.dlt;*.log;*.txt|DLT Files (*.dlt)|*.dlt|Text Logs (*.log;*.txt)|*.log;*.txt|All Files (*.*)|*.*");
+    const fn = platform.chooseFileToOpen(fileFilter([[tr("Log Files"), "*.dlt;*.log;*.txt"],
+        [tr("DLT Files"), "*.dlt"], [tr("Text Logs"), "*.log;*.txt"], allFiles()]));
     if (fn) {
         console.log("File selected:", fn);
         openFile(fn);
@@ -306,7 +351,9 @@ function setupEvents() {
     document.on("contextmenusetup", "table.log-table tbody > tr", (evt, row) => {
         contextRowClicked(row);
         const menu = evt.source;
-        if (menu && !menu.$("li.copy-row")) menu.append(copyRowItem());
+        const item = menu?.$("li.copy-row");
+        if (item) item.textContent = tr("Copy Row"); // a menu kept: in the language now
+        else if (menu) menu.append(copyRowItem());
     });
     document.on("click", "menu.context > li.copy-row", () => {
         if (contextList) copySelectedRows(contextList);
@@ -325,9 +372,11 @@ function setupEvents() {
 // shown in hints, and on Windows and Linux it is drawn as the menu bar (macOS:
 // the native menu)
 let windowMenu = { menuBar: false, menus: [] };
+let menuSetUp = false; // by setupMenuBar: set up again when the language changes
 
 function setupMenuBar() {
     windowMenu = backend.menu();
+    menuSetUp = true;
     if (windowMenu.menuBar) showMenuBar($("#main-menu"), windowMenu.menus, id => onMenuCommand(id));
 }
 
@@ -509,6 +558,7 @@ globalThis.getAppState = function () {
         windowRect,
         theme: currentTheme,
         tableFontSize,
+        language: currentLanguage,
         scrollPosition: list ? (list.state.scrollPos || 0) : 0
     });
 }

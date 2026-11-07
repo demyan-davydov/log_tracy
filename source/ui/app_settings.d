@@ -171,6 +171,7 @@ struct AppSettings
     string theme;
     int tableFontSize = 100; /// font size of the log tables, % of the normal one
     ColumnLayouts columnLayouts; /// the columns of the log tables, by format
+    string language; /// of the interface: a BCP 47 tag ("ru", "x-pseudo"); "": the language of the system
 
     this(ref return scope const AppSettings rhs)
     {
@@ -181,6 +182,7 @@ struct AppSettings
         this.theme = rhs.theme;
         this.tableFontSize = rhs.tableFontSize;
         this.columnLayouts = copyOf(rhs.columnLayouts);
+        this.language = rhs.language;
     }
 
     void opAssign(const AppSettings rhs)
@@ -192,6 +194,7 @@ struct AppSettings
         this.theme = rhs.theme;
         this.tableFontSize = rhs.tableFontSize;
         this.columnLayouts = copyOf(rhs.columnLayouts);
+        this.language = rhs.language;
     }
 
     bool opEquals(const ref AppSettings rhs) const
@@ -202,7 +205,8 @@ struct AppSettings
             recentFiles == rhs.recentFiles &&
             theme == rhs.theme &&
             tableFontSize == rhs.tableFontSize &&
-            columnLayouts == rhs.columnLayouts;
+            columnLayouts == rhs.columnLayouts &&
+            language == rhs.language;
     }
 
     size_t toHash() const @safe nothrow
@@ -213,6 +217,7 @@ struct AppSettings
         hash = hashOf(recentFiles, hash);
         hash = hashOf(theme, hash);
         hash = hashOf(tableFontSize, hash);
+        hash = hashOf(language, hash);
         foreach (id, layout; columnLayouts) // in no order: summed
             hash += hashOf(layout, hashOf(id));
         return hash;
@@ -255,6 +260,7 @@ static JSONValue toJSON(in AppSettings settings)
     j.object["recentFiles"] = recentFilesToJson(settings.recentFiles);
     j.object["theme"] = JSONValue(settings.theme);
     j.object["tableFontSize"] = JSONValue(settings.tableFontSize);
+    j.object["language"] = JSONValue(settings.language);
     if (settings.columnLayouts.length)
         j.object["columnLayouts"] = columnLayoutsToJson(settings.columnLayouts);
 
@@ -356,8 +362,8 @@ AppSettings mergeAppStateFromScript(const AppSettings base, const(char)[] appSta
 }
 
 /// Reads what both the settings file and the state of the script hold: the
-/// window rect, the theme and the font size of the tables. Keys `j` doesn't
-/// have leave their values in `settings`.
+/// window rect, the theme, the font size of the tables and the language. Keys
+/// `j` doesn't have leave their values in `settings`.
 private void readPreferences(in JSONValue j, ref AppSettings settings)
 {
     if (const r = "windowRect" in j) // taken whole or not at all
@@ -367,6 +373,8 @@ private void readPreferences(in JSONValue j, ref AppSettings settings)
         settings.theme = theme.str;
     if (const fontSize = "tableFontSize" in j)
         settings.tableFontSize = fontSize.integer.to!int;
+    if (const language = "language" in j)
+        settings.language = language.type == JSONType.string ? language.str : "";
 }
 
 void saveSettings(in AppSettings settings, string path = defaultSettingsPath())
@@ -674,4 +682,33 @@ unittest
 
     const merged = mergeAppStateFromScript(base, `{"scrollPosition": 42}`);
     assert(merged.files == [FileState("", 1)]);
+}
+
+@("language: the system one by default, saved and loaded")
+unittest
+{
+    const path = buildPath(tempDir(), "dlt_explorer_settings_language_test.json");
+    scope (exit) if (exists(path)) remove(path);
+
+    assert(AppSettings.init.language == "", "the language of the system");
+    AppSettings settings;
+    settings.language = "ru";
+    saveSettings(settings, path);
+    assert(loadSettings(path).language == "ru");
+
+    std.file.write(path, `{"language": 5, "theme": "dark"}`);
+    settings = loadSettings(path);
+    assert(settings.language == "" && settings.theme == "dark", "a bad language is the system one");
+}
+
+@("mergeAppStateFromScript: the language comes from the script")
+unittest
+{
+    AppSettings base;
+    base.language = "ru";
+    assert(mergeAppStateFromScript(base, `{"language": "x-pseudo"}`).language == "x-pseudo");
+    assert(mergeAppStateFromScript(base, `{"theme": "dark"}`).language == "ru");
+    AppSettings other = base;
+    other.language = "";
+    assert(other != base, "the language is a setting of its own");
 }

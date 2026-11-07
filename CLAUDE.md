@@ -223,6 +223,31 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
   other modules render the DOM. Logic worth a test goes into a module free of both, tested by
   `tests/js` (it imports its neighbours with `./`).
 
+### Translations
+- What the user sees is written in English in the code and translated as in Qt
+  (`resources/i18n/i18n.js`): `tr("Open File...")`, `tr("Found {count}", { count })`,
+  `trc("noun", "Filter")`, `trn("{n} match", "{n} matches", n)`. The text is always a string
+  literal: `scripts/i18n-extract.mjs` finds the texts by it and brings the catalogs
+  (`resources/i18n/translations/<BCP 47 tag>.json`) up to them; `tests/js` fail when a catalog
+  is out of date. The story and the decisions: `docs/stories/i18n.md`.
+- The language changes at run time. What is built once (markup, the JSX skeleton of a panel) is
+  marked with its source instead (`<header data-tr="Filters" />`, `data-tr-title`,
+  `data-tr-placeholder`) and translated by `i18n/dom.translateTree`; what is rendered anew
+  calls `tr()` and is rendered again on a change (`DocumentPane.languageChanged`). A sentence
+  with elements in it is one text: `trParts("{open} a log with {shortcut}", {open, shortcut})`.
+- The backend translates its own texts (the menu) by the catalog the script chose
+  (`backend.useLanguage`, `ui/translations.Catalog`): `appMenu(platform, tr)` writes its labels
+  as `tr("&File")` with `tr` a parameter, so the extractor finds them.
+- A text for the user made by the backend (an error) is an english template with parameters,
+  `uiText("no column \"{column}\" in this log", "column", id)` (`utils/ui_text`), thrown in a
+  `UiTextException` (its `msg` is the english) and translated where the session answers the
+  script (`_catalog.translate(uiTextOf(e))`). Messages of the OS and libraries go in as
+  parameters, untranslated.
+- `DLT_PSEUDO_LOCALE=1` offers the pseudo translation in Settings (every text accented and
+  lengthened: what stays plain english is not translated).
+- Not translated: the contents of logs, the column titles of formats, levels, the texts of
+  shortcuts.
+
 ## Conventions
 
 - The main branch is `master`. Work goes on a branch and is merged with `--no-ff`. The story of

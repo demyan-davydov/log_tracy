@@ -47,11 +47,32 @@ export function mnemonicParts(item) {
     return { before: item.label.slice(0, i), key, after: item.label.slice(i + key.length) };
 }
 
+// The keys of the cyrillic letters on the russian layout (ЙЦУКЕН), by KeyboardEvent.code
+const russianKeys = {
+    й: "KeyQ", ц: "KeyW", у: "KeyE", к: "KeyR", е: "KeyT", н: "KeyY", г: "KeyU", ш: "KeyI", щ: "KeyO",
+    з: "KeyP", х: "BracketLeft", ъ: "BracketRight", ф: "KeyA", ы: "KeyS", в: "KeyD", а: "KeyF",
+    п: "KeyG", р: "KeyH", о: "KeyJ", л: "KeyK", д: "KeyL", ж: "Semicolon", э: "Quote", я: "KeyZ",
+    ч: "KeyX", с: "KeyC", м: "KeyV", и: "KeyB", т: "KeyN", ь: "KeyM", б: "Comma", ю: "Period",
+    ё: "Backquote",
+};
+
+// The key (KeyboardEvent.code) of the mnemonic letter `letter`: a latin one is its key, a
+// cyrillic one that of the russian layout; null if none
+function keyOfLetter(letter) {
+    const lower = letter.toLowerCase();
+    if (lower >= "a" && lower <= "z" && lower.length === 1) return `Key${lower.toUpperCase()}`;
+    return russianKeys[lower] ?? null;
+}
+
 // The index in `items` of the item whose mnemonic letter `evt` presses, -1 if
-// none: with Alt alone on the bar (`bar`), the letter alone in an open menu
+// none: with Alt alone on the bar (`bar`), the letter alone in an open menu.
+// By the key, as shortcuts: whatever layout is on (and macOS's Option, which
+// types other letters); a translated label's letter by its layout (russian)
 export function mnemonicOf(items, evt, bar) {
     if (evt.ctrlKey || evt.shiftKey || evt.metaKey || !!evt.altKey !== bar) return -1;
-    if (!evt.code?.startsWith("Key")) return -1; // letters only, by the key as shortcuts
-    const letter = evt.code.slice(3).toLowerCase();
-    return items.findIndex(item => mnemonicParts(item)?.key.toLowerCase() === letter);
+    if (!evt.code) return -1;
+    return items.findIndex(item => {
+        const parts = mnemonicParts(item);
+        return parts !== null && keyOfLetter(parts.key) === evt.code;
+    });
 }

@@ -5,6 +5,7 @@
 // activating, closing and moving a tab mean is up to the host (script.js).
 import { $, $$ } from "@sciter";
 import { setShift, pressItem, dragTo, drop, showDropMarker } from "drag-strip.js";
+import { translateTree } from "i18n/dom.js";
 
 export const NEW_TAB_ID = "new-tab";
 
@@ -159,10 +160,11 @@ export class TabStrip {
         if (!tab) {
             container.append(<div class="tab" id={NEW_TAB_ID}>
                 <span class="tab-sep"></span>
-                <span class="tab-name">New Tab</span>
+                <span class="tab-name" data-tr="New Tab"></span>
                 <span class="tab-close">×</span>
             </div>);
             tab = container.lastElementChild;
+            translateTree(tab);
         }
         if (newTab.active) tab.classList.add("active");
         else tab.classList.remove("active");

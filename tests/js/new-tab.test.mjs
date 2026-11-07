@@ -75,6 +75,7 @@ test("a file failed to open on the placeholder stays there", () => {
     assert.deepEqual(fileFailed(openNewTab(), 2), { open: true, active: true });
 });
 
+
 test("the reason of a failed open is the part in parentheses at the end", () => {
     assert.equal(failureReason("Can't open /logs/a (b).dlt (Permission denied)"), "Permission denied");
     assert.equal(failureReason("Not a DLT file"), "Not a DLT file");

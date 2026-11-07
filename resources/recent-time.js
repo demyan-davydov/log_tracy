@@ -1,12 +1,20 @@
-// When a recent file was worked with last, as the start screen says it.
-// Sciter-free; tests: tests/js/recent-time.test.mjs.
+// When a recent file was worked with last, as the start screen says it, in the language of
+// the interface. Sciter-free; tests: tests/js/recent-time.test.mjs.
+import { tr, trc, trn } from "./i18n/i18n.js";
 
 const minuteMs = 60 * 1000;
 const hourMs = 60 * minuteMs;
 const dayMs = 24 * hourMs;
-const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+// The short name of a month (0: January) in the language now; each a literal for
+// scripts/i18n-extract
+const monthName = (month) => [
+    trc("month", "Jan"), trc("month", "Feb"), trc("month", "Mar"), trc("month", "Apr"),
+    trc("month", "May"), trc("month", "Jun"), trc("month", "Jul"), trc("month", "Aug"),
+    trc("month", "Sep"), trc("month", "Oct"), trc("month", "Nov"), trc("month", "Dec"),
+][month];
 
-const plural = (count, unit) => `${count} ${unit}${count === 1 ? "" : "s"}`;
+const minutesAgo = (n) => trn("{n} minute ago", "{n} minutes ago", n);
+const hoursAgo = (n) => trn("{n} hour ago", "{n} hours ago", n);
 const twoDigits = (n) => String(n).padStart(2, "0");
 const timeOf = (date) => `${twoDigits(date.getHours())}:${twoDigits(date.getMinutes())}`;
 
@@ -24,19 +32,21 @@ function daysBetween(then, now) {
 export function lastUsedText(lastUsed, now) {
     const ago = now - lastUsed;
     if (ago >= 0) {
-        if (ago < minuteMs) return "Just now";
-        if (ago < hourMs) return `${plural(Math.floor(ago / minuteMs), "minute")} ago`;
-        if (ago < dayMs) return `${plural(Math.floor(ago / hourMs), "hour")} ago`;
+        if (ago < minuteMs) return tr("Just now");
+        if (ago < hourMs) return minutesAgo(Math.floor(ago / minuteMs));
+        if (ago < dayMs) return hoursAgo(Math.floor(ago / hourMs));
     }
     const then = new Date(lastUsed);
     const today = new Date(now);
     if (ago >= 0) {
         const days = daysBetween(then, today);
         // Over 24 hours on the same day: the day of a daylight saving change is 25 hours long
-        if (days === 0) return `${plural(Math.floor(ago / hourMs), "hour")} ago`;
-        if (days === 1) return `Yesterday, ${timeOf(then)}`;
-        if (days === 2) return `2 days ago, ${timeOf(then)}`;
+        if (days === 0) return hoursAgo(Math.floor(ago / hourMs));
+        if (days === 1) return tr("Yesterday, {time}", { time: timeOf(then) });
+        if (days === 2) return tr("2 days ago, {time}", { time: timeOf(then) });
     }
-    const year = then.getFullYear() === today.getFullYear() ? "" : ` ${then.getFullYear()}`;
-    return `${then.getDate()} ${months[then.getMonth()]}${year}, ${timeOf(then)}`;
+    const date = { day: then.getDate(), month: monthName(then.getMonth()), year: then.getFullYear(), time: timeOf(then) };
+    return then.getFullYear() === today.getFullYear()
+        ? tr("{day} {month}, {time}", date)
+        : tr("{day} {month} {year}, {time}", date);
 }

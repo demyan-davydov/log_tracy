@@ -15,6 +15,7 @@ import utils.fsm : Fsm, NoTransition, To, Transition;
 import domain.document : Document, OperationFinished, OperationProgress, OperationStarted, SourceLost;
 
 import std.json : JSONValue;
+import utils.ui_text : plainText, say, TextForUser, UiText;
 import std.sumtype : SumType, match;
 
 // ─── Output ────────────────────────────────────────────────────────────────
@@ -51,7 +52,7 @@ struct SearchCancelledView
 struct SearchFailedView
 {
     enum status = "searchFailed";
-    string error;
+    UiText error; // for the user, see toJson
 }
 
 /// The file can't be read any more
@@ -78,7 +79,9 @@ interface SearchViewCommands
 }
 
 /// Serializes the view for JS: {"status": "<name>", "canCancel": bool, <fields of the view>}
-JSONValue toJson(in SearchViewModel vm)
+/// A text for the user (the error of a view) is put in by `text`: translated by the session,
+/// english if none is given.
+JSONValue toJson(in SearchViewModel vm, scope TextForUser text = null)
 {
     import std.traits : FieldNameTuple, Unqual;
 
@@ -87,7 +90,12 @@ JSONValue toJson(in SearchViewModel vm)
         auto json = JSONValue(["status": JSONValue(T.status)]);
         json["canCancel"] = __traits(hasMember, T, "canCancel");
         static foreach (name; FieldNameTuple!T)
-            json[name] = JSONValue(__traits(getMember, v, name));
+        {
+            static if (is(typeof(__traits(getMember, v, name)) : const UiText))
+                json[name] = say(text, __traits(getMember, v, name));
+            else
+                json[name] = JSONValue(__traits(getMember, v, name));
+        }
         return json;
     });
 }
@@ -104,7 +112,7 @@ struct SearchViewContext
     SearchViewSink view;
     SearchViewCommands commands;
     uint dataVersion; // see SearchResultsView.dataVersion
-    string error; // of the failed search, set before the transition to SearchFailed
+    UiText error; // of the failed search, set before the transition to SearchFailed
 }
 
 alias SearchViewFsm = Fsm!(SearchViewContext, WaitingForView, ShowingResults, Searching,
@@ -335,7 +343,7 @@ version (unittest) private
 
         void finish(Document.Operation op, Result result, string error = null)
         {
-            process(OperationFinished(op, result, error));
+            process(OperationFinished(op, result, error is null ? UiText.init : plainText(error)));
         }
 
         /// The file is loaded: the view shows the (empty) result
@@ -429,7 +437,7 @@ unittest
 {
     auto f = Fixture.searching();
     f.finish(searchOperation, Result.Failed, "read error");
-    assert(f.sink.last == vm(SearchFailedView("read error")));
+    assert(f.sink.last == vm(SearchFailedView(plainText("read error"))));
 
     f.start(searchOperation);
     f.finish(searchOperation, Result.Completed);
@@ -552,6 +560,6 @@ unittest
     check(SearchResultsView(3), `{"status": "ready", "canCancel": false, "dataVersion": 3}`);
     check(SearchingView(0.25), `{"status": "searching", "canCancel": true, "progress": 0.25}`);
     check(SearchCancelledView(), `{"status": "searchCancelled", "canCancel": false}`);
-    check(SearchFailedView("e"), `{"status": "searchFailed", "canCancel": false, "error": "e"}`);
+    check(SearchFailedView(plainText("e")), `{"status": "searchFailed", "canCancel": false, "error": "e"}`);
     check(SearchLostView(), `{"status": "sourceLost", "canCancel": false}`);
 }

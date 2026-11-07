@@ -1,6 +1,7 @@
 // The flows of the commands of a document panel (document-pane.js), free of
 // Sciter: what the backend and the dialogs are asked comes in as functions.
 // Tests: tests/js/pane-commands.test.mjs.
+import { tr } from "./i18n/i18n.js";
 
 // ── Search ───────────────────────────────────────────────────────────────────
 // The query is committed only by Enter or the Search button; editing it doesn't
@@ -18,7 +19,7 @@ export const noSearch = Object.freeze({ committed: "[]", colors: [] });
 // @returns { search: committed now, started, message: for the toolbar, "" if none }
 export function runSearch(search, chips, colors, firstError, start) {
     const error = firstError() || start(chips);
-    if (error) return { search, started: false, message: `Search error: ${error}` };
+    if (error) return { search, started: false, message: tr("Search error: {error}", { error }) };
     return { search: Object.freeze({ committed: JSON.stringify(chips), colors: colors() }), started: true, message: "" };
 }
 

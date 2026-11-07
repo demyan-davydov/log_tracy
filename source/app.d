@@ -99,6 +99,7 @@ int main()
 
 		if (resources.length > 0)
 		{
+			win.useTranslations(buildPath(dirName(resources), "i18n", "translations"));
 			win.loadFile(resources);
 		}
 		else

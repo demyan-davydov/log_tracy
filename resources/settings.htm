@@ -2,9 +2,12 @@
 
 <!-- The Settings dialog, opened modal by openSettingsAction() in script.js.
      Its sections are listed on the left; Save applies all of them at once.
-     Parameters: { theme, tableFontSize, columns (as getColumnSettings gives
-     them, see column-settings.js) }.
-     Closes with { theme, tableFontSize, columnLayouts }, or null on Cancel. -->
+     Parameters: { theme, tableFontSize, language (the setting, "": the
+     system's), languages (of the translations, as getLanguages gives them),
+     catalog (of the translations the texts are in, null: english), columns (as
+     getColumnSettings gives them, see column-settings.js) }.
+     Closes with { theme, tableFontSize, language, columnLayouts }, or null on
+     Cancel. -->
 
 <head>
     <title>Settings</title>
@@ -112,6 +115,9 @@
         import { setShift, pressItem, dragTo, drop, showDropMarker } from "drag-strip.js";
         import * as platform from "platform.js";
         import { applyTheme } from "theme.js";
+        import { setCatalog, tr } from "i18n/i18n.js";
+        import { translateTree } from "i18n/dom.js";
+        import { languageOptions } from "i18n/languages.js";
 
         // Without parameters (opened on its own to look at it): a sample DLT log
         const params = platform.dialogParameters() || {
@@ -286,7 +292,24 @@
 
         // ── The dialog ───────────────────────────────────────────────────────
 
+        setCatalog(params.catalog || null);
+
+        // The options of the language: the system's, english, the translations
+        function renderLanguages() {
+            const select = $("select#language");
+            for (const { value, label } of languageOptions(params.languages || [], params.language || "")) {
+                const option = document.createElement("option");
+                option.setAttribute("value", value); // an <option> has no value of its own in Sciter
+                option.textContent = label;
+                select.append(option);
+            }
+            select.value = params.language || "";
+        }
+
         document.on("ready", () => {
+            translateTree(document);
+            platform.setDialogTitle(tr("Settings"));
+            renderLanguages();
             if (params.theme === "dark") {
                 applyTheme("dark");
                 $("select#theme").value = "dark";
@@ -308,6 +331,7 @@
         $("#btn-save").on("click", () => {
             platform.closeDialog({
                 theme: $("select#theme").value,
+                language: $("select#language").value,
                 tableFontSize: parseInt($("select#table-font-size").value),
                 columnLayouts: formats.length ? layoutsOf(formats) : null,
             });
@@ -322,21 +346,25 @@
 <body>
     <div id="layout">
         <nav id="sections">
-            <div class="section-tab active" section="appearance">Appearance</div>
-            <div class="section-tab" section="columns">Columns</div>
+            <div class="section-tab active" section="appearance" data-tr="Appearance"></div>
+            <div class="section-tab" section="columns" data-tr="Columns"></div>
         </nav>
         <main>
             <div class="section active" id="appearance">
-                <div class="section-title">Appearance</div>
+                <div class="section-title" data-tr="Appearance"></div>
                 <div class="setting-group">
-                    <label>Theme</label>
+                    <label data-tr="Language"></label>
+                    <select id="language"></select>
+                </div>
+                <div class="setting-group">
+                    <label data-tr="Theme"></label>
                     <select id="theme">
-                        <option value="light">Light</option>
-                        <option value="dark">Dark</option>
+                        <option value="light" data-tr="Light"></option>
+                        <option value="dark" data-tr="Dark"></option>
                     </select>
                 </div>
                 <div class="setting-group">
-                    <label>Log table font size</label>
+                    <label data-tr="Log table font size"></label>
                     <select id="table-font-size">
                         <option value="80">80%</option>
                         <option value="90">90%</option>
@@ -350,36 +378,35 @@
                 </div>
             </div>
             <div class="section" id="columns">
-                <div class="section-title">Columns</div>
-                <div class="hint">The columns of the log tables, the same for every log of a format.
-                    Drag a header to move its column, untick it to hide the column.</div>
+                <div class="section-title" data-tr="Columns"></div>
+                <div class="hint" data-tr="The columns of the log tables, the same for every log of a format. Drag a header to move its column, untick it to hide the column."></div>
                 <div id="columns-content" style="flow: vertical; border-spacing: 12dip;">
                     <div class="setting-group">
-                        <label>Format</label>
+                        <label data-tr="Format"></label>
                         <select id="column-format"></select>
                     </div>
                     <div id="column-strip">
-                        <div class="column-cell fixed" title="Always first">
+                        <div class="column-cell fixed" data-tr-title="Always first">
                             <div class="column-header-row column-header">Index</div>
                             <div class="visibility"><input type="checkbox" checked disabled /></div>
                         </div>
                         <div id="column-list"></div>
-                        <div class="column-cell fixed payload" title="Always last">
+                        <div class="column-cell fixed payload" data-tr-title="Always last">
                             <div class="column-header-row column-header" id="last-column-title">Payload</div>
                             <div class="visibility"><input type="checkbox" checked disabled /></div>
                         </div>
                     </div>
                     <div id="columns-footer">
-                        <button id="btn-reset-columns">Reset to Default</button>
+                        <button id="btn-reset-columns" data-tr="Reset to Default"></button>
                     </div>
                 </div>
-                <div class="hint" id="no-columns" style="display: none;">No format has columns to arrange.</div>
+                <div class="hint" id="no-columns" style="display: none;" data-tr="No format has columns to arrange."></div>
             </div>
         </main>
     </div>
     <footer>
-        <button id="btn-cancel">Cancel</button>
-        <button id="btn-save" class="primary">Save</button>
+        <button id="btn-cancel" data-tr="Cancel"></button>
+        <button id="btn-save" class="primary" data-tr="Save"></button>
     </footer>
 </body>
 

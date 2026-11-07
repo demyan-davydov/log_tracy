@@ -40,3 +40,29 @@ test("a time after now (the clock was set back) is shown as a date", () => {
     assert.equal(lastUsedText(at(2026, 11, 4, 16, 0), now), "4 Nov, 16:00");
     assert.equal(lastUsedText(at(2027, 2, 1, 10, 0), now), "1 Feb 2027, 10:00");
 });
+
+test("in russian: the plural forms, the words and the months of the catalog", async () => {
+    const { setCatalog } = await import("../../resources/i18n/i18n.js");
+    setCatalog({ locale: "ru", messages: {
+        "Just now": "Только что",
+        "{n} minute ago": { one: "{n} минуту назад", few: "{n} минуты назад", many: "{n} минут назад" },
+        "{n} hour ago": { one: "{n} час назад", few: "{n} часа назад", many: "{n} часов назад" },
+        "Yesterday, {time}": "Вчера, {time}",
+        "2 days ago, {time}": "Позавчера, {time}",
+        "Nov|month": "ноя",
+        "{day} {month}, {time}": "{day} {month}, {time}",
+        "{day} {month} {year}, {time}": "{day} {month} {year}, {time}",
+    } });
+    try {
+        assert.equal(lastUsedText(now, now), "Только что");
+        assert.equal(lastUsedText(at(2026, 11, 4, 15, 9), now), "21 минуту назад");
+        assert.equal(lastUsedText(at(2026, 11, 4, 12, 0), now), "3 часа назад");
+        assert.equal(lastUsedText(at(2026, 11, 3, 9, 5), now), "Вчера, 09:05");
+        assert.equal(lastUsedText(at(2026, 11, 2, 9, 5), now), "Позавчера, 09:05");
+        assert.equal(lastUsedText(at(2026, 11, 1, 23, 59), now), "1 ноя, 23:59");
+        assert.equal(lastUsedText(at(2025, 11, 1, 23, 59), now), "1 ноя 2025, 23:59");
+        assert.equal(lastUsedText(at(2026, 1, 15, 8, 0), now), "15 Jan, 08:00", "a month not translated: english");
+    } finally {
+        setCatalog(null);
+    }
+});

@@ -6,6 +6,8 @@
 // Story: docs/stories/advanced-search.md.
 
 import * as platform from "platform.js";
+import { tr } from "i18n/i18n.js";
+import { translateTree } from "i18n/dom.js";
 import {
     moveCaret, moveTo, typeInGap, typeBarInChip, deleteInGap, searchChips,
     sameQuery, assignColors, historyIndex, selection, extendCaret, selectChipsFrom, selectTo, selectAll, selectedChips, deleteSelection, insertChips,
@@ -148,14 +150,15 @@ export class SearchEditor {
             if (i === chips.length) break;
             const chip = chips[i];
             root.append(<span class={`chip ${matchColorClass(chip.color ?? i)}`} data-chip={i}>
-                <span class="chip-toggle chip-regex" title="Regular expression">.*</span>
-                <span class="chip-toggle chip-case" title="Ignore case">Aa</span>
+                <span class="chip-toggle chip-regex" data-tr-title="Regular expression">.*</span>
+                <span class="chip-toggle chip-case" data-tr-title="Ignore case">Aa</span>
                 <span class="chip-text"></span>
             </span>);
             root.lastElementChild.$(".chip-text").value = chip.text;
         }
         if (chips.length === 0)
-            root.append(<span class="placeholder">Search in payload: | starts the next condition (Enter)</span>);
+            root.append(<span class="placeholder" data-tr="Search in payload: | starts the next condition (Enter)" />);
+        translateTree(root); // marked: a language change translates them in place, the editor kept
         this.markState();
     }
 
@@ -469,7 +472,7 @@ export class SearchEditor {
         const element = this.historyElement;
         element.innerHTML = "";
         if (queries.length) for (const item of items) element.append(item);
-        else element.append(<div class="history-empty">No searches in this file yet</div>);
+        else element.append(<div class="history-empty">{tr("No searches in this file yet")}</div>);
         element.style.width = `${width}px`;
         button.popup(element, { popupAt: 7, x, y: y + height }); // returns a PopupWindow, not the element
         this.historyPopup = { element, queries, current: -1 };
