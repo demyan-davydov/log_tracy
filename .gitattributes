@@ -1,0 +1,4 @@
+# The Sciter libraries of libs/ are kept in Git LFS: the repository holds a pointer, LFS the file
+libs/**/*.dylib filter=lfs diff=lfs merge=lfs -text
+libs/**/*.so filter=lfs diff=lfs merge=lfs -text
+libs/**/*.dll filter=lfs diff=lfs merge=lfs -text
