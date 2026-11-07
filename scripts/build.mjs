@@ -8,7 +8,7 @@ import { spawnSync } from "node:child_process";
 import { chmodSync, closeSync, copyFileSync, cpSync, mkdirSync, mkdtempSync, openSync, readdirSync,
     readFileSync, readSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const commands = ["build", "test", "dist", "check-windows"];
@@ -189,8 +189,11 @@ echo "${bundle} is ready."
 /// tells the command line first.
 function run(program, args, { capture = false, echo = !capture } = {}) {
     if (echo) console.log(`> ${program} ${args.join(" ")}`);
+    // dub on Windows may be a dub.cmd (a shim of scoop or chocolatey), which only a shell
+    // starts; its arguments here are options without spaces, joined by the shell as they are
+    const shell = process.platform === "win32" && program === "dub";
     const result = spawnSync(program, args, { stdio: capture ? ["ignore", "pipe", "pipe"] : "inherit",
-        encoding: "utf8" });
+        encoding: "utf8", shell });
     if (result.error) throw new BuildError(`can't run ${program}: ${result.error.message}`);
     return result;
 }
@@ -288,13 +291,15 @@ function publish(system, make) {
 }
 
 function makeMacBundle(path, name, version, builtProgram) {
+    const target = dirname(builtProgram);
     const contents = join(path, "Contents");
     mkdirSync(join(contents, "MacOS"), { recursive: true });
     mkdirSync(join(contents, "Resources"), { recursive: true });
     const program = join(contents, "MacOS", name);
     copyFileSync(builtProgram, program);
     chmodSync(program, 0o755);
-    copyFileSync(sciterLibrary("darwin"), join(contents, "MacOS", "libsciter.dylib"));
+    // the library dub put next to the program: the one it was built and tested with
+    copyFileSync(join(target, "libsciter.dylib"), join(contents, "MacOS", "libsciter.dylib"));
     copyFileSync("resources/app.icns", join(contents, "Resources", "app.icns"));
     const tags = languages();
     for (const tag of tags) {
