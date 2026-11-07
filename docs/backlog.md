@@ -103,9 +103,12 @@
 
 ## CI
 
-Сборка и тесты на macOS, Linux и Windows (матрица) через `scripts/build.mjs`. Сейчас Windows с
-мака только компилируется без линковки. Библиотеки Sciter лежат в LFS: в CI их кешировать,
-чтобы не тратить трафик LFS на каждый запуск.
+`.github/workflows/build.yml` (история `build`): матрица macOS, Linux, Windows — `test` и `dist`
+через `scripts/build.mjs`, `check-windows` на Linux, дистрибутивы — артефакты; библиотеки LFS
+кешируются по списку объектов. Ни разу не запускался: у репозитория нет remote. При первом
+запуске проверить: версию LDC в `setup-dlang` (`ldc-1.43.0`), GTK на Linux, `dub test` на
+Windows (программа собирается с `/SUBSYSTEM:WINDOWS`: виден ли вывод тестов), кеш LFS. Первый
+запуск заодно и есть проверка сборки на Linux и Windows (пункт выше).
 
 ## Минимальная версия ldc2
 
