@@ -108,11 +108,12 @@ string translationJson(const Translation[] translations, string requested)
     return null;
 }
 
-/// The translations of the texts of the backend (the menu): the plain texts of a catalog.
+/// The translations of the texts of the backend (the menu, the errors): the plain texts of a
+/// catalog. The pseudo locale has none: the script pseudoizes its own texts, those of the
+/// backend stay english.
 struct Catalog
 {
     string[string] messages; /// by the english text, translated ones only
-    bool pseudo; /// every text pseudoized: the pseudo locale
 
     /// `t` in the language of the catalog: its templates translated, its plain parameters
     /// (the texts of the OS, names, paths) as they are
@@ -124,8 +125,6 @@ struct Catalog
     /// The translation of `text`, `text` itself if none
     string translate(string text) const pure @safe
     {
-        if (pseudo)
-            return pseudoize(text);
         if (const translated = text in messages)
             return *translated;
         return text;
@@ -154,66 +153,6 @@ Catalog parseCatalog(string json)
     catch (Exception e)
         writeln("Can't read the catalog: ", e.msg);
     return catalog;
-}
-
-/// The catalog of `locale`: pseudo for the pseudo locale, else that of `json`.
-Catalog catalogOf(string locale, string json)
-{
-    import std.uni : sicmp;
-
-    if (sicmp(locale, pseudoLocale) == 0)
-        return Catalog(null, true);
-    return parseCatalog(json);
-}
-
-/// The pseudo translation of `text`, as pseudoize of resources/i18n/i18n.js (lengths in UTF-16
-/// units, as of a script string).
-string pseudoize(string text) pure @safe
-{
-    import std.algorithm : max;
-    import std.array : appender, replicate;
-    import std.ascii : isAlphaNum;
-    import std.math : round;
-    import std.utf : codeLength, decode;
-
-    static immutable upper = "ÅƁÇÐÉƑĜĤÎĴĶĻṀÑÔÞǪŔŠŢÛṼŴẊÝŽ"d;
-    static immutable lower = "áƀçðéƒĝĥîĵķļṁñôþǫŕšţûṽŵẋýž"d;
-
-    auto body = appender!string;
-    size_t visible;
-    size_t i;
-    while (i < text.length)
-    {
-        if (text[i] == '{') // a parameter stays as it is
-        {
-            size_t j = i + 1;
-            while (j < text.length && (isAlphaNum(text[j]) || text[j] == '_'))
-                j++;
-            if (j > i + 1 && j < text.length && text[j] == '}')
-            {
-                body.put(text[i .. j + 1]);
-                i = j + 1;
-                continue;
-            }
-        }
-        const start = i;
-        const c = decode(text, i);
-        if (c == '&' && i < text.length) // the mnemonic letter stays as it is
-        {
-            visible += codeLength!wchar(decode(text, i));
-            body.put(text[start .. i]);
-            continue;
-        }
-        else if (c >= 'A' && c <= 'Z')
-            body.put(upper[c - 'A']);
-        else if (c >= 'a' && c <= 'z')
-            body.put(lower[c - 'a']);
-        else
-            body.put(text[start .. i]);
-        visible += codeLength!wchar(c); // as the length of a script string
-    }
-    const padding = max(1, cast(size_t) round(visible * 0.3));
-    return "[" ~ body[] ~ " " ~ "~".replicate(padding) ~ "]";
 }
 
 version (unittest)
@@ -338,25 +277,6 @@ unittest
     assert(parseCatalog(`{"messages": 5}`).translate("A") == "A");
 }
 
-@("pseudoize: as resources/i18n/i18n.js does it")
-unittest
-{
-    assert(pseudoize("Open") == "[Ôþéñ ~]");
-    assert(pseudoize("Settings") == "[Šéţţîñĝš ~~]");
-    assert(pseudoize("{count} of {total}") == "[{count} ôƒ {total} ~]");
-    assert(pseudoize("E&xit") == "[É&xîţ ~]");
-    assert(pseudoize("😀😀😀😀😀") == "[😀😀😀😀😀 ~~~]", "lengths in UTF-16 units, as of a script string");
-    assert(pseudoize("&😀😀😀😀😀") == "[&😀😀😀😀😀 ~~~]");
-}
-
-@("catalogOf: the pseudo locale pseudoizes every text, in any case")
-unittest
-{
-    assert(catalogOf("x-pseudo", null).translate("Open") == "[Ôþéñ ~]");
-    assert(catalogOf("X-Pseudo", null).translate("Open") == "[Ôþéñ ~]");
-    assert(catalogOf("ru", `{"messages": {"Open": "Открыть"}}`).translate("Open") == "Открыть");
-}
-
 @("Catalog.translate: a text for the user, its templates translated, plain parameters as they are")
 unittest
 {
@@ -371,6 +291,4 @@ unittest
     assert(catalog.translate(uiText("Can't load the filter: {reason}", "reason", "Permission denied"))
         == "Не удалось загрузить фильтр: Permission denied", "the text of the OS as it is");
     assert(Catalog.init.translate(t) == "Can't load the filter: no column \"ecu\" in this log");
-    assert(catalogOf("x-pseudo", null).translate(uiText("Open {file}", "file", "a.dlt")) == "[Ôþéñ a.dlt ~~]",
-        "pseudo: the template, not the parameters");
 }

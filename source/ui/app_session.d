@@ -23,7 +23,7 @@ import ui.app_settings;
 import ui.document_ui : DocumentUi;
 import ui.filter_commands : DocumentFilters;
 import ui.table_columns : TableColumns;
-import ui.translations : Catalog, catalogOf, Translation, findTranslations,
+import ui.translations : Catalog, parseCatalog, Translation, findTranslations,
     catalogLanguagesJson = languagesJson, catalogTranslationJson = translationJson;
 import ui.main_view_fsm : toJson;
 import ui.search_view_fsm : toJson;
@@ -509,15 +509,15 @@ final class AppSession
         return catalogLanguagesJson(languages);
     }
 
-    /// The texts of the session (the menu) are in the language `requested` (a BCP 47 tag) from
-    /// now on: in the catalog it takes, pseudoized for the pseudo locale, english if none.
-    /// Returns: the text of that catalog for the script, null if none (the script makes the
-    /// pseudo one itself)
+    /// The texts of the session (the menu, the errors) are in the language `requested` (a BCP 47
+    /// tag) from now on: in the catalog it takes, english if none (the pseudo locale too: only
+    /// the script pseudoizes, its own texts).
+    /// Returns: the text of that catalog for the script, null if none
     string useLanguage(string requested)
     {
         const text = catalogTranslationJson(_translations, requested);
-        _catalog = catalogOf(requested, text);
-        return _catalog.pseudo ? null : text;
+        _catalog = parseCatalog(text);
+        return text;
     }
 
     /// `t` in the language of the interface: a text for the user the session answers with
@@ -1056,7 +1056,7 @@ unittest
     assert(parseJSON(f.session.menuJson())["menus"][0]["label"].str == "Файл");
 
     assert(f.session.useLanguage("x-pseudo") is null, "the script makes the pseudo catalog itself");
-    assert(f.session.menuBar(MenuPlatform.windows)[0].label == "[Fîļé ~]", "the mnemonic letter as it is");
+    assert(f.session.menuBar(MenuPlatform.windows)[0].label == "File", "the menu stays english");
 
     assert(f.session.useLanguage("de") is null);
     assert(f.session.menuBar(MenuPlatform.windows)[0].label == "File", "no catalog: english");
