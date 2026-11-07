@@ -25,9 +25,7 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-:: Copy resources
-xcopy "resources" "%DIST_DIR%\resources\" /E /I /Y
-if exist "resources\main.htm" copy "resources\main.htm" "%DIST_DIR%\"
+:: The files of the interface are built into the binary, the icon too (app.rc)
 
 echo.
 echo Done! Windows distribution created in '%DIST_DIR%'.

@@ -1,5 +1,6 @@
 import std.stdio;
 
+import ui.app_resources : appResource, appResourceUrl;
 import ui.main_window;
 import ui.app_settings;
 import ui.main_menu_loader : loadAppMenu;
@@ -10,8 +11,6 @@ import sciter.api;
 import sciter.application;
 import sciter.debug_output;
 
-import std.file : getcwd, exists;
-import std.path : buildPath;
 import std.stdio : writeln;
 
 // macOS: Workaround for Sciter not calling setNeedsDisplay on NSView.
@@ -63,49 +62,10 @@ int main()
 		auto settings = loadSettings();
 		scope auto win = new MainWindow(settings); // scope ensures that d'tor is called on exit
 
-		// Load the main HTML resource
-		// In a real build, we would use "this://app/main.htm" and handle SC_LOAD_DATA to serve from import("main.htm")
-		// For now, load from filesystem absolute path or relative?
-		// SciterLoadFile handles absolute paths well.
-
-		import std.file : thisExePath;
-		import std.path : dirName;
-
-		string exeDir = thisExePath().dirName;
-		string projectRoot = getcwd();
-
-		string[] possiblePaths = [
-			// Relative to executable (Best for deployed apps)
-			buildPath(exeDir, "resources", "main.htm"),
-			buildPath(exeDir, "main.htm"),
-			buildPath(exeDir, "../Resources/main.htm"), // macOS Bundle standard
-
-			// Relative to CWD (Development)
-			buildPath(projectRoot, "resources", "main.htm"),
-			buildPath(projectRoot, "main.htm")
-		];
-
-		string resources;
-		foreach (path; possiblePaths)
-		{
-			if (exists(path))
-			{
-				resources = path;
-				break;
-			}
-		}
-
         loadAppMenu(win);
 
-		if (resources.length > 0)
-		{
-			win.useTranslations(buildPath(dirName(resources), "i18n", "translations"));
-			win.loadFile(resources);
-		}
-		else
-		{
-			writeln("Error: Could not find main.htm in any of the expected locations.");
-		}
+		// The files of the interface are built in, served by the window at this://app/
+		win.loadHtml(appResource("main.htm"), appResourceUrl ~ "main.htm");
 
 		win.expand();
 		win.activate(true); // Explicit activation for new Sciter version

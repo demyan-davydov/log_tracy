@@ -27,9 +27,8 @@ case "$(uname -m)" in
 esac
 cp "libs/linux/$LIB_ARCH/libsciter.so" "$DIST_DIR/" || exit 1
 
-# Copy resources
-cp -r resources "$DIST_DIR/"
-cp resources/main.htm "$DIST_DIR/" 2>/dev/null || :
+# The icon (the files of the interface are built into the binary)
+cp resources/app.png "$DIST_DIR/"
 
 # Copy desktop file
 cp dlt_explorer.desktop "$DIST_DIR/"

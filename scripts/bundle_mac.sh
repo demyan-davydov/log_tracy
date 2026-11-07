@@ -20,9 +20,8 @@ mkdir -p "$BUNDLE_NAME/Contents/Resources"
 cp dlt_explorer "$BUNDLE_NAME/Contents/MacOS/$APP_NAME"
 chmod +x "$BUNDLE_NAME/Contents/MacOS/$APP_NAME"
 
-# Copy resources
-cp -r resources/* "$BUNDLE_NAME/Contents/Resources/"
-cp resources/main.htm "$BUNDLE_NAME/Contents/Resources/" 2>/dev/null || :
+# The icon (the files of the interface are built into the binary)
+cp resources/app.icns "$BUNDLE_NAME/Contents/Resources/"
 
 # Copy the Sciter library (universal: x86_64 and arm64)
 cp libs/macosx/libsciter.dylib "$BUNDLE_NAME/Contents/MacOS/" || exit 1
@@ -79,4 +78,3 @@ $LOCALIZATION_LIST    </array>
 EOF
 
 echo "Done! $BUNDLE_NAME created."
-echo "Note: Ensure 'resources/app.icns' exists for the icon to appear."

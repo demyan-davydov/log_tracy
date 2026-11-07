@@ -118,7 +118,7 @@ struct SCITER_CALLBACK_NOTIFICATION
     HWINDOW hwnd; /**< [in] HWINDOW of the window this callback was attached to.*/
 }
 
-alias SciterHostCallback = UINT function(SCITER_CALLBACK_NOTIFICATION* pns, void* callbackParam);
+alias SciterHostCallback = extern (C) UINT function(SCITER_CALLBACK_NOTIFICATION* pns, void* callbackParam);
 
 /**This structure is used by #SC_LOAD_DATA notification.
  *\copydoc SC_LOAD_DATA

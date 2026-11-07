@@ -529,17 +529,17 @@ unittest
     checkMnemonics(appMenu(MenuPlatform.linux));
 }
 
-@("the menus of every catalog of resources/i18n/translations have their mnemonics, unique in a menu")
+@("the menus of every catalog built in have their mnemonics, unique in a menu")
 unittest
 {
-    import std.file : readText;
+    import ui.app_resources : builtInCatalogs;
     import ui.translations : findTranslations, parseCatalog;
 
-    const translations = findTranslations("resources/i18n/translations"); // dub test runs at the root
+    const translations = findTranslations(builtInCatalogs());
     assert(translations.length > 0, "the catalogs of the project");
     foreach (t; translations)
     {
-        const catalog = parseCatalog(readText(t.path));
+        const catalog = parseCatalog(t.text);
         checkMnemonics(appMenu(MenuPlatform.windows, &catalog.translate));
         checkMnemonics(appMenu(MenuPlatform.linux, &catalog.translate));
     }
