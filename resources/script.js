@@ -1,6 +1,6 @@
 import { $ } from "@sciter";
 import { VirtualDltTBody, VirtualMainViewTBody, VirtualSearchViewTBody, moveRowDrag, endRowDrag } from "virtual-dlt-view.js";
-import { plusShown } from "new-tab.js";
+import { plusShown, failureReason } from "new-tab.js";
 import {
     initialWindow, workspaceChanged, newTabRequested, newTabPressed, newTabClosed, documentPressed,
     documentOpened, openFailed, documentClosed, shown, activeDocId
@@ -216,7 +216,7 @@ function renderPlaceholder() {
         const failed = failure && failure.path === path;
         if (failed || !exists) {
             added.classList.add(failed ? "failed" : "missing");
-            const note = failed ? tr("Failed to open: {reason}", { reason: failure.error }) : tr("File not found");
+            const note = failed ? tr("Failed to open: {reason}", { reason: failureReason(failure.error) }) : tr("File not found");
             added.$(".recent-file-text").append(<div class="recent-file-note">{note}</div>);
         }
     }

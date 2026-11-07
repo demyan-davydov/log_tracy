@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import {
     noNewTab, plusShown, openNewTab, activateNewTab, activateDocument,
     closeNewTab, documentOpened, documentsCounted, showsPlaceholder,
-    shownDocument, fileFailed
+    shownDocument, fileFailed, failureReason
 } from "../../resources/new-tab.js";
 
 test("no + while no document is open: the start screen has its own Open", () => {
@@ -75,3 +75,9 @@ test("a file failed to open on the placeholder stays there", () => {
     assert.deepEqual(fileFailed(openNewTab(), 2), { open: true, active: true });
 });
 
+
+test("the reason of a failed open is the part in parentheses at the end", () => {
+    assert.equal(failureReason("Can't open /logs/a (b).dlt (Permission denied)"), "Permission denied");
+    assert.equal(failureReason("Not a DLT file"), "Not a DLT file");
+    assert.equal(failureReason(""), "");
+});

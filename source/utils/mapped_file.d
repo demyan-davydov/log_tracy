@@ -72,51 +72,28 @@ struct MappedFile
 
     version (Posix)
     {
-        // The words of the system for the error `code`
-        private static string systemError(int code) @trusted
-        {
-            import core.stdc.string : strerror;
-            import std.string : fromStringz;
-
-            return strerror(code).fromStringz.idup;
-        }
-
         private void mapFile(string path)
         {
             import core.sys.posix.fcntl : open, O_RDONLY;
             import core.sys.posix.sys.mman : mmap, MAP_SHARED, MAP_FAILED, PROT_READ;
             import core.sys.posix.sys.stat : fstat, stat_t;
             import core.sys.posix.unistd : posixClose = close;
-            import core.stdc.errno : errno, ENOENT, ENOTDIR, EACCES, EPERM;
+            import std.exception : errnoEnforce;
             import std.string : toStringz;
-            import utils.ui_text : uiText, UiTextException;
 
             const fd = open(path.toStringz, O_RDONLY);
-            if (fd == -1)
-            {
-                const code = errno;
-                if (code == ENOENT || code == ENOTDIR)
-                    throw new UiTextException(uiText("the file doesn't exist"));
-                if (code == EACCES || code == EPERM)
-                    throw new UiTextException(uiText("there is no permission to read the file"));
-                throw new UiTextException(uiText("can't open the file: {reason}", "reason", systemError(code)));
-            }
+            errnoEnforce(fd != -1, "Can't open " ~ path);
             scope (exit)
                 posixClose(fd); // the mapping keeps its own reference
 
             stat_t st;
-            if (fstat(fd, &st) != 0)
-                throw new UiTextException(uiText("can't read the file: {reason}", "reason", systemError(errno)));
-            import core.sys.posix.sys.stat : S_ISDIR;
-            if (S_ISDIR(st.st_mode))
-                throw new UiTextException(uiText("it is a folder, not a file"));
+            errnoEnforce(fstat(fd, &st) == 0, "Can't stat " ~ path);
             const size = cast(size_t) st.st_size;
             if (size == 0)
                 return; // nothing to map
 
             void* ptr = mmap(null, size, PROT_READ, MAP_SHARED, fd, 0);
-            if (ptr == MAP_FAILED)
-                throw new UiTextException(uiText("can't read the file: {reason}", "reason", systemError(errno)));
+            errnoEnforce(ptr != MAP_FAILED, "Can't map " ~ path);
             _data = (cast(const(ubyte)*) ptr)[0 .. size];
         }
 
@@ -134,51 +111,30 @@ struct MappedFile
         private void mapFile(string path)
         {
             import core.sys.windows.windows;
+            import std.exception : enforce;
             import std.utf : toUTF16z;
             import std.windows.syserror : sysErrorString;
-            import utils.ui_text : uiText, UiText, UiTextException;
 
-            // Why it can't be read, for the user: the reasons one can act on in words, the
-            // others in those of the system
-            UiText unreadable()
+            string error(string what)
             {
-                const code = GetLastError();
-                return uiText("can't read the file: {reason}", "reason", sysErrorString(code));
+                return what ~ " " ~ path ~ ": " ~ sysErrorString(GetLastError());
             }
 
             _file = CreateFileW(path.toUTF16z, GENERIC_READ,
                 FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, null,
                 OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, null);
-            if (_file == INVALID_HANDLE_VALUE)
-            {
-                const code = GetLastError();
-                if (code == ERROR_FILE_NOT_FOUND || code == ERROR_PATH_NOT_FOUND)
-                    throw new UiTextException(uiText("the file doesn't exist"));
-                // A folder is refused as well (CreateFileW opens no folder without its flag)
-                const attributes = GetFileAttributesW(path.toUTF16z);
-                if (code == ERROR_ACCESS_DENIED && attributes != INVALID_FILE_ATTRIBUTES
-                    && (attributes & FILE_ATTRIBUTE_DIRECTORY))
-                    throw new UiTextException(uiText("it is a folder, not a file"));
-                if (code == ERROR_ACCESS_DENIED)
-                    throw new UiTextException(uiText("there is no permission to read the file"));
-                if (code == ERROR_SHARING_VIOLATION)
-                    throw new UiTextException(uiText("the file is used by another program"));
-                throw new UiTextException(uiText("can't open the file: {reason}", "reason", sysErrorString(code)));
-            }
+            enforce(_file != INVALID_HANDLE_VALUE, error("Can't open"));
 
             LARGE_INTEGER size;
-            if (!GetFileSizeEx(_file, &size))
-                throw new UiTextException(unreadable());
+            enforce(GetFileSizeEx(_file, &size), error("Can't get the size of"));
             if (size.QuadPart == 0)
                 return; // nothing to map (and CreateFileMapping rejects it)
 
             _mapping = CreateFileMappingW(_file, null, PAGE_READONLY, 0, 0, null);
-            if (_mapping is null)
-                throw new UiTextException(unreadable());
+            enforce(_mapping !is null, error("Can't map"));
 
             void* ptr = MapViewOfFile(_mapping, FILE_MAP_READ, 0, 0, 0);
-            if (ptr is null)
-                throw new UiTextException(unreadable());
+            enforce(ptr !is null, error("Can't map a view of"));
             _data = (cast(const(ubyte)*) ptr)[0 .. cast(size_t) size.QuadPart];
         }
 
@@ -244,10 +200,7 @@ private size_t registerRange(const(void)* begin, size_t length)
         atomicStore!(MemoryOrder.rel)(slot.state, cast(int) SlotState.active);
         return i;
     }
-    import utils.ui_text : uiText, UiTextException;
-
-    // The table of the mapped ranges (for the reads of a lost file) is full: not a limit of the OS
-    throw new UiTextException(uiText("too many logs are open: close some to open another"));
+    throw new Exception("Too many mapped files");
 }
 
 private void unregisterRange(size_t i) nothrow @nogc
@@ -451,26 +404,12 @@ version (Posix)
         assert(file.data.length == 0 && !file.lost);
     }
 
-    @("MappedFile: a missing file throws, saying so for the user")
+    @("MappedFile: a missing file throws")
     unittest
     {
-        import std.exception : assertThrown, collectException;
-        import utils.ui_text : uiTextOf;
+        import std.exception : assertThrown;
 
         assertThrown(MappedFile("/nonexistent/mapped_file.bin"));
-        const e = collectException(MappedFile("/nonexistent/mapped_file.bin"));
-        assert(uiTextOf(e).text == "the file doesn't exist", e.msg);
-    }
-
-    @("MappedFile: a folder is no file, the user is told so")
-    unittest
-    {
-        import std.exception : collectException;
-        import std.file : tempDir;
-        import utils.ui_text : uiTextOf;
-
-        const e = collectException(MappedFile(tempDir));
-        assert(e !is null && uiTextOf(e).text == "it is a folder, not a file", e is null ? "" : e.msg);
     }
 
     @("MappedFile: a read after the storage is gone reads zeros and marks the file lost")
