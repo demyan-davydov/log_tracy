@@ -7,7 +7,7 @@
 //   node scripts/i18n-extract.mjs            update the catalogs
 //   node scripts/i18n-extract.mjs --check    only tell what is out of date (exit code 1)
 // See resources/i18n/i18n.js for the calls and the catalog; tests: tests/js/i18n-*.test.mjs.
-import { readFileSync, writeFileSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, readdirSync, realpathSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { pluralCategories } from "../resources/i18n/plural.js";
@@ -412,5 +412,5 @@ function main(check) {
     process.exitCode = outOfDate ? 1 : 0;
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1])
+if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) // links resolved
     main(process.argv.includes("--check"));

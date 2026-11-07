@@ -5,6 +5,15 @@ copyright "Copyright © 2026, Demian Davidov"
 license "proprietary"
 dependency "dxml" version="~>0.4.5"
 stringImportPaths "resources" // the files of the interface, built in by ui/app_resources
+
+// Every build in its own folder (osx-aarch64-debug, linux-x86_64-unittest, ...) with the Sciter
+// library next to the program, `dub test` too. scripts/build.mjs builds through dub
+targetPath "build/$PLATFORM-$ARCH-$BUILD_TYPE"
+copyFiles "libs/macosx/libsciter.dylib" platform="osx" // universal: x86_64 and arm64
+copyFiles "libs/linux/x64/libsciter.so" platform="linux-x86_64"
+copyFiles "libs/linux/arm64/libsciter.so" platform="linux-aarch64"
+copyFiles "libs/windows/x64/sciter.dll" platform="windows-x86_64"
+copyFiles "libs/windows/arm64/sciter.dll" platform="windows-aarch64"
 lflags "-framework" "Cocoa" "-L/usr/lib" platform="osx"
 
 dflags "-preview=in" // in -> const scope

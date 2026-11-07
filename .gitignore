@@ -5,6 +5,7 @@ docs/*
 docs/stories/*
 !docs/stories/*.md
 .dub
+/build/
 .DS_Store
 .vscode
 ai-spec.md
