@@ -23,7 +23,7 @@ import ui.app_settings;
 import ui.document_ui : DocumentUi;
 import ui.filter_commands : DocumentFilters;
 import ui.table_columns : TableColumns;
-import ui.translations : Catalog, parseCatalog, Translation, findTranslations,
+import ui.translations : Catalog, CatalogFile, parseCatalog, Translation, findTranslations,
     catalogLanguagesJson = languagesJson, catalogTranslationJson = translationJson;
 import ui.main_view_fsm : toJson;
 import ui.search_view_fsm : toJson;
@@ -486,10 +486,11 @@ final class AppSession
 
     // ── Translations ─────────────────────────────────────────────────────────
 
-    /// The translations of the interface are the catalogs of `dir` (resources/i18n/translations)
-    void useTranslations(string dir)
+    /// The translations of the interface are the catalogs of `files`
+    /// (resources/i18n/translations)
+    void useTranslations(const CatalogFile[] files)
     {
-        _translations = findTranslations(dir);
+        _translations = findTranslations(files);
     }
 
     /// Whether the languages offered end with the pseudo locale: to look for texts not translated
@@ -1031,22 +1032,16 @@ unittest
 @("AppSession: the languages of its translations; a language used translates the menu")
 unittest
 {
-    import std.file : rmdirRecurse, write;
     import std.json : parseJSON;
-    import std.path : buildPath;
     import ui.app_menu : MenuPlatform;
-    import ui.translations : makeTestDir;
+    import ui.translations : CatalogFile;
 
     auto f = Fixture.make();
     assert(parseJSON(f.session.languagesJson()).array.length == 0, "none until told where they are");
     assert(f.session.useLanguage("ru") is null);
 
-    const dir = makeTestDir("session");
-    scope (exit) rmdirRecurse(dir);
     const text = `{"locale": "ru", "name": "Русский", "messages": {"&File": "&Файл"}}`;
-    write(buildPath(dir, "ru.json"), text);
-
-    f.session.useTranslations(dir);
+    f.session.useTranslations([CatalogFile("ru.json", text)]);
     const languages = parseJSON(f.session.languagesJson());
     assert(languages.array.length == 1 && languages[0]["locale"].str == "ru");
 
@@ -1066,17 +1061,12 @@ unittest
 @("AppSession: the errors for the user are in the language used: of opening, of a retry, of the views")
 unittest
 {
-    import std.file : rmdirRecurse, write;
     import std.json : parseJSON;
-    import std.path : buildPath;
-    import ui.translations : makeTestDir;
+    import ui.translations : CatalogFile;
 
     auto f = Fixture.make();
-    const dir = makeTestDir("session-errors");
-    scope (exit) rmdirRecurse(dir);
-    write(buildPath(dir, "ru.json"), `{"locale": "ru", "name": "Русский", "messages": {
-        "not a log of {kinds}": "не журнал формата {kinds}", "the document is not open": "документ не открыт"}}`);
-    f.session.useTranslations(dir);
+    f.session.useTranslations([CatalogFile("ru.json", `{"locale": "ru", "name": "Русский", "messages": {
+        "not a log of {kinds}": "не журнал формата {kinds}", "the document is not open": "документ не открыт"}}`)]);
 
     assert(parseJSON(f.session.openFile("/refused.log").failureJson)["error"].str == "not a log of DLT or text");
     f.session.useLanguage("ru");
@@ -1103,15 +1093,11 @@ unittest
 @("AppSession: the message of a filter command is in the language of the interface")
 unittest
 {
-    import std.file : rmdirRecurse, write;
-    import std.path : buildPath;
-    import ui.translations : makeTestDir;
+    import ui.translations : CatalogFile;
 
     auto f = Fixture.make();
-    const dir = makeTestDir("session-filters");
-    scope (exit) rmdirRecurse(dir);
-    write(buildPath(dir, "ru.json"), `{"locale": "ru", "name": "Русский", "messages": {"no such filter": "такого фильтра нет"}}`);
-    f.session.useTranslations(dir);
+    f.session.useTranslations([CatalogFile("ru.json",
+        `{"locale": "ru", "name": "Русский", "messages": {"no such filter": "такого фильтра нет"}}`)]);
     const id = f.session.openFile("/logs/a.log").docId;
 
     assert(f.session.filterCommand(id, (DocumentFilters filters) => filters.remove(7)) == "no such filter");

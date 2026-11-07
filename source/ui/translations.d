@@ -1,57 +1,64 @@
-//! The translations of the interface the application has: the catalogs of a folder
-//! (`resources/i18n/translations/<BCP 47 tag>.json`, see `resources/i18n/i18n.js`), which of
-//! them a language asked for takes, and the text of that catalog for the script. Free of
-//! Sciter.
+//! The translations of the interface the application has: its catalogs
+//! (`resources/i18n/translations/<BCP 47 tag>.json`, see `resources/i18n/i18n.js`, built in by
+//! `ui/app_resources`), which of them a language asked for takes, and the text of that catalog
+//! for the script. Free of Sciter.
 module ui.translations;
 
 import std.json;
 import std.stdio : writeln;
 import utils.ui_text : render, UiText;
 
-/// A catalog found: its language and the file it is in.
+/// A file that may be a catalog: its name, without a folder ("ru.json"), and its text.
+struct CatalogFile
+{
+    string name;
+    string text;
+}
+
+/// A catalog found: its language, the file it is in and its text.
 struct Translation
 {
     string locale; /// BCP 47 tag: "ru", "pt-BR"
     string name; /// the name of the language in that language: "Русский"
-    string path;
+    string file; /// "ru.json"
+    string text;
 }
 
-/// The catalogs of `dir`, by locale; a file that is no catalog (no JSON, no locale or name)
-/// is skipped, so is a second catalog of a locale (a copy): the one named by the locale
-/// (ru.json) is taken, else the first by name. None if `dir` doesn't exist.
-Translation[] findTranslations(string dir)
+/// The catalogs of `files`, by locale; a file that is no catalog (no .json, no JSON, no locale
+/// or name) is skipped, so is a second catalog of a locale (a copy): the one named by the
+/// locale (ru.json) is taken, else the first by name.
+Translation[] findTranslations(const CatalogFile[] files)
 {
-    import std.algorithm : sort;
-    import std.file : dirEntries, exists, isDir, readText, SpanMode;
+    import std.algorithm : endsWith, sort;
+    import std.path : stripExtension;
 
     Translation[] found;
-    if (!exists(dir) || !isDir(dir))
-        return found;
-    foreach (entry; dirEntries(dir, "*.json", SpanMode.shallow))
+    foreach (file; files)
     {
+        if (!file.name.endsWith(".json"))
+            continue;
         try
         {
-            const j = parseJSON(readText(entry.name));
+            const j = parseJSON(file.text);
             const locale = "locale" in j, name = "name" in j;
             if (locale && name && locale.type == JSONType.string && name.type == JSONType.string
                 && locale.str.length && name.str.length)
-                found ~= Translation(locale.str, name.str, entry.name);
+                found ~= Translation(locale.str, name.str, file.name, file.text);
             else
-                writeln("Not a catalog of translations: ", entry.name);
+                writeln("Not a catalog of translations: ", file.name);
         }
         catch (Exception e)
-            writeln("Can't read the catalog ", entry.name, ": ", e.msg);
+            writeln("Can't read the catalog ", file.name, ": ", e.msg);
     }
-    import std.path : baseName, stripExtension;
 
     // The file named by its locale first, then by name: the first of a locale is taken
-    const named = (const Translation t) => t.path.baseName.stripExtension == t.locale;
+    const named = (const Translation t) => t.file.stripExtension == t.locale;
     found.sort!((a, b) => a.locale != b.locale ? a.locale < b.locale
-        : named(a) != named(b) ? named(a) : a.path < b.path);
+        : named(a) != named(b) ? named(a) : a.file < b.file);
     Translation[] unique;
     foreach (t; found)
         if (unique.length && unique[$ - 1].locale == t.locale)
-            writeln("A second catalog of ", t.locale, " is not taken: ", t.path);
+            writeln("A second catalog of ", t.locale, " is not taken: ", t.file);
         else
             unique ~= t;
     return unique;
@@ -117,26 +124,16 @@ string languagesJson(const Translation[] translations)
     return JSONValue(languages).toString;
 }
 
-/// The text of the catalog `requested` takes (`resolveLocale`), null if none or if it can't
-/// be read.
+/// The text of the catalog `requested` takes (`resolveLocale`), null if none.
 string translationJson(const Translation[] translations, string requested)
 {
     import std.algorithm : map;
     import std.array : array;
-    import std.file : readText;
 
     const locale = resolveLocale(requested, translations.map!(t => t.locale).array);
     foreach (t; translations)
         if (t.locale == locale)
-        {
-            try
-                return readText(t.path);
-            catch (Exception e)
-            {
-                writeln("Can't read the catalog ", t.path, ": ", e.msg);
-                return null;
-            }
-        }
+            return t.text;
     return null;
 }
 
@@ -185,22 +182,6 @@ Catalog parseCatalog(string json)
     catch (Exception e)
         writeln("Can't read the catalog: ", e.msg);
     return catalog;
-}
-
-version (unittest)
-{
-    import std.file : mkdirRecurse, rmdirRecurse, write, exists, tempDir;
-    import std.path : buildPath;
-
-    /// An empty folder of the temporary ones for the tests of `name`, made anew
-    package string makeTestDir(string name)
-    {
-        const dir = buildPath(tempDir, "dlt-explorer-translations-" ~ name);
-        if (exists(dir))
-            rmdirRecurse(dir);
-        mkdirRecurse(dir);
-        return dir;
-    }
 }
 
 @("resolveLocale: the tag itself, case aside")
@@ -252,65 +233,52 @@ unittest
     assert(resolveLocale("X-Pseudo", ["x-pseudo"]) == "x-pseudo", "the tag itself still");
 }
 
-@("findTranslations: the catalogs of a folder by locale, the rest skipped")
+@("findTranslations: the catalogs by locale, the rest skipped")
 unittest
 {
-    const dir = makeTestDir("find");
-    scope (exit) rmdirRecurse(dir);
-    write(buildPath(dir, "ru.json"), `{"locale": "ru", "name": "Русский", "messages": {}}`);
-    write(buildPath(dir, "de.json"), `{"locale": "de", "name": "Deutsch", "messages": {}}`);
-    write(buildPath(dir, "broken.json"), `{"locale": `);
-    write(buildPath(dir, "nameless.json"), `{"locale": "fr"}`);
-    write(buildPath(dir, "notes.txt"), `{"locale": "it", "name": "Italiano"}`);
-
-    const found = findTranslations(dir);
+    const ru = `{"locale": "ru", "name": "Русский", "messages": {}}`;
+    const de = `{"locale": "de", "name": "Deutsch", "messages": {}}`;
+    const found = findTranslations([CatalogFile("ru.json", ru), CatalogFile("de.json", de),
+        CatalogFile("broken.json", `{"locale": `), CatalogFile("nameless.json", `{"locale": "fr"}`),
+        CatalogFile("notes.txt", `{"locale": "it", "name": "Italiano"}`)]);
     assert(found.length == 2);
-    assert(found[0] == Translation("de", "Deutsch", buildPath(dir, "de.json")));
-    assert(found[1] == Translation("ru", "Русский", buildPath(dir, "ru.json")));
+    assert(found[0] == Translation("de", "Deutsch", "de.json", de));
+    assert(found[1] == Translation("ru", "Русский", "ru.json", ru));
 }
 
 @("findTranslations: a locale twice (a copy of a catalog) is listed once, by the file named so")
 unittest
 {
-    const dir = makeTestDir("twice");
-    scope (exit) rmdirRecurse(dir);
-    write(buildPath(dir, "ru.json"), `{"locale": "ru", "name": "Русский", "messages": {}}`);
-    write(buildPath(dir, "ru-old.json"), `{"locale": "ru", "name": "Русский (старый)", "messages": {}}`);
-
-    const found = findTranslations(dir);
+    const found = findTranslations([
+        CatalogFile("ru-old.json", `{"locale": "ru", "name": "Русский (старый)", "messages": {}}`),
+        CatalogFile("ru.json", `{"locale": "ru", "name": "Русский", "messages": {}}`)]);
     assert(found.length == 1);
-    assert(found[0].path == buildPath(dir, "ru.json"), "ru.json, not the copy");
+    assert(found[0].file == "ru.json", "ru.json, not the copy");
 }
 
-@("findTranslations: no folder, no catalogs")
+@("findTranslations: no files, no catalogs")
 unittest
 {
-    assert(findTranslations(buildPath(tempDir, "dlt-explorer-no-such-folder")).length == 0);
+    assert(findTranslations(null).length == 0);
 }
 
 @("languagesJson: the locale and name of each")
 unittest
 {
-    const json = parseJSON(languagesJson([Translation("ru", "Русский", "/x/ru.json")]));
+    const json = parseJSON(languagesJson([Translation("ru", "Русский", "ru.json", "{}")]));
     assert(json.array.length == 1);
     assert(json[0]["locale"].str == "ru" && json[0]["name"].str == "Русский");
-    assert("path" !in json[0], "where the file is is no business of the script");
+    assert("file" !in json[0] && "text" !in json[0], "no business of the script");
 }
 
 @("translationJson: the text of the catalog the language takes")
 unittest
 {
-    const dir = makeTestDir("text");
-    scope (exit) rmdirRecurse(dir);
     const text = `{"locale": "ru", "name": "Русский", "messages": {"Open": "Открыть"}}`;
-    write(buildPath(dir, "ru.json"), text);
-    const translations = findTranslations(dir);
+    const translations = findTranslations([CatalogFile("ru.json", text)]);
 
     assert(translationJson(translations, "ru-RU") == text);
     assert(translationJson(translations, "en") is null, "english is the source");
-    rmdirRecurse(dir);
-    mkdirRecurse(dir);
-    assert(translationJson(translations, "ru") is null, "a file gone is no catalog");
 }
 
 @("parseCatalog: the translated texts of a catalog; plural ones and untranslated are not")

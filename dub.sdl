@@ -4,6 +4,7 @@ authors "Demian Davidov"
 copyright "Copyright © 2026, Demian Davidov"
 license "proprietary"
 dependency "dxml" version="~>0.4.5"
+stringImportPaths "resources" // the files of the interface, built in by ui/app_resources
 lflags "-framework" "Cocoa" "-L/usr/lib" platform="osx"
 
 dflags "-preview=in" // in -> const scope

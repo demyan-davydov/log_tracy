@@ -5,6 +5,10 @@ import sciter.capi.types;
 import sciter.capi.request;
 import sciter.capi.behavior;
 
+// The functions and callbacks of the binding are extern (C): right on 64-bit systems only.
+// On 32-bit Windows Sciter's are __stdcall, and a callback would corrupt the stack.
+static assert(size_t.sizeof == 8, "the Sciter binding is for 64-bit systems only");
+
 /** #SC_LOAD_DATA notification return codes */
 enum SC_LOAD_DATA_RETURN_CODES
 {
@@ -118,7 +122,7 @@ struct SCITER_CALLBACK_NOTIFICATION
     HWINDOW hwnd; /**< [in] HWINDOW of the window this callback was attached to.*/
 }
 
-alias SciterHostCallback = UINT function(SCITER_CALLBACK_NOTIFICATION* pns, void* callbackParam);
+alias SciterHostCallback = extern (C) UINT function(SCITER_CALLBACK_NOTIFICATION* pns, void* callbackParam);
 
 /**This structure is used by #SC_LOAD_DATA notification.
  *\copydoc SC_LOAD_DATA

@@ -25,8 +25,10 @@ scripts\test-windows.bat           # on Windows: build + unittests
   `ldc2 -unittest -main -i -preview=in -preview=dip1000 -preview=dtorfields -Isource source/log_core/text/text_format.d -of=/tmp/t && /tmp/t`
 - Keep the `-preview=in/dip1000/dtorfields` flags of `dub.sdl` when compiling by hand.
 - Running the app:
-  - `resources/` is read from disk at run time, so a JS/CSS/HTML change needs a restart, not a
-    rebuild.
+  - The files of `resources/` are built into the executable (`ui/app_resources`, string
+    imports) and served to Sciter at `this://app/<path>` (`SciterWindow.onLoadData`): a
+    JS/CSS/HTML change needs a rebuild. A new file of `resources/` is added to the list of
+    `ui/app_resources` (a unittest fails until it is); the icons are not built in.
   - `libsciter.dylib` (or `sciter.dll`) must sit next to the executable, and next to the test
     executable for `dub test` (in a fresh worktree too). The libraries of every platform are in
     `libs/`; the bundle scripts take them from there.

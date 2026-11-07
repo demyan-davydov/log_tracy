@@ -35,13 +35,59 @@ class SciterWindow : SciterEventHandler
     this(uint creationFlags, in RECT frame)
     {
         _hwnd = _api.SciterCreateWindow(creationFlags, &frame, null, null, null);
+        _api.SciterSetCallback(_hwnd, &hostCallback, cast(void*) this);
 
         attachEventHandler(_hwnd);
+    }
+
+    /// The data at `uri` the window gives Sciter itself (the files of its dialogs too), null to
+    /// leave the loading to Sciter
+    protected immutable(ubyte)[] onLoadData(string uri)
+    {
+        return null;
+    }
+
+    // Nothing may unwind through the frames of Sciter: whatever is thrown is caught here
+    private static extern (C) UINT hostCallback(SCITER_CALLBACK_NOTIFICATION* pns, void* param) nothrow
+    {
+        if (pns.code != SC_LOAD_DATA)
+            return 0;
+        import std.string : fromStringz;
+        import std.utf : toUTF8;
+
+        auto request = cast(SCN_LOAD_DATA*) pns;
+        try
+        {
+            const data = (cast(SciterWindow) param).onLoadData(request.uri.fromStringz.toUTF8);
+            if (data !is null)
+                _api.SciterDataReady(pns.hwnd, request.uri, data.ptr, cast(UINT) data.length);
+        }
+        catch (Exception e)
+        {
+            try
+                writeln("Can't load ", request.uri.fromStringz, ": ", e.msg);
+            catch (Exception)
+            {
+            }
+        }
+        catch (Throwable e) // an Error: a bug, the program can't go on
+        {
+            import core.stdc.stdlib : abort;
+
+            try
+                writeln("Error loading ", request.uri.fromStringz, ": ", e);
+            catch (Throwable)
+            {
+            }
+            abort();
+        }
+        return SC_LOAD_DATA_RETURN_CODES.LOAD_OK;
     }
 
     ~this()
     {
         writeln("SciterWindow d'tor");
+        _api.SciterSetCallback(_hwnd, null, null); // Sciter must not call a destroyed object
         super.detachEventHandler(_hwnd);
     }
 
@@ -66,27 +112,6 @@ class SciterWindow : SciterEventHandler
         import sciter.application : sciterApplication;
 
         return sciterApplication().hinstance();
-    }
-
-    final void loadFile(string path)
-    {
-        version (linux)
-        {
-            // Workaround: SciterLoadFile crashes on Linux with buffer overflow
-            // (bug inside the native library's file path handling).
-            // Read file content ourselves and use SciterLoadHtml instead.
-            import std.file : read;
-            import std.path : dirName, absolutePath;
-
-            auto content = cast(const(ubyte)[]) read(path);
-            string absDir = absolutePath(path).dirName;
-            string baseUrl = "file://" ~ absDir ~ "/";
-            _api.SciterLoadHtml(_hwnd, content.ptr, cast(uint) content.length, baseUrl.toUTF16z());
-        }
-        else
-        {
-            _api.SciterLoadFile(_hwnd, path.toUTF16z());
-        }
     }
 
     final void loadHtml(const(ubyte)[] content, string baseUrl = "")

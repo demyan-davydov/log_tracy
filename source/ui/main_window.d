@@ -19,6 +19,7 @@ import ui.main_menu_loader : retitleAppMenu;
 import utils.ui_text : UiText;
 import log_core.rule_filter : RuleId;
 import log_core.search_filter : checkRegex, MatchRange;
+import ui.app_resources : appResourceOfUrl, appResourceUrl, builtInCatalogs;
 import ui.app_session : AppSession;
 import ui.app_settings : AppSettings, toJSON;
 import ui.filter_commands : DocumentFilters;
@@ -40,10 +41,13 @@ class MainWindow : SciterWindow
 {
     private AppSession _session;
 
-    /// The translations of the interface are the catalogs of `dir`
-    void useTranslations(string dir)
+    /// The files of the interface are built in (`this://app/...`), for the dialogs too
+    override protected immutable(ubyte)[] onLoadData(string uri)
     {
-        _session.useTranslations(dir);
+        auto data = appResourceOfUrl(uri);
+        if (data is null && uri.startsWith(appResourceUrl))
+            writeln("No file of the interface is built in at ", uri);
+        return data;
     }
 
     /// The menu bar of the window on `platform`, in the language of the interface
@@ -65,6 +69,7 @@ class MainWindow : SciterWindow
             // DLT_PSEUDO_LOCALE=1: the pseudo translation among the languages of Settings
             _session.offerPseudoLocale(environment.get("DLT_PSEUDO_LOCALE", "") == "1");
         }
+        _session.useTranslations(builtInCatalogs());
 
         import sciter.capi.def;
 
