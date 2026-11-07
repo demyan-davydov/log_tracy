@@ -2,7 +2,8 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseCommand, dubArgs, distArch, infoPlist, desktopEntry } from "../../scripts/build.mjs";
+import { parseCommand, dubArgs, distArch, infoPlist, desktopEntry, sciterLibrary, isLfsPointer,
+    compilerArgs } from "../../scripts/build.mjs";
 
 test("build in debug for the machine by default", () => {
     assert.deepEqual(parseCommand([]), { command: "build", release: false, arch: null });
@@ -64,4 +65,26 @@ test("the desktop entry starts the program where it is installed", () => {
     assert.match(entry, /^\[Desktop Entry\]$/m);
     assert.match(entry, /^Exec=\/opt\/dlt_explorer\/dlt_explorer$/m);
     assert.match(entry, /^Icon=\/opt\/dlt_explorer\/app\.png$/m);
+});
+
+test("the Sciter library of a system and an architecture", () => {
+    assert.equal(sciterLibrary("darwin", "arm64"), "libs/macosx/libsciter.dylib");
+    assert.equal(sciterLibrary("darwin", "x64"), "libs/macosx/libsciter.dylib"); // universal
+    assert.equal(sciterLibrary("linux", "x64"), "libs/linux/x64/libsciter.so");
+    assert.equal(sciterLibrary("win32", "arm64"), "libs/windows/arm64/sciter.dll");
+});
+
+test("a file Git LFS hasn't fetched is a pointer, a library is not", () => {
+    const pointer = "version https://git-lfs.github.com/spec/v1\noid sha256:4ae7\nsize 25056928\n";
+    assert.equal(isLfsPointer(Buffer.from(pointer)), true);
+    assert.equal(isLfsPointer(Buffer.from([0xcf, 0xfa, 0xed, 0xfe, 7, 0, 0, 1])), false); // Mach-O
+    assert.equal(isLfsPointer(Buffer.from("MZ\x90\0")), false);
+    assert.equal(isLfsPointer(Buffer.alloc(0)), false);
+});
+
+test("the compiler arguments dub describes, separated by zeros, without the resource script", () => {
+    const described = "-I/p/source/\0-I/d/source/\0\0-J/p/resources/\0\0-preview=in\0-mtriple=x86_64-windows-msvc"
+        + "\0\0/p/source/app.d\0/p/resources/app.rc\0/p/source/ui/x.d";
+    assert.deepEqual(compilerArgs(described), ["-I/p/source/", "-I/d/source/", "-J/p/resources/",
+        "-preview=in", "-mtriple=x86_64-windows-msvc", "/p/source/app.d", "/p/source/ui/x.d"]);
 });

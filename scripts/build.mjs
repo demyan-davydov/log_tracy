@@ -8,8 +8,8 @@
 //                                                  from macOS or Linux, without linking
 // Tests: tests/js/build-script.test.mjs.
 import { spawnSync } from "node:child_process";
-import { chmodSync, copyFileSync, cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync,
-    realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, copyFileSync, cpSync, mkdirSync, mkdtempSync, openSync, readdirSync,
+    readFileSync, readSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -67,6 +67,27 @@ export function distArch(arch, hostArch) {
         throw new BuildError(`no build for this machine's architecture "${hostArch}": `
             + `name one with --arch (${arches.join(", ")})`);
     return hostArch;
+}
+
+/// The Sciter library of libs/ for a system (`process.platform`) and an architecture.
+export function sciterLibrary(platform, arch) {
+    if (platform === "darwin") return "libs/macosx/libsciter.dylib"; // universal
+    if (platform === "win32") return `libs/windows/${arch}/sciter.dll`;
+    return `libs/linux/${arch}/libsciter.so`;
+}
+
+/// Whether these first bytes of a file are a pointer of Git LFS, left in place of a file it
+/// hasn't fetched (no `git lfs pull`, or git-lfs not installed when cloning).
+export function isLfsPointer(head) {
+    return head.subarray(0, lfsPointerStart.length).equals(lfsPointerStart);
+}
+
+const lfsPointerStart = Buffer.from("version https://git-lfs");
+
+/// The compiler arguments of `dub describe --data-0` (each argument ends with a zero, a list
+/// with one more), without the resource script of Windows: ldc2 compiles D only.
+export function compilerArgs(described) {
+    return described.split("\0").filter((arg) => arg !== "" && !arg.endsWith(".rc"));
 }
 
 /// The Info.plist of the macOS bundle. macOS draws its own dialogs and items in the language
@@ -130,8 +151,10 @@ echo "${bundle} is ready."
 `;
 }
 
-function run(program, args, { capture = false } = {}) {
-    if (!capture) console.log(`> ${program} ${args.join(" ")}`);
+/// Runs a program, its output shown, or kept with `capture` (up to `maxBuffer`, 1 MB). `echo`
+/// tells the command line first.
+function run(program, args, { capture = false, echo = !capture } = {}) {
+    if (echo) console.log(`> ${program} ${args.join(" ")}`);
     const result = spawnSync(program, args, { stdio: capture ? ["ignore", "pipe", "pipe"] : "inherit",
         encoding: "utf8" });
     if (result.error) throw new BuildError(`can't run ${program}: ${result.error.message}`);
@@ -150,14 +173,34 @@ function describe(data, dubBuildArgs) {
     return result.stdout.split(/\r?\n/).filter((line) => line !== "");
 }
 
+/// Stops with what to do when the Sciter library the build will copy is missing or is a
+/// pointer of Git LFS: the program would build and then fail to load it.
+function checkSciterLibrary(arch) {
+    if (!arches.includes(arch)) return; // no library for it: dub will tell
+    const library = sciterLibrary(process.platform, arch);
+    const head = Buffer.alloc(lfsPointerStart.length);
+    let read = 0;
+    try {
+        const file = openSync(library, "r");
+        try { read = readSync(file, head); } finally { closeSync(file); }
+    } catch {
+        throw new BuildError(`No Sciter library ${library}: run "git lfs pull" (docs/building.md).`);
+    }
+    if (read === head.length && isLfsPointer(head))
+        throw new BuildError(`${library} is a pointer of Git LFS, not the library: install git-lfs `
+            + `and run "git lfs install" and "git lfs pull" (docs/building.md).`);
+}
+
 /// Builds and gives the folder of the program.
 function build(options) {
+    checkSciterLibrary(options.arch ?? process.arch);
     const args = dubArgs("build", options);
     runOrFail("dub", args, "Build failed.");
     return describe("target-path", args)[0];
 }
 
 function test(options) {
+    checkSciterLibrary(options.arch ?? process.arch);
     const dub = run("dub", dubArgs("test", options)).status === 0;
     const js = run(process.execPath, ["--test", "tests/js"]).status === 0;
     console.log(`D unittests: ${dub ? "OK" : "FAILED"}, JS tests: ${js ? "OK" : "FAILED"}`);
@@ -188,19 +231,25 @@ function distMac(version, arch) {
     });
 }
 
-/// Makes a distribution in a temporary folder by `make(folder)`, and only when it is all made
-/// replaces build/dist/<system> with it: a failed step leaves the previous one as it was.
+/// Makes a distribution by `make(folder)` and only when it is all made and copied replaces
+/// build/dist/<system> with it: a failed step leaves the previous one as it was. It is made
+/// in a temporary folder outside the project (see distMac), copied next to its place and
+/// renamed into it.
 function publish(system, make) {
     const staging = mkdtempSync(join(tmpdir(), "dlt-dist-"));
+    const dir = `build/dist/${system}`;
+    const copy = freshDir(`build/dist/.${system}-new`);
     try {
         make(staging);
-        const dir = freshDir(`build/dist/${system}`);
         // ditto keeps the signature and attributes of a bundle as they are
-        if (process.platform === "darwin") runOrFail("ditto", [staging, dir], "Copying the distribution failed.");
-        else cpSync(staging, dir, { recursive: true });
+        if (process.platform === "darwin") runOrFail("ditto", [staging, copy], "Copying the distribution failed.");
+        else cpSync(staging, copy, { recursive: true });
+        rmSync(dir, { recursive: true, force: true });
+        renameSync(copy, dir);
         return dir;
     } finally {
         rmSync(staging, { recursive: true, force: true });
+        rmSync(copy, { recursive: true, force: true });
     }
 }
 
@@ -211,7 +260,7 @@ function makeMacBundle(path, name, version, builtProgram) {
     const program = join(contents, "MacOS", name);
     copyFileSync(builtProgram, program);
     chmodSync(program, 0o755);
-    copyFileSync("libs/macosx/libsciter.dylib", join(contents, "MacOS", "libsciter.dylib"));
+    copyFileSync(sciterLibrary("darwin"), join(contents, "MacOS", "libsciter.dylib"));
     copyFileSync("resources/app.icns", join(contents, "Resources", "app.icns"));
     const tags = languages();
     for (const tag of tags) {
@@ -253,26 +302,24 @@ function dist(arch) {
     console.log(`DLT Explorer ${version} (${distArchitecture}): ${dir}`);
 }
 
-/// Compiles the app and its unittests for Windows x64 with the flags dub would give, without
-/// linking: the libraries of Windows aren't here. A full check needs Windows (`test`).
+/// Compiles the app and its unittests for Windows x64 with the arguments dub would give,
+/// without linking: the libraries of Windows aren't here. A full check needs Windows (`test`).
+/// dub describes the build for the Windows triple, so what dub.sdl declares for Windows only
+/// is in; the arguments carry the triple.
 function checkWindows() {
-    const dubBuild = dubArgs("build", { release: false, arch: null });
-    const flags = [
-        ...describe("import-paths", dubBuild).map((path) => `-I${path}`),
-        ...describe("string-import-paths", dubBuild).map((path) => `-J${path}`),
-        ...describe("dflags", dubBuild),
-    ];
-    const sources = describe("source-files", dubBuild).filter((file) => file.endsWith(".d")); // not app.rc
+    const described = run("dub", ["describe", "--compiler=ldc2", "--arch=x86_64-windows-msvc",
+        "--data=dflags,versions,import-paths,string-import-paths,source-files", "--data-0"], { capture: true });
+    if (described.status !== 0) throw new BuildError(`dub describe failed:\n${described.stderr}`);
+    const args = compilerArgs(described.stdout);
     const out = mkdtempSync(join(tmpdir(), "dlt-check-windows-"));
     let ok = true;
     try {
         for (const mode of ["app", "unittest"]) {
-            const args = ["-c", "-mtriple=x86_64-windows-msvc", ...flags,
-                ...(mode === "unittest" ? ["-unittest"] : []), "-oq", `-od=${join(out, mode)}`, ...sources];
-            const passed = run("ldc2", args, { capture: true });
-            if (passed.status !== 0) process.stderr.write(passed.stderr);
-            console.log(`Windows compile (${mode}): ${passed.status === 0 ? "OK" : "FAILED"}`);
-            ok &&= passed.status === 0;
+            // the errors straight to the terminal: there may be more than a captured output holds
+            const passed = run("ldc2", ["-c", ...(mode === "unittest" ? ["-unittest"] : []), "-oq",
+                `-od=${join(out, mode)}`, ...args], { echo: false }).status === 0;
+            console.log(`Windows compile (${mode}): ${passed ? "OK" : "FAILED"}`);
+            ok &&= passed;
         }
     } finally {
         rmSync(out, { recursive: true, force: true });
