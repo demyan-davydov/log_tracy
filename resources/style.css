@@ -14,19 +14,19 @@ body {
 
 header {
     background: var(--bg-header);
-    border-bottom: 1px solid var(--border-color);
-    padding: 4px;
+    border-bottom: 1dip solid var(--border-color);
+    padding: 4dip;
 }
 
 .toolbar {
     flow: horizontal;
-    border-spacing: 4px;
-    margin-bottom: 4px;
+    border-spacing: 4dip;
+    margin-bottom: 4dip;
 }
 
 .search-toolbar {
     vertical-align: middle;
-    padding: 4px;
+    padding: 4dip;
     margin-bottom: 0;
     transition: background-color linear 150ms;
 }
@@ -42,7 +42,7 @@ header {
 
 .filter-message {
     color: red;
-    padding: 2px 4px;
+    padding: 2dip 4dip;
 }
 
 .main-content {
@@ -71,7 +71,7 @@ header {
 
 .placeholder-title {
     text-align: center;
-    font-size: 20dip;
+    font-size: 15pt;
     font-weight: 600;
 }
 
@@ -83,7 +83,7 @@ header {
 
 .placeholder-hint kbd {
     padding: 1dip 5dip;
-    border: 1px solid var(--border-color);
+    border: 1dip solid var(--border-color);
     border-radius: 4dip;
     background: var(--bg-header);
     font-family: inherit;
@@ -136,11 +136,11 @@ header {
 .recent-file-badge {
     size: 32dip;
     margin: * 10dip * 0;
-    border: 1px solid var(--border-color);
+    border: 1dip solid var(--border-color);
     border-radius: 7dip;
     background: var(--bg-header);
     color: var(--text-label);
-    font-size: 10dip;
+    font-size: 8pt;
     font-weight: 700;
     line-height: 30dip;
     text-align: center;
@@ -243,8 +243,8 @@ body > header {
     min-width: 44dip;
     height: 30dip;
     padding: 0 6dip 0 10dip;
-    margin-bottom: -1px;
-    border: 1px solid transparent;
+    margin-bottom: -1dip;
+    border: 1dip solid transparent;
     border-bottom: none;
     border-radius: 7dip 7dip 0 0;
     color: var(--tab-text);
@@ -303,7 +303,7 @@ body > header {
     margin: * 0 * 4dip; /* Sciter: flexible top/bottom margins center it */
     line-height: 15dip;
     text-align: center;
-    font-size: 14dip;
+    font-size: 11pt;
     border-radius: 8dip;
     color: var(--tab-close);
     transition: background-color linear 100ms;
@@ -365,7 +365,7 @@ body > header {
     padding: 0;
     line-height: 24dip;
     text-align: center;
-    font-size: 18dip;
+    font-size: 14pt;
     color: var(--tab-text);
     background: transparent;
     border: none;
@@ -416,16 +416,16 @@ frameset {
 
 .sidebar {
     background: var(--bg-sidebar);
-    border-right: 1px solid var(--border-color);
-    padding: 10px;
-    width: 250px;
+    border-right: 1dip solid var(--border-color);
+    padding: 10dip;
+    width: 250dip;
 }
 
 .sidebar header {
     background: transparent;
-    border-bottom: 2px solid var(--border-sidebar-header);
-    margin-bottom: 10px;
-    padding: 0 0 5px 0;
+    border-bottom: 2dip solid var(--border-sidebar-header);
+    margin-bottom: 10dip;
+    padding: 0 0 5dip 0;
     font-size: 1.1em;
     color: var(--text-header-sidebar);
     font-weight: 600;
@@ -489,7 +489,7 @@ frameset {
     width: 10dip;
     height: 10dip;
     border-radius: 2dip;
-    border: 1px solid var(--border-color);
+    border: 1dip solid var(--border-color);
 }
 
 /* Switched off, or in a set switched off, or not applied: muted */
@@ -532,15 +532,15 @@ frameset {
 }
 
 .filter-actions {
-    flow: horizontal;
-    border-spacing: 8px;
-    margin-top: 20px;
-    padding-left: *; /* buttons on the right */
+    flow: horizontal-wrap;
+    border-spacing: 8dip;
+    margin-top: 20dip;
+    content-horizontal-align: right;
 }
 
 /* A further section of the sidebar, below the filters */
 .sidebar header.sidebar-section {
-    margin-top: 24px;
+    margin-top: 24dip;
 }
 
 .sidebar header + .filter-actions {
@@ -548,10 +548,10 @@ frameset {
 }
 
 .sidebar .filter-actions button {
-    padding: 6px 12px;
+    padding: 6dip 12dip;
     background: var(--btn-default-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
+    border: 1dip solid var(--border-color);
+    border-radius: 4dip;
     cursor: pointer;
     color: var(--text-main);
 }
@@ -563,12 +563,12 @@ frameset {
 
 
 .search-results-panel {
-    border-top: 1px solid var(--border-color);
+    border-top: 1dip solid var(--border-color);
     background: var(--bg-details);
 }
 
 .search-results-panel header {
-    padding: 4px;
+    padding: 4dip;
     background: var(--bg-details-header);
     font-weight: bold;
     font-size: 0.9em;
@@ -576,25 +576,25 @@ frameset {
 
 /* Settings Dialog */
 main {
-    padding: 20px;
+    padding: 20dip;
     background: var(--bg-main);
     color: var(--text-main);
 }
 
 .setting-group {
-    margin-bottom: 15px;
+    margin-bottom: 15dip;
 }
 
 .setting-group label {
     display: block;
-    margin-bottom: 5px;
+    margin-bottom: 5dip;
     font-weight: bold;
 }
 
 .setting-group select {
     display: block;
     width: 100%;
-    padding: 5px;
+    padding: 5dip;
 }
 
 /* The open list of a <select> (behavior: select-dropdown): the chosen option
@@ -621,17 +621,17 @@ select > popup {
 footer {
     flow: horizontal;
     background: var(--bg-header);
-    padding: 10px;
-    border-top: 1px solid var(--border-color);
+    padding: 10dip;
+    border-top: 1dip solid var(--border-color);
     text-align: right;
     /* Use standard text-align for horizontal-align */
-    border-spacing: 10px;
+    border-spacing: 10dip;
 }
 
 button.primary {
     background: var(--btn-primary-bg);
     color: var(--btn-primary-text);
-    border: 1px solid var(--btn-primary-border);
+    border: 1dip solid var(--btn-primary-border);
 }
 
 /* Native Menu */
@@ -643,9 +643,9 @@ menu.window-menu {
 
 htmlarea.filter-input[multiline="false"] {
     display: inline-block;
-    height: 30px;
-    width: 200px;
-    border: 1px solid red;
+    height: 30dip;
+    width: 200dip;
+    border: 1dip solid red;
     white-space: nowrap;
     /* Запрещаем перенос строк */
     overflow-x: auto;
@@ -663,7 +663,7 @@ plaintext.filter-input {
     flow: horizontal;
     white-space: nowrap;
     overflow-y: hidden;
-    height: 30px;
+    height: 30dip;
     size: *;
 }
 
@@ -676,5 +676,5 @@ plaintext.filter-input span.keyword {
 plaintext.filter-input span.number {
     color: green;
     background: #eee;
-    border-radius: 3px;
+    border-radius: 3dip;
 }

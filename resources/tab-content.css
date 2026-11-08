@@ -54,7 +54,7 @@
 
 .status-title {
     text-align: center;
-    font-size: 15dip;
+    font-size: 11pt;
     font-weight: 600;
 }
 
@@ -99,7 +99,7 @@
 }
 
 .status-view.compact .status-title {
-    font-size: 13dip;
+    font-size: 10pt;
 }
 
 .status-view.compact .status-body>progress {

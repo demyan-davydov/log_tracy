@@ -475,7 +475,7 @@ function closeTab(docId) {
 let shownPane = null;
 // The sizes of the splitters of the panel shown last: a panel shown next
 // gets them, so the panels look the same (see DocumentPane.show)
-let splitters = { cols: "200px, *", rows: "*, 250dip", colsState: null, rowsState: null };
+let splitters = { cols: "200dip, *", rows: "*, 250dip", colsState: null, rowsState: null };
 
 // Shows the panel of the active document, or the placeholder instead of all
 // the panels while no document is shown

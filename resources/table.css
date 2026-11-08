@@ -68,7 +68,7 @@
     padding: 2dip 3dip;
     white-space: nowrap;
     font-family: 'Courier New', Courier, monospace;
-    border-right: 1px solid var(--border-color);
+    border-right: 1dip solid var(--border-color);
 }
 
 .log-table>tbody>tr:nth-child(even) {
@@ -125,7 +125,7 @@
     -user-select: none;
     cursor: text;
     padding: 1dip 2dip;
-    border-right: 1px solid var(--border-color);
+    border-right: 1dip solid var(--border-color);
 }
 
 /* Auxiliary columns (all but Payload): the value on one line, never cut; their

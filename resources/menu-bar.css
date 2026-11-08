@@ -15,7 +15,7 @@ ul#menu-bar>li
 
 /* menu item in menu bar */
     {
-    padding: 2px 8px;
+    padding: 2dip 8dip;
     margin: 0;
     white-space: nowrap;
     width: max-content;
@@ -44,10 +44,10 @@ menu
     padding: 0;
     max-width: max-content;
     /*min-width: max-content;*/
-    border: 1px solid var(--border-color);
+    border: 1dip solid var(--border-color);
     background-color: var(--bg-main);
     color: var(--text-main);
-    margin: -1px 2px;
+    margin: -1dip 2dip;
     /* to offset it from parent li */
 }
 
@@ -70,25 +70,25 @@ menu li {
     display: block;
     flow: horizontal;
     vertical-align: middle;
-    padding-left: 24px;
+    padding-left: 24dip;
     /* room for icon */
-    padding-right: 12px;
+    padding-right: 12dip;
     /* room for the arrow */
-    padding-top: 4px;
-    padding-bottom: 4px;
+    padding-top: 4dip;
+    padding-bottom: 4dip;
     foreground-repeat: no-repeat;
-    foreground-position: left 2px top 50%;
+    foreground-position: left 2dip top 50%;
     color: var(--text-main);
 }
 
 menu li:rtl {
     width: *;
-    padding-right: 24px;
+    padding-right: 24dip;
     /* room for icon */
-    padding-left: 12px;
+    padding-left: 12dip;
     /* room for the arrow */
     foreground-repeat: no-repeat;
-    foreground-position: right 2px top 50%;
+    foreground-position: right 2dip top 50%;
     text-align: right;
     color: var(--text-main);
 }
@@ -120,14 +120,14 @@ menu li:has-child-of-type(menu) {
     foreground-image: url(stock:arrow-right);
     /* that arrow */
     foreground-repeat: no-repeat;
-    foreground-position: top 50% right 2px;
+    foreground-position: top 50% right 2dip;
 }
 
 menu li:has-child-of-type(menu):rtl {
     foreground-image: url(stock:arrow-left);
     /* that arrow */
     foreground-repeat: no-repeat;
-    foreground-position: top 50% left 2px;
+    foreground-position: top 50% left 2dip;
 }
 
 /* current menu item */
@@ -139,7 +139,7 @@ menu li:current {
 
 /* menu separator */
 menu hr {
-    margin: 2px;
+    margin: 2dip;
 }
 /* Mnemonic letters are underlined only once Alt was pressed, as in Windows
    (class "cues" of #main-menu, resources/menu-bar.js) */

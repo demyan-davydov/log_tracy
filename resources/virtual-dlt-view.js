@@ -10,8 +10,8 @@ import { anchorEdit } from "pane-state.js";
 // The header row of a log table for `columns`
 function renderHeader(columns) {
     return <tr>
-        <th width="20px">⚓</th>
-        <th width="80px">Index</th>
+        <th width="20dip">⚓</th>
+        <th width="80dip">Index</th>
         {columns.map(c => <th width={c.width ? `${c.width}px` : "*"}>{c.title}</th>)}
     </tr>;
 }

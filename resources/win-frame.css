@@ -39,7 +39,7 @@ html > header > window-buttons > window-button {
   display:block; 
   height:*; 
   width:window-button-width; 
-  foreground-size: 24px 19px;
+  foreground-size: 24dip 19dip;
   foreground-repeat: no-repeat;
   foreground-position:50% 50%;
   stroke-width:0;

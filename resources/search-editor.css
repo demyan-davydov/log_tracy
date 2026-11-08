@@ -172,5 +172,5 @@ popup.search-history .history-text.regex {
 
 .chip-search-message {
     color: red;
-    padding: 2px 4px;
+    padding: 2dip 4dip;
 }

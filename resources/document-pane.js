@@ -112,8 +112,8 @@ function renderPane(splitters) {
                     <table class="log-table main-view" fixed-layout="true">
                         <thead>
                             <tr>
-                                <th width="20px">⚓</th>
-                                <th width="80px">Index</th>
+                                <th width="20dip">⚓</th>
+                                <th width="80dip">Index</th>
                                 <th width="*">Payload</th>
                             </tr>
                         </thead>
@@ -145,8 +145,8 @@ function renderPane(splitters) {
                     <table class="log-table search-view" fixed-layout="true">
                         <thead>
                             <tr>
-                                <th width="20px">⚓</th>
-                                <th width="80px">Index</th>
+                                <th width="20dip">⚓</th>
+                                <th width="80dip">Index</th>
                                 <th width="*">Payload</th>
                             </tr>
                         </thead>
