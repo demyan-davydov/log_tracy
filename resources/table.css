@@ -106,7 +106,7 @@
 }
 
 .log-table>tbody>tr>td.anchor[has-anchor="false"]:hover:before {
-    content: ".";
+    content: "·";
     color: inherit;
     opacity: 0.3;
 }
