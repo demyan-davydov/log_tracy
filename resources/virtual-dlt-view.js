@@ -25,7 +25,7 @@ function renderCell(column, value, level, matches, matchColors) {
     const text = cellText(column, value);
     if (column.kind === "Level") {
         if (!value) return <td class="aux"></td>; // LogLevel.None: the record has no level
-        return <td class={`level-${text.toLowerCase()}`}>{text}</td>;
+        return <td class={`level level-${text.toLowerCase()}`}>{text}</td>;
     }
     if (column.kind === "Payload" && value !== null) {
         // the cell after the columns may be no fragments if the columns of the
