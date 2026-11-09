@@ -54,6 +54,7 @@ private enum string[] builtIn = [
     "tab-content.css",
     "table.css",
     "tabs.js",
+    "text-selection.js",
     "theme-dark.css",
     "theme-light.css",
     "theme.js",

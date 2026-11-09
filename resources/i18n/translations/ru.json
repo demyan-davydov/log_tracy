@@ -31,6 +31,7 @@
     "Color": "Цвет",
     "Conditions: all checked ones must match": "Условия: должны выполняться все отмеченные",
     "Copied {copied} of {total} rows: the clipboard limit is 16 MB": "Скопировано строк: {copied} из {total}, в буфер обмена помещается не больше 16 МБ",
+    "Copy": "Копировать",
     "Copy Path": "Копировать путь",
     "Copy Row": "Копировать строку",
     "Customize Table...": "Настроить таблицу...",

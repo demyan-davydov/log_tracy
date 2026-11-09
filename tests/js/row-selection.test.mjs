@@ -2,7 +2,7 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { RowSelection, selectedText, scrollTarget, autoScrollSpeed, autoScroll, followedRow, followDelay, SelectionFollower, selectsOnPress } from "../../resources/row-selection.js";
+import { RowSelection, selectedText, scrollTarget, autoScrollSpeed, autoScroll, followedRow, followDelay, SelectionFollower } from "../../resources/row-selection.js";
 
 const click = (selection, index, modifiers = {}) => selection.click(index, modifiers);
 
@@ -276,13 +276,6 @@ test("SelectionFollower: the last change wins, a click drops the waiting one, ca
     follower.cancel();
     timers.fire();
     assert.deepEqual(followed, ["search"]);
-});
-
-test("selectsOnPress: a plain press in a Payload waits for the release, the others select at once", () => {
-    assert.equal(selectsOnPress({ shift: false, toggle: false }, false), true, "another cell");
-    assert.equal(selectsOnPress({ shift: false, toggle: false }, true), false, "may start selecting text");
-    assert.equal(selectsOnPress({ shift: true, toggle: false }, true), true, "Shift extends the rows");
-    assert.equal(selectsOnPress({ shift: false, toggle: true }, true), true, "Cmd adds a row");
 });
 
 test("moveTo tells whether the selection changed", () => {

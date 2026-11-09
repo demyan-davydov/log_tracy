@@ -1,5 +1,5 @@
 import { $ } from "@sciter";
-import { VirtualDltTBody, VirtualMainViewTBody, VirtualSearchViewTBody, moveRowDrag, endRowDrag } from "virtual-dlt-view.js";
+import { VirtualDltTBody, VirtualMainViewTBody, VirtualSearchViewTBody, moveTableDrag, endTableDrag } from "virtual-dlt-view.js";
 import { plusShown, failureReason } from "new-tab.js";
 import {
     initialWindow, workspaceChanged, newTabRequested, newTabPressed, newTabClosed, documentPressed,
@@ -20,14 +20,12 @@ import { translateTree } from "i18n/dom.js";
 import { fileFilter, allFiles } from "file-types.js";
 import { requestedLocale } from "i18n/languages.js";
 
-// The table whose context menu is open: "Copy Row" copies its selected rows
+// The table whose context menu is open: "Copy" copies its selected text,
+// "Copy Row" its selected rows
 let contextList = null;
 
-function copyRowItem() {
-    return <li class="copy-row">{tr("Copy Row")}</li>;
-}
-
-// The most text Copy Row puts on the clipboard, in characters (16 MB of ASCII)
+// The most text copying from a log table (Copy, Copy Row, Cmd+C) puts on the
+// clipboard, in characters (16 MB of ASCII)
 const copyLimit = 16 * 1024 * 1024;
 
 // The context menu opens on `row`: the selection of its table is what Copy Row
@@ -41,10 +39,11 @@ function contextRowClicked(row) {
     list.updateRowStates();
 }
 
-// Copies the selected rows of `list` (a log table tbody); past the limit only
-// the first ones, and a notice says so
-function copySelectedRows(list) {
-    const { text, copied, total, truncated } = list.selectedRowsText(copyLimit);
+// Copies from `list` (a log table tbody) what `read(list, limit)` gives: its
+// copyText or selectedRowsText; past the limit only the first rows, and a
+// notice says so
+function copyFromTable(list, read) {
+    const { text, copied, total, truncated } = read(list, copyLimit);
     if (copied > 0) platform.copyText(text);
     if (truncated)
         showNotice(list, tr("Copied {copied} of {total} rows: the clipboard limit is 16 MB", { copied, total }));
@@ -401,23 +400,17 @@ function setupEvents() {
         recentFileCommand(li.getAttribute("command"), li.closest(".recent-file").getAttribute("path"));
     });
 
-    // Context menu of a log row: "Copy Row" after the default items of a
-    // selectable cell (Copy, Select All), alone on the other cells.
-    // "contextmenu" comes before the default menu is set, so a menu given there
-    // would replace it: the default one is extended on its setup instead.
-    // A right click on a row outside the selection selects only that row first.
+    // Context menu of a log row: "Copy" while text is selected in its table,
+    // "Copy Row". A right click on a row outside the selection selects only
+    // that row first; the text selected stays.
     document.on("contextmenu", "table.log-table tbody > tr", (evt, row) => {
+        contextList = null; // not the table of a menu before: an empty row sets none
         contextRowClicked(row);
-        if (evt.target.closest("[selectable]")) return; // the default menu
-        evt.source = Element.create(<menu class="context">{copyRowItem()}</menu>);
+        evt.source = Element.create(<menu class="context">
+            {contextList?.hasTextSelected() ? <li class="copy-text">{tr("Copy")}</li> : []}
+            <li class="copy-row">{tr("Copy Row")}</li>
+        </menu>);
         return true;
-    });
-    document.on("contextmenusetup", "table.log-table tbody > tr", (evt, row) => {
-        contextRowClicked(row);
-        const menu = evt.source;
-        const item = menu?.$("li.copy-row");
-        if (item) item.textContent = tr("Copy Row"); // a menu kept: in the language now
-        else if (menu) menu.append(copyRowItem());
     });
     // Context menu of a table header: Customize Table, Settings on its Table section, which
     // opens on the format of the active document, the one the table shows
@@ -428,16 +421,17 @@ function setupEvents() {
         return true;
     });
     document.on("click", "menu.context > li.column-settings", () => openSettingsAction("table"));
-    document.on("click", "menu.context > li.copy-row", () => {
-        if (contextList) copySelectedRows(contextList);
+    document.on("click", "menu.context > li.copy-row, menu.context > li.copy-text", (evt, item) => {
+        const copyText = item.classList.contains("copy-text");
+        if (contextList) copyFromTable(contextList, (list, limit) => copyText ? list.copyText(limit) : list.selectedRowsText(limit));
         contextList = null;
     });
     // Cmd+C (Ctrl+C) in a table, see VirtualDltTBody.onkeydown
-    document.on("copyrows", "table.log-table > tbody", (evt, list) => copySelectedRows(list));
+    document.on("copyrows", "table.log-table > tbody", (evt, list) => copyFromTable(list, (list, limit) => list.copyText(limit)));
 
     // Not consumed: the tab strip follows them too (tabs.js)
-    document.on("mousemove", evt => { moveRowDrag(evt); });
-    document.on("mouseup", () => { endRowDrag(); });
+    document.on("mousemove", evt => { moveTableDrag(evt); });
+    document.on("mouseup", () => { endTableDrag(); });
 
 }
 

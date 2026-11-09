@@ -49,6 +49,8 @@
     /* The rows the search found, in both tables: the row and the stripe a bit lighter */
     --bg-row-found: #333333;
     --bg-row-found-stripe: #3d3c37;
+    /* Text selected in the cells of a log table (text-selection.js), on any row */
+    --bg-text-selected: #264f78;
 
     /* Details Panel */
     --bg-details: #252526;

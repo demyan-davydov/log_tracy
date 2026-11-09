@@ -207,6 +207,12 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
     `resources/cell-format.js`; the columns JSON names the format), Index is `col-index`.
   - How a cell shows its value lives in the Sciter-free `resources/cell-format.js`, tested
     by `tests/js`.
+  - Text is selected across cells and rows by the table itself, not by Sciter (no
+    `selectable` in a log table: Sciter can't select over a virtual-list): a plain drag
+    selects text, a plain click selects the row, Shift/Cmd work on rows. The selection is
+    positions (row, cell, character, from the cell's `rangeFromPoint`), painted when a row
+    renders and copied from the backend's rows; its logic is the Sciter-free
+    `resources/text-selection.js` (story: `docs/stories/selectable-cells.md`).
 - Every open document has its own panel, `DocumentPane` (`resources/document-pane.js`): the
   filters of the sidebar, both tables, the search editor, and the state behind them. Only the
   panel of the active tab is shown, the others are `display: none` and keep their rows, scroll,
