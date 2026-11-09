@@ -69,6 +69,8 @@ let currentTheme = "light";
 let currentLanguage = ""; // the setting: a BCP 47 tag, "": the language of the system
 // Font size of the log tables, % of the normal one (Settings)
 let tableFontSize = 100;
+// Every row of the log tables one line high, the payload cut (Settings)
+let singleLineRows = false;
 // The state of the window (window-state.js): the documents, the New Tab, the
 // file that failed to open. Changed by its events only, rendered by refreshTabs()
 let win = initialWindow;
@@ -147,6 +149,7 @@ function restoreSettings(settings) {
                 setTheme(settings.theme);
             }
             if (settings.tableFontSize) setTableFontSize(settings.tableFontSize);
+            setSingleLineRows(settings.singleLineRows === true);
         }
     } catch (e) {
         console.error("Failed to restore settings:", e);
@@ -330,12 +333,19 @@ function setTableFontSize(percent) {
     console.log("Table font size set to:", percent);
 }
 
+// Makes every row of the log tables one line high (the payload cut at the
+// edge of the table) or lets the payload wrap
+function setSingleLineRows(on) {
+    singleLineRows = on;
+    for (const pane of panes.values()) pane.applySingleLineRows(on);
+}
+
 
 // The Settings dialog, on its `section` (Appearance by default); Save applies
 // all its sections at once
 function openSettingsAction(section = "appearance") {
     const result = platform.showModal("settings.htm", {
-        section, theme: currentTheme, tableFontSize,
+        section, theme: currentTheme, tableFontSize, singleLineRows,
         language: currentLanguage, languages: backend.languages(), catalog: currentCatalog(),
         columns: backend.columnSettings()
     });
@@ -343,6 +353,7 @@ function openSettingsAction(section = "appearance") {
     if (result.theme) setTheme(result.theme);
     if (typeof result.language === "string" && result.language !== currentLanguage) setLanguage(result.language);
     if (result.tableFontSize) setTableFontSize(result.tableFontSize);
+    if (typeof result.singleLineRows === "boolean") setSingleLineRows(result.singleLineRows);
     if (result.columnLayouts) {
         backend.setColumnLayouts(result.columnLayouts);
         for (const pane of panes.values()) pane.columnsChanged(); // as arranged now
@@ -488,6 +499,7 @@ const paneHost = {
     refreshTabs: () => refreshTabs(),
     theme: () => currentTheme,
     tableFontSize: () => tableFontSize,
+    singleLineRows: () => singleLineRows,
 };
 
 function refreshTabs() {
@@ -620,6 +632,7 @@ globalThis.getAppState = function () {
         windowRect,
         theme: currentTheme,
         tableFontSize,
+        singleLineRows,
         language: currentLanguage,
         scrollPosition: list ? (list.state.scrollPos || 0) : 0
     });

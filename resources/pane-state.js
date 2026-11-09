@@ -60,3 +60,31 @@ export function tabProgress(vm) {
     if (vm?.status !== "loadingFile") return null;
     return Math.min(1, Math.max(0, vm.progress || 0));
 }
+
+// What a panel does when the look of the rows of its tables (Settings:
+// { fontSize, singleLine }) is asked to be `asked`:
+//   { apply: the tables get it now, keep: the first rows on screen are to be
+//     scrolled back to the top once the rows are laid out anew }
+// `applied`: the look the tables have, null: none yet (a new panel, no rows to
+// keep). A hidden panel takes it when shown: rows that changed height under
+// its scroll position couldn't be found again
+export function rowLookStep(applied, asked, visible) {
+    if (applied === null) return { apply: true, keep: false };
+    if (applied.fontSize === asked.fontSize && applied.singleLine === asked.singleLine)
+        return { apply: false, keep: false };
+    return visible ? { apply: true, keep: true } : { apply: false, keep: false };
+}
+
+// What a table does with the first row kept on screen (`kept`: { top, null:
+// none }) when the look of its rows changed, once they are laid out anew:
+//   { wait: a status view covers the table (`shown`, see tableStep), it
+//     scrolls when it shows rows again; target: the row to scroll to the top,
+//     null: none }
+// Rows reloaded since keep their position (tableStep "keep"): the same row
+// number, within the `total` rows; their scroll in pixels came from the old
+// height of the rows and could be past the end
+export function keptRowStep(kept, shown, total) {
+    if (shown.dataVersion === null) return { wait: true, target: null };
+    if (kept.top === null || total === 0) return { wait: false, target: null };
+    return { wait: false, target: Math.min(kept.top, total - 1) };
+}

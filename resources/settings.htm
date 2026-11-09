@@ -2,11 +2,12 @@
 
 <!-- The Settings dialog, opened modal by openSettingsAction() in script.js.
      Its sections are listed on the left; Save applies all of them at once.
-     Parameters: { section (shown first: "appearance", "table"), theme, tableFontSize, language (the setting, "": the
+     Parameters: { section (shown first: "appearance", "table"), theme, tableFontSize,
+     singleLineRows, language (the setting, "": the
      system's), languages (of the translations, as getLanguages gives them),
      catalog (of the translations the texts are in, null: english), columns (as
      getColumnSettings gives them, see column-settings.js) }.
-     Closes with { theme, tableFontSize, language, columnLayouts }, or null on
+     Closes with { theme, tableFontSize, singleLineRows, language, columnLayouts }, or null on
      Cancel. -->
 
 <head>
@@ -46,6 +47,8 @@
         .setting-group { margin-bottom: 0; }
         /* A fixed width, not the whole section (user's choice) */
         .setting-group select { width: 16em; }
+        /* A checkbox setting: the box and its text on one line, the text not bold */
+        .setting-group label.check { flow: horizontal; vertical-align: middle; border-spacing: 6dip; font-weight: normal; }
 
         /* Columns: a strip of column headers as the log table shows them
            (table.css), Index first, the movable ones, Payload last taking the
@@ -347,6 +350,7 @@
             }
             renderFontSizes();
             applyTableFontSize();
+            $("#single-line-rows").value = !!params.singleLineRows;
             if (formats.length) {
                 renderFormats();
                 renderColumns();
@@ -363,6 +367,7 @@
                 theme: $("select#theme").value,
                 language: $("select#language").value,
                 tableFontSize: parseInt($("select#table-font-size").value),
+                singleLineRows: !!$("#single-line-rows").value,
                 columnLayouts: formats.length ? layoutsOf(formats) : null,
             });
         });
@@ -399,6 +404,10 @@
                 <div class="setting-group">
                     <label data-tr="Font size"></label>
                     <select id="table-font-size"></select>
+                </div>
+                <div class="setting-group">
+                    <label class="check"><input type="checkbox" id="single-line-rows" /><span data-tr="Single-line rows"></span></label>
+                    <div class="hint" data-tr="Every row is one line high; a long payload goes on to the right, scroll the table sideways to read it."></div>
                 </div>
                 <div class="hint" data-tr="The columns of the log tables, the same for every log of a format. Drag a header to move its column, untick it to hide the column."></div>
                 <div id="columns-content" style="flow: vertical; border-spacing: 12dip;">
