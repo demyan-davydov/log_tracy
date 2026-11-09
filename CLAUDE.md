@@ -247,7 +247,8 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
   is out of date. The story and the decisions: `docs/stories/i18n.md`.
 - The language changes at run time. What is built once (markup, the JSX skeleton of a panel) is
   marked with its source instead (`<header data-tr="Filters" />`, `data-tr-title`,
-  `data-tr-placeholder`) and translated by `i18n/dom.translateTree`; what is rendered anew
+  `data-tr-placeholder`, `data-tr-context="noun"` for the context of a `data-tr` text as of `trc`) and
+  translated by `i18n/dom.translateTree`; what is rendered anew
   calls `tr()` and is rendered again on a change (`DocumentPane.languageChanged`). A sentence
   with elements in it is one text: `trParts("{open} a log with {shortcut}", {open, shortcut})`.
 - The backend translates its own texts (the menu) by the catalog the script chose

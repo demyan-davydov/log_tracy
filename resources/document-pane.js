@@ -13,7 +13,7 @@ import { noSearch, runSearch, searchPending, editRule } from "pane-commands.js";
 import { ruleColors } from "rule-colors.js";
 import { scrollTarget } from "row-selection.js";
 import { noTable, tableStep } from "pane-state.js";
-import { currentCatalog, tr, trc } from "i18n/i18n.js";
+import { currentCatalog, tr } from "i18n/i18n.js";
 import { translateTree } from "i18n/dom.js";
 import { fileFilter, allFiles } from "file-types.js";
 
@@ -158,7 +158,7 @@ function renderPane(splitters) {
                 </div>
                 <div class="bottom-tabs">
                     <div class="bottom-tab active">
-                        <span class="bottom-tab-name">{trc("noun", "Search")}</span>
+                        <span class="bottom-tab-name" data-tr="Search" data-tr-context="noun" />
                     </div>
                 </div>
             </section>
@@ -277,7 +277,6 @@ export class DocumentPane {
             return;
         }
         if (this.filtersShown) this.showFilters();
-        this.root.$(".bottom-tab-name").innerText = trc("noun", "Search");
         if (this.mainStatus)
             showStatus(this.root.$(".main-status"), this.mainStatus, mainViewTexts, mainViewDetails);
         if (this.searchStatus)

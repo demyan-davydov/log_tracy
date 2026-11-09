@@ -229,6 +229,14 @@ test("the texts of marked elements: data-tr, data-tr-title, data-tr-placeholder,
     assert.deepEqual(keysOf(`const h = <header data-tr="Details" />; // <b data-tr="not this" />`), ["Details"]);
 });
 
+test("a mark with a context: the key is \"text|context\", as of trc", () => {
+    const page = `<p>\n<span data-tr="Search" data-tr-context="noun"></span>\n<b data-tr-context='verb' data-tr="Open"></b></p>`;
+    assert.deepEqual(extractTexts(page, "htm").texts.map((t) => t.key), ["Search|noun", "Open|verb"]);
+    assert.deepEqual(keysOf(`const t = <span class="name" data-tr="Search" data-tr-context="noun" />;`), ["Search|noun"]);
+    assert.deepEqual(keysOf(`const a = <b data-tr="Search" />, b = <i data-tr-context="noun" />;`), ["Search"],
+        "the context of another element doesn't count");
+});
+
 test("a mark without its text is an error", () => {
     const { errors } = extractTexts(`<p>\n<header data-tr></header>\n<b data-tr={name} /></p>`, "htm");
     assert.deepEqual(errors.map((e) => e.line), [2, 3]);

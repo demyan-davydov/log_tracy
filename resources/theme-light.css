@@ -47,7 +47,6 @@
 
     /* Details Panel */
     --bg-details: #f5f5f5;
-    --bg-details-header: #eee;
     --bg-search-pending: #fff3cd;
 
     /* The match colors: one per search chip and the matches it finds, see match-colors.css */

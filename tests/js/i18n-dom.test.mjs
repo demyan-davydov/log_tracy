@@ -54,6 +54,15 @@ test("attributes: the title and the placeholder from their marks", () => {
     assert.equal(button.textContent, "", "the text of an element marked for its title stays");
 });
 
+test("an element with a context gets the translation of its text in that context, as of trc", () => {
+    const tab = element({ "data-tr": "Search", "data-tr-context": "noun" });
+    const button = element({ "data-tr": "Search" });
+    setCatalog({ locale: "ru", messages: { "Search": "Найти", "Search|noun": "Поиск" } });
+    translateTree(tree([tab, button]));
+    assert.equal(tab.textContent, "Поиск");
+    assert.equal(button.textContent, "Найти");
+});
+
 test("a text not translated is the source", () => {
     const header = element({ "data-tr": "Decoding" });
     setCatalog(ru);

@@ -26,8 +26,10 @@
 - `renderPane` в `resources/document-pane.js`: `section.bottom-panel` → `div.bottom-page`
   (страница, сейчас `search-page` с прежним содержимым) и `div.bottom-tabs` с
   `div.bottom-tab`. Стили — `resources/style.css` (`.bottom-panel`, `.bottom-tab`).
-- «Search» на вкладке — существительное, а на кнопке поиска — глагол («Найти»). Поэтому
-  название вкладки — `trc("noun", "Search")`. У `data-tr` контекста нет, так что подпись
-  ставится скриптом и обновляется в `DocumentPane.languageChanged`.
+- «Search» на вкладке — существительное, а на кнопке поиска — глагол («Найти»). Для таких
+  омонимов у `data-tr` появился контекст: `data-tr-context="noun"`, ключ каталога
+  `Search|noun`, как у `trc`. Его понимают `i18n/dom.translateTree` и
+  `scripts/i18n-extract.mjs`, поэтому подпись вкладки переводится вместе с остальным каркасом,
+  и на скрытой панели тоже.
 - Одна вкладка всегда активна и ничего не переключает. Переключение страниц добавим вместе со
   второй страницей.
