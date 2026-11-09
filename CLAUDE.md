@@ -3,9 +3,33 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 DLT Explorer: a desktop viewer for DLT and text logs (macOS, Linux, Windows), written in D with
-the Sciter UI framework through its own minimal binding (`source/sciter`: the C API in `sciter/capi`, the D wrapper over it).
-The UI is vanilla HTML/CSS/JS in `resources/`, not Reactor style. Files can be ~1 GB: nothing
-loads a whole log into memory.
+the Sciter UI framework through its own minimal binding (`source/sciter`: the C API in
+`sciter/capi`, the D wrapper over it). The UI is vanilla HTML/CSS/JS in `resources/`, not
+Reactor style. Files can be ~1 GB: nothing loads a whole log into memory.
+
+The shared context of the repository is in `.ai/`: start at `.ai/INDEX.md`. This file keeps only
+what every session needs.
+
+## Read Before
+
+- Writing or reviewing code: `.ai/rules/INDEX.md` and the rule files of the areas touched.
+- A change in an area you haven't read this session: its file in `.ai/knowledge/`
+  (architecture, formats, filters, ui, i18n, sciter).
+- UI work: `.ai/rules/ux.md` (the user's UX requirements) and `.ai/knowledge/sciter.md`.
+- Adding a format, a backend call, a resource file, updating Sciter, the git flow, a review
+  against the rules, a screenshot of the app: its file in `.ai/workflows/` (most are skills
+  too: `/add-format`, `/add-backend-call`, `/update-sciter`, `/review-rules`, `/screenshot`).
+
+The traps that cost most, whatever the task (the rest in `.ai/rules/` and
+`.ai/knowledge/sciter.md`):
+
+- Pass a `LogMessage` by `ref`, never `out`: `out` leaks its buffer on every decode.
+- Never hide a log table itself with `display: none`: its cells stay 1px wide for good.
+  Status views cover it (`.status-view.overlay`).
+- Per-row work of a log table is hot: keep it cheap, measure before optimizing.
+- `std.datetime`'s `valid!"days"` halts the process on a month outside 1..12: check the month.
+- Sciter: `attributes["x"] = null` writes "null" (use `removeAttribute`); `Element.append`
+  takes a single node; assign `input.value`, not the `value` attribute.
 
 ## Commands
 
@@ -22,281 +46,49 @@ node scripts/build.mjs check-windows     # from macOS/Linux: compiles app + unit
 node scripts/build.mjs --help            # the commands and options (run.mjs --help too)
 dub build --compiler=ldc2                # the same build without the script; dub test likewise
 node --test tests/js                     # JS unit tests only (pure modules such as resources/new-tab.js)
+node scripts/i18n-extract.mjs            # brings the translation catalogs up to the texts of the code
+node scripts/screenshot.mjs --open <log> # the app's window with a log → build/screenshot.png (--help)
 ```
 
 - `dub.sdl` puts every build in `build/<platform>-<arch>-<build type>/` (`osx-aarch64-unittest`
   for `dub test`) and copies the Sciter library of `libs/` next to it (`copyFiles`): a build
   runs from there, in a fresh worktree too. `libs/` is in Git LFS (`git lfs pull` after a
   clone), its Sciter version in `libs/VERSION`; the app's version is `VERSION`.
-- The pure part of `scripts/build.mjs` is tested by `tests/js/build-script.test.mjs`. Linux and
-  Windows `dist` were not tried on those systems yet (`docs/backlog.md`).
-- The druntime test runner has no filter, and it stops a module's tests at the first failing
-  `unittest` block. To run the tests of one module that doesn't depend on Sciter, compile it on
-  its own:
+- One module that doesn't depend on Sciter can be tested on its own (the druntime runner has no
+  filter and stops a module at its first failing `unittest`):
   `ldc2 -unittest -main -i -preview=in -preview=dip1000 -preview=dtorfields -Isource source/log_core/text/text_format.d -of=/tmp/t && /tmp/t`
 - Keep the `-preview=in/dip1000/dtorfields` flags of `dub.sdl` when compiling by hand.
-- Running the app:
-  - The files of `resources/` are built into the executable (`ui/app_resources`, string
-    imports) and served to Sciter at `this://app/<path>` (`SciterWindow.onLoadData`): a
-    JS/CSS/HTML change needs a rebuild. A new file of `resources/` is added to the list of
-    `ui/app_resources` (a unittest fails until it is); the icons are not built in.
-  - `settings.json` sits next to the executable and is rewritten on exit: every build folder
-    has its own. Run a copy of the binary from another folder to keep the developer's own
-    settings.
-  - A release build runs one copy per `settings.json` (`utils/single_instance`, a lock on
-    `settings.lock` next to it): a second one brings the first forward and exits. Debug builds
-    run side by side.
-  - The script's `console.log` goes to the app's stdout as `info [script]: ...` lines (errors as
-    `error [script]: ...`), next to the backend's `writeln`.
+- The files of `resources/` are built into the executable: a JS/CSS/HTML change needs a
+  rebuild, a new file is added to `ui/app_resources`.
+- `settings.json` sits next to the executable and is rewritten on exit: every build folder has
+  its own. Run a copy of the binary from another folder to keep the developer's own settings.
+  A release build runs one copy per `settings.json`; debug builds run side by side.
+- The script's `console.log` goes to the app's stdout as `info [script]: ...` lines.
 
-## Architecture
+## Packages
 
-Data flows from bytes to the table like this:
-
-```
-ByteSource (log_core/byte_source)          bytes of a log, addressed by offset (FileSource = mmap)
-  └ LogFormat (log_core/log_format)        splits bytes into records, decodes one into a LogMessage,
-       │                                   declares the table columns (ColumnInfo)
-       ├ DltFormat (formats/dlt/format)    binary DLT; parser in formats/dlt/parser
-       └ TextFormat (log_core/text/...)    line-based base: multiline records, record length limit
-            └ formats/*                    PlainTextFormat (fallback), LogcatFormat, ...
-LogIndex (domain/log_index)                offset/filter/search indexes, built on a background thread
-LogDocument (domain/log_document)          a log + its main view and search view, operation events
-Workspace (domain/workspace)               open documents, the current one
-AppSession (ui/app_session)                what the calls of the script do: files, tabs, views,
-                                           search, filters, settings (Sciter-free, tested)
-MainWindow (ui/main_window)                Sciter window: xcall bridge to the session, table rows
-resources/script.js, tabs.js             the window: tabs, placeholder, settings, backend callbacks
-resources/document-pane.js                 a panel per document (filters, tables, search)
-resources/virtual-dlt-view.js              virtual table built from the column schema
-```
-
-The script asks the backend through `resources/backend.js`, one function per
-`Window.this.xcall(name, ...)` (read in `MainWindow.handleEvent`, done by `AppSession`): a new
-call gets its function there, the script calls nothing else; the backend tells the script what changed by
-`callScript` of a global function (`onMainViewChanged(docId, json)`, `onSearchViewChanged`,
-`onDocumentOpened`, ...). The session only queues those calls; `MainWindow.onIdle()` sends them
-(`takeScriptCalls`) after the document events of the indexing thread were dispatched on the UI
-thread, never from inside an `xcall`. The settings are likewise only marked changed: the next
-`onIdle()` writes them (`settingsDue`), with the script's `getAppState()` merged in.
-`saveAppState` on closing writes them at once; from then on the script is not called any more
-(its view is being torn down), and what changes after that is written on exit (`finish`).
-On macOS Quit (Cmd+Q, the Dock, logging out) closes the window without `closerequest` and
-exits inside the event loop: the application delegate's `applicationShouldTerminate:`
-(`ui/main_menu_loader`) writes the settings first (`MainWindow.terminate`). The window frame
-is also written when the user is done moving or resizing it (`replacementend`), and restored by
-the script (`resources/window-frame.js`): `main.htm` sizes the window, not the creation rect.
-
-### Where things live
-A package imports only the packages to its left (unittests may import more, e.g. a format to build
-test data):
+A package imports only the packages to its left (unittests may import more):
 
 ```
 utils  ←  log_core  ←  formats  ←  domain  ←  ui  ←  app.d
 utils  ←  sciter  ←  ui
 ```
 
-- `utils/` holds what knows nothing of logs and could move to another project as it is:
-  chunked array, mapped file, lock guard, background slot, state machines (`utils/fsm`),
-  event buses (`utils/event_bus/`).
-- `log_core/` holds what doesn't depend on a format (LogMessage, LogFormat, filters,
-  ByteSource), `log_core/text/` the base of the text formats.
-- Every format lives in `formats/`: one module (`formats/logcat.d`), or a package when it has
-  several (`formats/dlt/`, `formats/can/`, `formats/syslog/`). `formats/registry.d` lists them.
-- `domain/` (documents, indexes) knows formats only through `LogFormat` and `detectFormat`.
-- `sciter/` is the D wrapper over Sciter (window, application, value, ...), `sciter/capi/` the
-  C API it calls.
-- `ui/` is the window and the logic behind it; the Sciter-free part of it is unit-tested.
-- `scripts/` holds the build script (`build.mjs`: build, test, dist, Windows check) and the
-  other tools; they run from the project root wherever they are called from.
-
-### Formats and detection
-- The formats supported now and the ones planned: `docs/formats.md`. Keep it up to date
-  when a format or a variant is added.
-- `formats/registry.detectFormat` asks every `FormatDetector` for a score on the first
-  64 KB and picks the best.
-- Plain text is the low-score fallback; data no detector accepts is refused.
-- A `.dlt` extension alone only decides for binary data.
-- A recent file remembers the format it was opened with (`FormatChoice`: `FormatInfo.id` and
-  the variant) and opens in it again through `createFormat`, without detection; a file with no
-  saved format, or one this build can't create (unknown id, invalid variant), is detected. Never change a format's `id`: settings refer to it.
-- A format instance is created per document (it may hold a variant) and must stay immutable:
-  the UI thread and the indexing thread call it concurrently.
-
-### Adding a text format
-Derive from `TextFormat` and implement `decodeText`, `columns` and `name` (a line it can't
-parse goes to the payload as it is: `decodeAsPlainText`). Implement
-`isRecordStart` too if continuation lines are glued to their record. Add a `FormatDetector` and
-register it in `formats/registry`; a column that needs a look of its own (a width) gets it in
-`resources/table.css` (`col-<format id>-<column id>`). Declare the format's `FormatInfo` (stable `id`, `name`, a
-three-letter `shortName` for the badge of a recent file) and return it from the detector's `info`. Parsing helpers (numbers, times, dates) live in
-`log_core/text/text_parsing`.
-
-### LogMessage and LogFilter
-- `LogMessage!wchar` (`log_core/log_message`) is the format-neutral record:
-  - a core: `timeNs` with its `TimeKind`, `level`, `payload`;
-  - up to 8 fields by index, each a text or a number, with `hasField` telling whether the record
-    has it.
-- All texts live in one reused buffer whose size is derived from `maxRecordLength`, so decoding
-  allocates nothing.
-- Pass a `LogMessage` by `ref`, never `out`: `out` resets it to `.init` without its destructor
-  and leaks the buffer on every decode.
-- DLT fields are read through UFCS accessors in `formats/dlt/fields` (`msg.ecuId`, `msg.appId`, ...).
-- DLT records for unittests are built by `formats/dlt/testing_utils` (`BuildV1`, `BuildV2`,
-  `buildDltMessage`), also for the tests of other packages.
-- Filters implement `LogFilter!wchar` (`log_core/log_filter`).
-- The filters of the main view are rules, as in dlt-viewer, the same for every format
-  (`log_core/rule_filter`):
-  - a `FilterRule` (include / exclude / marker) is a set of `Condition`s on **column ids** of the
-    format; a condition on a column the log doesn't have makes the rule "not applied"
-    (`ruleError`), it is kept, never dropped silently;
-  - a `FilterSet` is what one filter file holds; `RuleFilter.compile` builds the view filter from
-    the enabled rules of the enabled sets (shown: an include rule matches, or there is none, and
-    no exclude rule does; markers don't filter);
-  - a rule has a `RuleId` while its document is open (given by `DocumentFilters`, not saved);
-    `RuleMatcher` finds the first rule *with a color* a record matches, of any kind, as dlt-viewer
-    colors the rows. It runs for every row shown on the UI thread: keep matching cheap (the
-    conditions of a rule are checked cheapest first, substrings by code units).
-- Filter files: our own JSON format (`log_core/filter_file`, `<name>.<format id>.logfilter`, the
-  format is also written inside) for any log; a `.dlf` of dlt-viewer (`formats/dlt/dlf`) for DLT
-  logs only, converted to rules and back (`fromDlf`, `toDlf`), naming what is lost.
-- `ui/filter_commands.DocumentFilters` holds the sets of a document and the panel commands. A set
-  is a **copy**: a loaded file is copied into the settings of the log (`RecentFile.filters`, rules
-  as in a filter file), edits are remembered at once, and a set can be exported. No file is
-  referred to, so a file loaded for two logs doesn't tie them together.
-- The rule editor (`resources/rule-editor.htm`) has a row per column of the format; the mapping
-  of conditions to rows is the Sciter-free `resources/rule-form.js`, tested by `tests/js`.
-
-### Indexing and threads
-- `LogIndex` runs one operation at a time in a `BackgroundSlot`: build the offset, filter or
-  search index. Progress and finish are reported as events on an `EventBusAsync`;
-  `Document.dispatchEvents()` delivers them on the UI thread.
-- The filter and search indexes are built in parallel blocks on `std.parallelism`'s task pool
-  (`utils/parallel_scan`), appended in order as the blocks before them are done; the
-  offset index is built sequentially. A format and a filter are called from several threads.
-- The indexes are `BaseIndex` over `utils/chunked_array`:
-  - they grow by 64K-entry chunks (mmap / VirtualAlloc) up to 2^32 entries;
-  - entries never move, which is what lets the indexing thread read the offset index without
-    the mutex while the UI thread reads under it.
-- `scanRecords` can resume and leaves an incomplete last record for a later call: this is meant
-  for future streaming sources (growing file, serial port), so keep that contract.
-
-### UI side
-- The table columns and the row cells (`ui/table_rows`: `writeRow` over a cell writer,
-  `main_window` writes them as Sciter values) are built from the
-  format's `ColumnInfo` schema as the user's layout of that format arranges it
-  (`log_core/column_layout`, `AppSettings.columnLayouts` by format id, edited in the Table
-  section of Settings): `backend.tableColumnsJson(docId)`, arranged once per format and variant
-  (`ui/table_columns`). The rule editor gets all the columns of the format:
-  `backend.columns(docId)`.
-  - Index (not a format column) stays first and Payload last; the others can be moved and
-    hidden. A layout is one per format id, for all its variants: `formats/registry.formatColumns`
-    gives the columns of all of them.
-  - Dragging to reorder (tabs, columns in Settings) shares `resources/drag-strip.js` (the
-    elements: shifts, classes, marker) over the Sciter-free `resources/drag-order.js` (the math).
-- A row is: anchored, rule id, view index, message index, level, found, then one cell per column
-  (`rowLayout` in `resources/cell-format.js`), then one more cell after the columns: what the
-  chips of the search found in the payload, `[[start, end, chip]]` in UTF-16 units
-  (`SearchFilter.matchRanges`), shown in the chips' match colors in both tables; null for a row
-  the search didn't find (`AppSession.matchesOf`), which computes nothing.
-  - Found: the current search found the record (`DocumentItem.found`; an anchor the search
-    doesn't match is listed in the results but not found), both tables color the row by it
-    (`row-found` in `table.css`); the main view looks the record up in the search index.
-  - The rule id is the first rule with a color the record matches (null if none); the script
-    looks its color up in the rules of the panel (`resources/rule-colors.js`) and sets it on the
-    row, `table.css` shows it on the Index cell only, as a fade from the left edge.
-  - A time cell is `[microseconds, TimeKind]`: it is shown by the kind of the record, not of
-    the column.
-  - Hex cells are formatted by the backend: 64-bit values don't fit a script number.
-  - The level colors the cells of columns with `ColumnInfo.byLevel` (an HTTP status shown as
-    it is).
-  - How a column looks (its width) is up to `resources/table.css`, not the format: a header
-    has the classes `col-<column id>` and `col-<format id>-<column id>` (`columnClass` in
-    `resources/cell-format.js`; the columns JSON names the format), Index is `col-index`.
-  - How a cell shows its value lives in the Sciter-free `resources/cell-format.js`, tested
-    by `tests/js`.
-  - Text is selected across cells and rows by the table itself, not by Sciter (no
-    `selectable` in a log table: Sciter can't select over a virtual-list): a plain drag
-    selects text, a plain click selects the row, Shift/Cmd work on rows. The selection is
-    positions (row, cell, character, from the cell's `rangeFromPoint`), painted when a row
-    renders and copied from the backend's rows; its logic is the Sciter-free
-    `resources/text-selection.js` (story: `docs/stories/selectable-cells.md`).
-- Every open document has its own panel, `DocumentPane` (`resources/document-pane.js`): the
-  filters of the sidebar, both tables, the search editor, and the state behind them. Only the
-  panel of the active tab is shown, the others are `display: none` and keep their rows, scroll,
-  selection and draft as they are; a hidden panel renders what changed when it is shown.
-  `script.js` keeps the documents and the panels, the placeholder and the settings; the tab
-  strip (rendering, pressing, dragging, tooltips) is `resources/tabs.js`, what a tab does is
-  decided by `script.js`.
-  - The calls of a document's views, filters and search take its id first
-    (`backend.mainViewItem(docId, index)`, ...); only the menu and Settings use the active document.
-  - The sizes of the splitters follow from the panel shown before. They are written with the
-    rest of `getAppState()` (`AppSettings.sidePanelWidth`, `searchPanelHeight`; the mapping is
-    `resources/panel-sizes.js`), not on each move of a splitter, and the first panel starts with them.
-  - Never hide a log table itself: one hidden by `display: none` before it was ever laid out
-    keeps its cells 1px wide for good (Sciter). Status views cover it instead
-    (`.status-view.overlay`).
-  - What a table does on a change of its view is the Sciter-free `resources/pane-state.js`;
-    the flows of its search and rule commands are `resources/pane-commands.js`.
-- The main menu is described once, per platform convention, in the Sciter-free `ui/app_menu`
-  (`appMenu`; commands reach the script as `onMenuCommand(id)` on every platform):
-  `ui/main_menu_loader` builds the native macOS menu from it; on Windows and Linux the script
-  gets it as JSON (`menuJson`, `backend.menu()`: what the items are, not how they look) and
-  draws a Sciter menu bar from it (`resources/menu-bar.js`); on every platform the script takes
-  the texts of shortcuts in hints from it. A label marks its mnemonic with `&` (`E&xit`). `DLT_MENU_BAR=windows|linux`
-  shows that menu bar on macOS too, to try it.
-- The view status shown to the user comes from the state machines `ui/main_view_fsm` and
-  `ui/search_view_fsm` (on `utils/fsm`). They are kept free of Sciter so they can be unit-tested.
-- UI command logic that needs testing goes into Sciter-free modules (`ui/app_session`,
-  `ui/filter_commands`), not into `MainWindow`: a new xcall is a method of the session, the
-  window only reads its parameters and answers.
-- The script is split the same way: what the window shows is the state machine
-  `resources/window-state.js` (the documents, the New Tab, the failed file; `script.js` only
-  renders it), the services of Sciter (dialogs, clipboard, window frame, OS) are reached
-  through `resources/platform.js` only, as the backend is through `resources/backend.js`; the
-  other modules render the DOM. Logic worth a test goes into a module free of both, tested by
-  `tests/js` (it imports its neighbours with `./`).
-
-### Translations
-- What the user sees is written in English in the code and translated as in Qt
-  (`resources/i18n/i18n.js`): `tr("Open File...")`, `tr("Found {count}", { count })`,
-  `trc("noun", "Filter")`, `trn("{n} match", "{n} matches", n)`. The text is always a string
-  literal: `scripts/i18n-extract.mjs` finds the texts by it and brings the catalogs
-  (`resources/i18n/translations/<BCP 47 tag>.json`) up to them; `tests/js` fail when a catalog
-  is out of date. The story and the decisions: `docs/stories/i18n.md`.
-- The language changes at run time. What is built once (markup, the JSX skeleton of a panel) is
-  marked with its source instead (`<header data-tr="Filters" />`, `data-tr-title`,
-  `data-tr-placeholder`, `data-tr-context="noun"` for the context of a `data-tr` text as of `trc`) and
-  translated by `i18n/dom.translateTree`; what is rendered anew
-  calls `tr()` and is rendered again on a change (`DocumentPane.languageChanged`). A sentence
-  with elements in it is one text: `trParts("{open} a log with {shortcut}", {open, shortcut})`.
-- The backend translates its own texts (the menu) by the catalog the script chose
-  (`backend.useLanguage`, `ui/translations.Catalog`): `appMenu(platform, tr)` writes its labels
-  as `tr("&File")` with `tr` a parameter, so the extractor finds them.
-- A text for the user made by the backend (an error) is an english template with parameters,
-  `uiText("no column \"{column}\" in this log", "column", id)` (`utils/ui_text`), thrown in a
-  `UiTextException` (its `msg` is the english) and translated where the session answers the
-  script (`_catalog.translate(uiTextOf(e))`). Messages of the OS and libraries go in as
-  parameters, untranslated.
-- `DLT_PSEUDO_LOCALE=1` offers the pseudo translation in Settings (every text accented and
-  lengthened: what stays plain english is not translated).
-- Not translated: the contents of logs, the column titles of formats, levels, the texts of
-  shortcuts.
+The script reaches the backend only through `resources/backend.js` (one function per xcall,
+done by `ui/app_session`) and Sciter's services only through `resources/platform.js`. Logic
+worth a test lives in Sciter-free modules, D and JS alike.
 
 ## Conventions
 
-- The main branch is `master`. Work goes on a branch and is merged with `--no-ff`. The story of
-  a feature (what and why, in Russian) is in `docs/stories/`; what was noticed but left for
-  later goes to `docs/backlog.md`.
+- The main branch is `master`. Features go on a branch and are merged with `--no-ff`; small
+  one-off fixes go straight on `master`. Details and what an agent may do on its own:
+  `.ai/workflows/git.md`.
+- Tests first: write the test, see it fail for the right reason, then change the code
+  (`.ai/rules/tests.md`).
 - Every module starts with a `//!` comment stating its responsibility. Use camelCase, write
-  comments in English.
-- Tests first: write the test, see it fail for the right reason, then change the code. For new
-  code start from a compiling stub so the test fails at run time.
-- Commit subjects are short, lower-case and imperative ("grow the indexes by chunks instead of ...").
-- Known traps:
-  - `std.datetime`'s `valid!"days"` halts the process on a month outside 1..12, even in release
-    builds: check the month first.
-  - Sciter `Element.append` takes a single node.
-  - Setting an input's `value` attribute in JSX doesn't change its current value: assign
-    `input.value`.
-  - UFCS accessors don't work through a pointer.
+  code, comments and `.ai/` in English. Docs for people (`docs/`) are in English; the story of
+  a feature (`docs/stories/`) and `docs/backlog.md` are in Russian.
+- Commit subjects are short, lower-case and imperative; on a feature branch they start with
+  `<feature>: `.
+- When a change moves a responsibility or adds an extension point, update its file in
+  `.ai/knowledge/`; when the user states a general UI requirement, add it to `.ai/rules/ux.md`.

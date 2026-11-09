@@ -17,7 +17,7 @@ test("the options: the system's, english, the translations, the pseudo one last 
     ]);
 });
 
-test("no pseudo option unless the backend offers it (DLT_PSEUDO_LOCALE)", () => {
+test("no pseudo option unless the backend offers it (PSEUDO_LOCALE)", () => {
     assert.deepEqual(languageOptions([{ locale: "ru", name: "Русский" }]).map((o) => o.value), [systemSetting, "en", "ru"]);
 });
 

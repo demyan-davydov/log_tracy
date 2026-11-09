@@ -130,11 +130,50 @@ complete. The version comes from the `VERSION` file.
   `~/.local/share/applications`.
 - **Windows**: `dlt_explorer.exe` and `sciter.dll`; the icon is built into the program.
 
+### A screenshot of the window
+
+`node scripts/screenshot.mjs --open <log>` builds the program, starts a copy of it in a
+temporary folder (with settings of its own: the build's `settings.json` stays as it is), opens
+the log, waits for it to load and captures the window of the program only, into
+`build/screenshot.png`. `--help` lists the options: several logs, the wait, a `settings.json`
+to start with (theme, language), environment variables for the program (see
+[Environment variables for development](#environment-variables-for-development)).
+
+- **macOS**: the first run compiles a small helper with `swiftc` (the Xcode command line
+  tools); the terminal needs the Screen Recording permission.
+- **Windows**: PowerShell, nothing to install.
+- **Linux**: X11, with `xdotool` and ImageMagick (`import`) installed. In a Wayland session the
+  program is started on XWayland (`GDK_BACKEND=x11`); Wayland alone, without XWayland, lets no
+  program capture another's window.
+
+Windows and Linux were not tried on those systems yet.
+
 ### Checking Windows from macOS or Linux
 
 A Windows program can only be linked on Windows. From macOS or Linux, `check-windows`
 compiles the program and its unittests for Windows x64 without linking: enough to catch code
 that doesn't compile on Windows.
+
+## Environment variables for development
+
+The program reads a few environment variables, for trying and checking things during
+development; users don't need them. All of them are read at start, in the constructor of
+`MainWindow` (`source/ui/main_window.d`).
+
+| Variable | Values | What it does |
+|---|---|---|
+| `OPEN_AT_START` | `<log>`, several on lines of their own | Opens these logs at start, each in its tab. `scripts/screenshot.mjs` uses it. |
+| `MENU_BAR_PLATFORM` | `windows`, `linux` | Draws the menu bar of that system in the window, also on macOS: to try the menu of another system. |
+| `PSEUDO_LOCALE` | `1` | Offers the pseudo translation in Settings: every text accented and lengthened, so what stays plain English is not translated. |
+| `SCITER_DEBUG_MODE` | `1` | Turns the debug mode of Sciter on, for its inspector: start `inspector.app` of the Sciter SDK first, then Ctrl+Shift+I in the window connects to it (the DOM, the styles, a script console), Ctrl+Shift+click shows the element clicked. |
+
+For example:
+
+```sh
+MENU_BAR_PLATFORM=windows OPEN_AT_START=~/logs/trace.dlt build/osx-aarch64-debug/dlt_explorer
+```
+
+A new variable goes into this table.
 
 ## The Sciter libraries
 

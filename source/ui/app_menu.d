@@ -35,7 +35,7 @@ struct WindowMenu
 
 /// The menu of the window on `host`.
 /// @param forced - "windows" or "linux": the menu bar of that platform on any platform, for a
-///     try (the environment variable DLT_MENU_BAR); anything else is ignored
+///     try (the environment variable MENU_BAR_PLATFORM); anything else is ignored
 WindowMenu windowMenu(MenuPlatform host, string forced) pure nothrow @safe
 {
     if (forced == "windows")
