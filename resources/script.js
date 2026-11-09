@@ -39,11 +39,11 @@ function contextRowClicked(row) {
     list.updateRowStates();
 }
 
-// Copies the selected rows of `list` (a log table tbody), or with `whatCmdC`
-// what Cmd+C copies: the selected text if any (clipboardText); past the limit
-// only the first rows, and a notice says so
-function copyFromTable(list, whatCmdC = false) {
-    const { text, copied, total, truncated } = whatCmdC ? list.clipboardText(copyLimit) : list.selectedRowsText(copyLimit);
+// Copies from `list` (a log table tbody) what `read(list, limit)` gives: its
+// copyText or selectedRowsText; past the limit only the first rows, and a
+// notice says so
+function copyFromTable(list, read) {
+    const { text, copied, total, truncated } = read(list, copyLimit);
     if (copied > 0) platform.copyText(text);
     if (truncated)
         showNotice(list, tr("Copied {copied} of {total} rows: the clipboard limit is 16 MB", { copied, total }));
@@ -407,7 +407,7 @@ function setupEvents() {
         contextList = null; // not the table of a menu before: an empty row sets none
         contextRowClicked(row);
         evt.source = Element.create(<menu class="context">
-            {contextList?.textSelection ? <li class="copy-text">{tr("Copy")}</li> : []}
+            {contextList?.hasTextSelected() ? <li class="copy-text">{tr("Copy")}</li> : []}
             <li class="copy-row">{tr("Copy Row")}</li>
         </menu>);
         return true;
@@ -422,11 +422,12 @@ function setupEvents() {
     });
     document.on("click", "menu.context > li.column-settings", () => openSettingsAction("table"));
     document.on("click", "menu.context > li.copy-row, menu.context > li.copy-text", (evt, item) => {
-        if (contextList) copyFromTable(contextList, item.classList.contains("copy-text"));
+        const copyText = item.classList.contains("copy-text");
+        if (contextList) copyFromTable(contextList, (list, limit) => copyText ? list.copyText(limit) : list.selectedRowsText(limit));
         contextList = null;
     });
     // Cmd+C (Ctrl+C) in a table, see VirtualDltTBody.onkeydown
-    document.on("copyrows", "table.log-table > tbody", (evt, list) => copyFromTable(list, true));
+    document.on("copyrows", "table.log-table > tbody", (evt, list) => copyFromTable(list, (list, limit) => list.copyText(limit)));
 
     // Not consumed: the tab strip follows them too (tabs.js)
     document.on("mousemove", evt => { moveTableDrag(evt); });

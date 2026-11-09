@@ -5,9 +5,9 @@
 //
 // A selection is { anchor, focus }: where the drag began and where the mouse
 // is now. A position is { row, col, offset }: the view index of the row, the
-// cell among the text cells of the row (0 is Index, then the columns as the
-// table shows them) and the character under the mouse in the text of that
-// cell (-1 in an empty cell). The characters under both ends are selected:
+// number of the cell among the cells of the row whose text can be selected,
+// in their order (which cells those are is the table's to decide), and the
+// character under the mouse in the text of that cell (-1 in an empty cell). The characters under both ends are selected:
 // that is what Sciter's rangeFromPoint gives, the character under a point.
 // The table keeps no text: the cells are read anew by their row (the rows are
 // not kept in the script either), so the selection survives scrolling.
@@ -45,7 +45,7 @@ export function cellPart(range, row, col, length) {
 // new lines, as whole rows are copied (rowText in cell-format.js); at most
 // `limit` characters of whole rows, as selectedText in row-selection.js:
 // { text, copied (rows), total (rows), truncated }.
-// @param cellTextsOf - row => the texts of its cells (Index first), null if the
+// @param cellTextsOf - row => the texts of its cells in their order, null if the
 //   row can't be read: it is left out
 // @param rowCount - the rows of the view: the selection may outlast a shorter view
 export function rangeText(range, cellTextsOf, limit = Infinity, rowCount = Infinity) {
@@ -143,7 +143,7 @@ export function sameSelection(a, b) {
 
 // How far, in dips, the mouse moves from a plain press before the press is a
 // drag selecting text rather than a click
-export const dragThreshold = 3;
+const dragThreshold = 3;
 
 // Whether the mouse at `point` ({ x, y }) has moved from `press` far enough
 // to drag (dragThreshold)

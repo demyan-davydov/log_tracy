@@ -2,7 +2,7 @@
 // resources/text-selection.js. Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { textRange, cellPart, rangeText, repaintRows, splitSelected, wordAt, sameSelection, isDrag, dragThreshold, cellHit, pastEnd }
+import { textRange, cellPart, rangeText, repaintRows, splitSelected, wordAt, sameSelection, isDrag, cellHit, pastEnd }
     from "../../resources/text-selection.js";
 
 const at = (row, col, offset) => ({ row, col, offset });
@@ -134,8 +134,8 @@ test("sameSelection: a move that changes nothing", () => {
 test("isDrag: a press becomes a drag once the mouse moves away from it", () => {
     const press = { x: 100, y: 50 };
     assert.equal(isDrag(press, { x: 100, y: 50 }), false, "not moved");
-    assert.equal(isDrag(press, { x: 100 + dragThreshold - 1, y: 50 }), false, "a tremble of the hand");
-    assert.equal(isDrag(press, { x: 100, y: 50 + dragThreshold }), true, "moved");
+    assert.equal(isDrag(press, { x: 101, y: 51 }), false, "a tremble of the hand");
+    assert.equal(isDrag(press, { x: 100, y: 60 }), true, "moved");
 });
 
 test("cellHit: the cell under x and whether its text decides the character", () => {

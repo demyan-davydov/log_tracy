@@ -78,8 +78,7 @@ export function cellText(column, value) {
 }
 
 // The texts of the cells of a row of the backend as the table shows them:
-// Index, then the cells of `columns` (the cells after the anchor, whose text
-// can be selected); null if there is no row
+// Index, then the cells of `columns`; null if there is no row
 export function cellTexts(item, columns) {
     if (!item) return null;
     return [String(item[rowLayout.messageIndex]),

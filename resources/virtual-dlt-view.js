@@ -2,7 +2,7 @@ console.log("Loading virtual-dlt-view.js...");
 import { VirtualList, VirtualSelect } from "virtual-select.js";
 import * as backend from "backend.js";
 import * as platform from "platform.js";
-import { cellClass, cellText, cellTexts, columnClass, itemText, rowLayout, matchPieces } from "cell-format.js";
+import { cellClass, cellTexts, columnClass, itemText, rowLayout, matchPieces } from "cell-format.js";
 import { matchColorClass } from "match-colors.js";
 import { RowSelection, selectedText, autoScrollSpeed } from "row-selection.js";
 import { textRange, cellPart, rangeText, repaintRows, splitSelected, wordAt, sameSelection, isDrag, cellHit }
@@ -39,20 +39,29 @@ function cellContent(text, matches, matchColors, part) {
     });
 }
 
-// A cell of `column`; `level` (a LogLevel of the record) colors it if the
-// column asks for it (byLevel: an HTTP status shown as it is). `matches` are
-// what the search chips found in the payload (rows the search found only),
-// `matchColors` the colors of the chips. partOf(length) gives the part of its
-// text the user selected (see cellContent).
-function renderCell(column, value, level, matches, matchColors, partOf) {
-    const text = cellText(column, value);
+// A cell of `column` showing `value` as `text` (cellText); `level` (a LogLevel
+// of the record) colors it if the column asks for it (byLevel: an HTTP status
+// shown as it is). `matches` are what the search chips found in the payload
+// (rows the search found only), `matchColors` the colors of the chips, `part`
+// the part of its text the user selected (see cellContent).
+function renderCell(column, value, text, level, matches, matchColors, part) {
     if (column.kind === "Level") {
         if (!value) return <td class="aux"></td>; // LogLevel.None: the record has no level
-        return <td class={`level level-${text.toLowerCase()}`}>{cellContent(text, null, null, partOf(text.length))}</td>;
+        return <td class={`level level-${text.toLowerCase()}`}>{cellContent(text, null, null, part)}</td>;
     }
     if (column.kind === "Payload" && value !== null)
-        return <td>{cellContent(text, matches, matchColors, partOf(text.length))}</td>;
-    return <td class={cellClass(column, level)}>{cellContent(text, null, null, partOf(text.length))}</td>;
+        return <td>{cellContent(text, matches, matchColors, part)}</td>;
+    return <td class={cellClass(column, level)}>{cellContent(text, null, null, part)}</td>;
+}
+
+// A row is the anchor cell, then a cell per text of cellTexts (cell-format.js)
+// in its order: the cells whose text can be selected, numbered from 0 as
+// text-selection.js counts them. renderItem renders them, textCellsOf finds
+// them in a row on screen.
+const anchorCells = 1;
+
+function textCellsOf(row) {
+    return [...row.children].slice(anchorCells);
 }
 
 // The offset of the position (`node`, `offset`) of a range in the text of
@@ -73,9 +82,6 @@ function textOffsetIn(cell, node, offset) {
     };
     return walk(cell) ? total : null;
 }
-
-// No part of a cell is selected (renderItem, while no text is)
-const noPart = () => null;
 
 // Cmd+click toggles a row on macOS, where Ctrl+click opens the context menu:
 // it comes as a left press with Ctrl, which must not select like a click
@@ -139,16 +145,28 @@ export class VirtualDltTBody extends VirtualSelect {
         this.post(new Event("rowchosen", { bubbles: true, data: { delayed } }));
     }
 
-    // The text the user selected across the cells and rows ({ anchor, focus },
-    // see text-selection.js), null if none
-    get textSelection() {
-        return this._textSelection ?? null;
+    // Whether the user selected text in the cells (the context menu offers to
+    // copy it)
+    hasTextSelected() {
+        return !!this._textSelection;
     }
 
-    // Sets it and paints the rows on screen whose look changes
-    setTextSelection(selection) {
-        if (sameSelection(this.textSelection, selection)) return; // a move within a character
-        const rows = repaintRows(this.textSelection, selection);
+    // What Copy and Cmd+C copy: the text selected if any, else the selected
+    // rows; at most `limit` characters of whole rows: { text, copied, total,
+    // truncated } (rows), see rangeText and selectedRowsText
+    copyText(limit) {
+        if (!this._textSelection) return this.selectedRowsText(limit);
+        return rangeText(textRange(this._textSelection), row => cellTexts(this.itemAt(row), this.columns), limit,
+            this.totalItems());
+    }
+
+    // The text selected: _textSelection, { anchor, focus } (text-selection.js),
+    // unset or null if none. Sets it and paints the rows on screen whose look
+    // changes. The methods with "_" are for the drag of this module only.
+    _setTextSelection(selection) {
+        const before = this._textSelection ?? null;
+        if (sameSelection(before, selection)) return; // a move within a character
+        const rows = repaintRows(before, selection);
         this._textSelection = selection;
         if (rows) this.refreshVisibleRows(rows);
     }
@@ -158,9 +176,9 @@ export class VirtualDltTBody extends VirtualSelect {
     // selected is unpainted in place: the rows on screen may be kept as they
     // are (followAnchor), and reading them anew would read the new view.
     resetSelection() {
-        if (drag?.list === this) endTableDrag(false);
+        abandonDrag(this);
         this.selection.reset();
-        if (this.textSelection) {
+        if (this._textSelection) {
             this._textSelection = null;
             for (const span of this.$$("span.text-selected")) span.classList.remove("text-selected");
         }
@@ -183,10 +201,11 @@ export class VirtualDltTBody extends VirtualSelect {
         const ruleColor = this.ruleColors.get(item[rowLayout.rule]); // undefined: no rule, or no color
         const columns = this.columns;
         const matchColors = this.matchColors;
-        // The selected part of the text of a cell: Index is cell 0, the columns follow
-        const range = textRange(this.textSelection);
-        const partOf = range ? col => length => cellPart(range, viewIndex, col, length) : () => noPart;
-        const index = String(item[rowLayout.messageIndex]);
+        // The cells after the anchor show the texts of cellTexts (see anchorCells)
+        // with the part of each the user selected
+        const texts = cellTexts(item, columns);
+        const range = textRange(this._textSelection);
+        const part = cell => range && cellPart(range, viewIndex, cell, texts[cell].length);
         // row-current/row-selected are attributes: a "state-" prefix in JSX
         // sets a runtime state (:current, :checked) instead, see updateRowStates()
         return <tr row-current={selection.current === viewIndex ? "true" : "false"}
@@ -194,9 +213,9 @@ export class VirtualDltTBody extends VirtualSelect {
             row-found={item[rowLayout.found] ? "true" : "false"}
             rule-color={ruleColor ? "true" : "false"} style={ruleColor ? `--rule-color: ${ruleColor}` : ""}>
             <td class="anchor" has-anchor={item[rowLayout.anchored] ? "true" : "false"} msg-index={item[rowLayout.messageIndex]}></td>
-            <td class="aux">{cellContent(index, null, null, partOf(0)(index.length))}</td>
-            {columns.map((column, i) => renderCell(column, item[rowLayout.firstColumn + i], item[rowLayout.level],
-                item[rowLayout.matches(columns.length)], matchColors, partOf(i + 1)))}
+            <td class="aux">{cellContent(texts[0], null, null, part(0))}</td>
+            {columns.map((column, i) => renderCell(column, item[rowLayout.firstColumn + i], texts[i + 1],
+                item[rowLayout.level], item[rowLayout.matches(columns.length)], matchColors, part(i + 1)))}
         </tr>
     }
 
@@ -240,13 +259,13 @@ export class VirtualDltTBody extends VirtualSelect {
         if (evt.target.closest("td.anchor")) return; // toggles the anchor only
         const viewIndex = this.viewIndexOf(evt.target);
         if (viewIndex === null) return;
-        this.setTextSelection(null);
+        this._setTextSelection(null);
         const toggle = evt[toggleKey];
         if (evt.shiftKey || toggle) {
-            this.selectByPress(viewIndex, { shift: evt.shiftKey, toggle });
+            this._selectByPress(viewIndex, { shift: evt.shiftKey, toggle });
             beginDrag(this, { kind: "rows", toggle, y: evt.clientY });
         } else {
-            const at = this.textPositionAt(evt.clientX, evt.clientY);
+            const at = this._textPositionAt(evt.clientX, evt.clientY);
             beginDrag(this, { kind: "text", row: viewIndex, at, x: evt.clientX, y: evt.clientY });
         }
     }
@@ -254,19 +273,19 @@ export class VirtualDltTBody extends VirtualSelect {
     // A double click selects the word under the mouse (wordAt)
     ["on dblclick"](evt) {
         if (evt.target.closest("td.anchor")) return; // toggles the anchor only
-        const at = this.textPositionAt(evt.clientX, evt.clientY);
+        const at = this._textPositionAt(evt.clientX, evt.clientY);
         if (!at) return;
         const text = cellTexts(this.itemAt(at.row), this.columns)?.[at.col] ?? "";
         const word = wordAt(text, at.offset);
         if (!word) return;
-        this.setTextSelection({ anchor: { ...at, offset: word[0] }, focus: { ...at, offset: word[1] - 1 } });
+        this._setTextSelection({ anchor: { ...at, offset: word[0] }, focus: { ...at, offset: word[1] - 1 } });
         return true;
     }
 
     // Selects by a press on the row `viewIndex` (RowSelection.click) and tells
     // the panel, even if the row was selected already: a click shows it in the
     // other table again, which may have been scrolled away from it
-    selectByPress(viewIndex, modifiers = {}) {
+    _selectByPress(viewIndex, modifiers = {}) {
         this.selection.click(viewIndex, modifiers);
         this.updateRowStates();
         this.rowChosen(false);
@@ -295,7 +314,7 @@ export class VirtualDltTBody extends VirtualSelect {
     // of the cells to the first or the last cell; null if no row is on screen.
     // Sciter's rangeFromPoint gives the character under the point, the last
     // one even right of the text; right of the cell is past its end.
-    textPositionAt(x, y) {
+    _textPositionAt(x, y) {
         const list = this.getBoundingClientRect();
         let row = this.rowAt(Math.min(Math.max(y, list.top), list.bottom - 1));
         if (!row) {
@@ -305,7 +324,7 @@ export class VirtualDltTBody extends VirtualSelect {
         }
         const viewIndex = this.viewIndexOf(row);
         if (viewIndex === null) return null;
-        const cells = [...row.children].slice(1); // after the anchor: Index, the columns
+        const cells = textCellsOf(row);
         const boxes = cells.map(cell => {
             const [left, , width] = cell.state.box("xywh", "inner", "window");
             return { right: cell.getBoundingClientRect().right, innerLeft: left, innerRight: left + width };
@@ -385,7 +404,7 @@ export class VirtualDltTBody extends VirtualSelect {
         if (total === 0) return true;
         index = Math.max(0, Math.min(total - 1, index));
         const changed = this.selection.moveTo(index);
-        if (changed) this.setTextSelection(null); // Cmd+C copies the rows chosen now
+        if (changed) this._setTextSelection(null); // Cmd+C copies the rows chosen now
         if (navigation) this.vlist.navigateTo(navigation);
         else this.vlist.advanceTo(index);
         this.updateRowStates();
@@ -431,7 +450,7 @@ export class VirtualDltTBody extends VirtualSelect {
             case "Home": return this.moveCurrentTo(0, "start");
             case "End": return this.moveCurrentTo(this.totalItems() - 1, "end");
             case "Escape": // the text selected first, then the rows
-                if (this.textSelection) this.setTextSelection(null);
+                if (this._textSelection) this._setTextSelection(null);
                 else if (this.selection.count > 0) {
                     this.selection.clear();
                     this.updateRowStates();
@@ -443,15 +462,6 @@ export class VirtualDltTBody extends VirtualSelect {
                 return true;
             default: return false;
         }
-    }
-
-    // What Cmd+C copies: the text selected if any, else the selected rows; at
-    // most `limit` characters of whole rows: { text, copied, total, truncated }
-    // (rows), see rangeText and selectedRowsText
-    clipboardText(limit) {
-        if (!this.textSelection) return this.selectedRowsText(limit);
-        return rangeText(textRange(this.textSelection), row => cellTexts(this.itemAt(row), this.columns), limit,
-            this.totalItems());
     }
 
     // Re-renders the rows currently on screen with fresh data from the backend.
@@ -477,7 +487,7 @@ export class VirtualDltTBody extends VirtualSelect {
 // { list, kind, y (clientY of the mouse), timer, ... }. kind "rows" selects the
 // rows the mouse passes over (a press with Shift or Cmd/Ctrl); kind "text" is a
 // plain press: once the mouse moves away from the press (isDrag) it selects
-// text from the press to the mouse (list.setTextSelection); released with no
+// text from the press to the mouse (list._setTextSelection); released with no
 // text selected (not moved, or back on the character pressed) it is a click
 // selecting the row pressed (`row`). The document passes the mouse moves and
 // the release (moveTableDrag, endTableDrag); while the mouse is above or below
@@ -489,7 +499,7 @@ let drag = null;
 // outside the window, otherwise the auto-scroll would go on until the mouse
 // returned
 function beginDrag(list, { kind, toggle = false, y, ...press }) {
-    endTableDrag(false); // one left from a release that was missed
+    finishDrag(false); // one left from a release that was missed
     if (kind === "rows") list.selection.beginDrag({ toggle });
     list.state.capture(true);
     drag = { list, kind, y, timer: null, ...press, selecting: false };
@@ -515,7 +525,7 @@ export function moveTableDrag(evt) {
     // A move without the button inside the window: the release was missed.
     // Outside the window the moves of the captured mouse may come without the
     // button state, so only mouseup ends the drag there.
-    if (!(evt.buttons & 1) && insideWindow(evt)) return endTableDrag(false);
+    if (!(evt.buttons & 1) && insideWindow(evt)) return finishDrag(false);
     if (drag.kind === "text" && !drag.selecting) {
         if (!isDrag(drag, { x: evt.clientX, y: evt.clientY })) return; // drag.x, y: the press yet
         drag.selecting = drag.at !== null; // no text position: nothing to select
@@ -531,11 +541,11 @@ export function moveTableDrag(evt) {
 function dragTo(list, x, y) {
     if (drag.kind === "text") {
         if (!drag.selecting) return;
-        const focus = list.textPositionAt(x, y);
+        const focus = list._textPositionAt(x, y);
         if (!focus) return;
         // back on the character pressed: nothing selected, the release is a click
         const pressed = sameSelection({ anchor: drag.at, focus }, { anchor: drag.at, focus: drag.at });
-        list.setTextSelection(pressed ? null : { anchor: drag.at, focus });
+        list._setTextSelection(pressed ? null : { anchor: drag.at, focus });
         return;
     }
     const viewIndex = list.viewIndexAt(y);
@@ -552,16 +562,27 @@ function insideWindow(evt) {
         && evt.clientY >= box.top && evt.clientY < box.bottom;
 }
 
-// Ends the drag. On the release of the mouse (`released`) a plain press that
-// selected no text is a click on its row; a drag given up (the release was
-// missed, the view changed) selects nothing.
-export function endTableDrag(released = true) {
+// The release of the mouse anywhere (the document passes it): ends the drag;
+// a plain press that selected no text is a click on its row
+export function endTableDrag() {
+    finishDrag(true);
+}
+
+// The rows of `list` are other messages now: its drag, if any, ends and
+// selects nothing (see resetSelection)
+function abandonDrag(list) {
+    if (drag?.list === list) finishDrag(false);
+}
+
+// Ends the drag; `released`: by the release of the mouse, else given up (the
+// release was missed, the view changed) and selecting nothing
+function finishDrag(released) {
     if (!drag) return;
     const { list, kind, row, timer } = drag;
     if (timer) clearInterval(timer);
     list.state.capture(false);
     drag = null;
-    if (released && kind === "text" && !list.textSelection && row < list.totalItems()) list.selectByPress(row);
+    if (released && kind === "text" && !list.hasTextSelected() && row < list.totalItems()) list._selectByPress(row);
 }
 
 // While the mouse is above or below the list, scrolls it towards the mouse by
