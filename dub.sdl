@@ -20,6 +20,12 @@ dflags "-preview=in" // in -> const scope
 dflags "-preview=dip1000" // strict control for scope and references lifetimes
 dflags "-preview=dtorfields" // correct fields destruction
 
+// Release (build --release, run --release, dist): dub's own release (-O3 -release, inlining)
+// without bounds checks, which -release keeps in @safe code
+buildType "release" {
+	buildOptions "releaseMode" "optimize" "inline" "noBoundsCheck"
+}
+
 // Windows resource file
 sourceFiles "resources/app.rc" platform="windows"
 lflags "/SUBSYSTEM:WINDOWS" "/ENTRY:mainCRTStartup" platform="windows"
