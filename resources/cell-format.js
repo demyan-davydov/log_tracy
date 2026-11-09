@@ -77,12 +77,20 @@ export function cellText(column, value) {
     }
 }
 
-// The text of a row of the backend as the table shows it: Index, then the
-// cells of `columns`; null if there is no row
-export function itemText(item, columns) {
+// The texts of the cells of a row of the backend as the table shows them:
+// Index, then the cells of `columns` (the cells after the anchor, whose text
+// can be selected); null if there is no row
+export function cellTexts(item, columns) {
     if (!item) return null;
-    return rowText([String(item[rowLayout.messageIndex]),
-        ...columns.map((column, i) => cellText(column, item[rowLayout.firstColumn + i]))]);
+    return [String(item[rowLayout.messageIndex]),
+        ...columns.map((column, i) => cellText(column, item[rowLayout.firstColumn + i]))];
+}
+
+// The text of a row of the backend as the table shows it (cellTexts); null if
+// there is no row
+export function itemText(item, columns) {
+    const texts = cellTexts(item, columns);
+    return texts && rowText(texts);
 }
 
 // The payload cut at the fragments the search chips found in it, for the

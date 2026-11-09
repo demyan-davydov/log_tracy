@@ -241,11 +241,3 @@ export class SelectionFollower {
         this.timer = null;
     }
 }
-
-// Whether a press of the left button selects its row at once. A plain press in
-// a cell whose text can be selected (a Payload) may start selecting that text:
-// it selects the row on the release, if no text was selected by then. With
-// Shift or Cmd it is about the rows.
-export function selectsOnPress({ shift, toggle }, inSelectable) {
-    return !inSelectable || shift || toggle;
-}

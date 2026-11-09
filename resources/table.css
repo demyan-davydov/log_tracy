@@ -298,6 +298,13 @@ popup.notice {
     color: var(--text-main);
 }
 
+/* Text the user selected across the cells and rows (text-selection.js, see
+   cellContent): over the match colors too; the text of the theme, as above */
+.log-table td>span.text-selected {
+    background-color: var(--bg-text-selected);
+    color: var(--text-main);
+}
+
 /* Single-line rows (Settings, applySingleLineRows in document-pane.js): every
    row is exactly one line high, whatever its payload, so the virtual list
    gets rows of one height. The line height is set on the row in units of the

@@ -2,7 +2,7 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { formatTime, formatDuration, levelName, cellClass, columnClass, rowText, cellText, itemText, matchPieces, rowLayout } from "../../resources/cell-format.js";
+import { formatTime, formatDuration, levelName, cellClass, columnClass, rowText, cellText, cellTexts, itemText, matchPieces, rowLayout } from "../../resources/cell-format.js";
 
 // TimeKind values of the backend (log_core/log_message)
 const Absolute = 1, Local = 2, LocalNoYear = 3, SinceBoot = 4;
@@ -84,6 +84,8 @@ test("a row of the backend is copied as Index and its columns, without the fixed
     const item = [true, 3, 7, 1234, 4, true, "ECU1", "hello"];
     assert.equal(itemText(item, columns), "1234\tECU1\thello");
     assert.equal(itemText(null, columns), null, "no such row");
+    assert.deepEqual(cellTexts(item, columns), ["1234", "ECU1", "hello"], "the texts of the cells, Index first");
+    assert.equal(cellTexts(null, columns), null);
 });
 
 // ---- what the search chips found in the payload ----
