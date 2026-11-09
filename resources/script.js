@@ -408,7 +408,7 @@ function setupEvents() {
         if (item) item.textContent = tr("Copy Row"); // a menu kept: in the language now
         else if (menu) menu.append(copyRowItem());
     });
-    // Context menu of a table header: Customize Table, Settings on its Columns section, which
+    // Context menu of a table header: Customize Table, Settings on its Table section, which
     // opens on the format of the active document, the one the table shows
     document.on("contextmenu", "table.log-table > thead", evt => {
         evt.source = Element.create(<menu class="context">
@@ -416,7 +416,7 @@ function setupEvents() {
         </menu>);
         return true;
     });
-    document.on("click", "menu.context > li.column-settings", () => openSettingsAction("columns"));
+    document.on("click", "menu.context > li.column-settings", () => openSettingsAction("table"));
     document.on("click", "menu.context > li.copy-row", () => {
         if (contextList) copySelectedRows(contextList);
         contextList = null;

@@ -2,7 +2,7 @@
 
 <!-- The Settings dialog, opened modal by openSettingsAction() in script.js.
      Its sections are listed on the left; Save applies all of them at once.
-     Parameters: { theme, tableFontSize, language (the setting, "": the
+     Parameters: { section (shown first: "appearance", "table"), theme, tableFontSize, language (the setting, "": the
      system's), languages (of the translations, as getLanguages gives them),
      catalog (of the translations the texts are in, null: english), columns (as
      getColumnSettings gives them, see column-settings.js) }.
@@ -58,6 +58,14 @@
             background: var(--bg-main);
             white-space: nowrap;
         }
+        /* A large font makes the strip wider than the dialog: it scrolls, as
+           the log table does, never cut; the room under it is for the
+           scrollbar, which macOS draws over the content */
+        #column-scroller {
+            width: *;
+            overflow-x: auto;
+            padding-bottom: 10dip;
+        }
         #column-list {
             position: relative; /* for #column-drop-marker */
             flow: horizontal;
@@ -68,13 +76,14 @@
             flow: vertical;
             background: var(--bg-main);
         }
-        .column-cell.payload { width: *; }
+        .column-cell.payload { width: *; min-width: max-content; } /* scrolled to, not squeezed away */
         /* The border of the strip ends the last one */
         .column-cell.payload > .column-header,
         .column-cell.payload > .visibility { border-right: none; }
         .column-cell > .column-header { display: block; }
         .column-cell > .visibility {
             flow: horizontal;
+            font-size: 1rem; /* the checkbox keeps its size whatever the font of the headers */
             padding: 4dip 0;
             border-right: 1dip solid var(--border-color);
         }
@@ -102,6 +111,10 @@
             z-index: 5; /* below the dragged column */
         }
 
+        /* The font size the dialog opened with: where the user started.
+           Sciter's own style of the options wins without !important */
+        select#table-font-size > popup > option.initial { font-style: italic !important; }
+
         #columns-footer { flow: horizontal; vertical-align: middle; }
         #btn-reset-columns { margin-left: *; }
         #btn-reset-columns:disabled { opacity: 0.4; cursor: default; }
@@ -114,7 +127,7 @@
         import { toggleColumn, moveColumn, resetColumns, isDefaultLayout, layoutsOf, initialFormat, formatLabel } from "column-settings.js";
         import { setShift, pressItem, dragTo, drop, showDropMarker } from "drag-strip.js";
         import * as platform from "platform.js";
-        import { initialSection } from "settings-sections.js";
+        import { initialSection, fontSizeOptions } from "settings-sections.js";
         import { applyTheme } from "theme.js";
         import { setCatalog, tr } from "i18n/i18n.js";
         import { translateTree } from "i18n/dom.js";
@@ -214,7 +227,19 @@
             return true;
         });
 
-        // The strip has the font size of the log tables, as Appearance sets it
+        // The sizes offered, the one the dialog opened with in italics
+        function renderFontSizes() {
+            const select = $("select#table-font-size");
+            for (const { value, label, initial } of fontSizeOptions(params.tableFontSize)) {
+                const option = document.createElement("option");
+                option.setAttribute("value", String(value)); // an <option> has no value of its own in Sciter
+                if (initial) option.classList.add("initial");
+                option.textContent = label;
+                select.append(option);
+            }
+        }
+
+        // The strip has the font size of the log tables, as chosen above it
         function applyTableFontSize() {
             $("#column-strip").style.fontSize = `${parseInt($("select#table-font-size").value) || 100}%`;
         }
@@ -317,6 +342,7 @@
             } else {
                 $("select#theme").value = "light";
             }
+            renderFontSizes();
             $("select#table-font-size").value = String(params.tableFontSize || 100);
             applyTableFontSize();
             if (formats.length) {
@@ -349,7 +375,7 @@
     <div id="layout">
         <nav id="sections">
             <div class="section-tab active" section="appearance" data-tr="Appearance"></div>
-            <div class="section-tab" section="columns" data-tr="Columns"></div>
+            <div class="section-tab" section="table" data-tr="Table"></div>
         </nav>
         <main>
             <div class="section active" id="appearance">
@@ -365,29 +391,20 @@
                         <option value="dark" data-tr="Dark"></option>
                     </select>
                 </div>
-                <div class="setting-group">
-                    <label data-tr="Log table font size"></label>
-                    <select id="table-font-size">
-                        <option value="80">80%</option>
-                        <option value="90">90%</option>
-                        <option value="100">100%</option>
-                        <option value="110">110%</option>
-                        <option value="125">125%</option>
-                        <option value="150">150%</option>
-                        <option value="175">175%</option>
-                        <option value="200">200%</option>
-                    </select>
-                </div>
             </div>
-            <div class="section" id="columns">
-                <div class="section-title" data-tr="Columns"></div>
+            <div class="section" id="table">
+                <div class="section-title" data-tr="Table"></div>
+                <div class="setting-group">
+                    <label data-tr="Font size"></label>
+                    <select id="table-font-size"></select>
+                </div>
                 <div class="hint" data-tr="The columns of the log tables, the same for every log of a format. Drag a header to move its column, untick it to hide the column."></div>
                 <div id="columns-content" style="flow: vertical; border-spacing: 12dip;">
                     <div class="setting-group">
                         <label data-tr="Format"></label>
                         <select id="column-format"></select>
                     </div>
-                    <div id="column-strip">
+                    <div id="column-scroller"><div id="column-strip">
                         <div class="column-cell fixed" data-tr-title="Always first">
                             <div class="column-header-row column-header">Index</div>
                             <div class="visibility"><input type="checkbox" checked disabled /></div>
@@ -397,7 +414,7 @@
                             <div class="column-header-row column-header" id="last-column-title">Payload</div>
                             <div class="visibility"><input type="checkbox" checked disabled /></div>
                         </div>
-                    </div>
+                    </div></div>
                     <div id="columns-footer">
                         <button id="btn-reset-columns" data-tr="Reset to Default"></button>
                     </div>

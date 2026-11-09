@@ -29,7 +29,6 @@
     "Change or clear the filters to show messages again": "Измените или отключите фильтры, чтобы снова увидеть сообщения",
     "Close": "Закрыть",
     "Color": "Цвет",
-    "Columns": "Колонки",
     "Conditions: all checked ones must match": "Условия: должны выполняться все отмеченные",
     "Copied {copied} of {total} rows: the clipboard limit is 16 MB": "Скопировано строк: {copied} из {total}, в буфер обмена помещается не больше 16 МБ",
     "Copy Path": "Копировать путь",
@@ -59,6 +58,7 @@
     "Filtering... {percent}%": "Фильтрация... {percent}%",
     "Filters": "Фильтры",
     "Fix the marked conditions, or switch the rule off to keep it as it is": "Исправьте отмеченные условия или выключите правило, чтобы сохранить его как есть",
+    "Font size": "Размер шрифта",
     "Format": "Формат",
     "Hides the records it matches": "Скрывает подходящие записи",
     "Ignore case": "Без учета регистра",
@@ -74,7 +74,6 @@
     "Loaded from {file}": "Загружен из {file}",
     "Loading file... {percent}%": "Загрузка файла... {percent}%",
     "Log Files": "Файлы журналов",
-    "Log table font size": "Размер шрифта таблицы журнала",
     "Marker": "Маркер",
     "Marks the records it matches with its color": "Отмечает подходящие записи своим цветом",
     "Mar|month": "мар",
@@ -125,6 +124,7 @@
     "Size": "Размер",
     "Still unavailable: {error}": "По-прежнему недоступен: {error}",
     "System": "Системный",
+    "Table": "Таблица",
     "Text Logs": "Текстовые журналы",
     "The columns of the log tables, the same for every log of a format. Drag a header to move its column, untick it to hide the column.": "Колонки таблиц журнала, одни для всех журналов формата. Перетащите заголовок, чтобы переместить колонку, снимите отметку, чтобы скрыть ее.",
     "The file is no longer available": "Файл больше недоступен",
@@ -211,9 +211,11 @@
     "{size} TB": "{size} ТБ"
   },
   "obsolete": {
+    "Columns": "Колонки",
     "Decoding": "Декодирование",
     "Details / Search Results": "Подробности / результаты поиска",
     "Load FIBEX": "Загрузить FIBEX",
+    "Log table font size": "Размер шрифта таблицы журнала",
     "Settings...": "Настройки..."
   }
 }
