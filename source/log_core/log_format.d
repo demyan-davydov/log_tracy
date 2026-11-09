@@ -15,14 +15,15 @@ enum ColumnKind : ubyte
     Enum, // number of a field, shown as labels[number]
 }
 
-//! A column of the log table, as declared by a format
+//! A column of the log table, as declared by a format. How it looks (its
+//! width) is up to the style of the table, by the id of the format and the
+//! column (resources/table.css).
 struct ColumnInfo
 {
-    string id; // stable, e.g. to remember the width of the column
+    string id; // stable: the layouts in the settings and the style refer to it
     string title;
     ColumnKind kind;
     int field = -1; // LogMessage field for the field kinds
-    ushort width; // initial width in px; 0: the rest of the table
     TimeKind timeKind; // Time: how the time is shown
     long unitsPerSecond; // Duration
     string[] labels; // Enum

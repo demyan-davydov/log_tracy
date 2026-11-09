@@ -95,19 +95,19 @@ private LogLevel statusLevel(uint status) pure nothrow @nogc @safe
 // ─── Columns ────────────────────────────────────────────────────────────────
 
 private static immutable ColumnInfo[] commonColumns = [
-    ColumnInfo("time", "Time", ColumnKind.Time, -1, 170, TimeKind.Absolute),
-    ColumnInfo("client", "Client", ColumnKind.Text, AccessLogField.Client, 110),
-    ColumnInfo("user", "User", ColumnKind.Text, AccessLogField.User, 60),
-    ColumnInfo("method", "Method", ColumnKind.Text, AccessLogField.Method, 60),
+    ColumnInfo("time", "Time", ColumnKind.Time, -1, TimeKind.Absolute),
+    ColumnInfo("client", "Client", ColumnKind.Text, AccessLogField.Client),
+    ColumnInfo("user", "User", ColumnKind.Text, AccessLogField.User),
+    ColumnInfo("method", "Method", ColumnKind.Text, AccessLogField.Method),
     // The status as it is, its cell colored by the level it gives
-    ColumnInfo("status", "Status", ColumnKind.Integer, AccessLogField.Status, 50, TimeKind.None, 0, null, true),
-    ColumnInfo("bytes", "Bytes", ColumnKind.Integer, AccessLogField.Bytes, 70),
+    ColumnInfo("status", "Status", ColumnKind.Integer, AccessLogField.Status, TimeKind.None, 0, null, true),
+    ColumnInfo("bytes", "Bytes", ColumnKind.Integer, AccessLogField.Bytes),
     ColumnInfo("payload", "Request", ColumnKind.Payload),
 ];
 
 private static immutable ColumnInfo[] combinedColumns = commonColumns[0 .. $ - 1] ~ [
-    ColumnInfo("referer", "Referer", ColumnKind.Text, AccessLogField.Referer, 150),
-    ColumnInfo("agent", "User agent", ColumnKind.Text, AccessLogField.Agent, 150),
+    ColumnInfo("referer", "Referer", ColumnKind.Text, AccessLogField.Referer),
+    ColumnInfo("agent", "User agent", ColumnKind.Text, AccessLogField.Agent),
     commonColumns[$ - 1],
 ];
 

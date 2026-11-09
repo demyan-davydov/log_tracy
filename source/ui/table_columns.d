@@ -47,9 +47,9 @@ version (unittest)
     private const(ColumnInfo)[] sampleColumns()
     {
         return [
-            ColumnInfo("time", "Time", ColumnKind.Time, 0, 80),
-            ColumnInfo("app", "App", ColumnKind.Text, 1, 50),
-            ColumnInfo("payload", "Payload", ColumnKind.Payload, -1, 0),
+            ColumnInfo("time", "Time", ColumnKind.Time, 0),
+            ColumnInfo("app", "App", ColumnKind.Text, 1),
+            ColumnInfo("payload", "Payload", ColumnKind.Payload, -1),
         ];
     }
 }

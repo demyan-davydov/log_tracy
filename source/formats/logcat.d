@@ -34,19 +34,19 @@ final class LogcatFormat : TextFormat
     private immutable Variant _variant;
 
     private static immutable ColumnInfo[] _threadtimeColumns = [
-        ColumnInfo("time", "Time", ColumnKind.Time, -1, 120, TimeKind.LocalNoYear),
-        ColumnInfo("pid", "PID", ColumnKind.Integer, LogcatField.Pid, 50),
-        ColumnInfo("tid", "TID", ColumnKind.Integer, LogcatField.Tid, 50),
-        ColumnInfo("level", "Level", ColumnKind.Level, -1, 60),
-        ColumnInfo("tag", "Tag", ColumnKind.Text, LogcatField.Tag, 120),
+        ColumnInfo("time", "Time", ColumnKind.Time, -1, TimeKind.LocalNoYear),
+        ColumnInfo("pid", "PID", ColumnKind.Integer, LogcatField.Pid),
+        ColumnInfo("tid", "TID", ColumnKind.Integer, LogcatField.Tid),
+        ColumnInfo("level", "Level", ColumnKind.Level, -1),
+        ColumnInfo("tag", "Tag", ColumnKind.Text, LogcatField.Tag),
         ColumnInfo("payload", "Message", ColumnKind.Payload),
     ];
 
 
     private static immutable ColumnInfo[] _briefColumns = [
-        ColumnInfo("pid", "PID", ColumnKind.Integer, LogcatField.Pid, 50),
-        ColumnInfo("level", "Level", ColumnKind.Level, -1, 60),
-        ColumnInfo("tag", "Tag", ColumnKind.Text, LogcatField.Tag, 120),
+        ColumnInfo("pid", "PID", ColumnKind.Integer, LogcatField.Pid),
+        ColumnInfo("level", "Level", ColumnKind.Level, -1),
+        ColumnInfo("tag", "Tag", ColumnKind.Text, LogcatField.Tag),
         ColumnInfo("payload", "Message", ColumnKind.Payload),
     ];
 

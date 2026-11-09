@@ -277,8 +277,8 @@ function setLanguage(setting) {
 }
 
 // Scales the log tables: the font of each column keeps its proportion to the
-// others (the cells set theirs in % of the table's). The column widths stay as
-// they are: they are minimums, the auxiliary columns keep their values on one line
+// others (the cells set theirs in % of the table's). The columns follow: the
+// auxiliary ones are as wide as their values, which stay on one line
 function setTableFontSize(percent) {
     tableFontSize = percent;
     for (const pane of panes.values()) pane.applyFontSize(percent);

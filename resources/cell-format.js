@@ -108,3 +108,12 @@ export function matchPieces(text, fragments) {
     push(at, text.length, null);
     return pieces;
 }
+
+// The classes of the header of `column` ({ format, id, kind } of
+// backend.tableColumnsJson): table.css gives a column its look (width) by them,
+// the same for the column of every format (col-time) or for that of one format
+// (col-dlt-timestamp); the Payload column, whatever its id, is also "payload"
+export function columnClass(column) {
+    const classes = `col-${column.id} col-${column.format}-${column.id}`;
+    return column.kind === "Payload" ? `${classes} payload` : classes;
+}

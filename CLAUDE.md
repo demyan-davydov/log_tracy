@@ -119,7 +119,8 @@ utils  ←  sciter  ←  ui
 Derive from `TextFormat` and implement `decodeText`, `columns` and `name` (a line it can't
 parse goes to the payload as it is: `decodeAsPlainText`). Implement
 `isRecordStart` too if continuation lines are glued to their record. Add a `FormatDetector` and
-register it in `formats/registry`. Declare the format's `FormatInfo` (stable `id`, `name`, a
+register it in `formats/registry`; a column that needs a look of its own (a width) gets it in
+`resources/table.css` (`col-<format id>-<column id>`). Declare the format's `FormatInfo` (stable `id`, `name`, a
 three-letter `shortName` for the badge of a recent file) and return it from the detector's `info`. Parsing helpers (numbers, times, dates) live in
 `log_core/text/text_parsing`.
 
@@ -198,6 +199,9 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
   - Hex cells are formatted by the backend: 64-bit values don't fit a script number.
   - The level colors the cells of columns with `ColumnInfo.byLevel` (an HTTP status shown as
     it is).
+  - How a column looks (its width) is up to `resources/table.css`, not the format: a header
+    has the classes `col-<column id>` and `col-<format id>-<column id>` (`columnClass` in
+    `resources/cell-format.js`; the columns JSON names the format), Index is `col-index`.
   - How a cell shows its value lives in the Sciter-free `resources/cell-format.js`, tested
     by `tests/js`.
 - Every open document has its own panel, `DocumentPane` (`resources/document-pane.js`): the

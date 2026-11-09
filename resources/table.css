@@ -128,19 +128,98 @@
     border-right: 1dip solid var(--border-color);
 }
 
-/* Auxiliary columns (all but Payload): the value on one line, never cut; their
-   widths in main.htm are minimums that keep the layout from changing often.
+/* Auxiliary columns (all but Payload): the value on one line, never cut, so a
+   value wider than its column widens it (the minimums are below).
    Payload wraps to stay readable whole. */
 .log-table>tbody>tr>td:not(:last-child) {
     white-space: nowrap;
 }
 
+/* The titles of the columns are centered, but that of Payload */
+.log-table>thead>tr>th {
+    text-align: center;
+}
+
+.log-table>thead>tr>th.payload {
+    text-align: left;
+}
+
 /* Force Payload column to take remaining space */
-.log-table>thead>tr>th:last-child,
+.log-table>thead>tr>th.payload,
 .log-table>tbody>tr>td:last-child {
     width: 100%;
     padding-left: 4pt;
 }
+
+/* The minimum widths of the columns, without their padding and border: they
+   keep the layout from changing often; a wider value or title widens its column.
+   A column is found by the classes of its header: col-<column id>, the same
+   column of every format (col-time), and col-<format id>-<column id>, that of
+   one format (col-dlt-timestamp), see columnClass in cell-format.js; the
+   Payload column is also "payload", the service columns are col-anchor and
+   col-index. Where the variants of a format differ (the time of a CAN trace),
+   the minimum is that of the narrowest. */
+
+.log-table th.col-anchor { min-width: 20dip; }
+.log-table th.col-index { min-width: 40dip; }
+
+/* DLT */
+.log-table th.col-dlt-time { min-width: 60dip; }
+.log-table th.col-dlt-timestamp { min-width: 70dip; }
+.log-table th.col-dlt-counter { min-width: 45dip; }
+.log-table th.col-dlt-ecu,
+.log-table th.col-dlt-app,
+.log-table th.col-dlt-ctx,
+.log-table th.col-dlt-type,
+.log-table th.col-dlt-level { min-width: 50dip; }
+.log-table th.col-dlt-session,
+.log-table th.col-dlt-msgid { min-width: 50dip; }
+
+/* Android logcat */
+.log-table th.col-logcat-time,
+.log-table th.col-logcat-tag { min-width: 60dip; }
+.log-table th.col-logcat-pid,
+.log-table th.col-logcat-tid { min-width: 50dip; }
+.log-table th.col-logcat-level { min-width: 60dip; }
+
+/* Syslog */
+.log-table th.col-syslog-time { min-width: 60dip; }
+.log-table th.col-syslog-host { min-width: 80dip; }
+.log-table th.col-syslog-app { min-width: 60dip; }
+.log-table th.col-syslog-pid { min-width: 50dip; }
+.log-table th.col-syslog-level,
+.log-table th.col-syslog-msgid { min-width: 60dip; }
+.log-table th.col-syslog-data { min-width: 70dip; }
+
+/* Kernel log (dmesg) */
+.log-table th.col-dmesg-time { min-width: 60dip; }
+.log-table th.col-dmesg-level,
+.log-table th.col-dmesg-facility { min-width: 60dip; }
+.log-table th.col-dmesg-seq { min-width: 70dip; }
+
+/* Web server access log */
+.log-table th.col-access-log-time { min-width: 70dip; }
+.log-table th.col-access-log-client { min-width: 60dip; }
+.log-table th.col-access-log-user,
+.log-table th.col-access-log-method { min-width: 60dip; }
+.log-table th.col-access-log-status { min-width: 50dip; }
+.log-table th.col-access-log-bytes { min-width: 70dip; }
+.log-table th.col-access-log-referer,
+.log-table th.col-access-log-agent { min-width: 50dip; }
+
+/* CAN traces */
+.log-table th.col-candump-time,
+.log-table th.col-vector-asc-time { min-width: 50dip; }
+.log-table th.col-candump-channel,
+.log-table th.col-vector-asc-channel { min-width: 40dip; }
+.log-table th.col-candump-id,
+.log-table th.col-vector-asc-id { min-width: 40dip; }
+.log-table th.col-candump-dir,
+.log-table th.col-vector-asc-dir,
+.log-table th.col-candump-dlc,
+.log-table th.col-vector-asc-dlc { min-width: 40dip; }
+.log-table th.col-candump-type,
+.log-table th.col-vector-asc-type { min-width: 50dip; }
 
 .level {
     text-align: center;

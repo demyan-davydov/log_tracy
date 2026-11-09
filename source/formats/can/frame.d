@@ -35,17 +35,17 @@ enum CanFrameType : ubyte
 ColumnInfo[] canColumns(TimeKind timeKind, bool withDir) pure
 {
     ColumnInfo[] columns = [
-        ColumnInfo("time", "Time", ColumnKind.Time, -1, timeKind == TimeKind.SinceBoot ? 100 : 170, timeKind),
-        ColumnInfo("channel", "Channel", ColumnKind.Text, CanField.Channel, 60),
-        ColumnInfo("id", "ID", ColumnKind.Hex, CanField.Id, 80),
+        ColumnInfo("time", "Time", ColumnKind.Time, -1, timeKind),
+        ColumnInfo("channel", "Channel", ColumnKind.Text, CanField.Channel),
+        ColumnInfo("id", "ID", ColumnKind.Hex, CanField.Id),
     ];
     if (withDir)
-        columns ~= ColumnInfo("dir", "Dir", ColumnKind.Text, CanField.Dir, 40);
+        columns ~= ColumnInfo("dir", "Dir", ColumnKind.Text, CanField.Dir);
     columns ~= [
         // Error frames are colored like errors
-        ColumnInfo("type", "Type", ColumnKind.Enum, CanField.Type, 70, TimeKind.None, 0,
+        ColumnInfo("type", "Type", ColumnKind.Enum, CanField.Type, TimeKind.None, 0,
             ["CAN", "CAN FD", "Remote", "Error", "Event"], true),
-        ColumnInfo("dlc", "DLC", ColumnKind.Integer, CanField.Dlc, 40),
+        ColumnInfo("dlc", "DLC", ColumnKind.Integer, CanField.Dlc),
         ColumnInfo("payload", "Data", ColumnKind.Payload),
     ];
     return columns;

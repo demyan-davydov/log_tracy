@@ -2,17 +2,18 @@ console.log("Loading virtual-dlt-view.js...");
 import { VirtualList, VirtualSelect } from "virtual-select.js";
 import * as backend from "backend.js";
 import * as platform from "platform.js";
-import { cellClass, cellText, itemText, rowLayout, matchPieces } from "cell-format.js";
+import { cellClass, cellText, columnClass, itemText, rowLayout, matchPieces } from "cell-format.js";
 import { matchColorClass } from "match-colors.js";
 import { RowSelection, selectedText, autoScrollSpeed } from "row-selection.js";
 import { anchorEdit } from "pane-state.js";
 
-// The header row of a log table for `columns`
+// The header row of a log table for `columns`: table.css gives the columns
+// their look by the classes (see columnClass)
 function renderHeader(columns) {
     return <tr>
-        <th width="20dip">⚓</th>
-        <th width="80dip">Index</th>
-        {columns.map(c => <th width={c.width ? `${c.width}px` : "*"}>{c.title}</th>)}
+        <th class="col-anchor">⚓</th>
+        <th class="col-index">Index</th>
+        {columns.map(c => <th class={columnClass(c)}>{c.title}</th>)}
     </tr>;
 }
 

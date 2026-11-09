@@ -109,8 +109,10 @@ string hexCellText(long value) pure
     return format("%X", cast(ulong) value);
 }
 
-//! @brief The columns as JSON for the script (see virtual-dlt-view.js)
-string columnsJson(const(ColumnInfo)[] columns)
+//! @brief The columns of a log of the format `formatId` (FormatInfo.id) as
+//! JSON for the script (see virtual-dlt-view.js): the style of the table
+//! finds a column by the ids of its format and of the column
+string columnsJson(const(ColumnInfo)[] columns, string formatId)
 {
     import std.conv : to;
 
@@ -119,9 +121,9 @@ string columnsJson(const(ColumnInfo)[] columns)
     {
         JSONValue c = [
             "id": JSONValue(column.id),
+            "format": JSONValue(formatId),
             "title": JSONValue(column.title),
             "kind": JSONValue(column.kind.to!string),
-            "width": JSONValue(column.width),
         ];
         if (column.kind == ColumnKind.Time)
             c["timeKind"] = JSONValue(column.timeKind.to!string);
@@ -276,9 +278,22 @@ unittest
     import std.algorithm.searching : canFind, count;
 
     const json = columnsJson([
-        ColumnInfo("status", "Status", ColumnKind.Integer, 0, 50, TimeKind.None, 0, null, true),
-        ColumnInfo("bytes", "Bytes", ColumnKind.Integer, 1, 70),
-    ]);
+        ColumnInfo("status", "Status", ColumnKind.Integer, 0, TimeKind.None, 0, null, true),
+        ColumnInfo("bytes", "Bytes", ColumnKind.Integer, 1),
+    ], "access-log");
     assert(json.canFind(`"byLevel":true`), json);
     assert(json.count(`"byLevel"`) == 1, "only for the flagged column");
+}
+
+@("columnsJson: every column names its format, the look of a column is left to the style")
+unittest
+{
+    import std.algorithm.searching : canFind, count;
+
+    const json = columnsJson([
+        ColumnInfo("time", "Time", ColumnKind.Time),
+        ColumnInfo("payload", "Payload", ColumnKind.Payload),
+    ], "dlt");
+    assert(json.count(`"format":"dlt"`) == 2, json);
+    assert(!json.canFind(`"width"`), json);
 }

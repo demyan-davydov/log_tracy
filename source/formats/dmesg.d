@@ -40,26 +40,26 @@ final class DmesgFormat : TextFormat
     private immutable Variant _variant;
 
     private static immutable ColumnInfo[] _monotonicColumns = [
-        ColumnInfo("time", "Time", ColumnKind.Time, -1, 100, TimeKind.SinceBoot),
-        ColumnInfo("level", "Level", ColumnKind.Level, -1, 60),
+        ColumnInfo("time", "Time", ColumnKind.Time, -1, TimeKind.SinceBoot),
+        ColumnInfo("level", "Level", ColumnKind.Level, -1),
         ColumnInfo("payload", "Message", ColumnKind.Payload),
     ];
 
     private static immutable ColumnInfo[] _decodedColumns = [
         _monotonicColumns[0],
-        ColumnInfo("facility", "Facility", ColumnKind.Text, DmesgField.Facility, 60),
+        ColumnInfo("facility", "Facility", ColumnKind.Text, DmesgField.Facility),
         _monotonicColumns[1],
         _monotonicColumns[2],
     ];
 
     private static immutable ColumnInfo[] _kmsgColumns = [
         _decodedColumns[0], _decodedColumns[1], _decodedColumns[2],
-        ColumnInfo("seq", "Seq", ColumnKind.Integer, DmesgField.Seq, 70),
+        ColumnInfo("seq", "Seq", ColumnKind.Integer, DmesgField.Seq),
         _decodedColumns[3],
     ];
 
     private static immutable ColumnInfo[] _wallClockColumns = [
-        ColumnInfo("time", "Time", ColumnKind.Time, -1, 120, TimeKind.Local),
+        ColumnInfo("time", "Time", ColumnKind.Time, -1, TimeKind.Local),
         _monotonicColumns[1],
         _monotonicColumns[2],
     ];

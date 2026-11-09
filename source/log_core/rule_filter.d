@@ -536,7 +536,7 @@ version (unittest)
         ColumnInfo("tag", "Tag", ColumnKind.Text, 0),
         ColumnInfo("pid", "PID", ColumnKind.Integer, 1),
         ColumnInfo("id", "ID", ColumnKind.Hex, 2),
-        ColumnInfo("type", "Type", ColumnKind.Enum, 3, 0, TimeKind.None, 0, ["LOG", "CTRL"]),
+        ColumnInfo("type", "Type", ColumnKind.Enum, 3, TimeKind.None, 0, ["LOG", "CTRL"]),
         ColumnInfo("level", "Level", ColumnKind.Level),
         ColumnInfo("payload", "Message", ColumnKind.Payload),
     ];

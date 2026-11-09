@@ -42,18 +42,18 @@ final class DltFormat : LogFormat
     }
 
     private static immutable ColumnInfo[] _columns = [
-        ColumnInfo("time", "Time", ColumnKind.Time, -1, 120, TimeKind.Absolute),
-        ColumnInfo("timestamp", "Timestamp", ColumnKind.Duration, DltField.Timestamp, 150,
+        ColumnInfo("time", "Time", ColumnKind.Time, -1, TimeKind.Absolute),
+        ColumnInfo("timestamp", "Timestamp", ColumnKind.Duration, DltField.Timestamp,
             TimeKind.None, 10_000),
-        ColumnInfo("counter", "Count", ColumnKind.Integer, DltField.Counter, 45),
-        ColumnInfo("ecu", "EcuId", ColumnKind.Text, DltField.EcuId, 60),
-        ColumnInfo("app", "AppId", ColumnKind.Text, DltField.AppId, 60),
-        ColumnInfo("ctx", "CtxId", ColumnKind.Text, DltField.CtxId, 60),
-        ColumnInfo("session", "SessionId", ColumnKind.Integer, DltField.SessionId, 70),
-        ColumnInfo("type", "Type", ColumnKind.Enum, DltField.Type, 60,
+        ColumnInfo("counter", "Count", ColumnKind.Integer, DltField.Counter),
+        ColumnInfo("ecu", "EcuId", ColumnKind.Text, DltField.EcuId),
+        ColumnInfo("app", "AppId", ColumnKind.Text, DltField.AppId),
+        ColumnInfo("ctx", "CtxId", ColumnKind.Text, DltField.CtxId),
+        ColumnInfo("session", "SessionId", ColumnKind.Integer, DltField.SessionId),
+        ColumnInfo("type", "Type", ColumnKind.Enum, DltField.Type,
             TimeKind.None, 0, ["LOG", "APP", "NW", "CTRL"]),
-        ColumnInfo("level", "Level", ColumnKind.Level, -1, 60),
-        ColumnInfo("msgid", "MsgId", ColumnKind.Integer, DltField.MessageId, 70),
+        ColumnInfo("level", "Level", ColumnKind.Level, -1),
+        ColumnInfo("msgid", "MsgId", ColumnKind.Integer, DltField.MessageId),
         ColumnInfo("payload", "Payload", ColumnKind.Payload),
     ];
 

@@ -115,34 +115,34 @@ final class SyslogFormat : TextFormat
 
 // ─── Columns ────────────────────────────────────────────────────────────────
 
-private enum ColumnInfo hostColumn = ColumnInfo("host", "Host", ColumnKind.Text, SyslogField.Host, 80);
-private enum ColumnInfo appColumn = ColumnInfo("app", "App", ColumnKind.Text, SyslogField.App, 100);
-private enum ColumnInfo pidColumn = ColumnInfo("pid", "PID", ColumnKind.Integer, SyslogField.Pid, 50);
-private enum ColumnInfo levelColumn = ColumnInfo("level", "Level", ColumnKind.Level, -1, 60);
+private enum ColumnInfo hostColumn = ColumnInfo("host", "Host", ColumnKind.Text, SyslogField.Host);
+private enum ColumnInfo appColumn = ColumnInfo("app", "App", ColumnKind.Text, SyslogField.App);
+private enum ColumnInfo pidColumn = ColumnInfo("pid", "PID", ColumnKind.Integer, SyslogField.Pid);
+private enum ColumnInfo levelColumn = ColumnInfo("level", "Level", ColumnKind.Level, -1);
 private enum ColumnInfo payloadColumn = ColumnInfo("payload", "Message", ColumnKind.Payload);
 
-private ColumnInfo timeColumn(TimeKind kind, ushort width)
+private ColumnInfo timeColumn(TimeKind kind)
 {
-    return ColumnInfo("time", "Time", ColumnKind.Time, -1, width, kind);
+    return ColumnInfo("time", "Time", ColumnKind.Time, -1, kind);
 }
 
 private static immutable ColumnInfo[] bsdColumns = [
-    timeColumn(TimeKind.LocalNoYear, 120), hostColumn, appColumn, pidColumn, payloadColumn
+    timeColumn(TimeKind.LocalNoYear), hostColumn, appColumn, pidColumn, payloadColumn
 ];
 private static immutable ColumnInfo[] bsdLevelColumns = [
-    timeColumn(TimeKind.LocalNoYear, 120), hostColumn, appColumn, pidColumn, levelColumn, payloadColumn
+    timeColumn(TimeKind.LocalNoYear), hostColumn, appColumn, pidColumn, levelColumn, payloadColumn
 ];
 private static immutable ColumnInfo[] isoColumns = [
-    timeColumn(TimeKind.Absolute, 170), hostColumn, appColumn, pidColumn, payloadColumn
+    timeColumn(TimeKind.Absolute), hostColumn, appColumn, pidColumn, payloadColumn
 ];
 private static immutable ColumnInfo[] isoLevelColumns = [
-    timeColumn(TimeKind.Absolute, 170), hostColumn, appColumn, pidColumn, levelColumn, payloadColumn
+    timeColumn(TimeKind.Absolute), hostColumn, appColumn, pidColumn, levelColumn, payloadColumn
 ];
 private static immutable ColumnInfo[] rfc5424Columns = [
-    timeColumn(TimeKind.Absolute, 170), hostColumn, appColumn,
-    ColumnInfo("pid", "PID", ColumnKind.Text, SyslogField.ProcId, 60),
-    ColumnInfo("msgid", "MsgID", ColumnKind.Text, SyslogField.MsgId, 60), levelColumn,
-    ColumnInfo("data", "Data", ColumnKind.Text, SyslogField.Data, 150), payloadColumn
+    timeColumn(TimeKind.Absolute), hostColumn, appColumn,
+    ColumnInfo("pid", "PID", ColumnKind.Text, SyslogField.ProcId),
+    ColumnInfo("msgid", "MsgID", ColumnKind.Text, SyslogField.MsgId), levelColumn,
+    ColumnInfo("data", "Data", ColumnKind.Text, SyslogField.Data), payloadColumn
 ];
 
 final class SyslogDetector : FormatDetector

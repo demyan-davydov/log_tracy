@@ -2,7 +2,7 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { formatTime, formatDuration, levelName, cellClass, rowText, cellText, itemText, matchPieces, rowLayout } from "../../resources/cell-format.js";
+import { formatTime, formatDuration, levelName, cellClass, columnClass, rowText, cellText, itemText, matchPieces, rowLayout } from "../../resources/cell-format.js";
 
 // TimeKind values of the backend (log_core/log_message)
 const Absolute = 1, Local = 2, LocalNoYear = 3, SinceBoot = 4;
@@ -118,4 +118,14 @@ test("matchPieces: a cell that isn't a list of fragments shows the text as it is
     // e.g. a Time cell, while the columns of the script and the backend differ
     assert.deepEqual(matchPieces("abc", [1700000000000000, 1]), [{ text: "abc", chip: null }]);
     assert.deepEqual(matchPieces("abc", "abc"), [{ text: "abc", chip: null }]);
+});
+
+test("columnClass: a column is styled by its id, and by the ids of its format and of the column", () => {
+    assert.equal(columnClass({ format: "dlt", id: "timestamp" }), "col-timestamp col-dlt-timestamp");
+    assert.equal(columnClass({ format: "access-log", id: "agent" }), "col-agent col-access-log-agent");
+});
+
+test("columnClass: Payload is marked by its kind, whatever its id", () => {
+    assert.equal(columnClass({ format: "logcat", id: "message", kind: "Payload" }), "col-message col-logcat-message payload");
+    assert.equal(columnClass({ format: "dlt", id: "app", kind: "Text" }), "col-app col-dlt-app");
 });
