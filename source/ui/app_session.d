@@ -30,6 +30,7 @@ import ui.search_view_fsm : toJson;
 
 import std.json : JSONValue;
 import utils.ui_text : english, uiText, uiTextOf, UiText;
+static import utils.file_manager;
 
 
 /// A call of a global function of the script: name(docId) or name(docId, json)
@@ -53,6 +54,9 @@ alias DocumentFactory = Document delegate(string path, FormatChoice choice);
 /// Writes the settings (to their file)
 alias SettingsWriter = void delegate(in AppSettings settings);
 
+/// Shows a file in the file manager of the system. Throws if it can't.
+alias FileShower = void delegate(string path);
+
 final class AppSession
 {
     private AppSettings _settings;
@@ -61,6 +65,7 @@ final class AppSession
     private TableColumns _tableColumns; // the columns the tables show for each format
     private DocumentFactory _open;
     private SettingsWriter _write;
+    private FileShower _showInFolder;
     private ScriptCall[] _scriptCalls; // queued for the idle loop
     private bool _settingsChanged; // since they were last written
     private bool _closing; // the window closes: no more calls of the script
@@ -71,7 +76,8 @@ final class AppSession
 
     /// @param open - opens a document (a LogDocument in the app)
     /// @param write - writes the settings, to their file if not given
-    this(AppSettings settings, DocumentFactory open, SettingsWriter write = null)
+    /// @param showInFolder - shows a file in the file manager, of the system if not given
+    this(AppSettings settings, DocumentFactory open, SettingsWriter write = null, FileShower showInFolder = null)
     {
         assert(open !is null);
         _settings = settings;
@@ -79,6 +85,7 @@ final class AppSession
         _tableColumns = new TableColumns();
         _open = open;
         _write = write !is null ? write : (in AppSettings s) { ui.app_settings.saveSettings(s); };
+        _showInFolder = showInFolder !is null ? showInFolder : (string path) { utils.file_manager.showInFolder(path); };
         subscribeToDocumentEvents();
     }
 
@@ -332,6 +339,34 @@ final class AppSession
             ]);
         }
         return JSONValue(docs).toString();
+    }
+
+    /// Removes a file from the recent list, with what was kept for it (its
+    /// filters, its searches). An open file stays: it would be listed again
+    /// as soon as it is stamped used. Returns: whether it was removed
+    bool removeRecentFile(string path)
+    {
+        import std.algorithm : canFind;
+
+        if (openPaths().canFind!(p => sameRecentFile(p, path)))
+            return false;
+        const before = _settings.recentFiles.length;
+        _settings.recentFiles = withoutRecentFile(_settings.recentFiles, path);
+        if (_settings.recentFiles.length == before)
+            return false;
+        settingsChanged();
+        return true;
+    }
+
+    /// Shows a file in the file manager. Returns: "" or why it can't be
+    /// (the message of the system, untranslated)
+    string showInFolder(string path)
+    {
+        try
+            _showInFolder(path);
+        catch (Exception e)
+            return e.msg;
+        return "";
     }
 
     /// The recent files for the placeholder, the open ones marked
@@ -721,6 +756,7 @@ version (unittest)
             FakeDocument[string] opened; // by path
             AppSettings[] written;
             FormatChoice lastChoice; // asked of the factory
+            string[] shown; // in the file manager
         }
 
         AppSession session;
@@ -743,7 +779,11 @@ version (unittest)
                 auto doc = new FakeDocument();
                 records.opened[path] = doc;
                 return cast(Document) doc;
-            }, (in AppSettings s) { records.written ~= AppSettings(s); });
+            }, (in AppSettings s) { records.written ~= AppSettings(s); }, (string path) {
+                if (path.canFind("missing"))
+                    throw new Exception("no such file");
+                records.shown ~= path;
+            });
             return f;
         }
 
@@ -921,6 +961,46 @@ unittest
     assert(f.session.startChipSearch(id, `[{"text": "(", "isRegex": true, "ignoreCase": false}]`).length,
         "an invalid regex is an error");
     assert(f.docOf("/logs/a.log").searches.length == 1, "and searches nothing");
+}
+
+@("AppSession: a file removed from the recent list loses its filters, the change is saved")
+unittest
+{
+    auto f = Fixture.make();
+    const id = f.session.openFile("/logs/a.log").docId;
+    f.session.filterCommand(id, (DocumentFilters filters) => filters.newSet());
+    f.session.openFile("/logs/b.log");
+    f.session.closeTab(cast(int) id.toInt());
+    f.session.saveSettings(`{}`);
+
+    assert(f.session.removeRecentFile("/logs/a.log"));
+    assert(pathsOf(f.session.settings.recentFiles) == ["/logs/b.log"]);
+    assert(f.session.settingsDue);
+    f.session.saveSettings(`{}`);
+    assert(pathsOf(f.writes[$ - 1].recentFiles) == ["/logs/b.log"]);
+
+    f.session.openFile("/logs/a.log");
+    assert(savedFilters(f.session.settings.recentFiles, "/logs/a.log").length == 0, "opened anew, without its filters");
+}
+
+@("AppSession: a file is shown in the file manager, or the reason it can't be")
+unittest
+{
+    auto f = Fixture.make();
+    assert(f.session.showInFolder("/logs/a.log") == "");
+    assert(f.records.shown == ["/logs/a.log"]);
+    assert(f.session.showInFolder("/logs/missing.log") == "no such file");
+}
+
+@("AppSession: an open file is not removed from the recent list")
+unittest
+{
+    auto f = Fixture.make();
+    f.session.openFile("/logs/a.log");
+    f.session.saveSettings(`{}`);
+    assert(!f.session.removeRecentFile("/logs/a.log"));
+    assert(pathsOf(f.session.settings.recentFiles) == ["/logs/a.log"]);
+    assert(!f.session.settingsDue, "nothing changed");
 }
 
 @("AppSession: a filter command that succeeds is kept in the settings of the file")

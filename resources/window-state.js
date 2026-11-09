@@ -73,6 +73,15 @@ export function documentClosed(state) {
     return next(state, { placeholderVersion: renderPlaceholder(state) });
 }
 
+// A file was removed from the recent files: they are rendered without it; a
+// failure of that file goes with it
+export function recentFileRemoved(state, path) {
+    return next(state, {
+        failure: state.failure?.path === path ? null : state.failure,
+        placeholderVersion: renderPlaceholder(state)
+    });
+}
+
 // The active document of the backend; null if none
 export function activeDocId(state) {
     return state.docs.find(doc => doc.active)?.id ?? null;

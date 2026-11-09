@@ -186,6 +186,33 @@ header {
     font-weight: 600;
 }
 
+/* The menu of a file (Show in Folder, Copy Path, Remove from Recent): its
+   button has a place of its own at the right, so nothing moves when it is
+   shown, on hover of the file and while its menu is open */
+.recent-file-menu {
+    size: 22dip;
+    margin: * 0 * 6dip;
+    padding: 0;
+    border: none;
+    border-radius: 5dip;
+    background: none;
+    color: var(--tab-close);
+    font-weight: 700;
+    text-align: center;
+    vertical-align: middle;
+    visibility: hidden;
+}
+
+.recent-file:hover .recent-file-menu,
+.recent-file-menu:owns-popup {
+    visibility: visible;
+}
+
+.recent-file-menu:hover,
+.recent-file-menu:owns-popup {
+    background: var(--tab-close-hover);
+}
+
 /* A file not found stays listed, grayed, with a note under its path; so does
    a file that failed to open, with the reason */
 .recent-file.missing .recent-file-name {

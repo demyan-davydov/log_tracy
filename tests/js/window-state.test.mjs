@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
     initialWindow, workspaceChanged, newTabRequested, newTabPressed, newTabClosed, documentPressed,
-    documentOpened, openFailed, documentClosed, shown, activeDocId
+    documentOpened, openFailed, documentClosed, recentFileRemoved, shown, activeDocId
 } from "../../resources/window-state.js";
 
 const docs = (active, ...ids) => ids.map(id => ({ id, name: `${id}.log`, active: id === active }));
@@ -67,6 +67,14 @@ test("the placeholder is rendered again when what it shows changes", () => {
     assert.equal(documentOpened(initialWindow).placeholderVersion, start, "nothing to clear");
     assert.equal(workspaceChanged(initialWindow, docs(1, 1)).placeholderVersion, start,
         "not on every change of the documents: it would rebuild the list under the mouse");
+});
+
+test("a file removed from the recent files is rendered away, its failure with it", () => {
+    const failed = openFailed(initialWindow, { path: "/a", error: "e" });
+    const removed = recentFileRemoved(failed, "/a");
+    assert.ok(removed.placeholderVersion > failed.placeholderVersion);
+    assert.equal(removed.failure, null, "the failure of the file removed");
+    assert.deepEqual(recentFileRemoved(failed, "/b").failure, failed.failure, "the failure of another file stays");
 });
 
 test("the states are not changed in place", () => {

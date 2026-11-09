@@ -3,9 +3,10 @@ import { VirtualDltTBody, VirtualMainViewTBody, VirtualSearchViewTBody, moveRowD
 import { plusShown, failureReason } from "new-tab.js";
 import {
     initialWindow, workspaceChanged, newTabRequested, newTabPressed, newTabClosed, documentPressed,
-    documentOpened, openFailed, documentClosed, shown, activeDocId
+    documentOpened, openFailed, documentClosed, recentFileRemoved, shown, activeDocId
 } from "window-state.js";
 import { lastUsedText } from "recent-time.js";
+import { recentFileMenu } from "recent-file-menu.js";
 import { DocumentPane } from "document-pane.js";
 import { paneChanges, tabProgress } from "pane-state.js";
 import { TabStrip } from "tabs.js";
@@ -208,6 +209,7 @@ function renderPlaceholder() {
                 </div>
                 <div class="recent-file-dir">{dir}</div>
             </div>
+            {recentFileMenuButton({ exists, opened })}
         </div>;
         list.append(item);
         const added = list.lastElementChild;
@@ -225,6 +227,49 @@ function renderPlaceholder() {
             const note = failed ? tr("Failed to open: {reason}", { reason: failureReason(failure.error) }) : tr("File not found");
             added.$(".recent-file-text").append(<div class="recent-file-note">{note}</div>);
         }
+    }
+}
+
+// The "⋮" button at the right of a recent file, shown on hover: a dropdown of
+// what can be done with the file (recent-file-menu.js)
+function recentFileMenuButton(file) {
+    const labels = {
+        "show-in-folder": tr("Show in Folder"),
+        "copy-path": tr("Copy Path"),
+        "remove": tr("Remove from Recent"),
+    };
+    // Flat: nested arrays of JSX aren't known to work; Remove apart from the others
+    const items = [];
+    for (const { command, enabled } of recentFileMenu(file)) {
+        if (command === "remove") items.push(<hr />);
+        items.push(enabled
+            ? <li command={command}>{labels[command]}</li>
+            : <li command={command} disabled>{labels[command]}</li>);
+    }
+    // A text, not :before, which ignores visibility (sciter-quirks)
+    // Out of the Tab order: it is hidden until the file is hovered
+    return <button type="menu" class="recent-file-menu" tabindex="-1">⋮
+        <menu class="popup">{items}</menu>
+    </button>;
+}
+
+// A command of the menu of the recent file `path`
+function recentFileCommand(command, path) {
+    switch (command) {
+        case "show-in-folder": {
+            const error = backend.showInFolder(path);
+            if (error) console.error("Can't show", path, "in its folder:", error);
+            break;
+        }
+        case "copy-path":
+            platform.copyText(path);
+            break;
+        case "remove":
+            if (backend.removeRecentFile(path)) {
+                win = recentFileRemoved(win, path);
+                refreshTabs();
+            }
+            break;
     }
 }
 
@@ -336,7 +381,14 @@ globalThis.onMenuCommand = function (id) {
 function setupEvents() {
     document.on("click", "#btn-placeholder-open", openFileAction);
 
-    document.on("click", ".recent-file", (evt, item) => openFile(item.getAttribute("path")));
+    document.on("click", ".recent-file", (evt, item) => {
+        if (evt.target.closest(".recent-file-menu")) return; // its button or its menu
+        openFile(item.getAttribute("path"));
+    });
+    document.on("click", ".recent-file-menu li[command]", (evt, li) => {
+        if (li.hasAttribute("disabled")) return;
+        recentFileCommand(li.getAttribute("command"), li.closest(".recent-file").getAttribute("path"));
+    });
 
     // Context menu of a log row: "Copy Row" after the default items of a
     // selectable cell (Copy, Select All), alone on the other cells.
