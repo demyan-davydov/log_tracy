@@ -168,7 +168,12 @@ function showStatus(view, vm, texts, details) {
     const text = texts[vm.status];
     view.$(".status-title").innerText = text ? text(vm) : vm.status;
     const detail = details[vm.status];
-    view.$(".status-detail").innerText = detail ? detail(vm) : "";
+    const detailText = detail ? detail(vm) : "";
+    const detailView = view.$(".status-detail");
+    detailView.innerText = detailText;
+    // Not left to .status-detail:empty: Sciter doesn't restyle it when the
+    // text changes, only on the next state change (a click on the panel)
+    detailView.style.display = detailText ? "block" : "none";
     view.$(".btn-cancel").parentElement.style.display = vm.canCancel ? "" : "none";
 }
 

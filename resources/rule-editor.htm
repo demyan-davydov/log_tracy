@@ -185,6 +185,14 @@
             validate();
         }
 
+        // Sets the text of a message and shows it only when there is one. Not
+        // left to :empty: Sciter doesn't restyle it when the text changes, only
+        // on the next state change (a click in the dialog)
+        function showMessage(element, text) {
+            element.innerText = text;
+            element.style.display = text ? "block" : "none";
+        }
+
         // Asks the log (params.check, see editRule() in script.js) what is wrong
         // with the rule as it is now and shows it at once: the row of a wrong
         // condition is marked, its message is under it. A rule switched on
@@ -198,15 +206,15 @@
             for (const condition of $$(".condition")) {
                 const message = errors.rows[condition.getAttribute("column")] || "";
                 condition.classList.toggle("invalid", !!message);
-                condition.$(".row-error").innerText = message;
+                showMessage(condition.$(".row-error"), message);
             }
             const offset = (result.conditions || []).length - kept.length;
             for (const error of $$(".kept-error")) {
                 const k = parseInt(error.getAttribute("index"));
-                error.innerText = errors.kept[k] || "";
+                showMessage(error, errors.kept[k] || "");
                 error.classList.toggle("missing", !!(result.missing || [])[offset + k]);
             }
-            $("#rule-error").innerText = result.error || "";
+            showMessage($("#rule-error"), result.error || "");
             const blocked = (!!result.error || errors.blocking) && rule.enabled;
             $("#btn-ok").state.disabled = blocked;
             $("#ok-hint").innerText = blocked
@@ -242,7 +250,7 @@
             kept = shown.kept;
             writeRows(shown.rows);
             showKept();
-            $("#rule-error").innerText = params.error || "";
+            showMessage($("#rule-error"), params.error || "");
             $("#name").focus();
         });
 
