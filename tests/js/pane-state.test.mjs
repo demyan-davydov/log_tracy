@@ -3,7 +3,7 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { noTable, tableStep, paneChanges, anchorEdit, rowLookStep, keptRowStep, searchViewKey } from "../../resources/pane-state.js";
+import { noTable, tableStep, paneChanges, anchorEdit, rowLookStep, keptRowStep, searchViewKey, jumpStep } from "../../resources/pane-state.js";
 
 const ready = (dataVersion) => ({ status: "ready", dataVersion });
 
@@ -150,4 +150,34 @@ test("searchViewKey: another status, result or progress gives another key", () =
         null,
     ].map(searchViewKey);
     assert.equal(new Set(keys).size, keys.length, keys.join(", "));
+});
+
+const at = (position) => () => position;
+const onScreen = { visibleRows: 30, inSelectable: false };
+
+test("jumpStep: the row of the message becomes the only one selected, near the top, focused", () => {
+    assert.deepEqual(jumpStep(ready(1), at(100), onScreen), { position: 100, top: 98, focus: true });
+    assert.deepEqual(jumpStep(ready(1), at(1), onScreen), { position: 1, top: 0, focus: true }, "no rows above the first");
+    assert.deepEqual(jumpStep(ready(1), at(0), onScreen), { position: 0, top: 0, focus: true }, "the first row is a position too");
+});
+
+test("jumpStep: the focus stays when the double click selected a word, or the table is collapsed", () => {
+    // Cmd+C then copies the word, not the row of the other table
+    assert.equal(jumpStep(ready(1), at(5), { visibleRows: 30, inSelectable: true }).focus, false, "a word");
+    assert.equal(jumpStep(ready(1), at(5), { visibleRows: 0, inSelectable: false }).focus, false, "no rows on screen");
+});
+
+test("jumpStep: nowhere to go when the other table doesn't show the message", () => {
+    assert.equal(jumpStep(ready(1), at(null), onScreen), null, "not in that view");
+    assert.equal(jumpStep(ready(1), at(undefined), onScreen), null, "no answer");
+});
+
+test("jumpStep: nowhere to go while the other table shows a status, the backend isn't asked", () => {
+    // its positions belong to the content being replaced
+    const asked = [];
+    const position = () => { asked.push(1); return 5; };
+    for (const status of ["searching", "filtering", "loading", "searchCancelled", "sourceLost"])
+        assert.equal(jumpStep({ status, dataVersion: 1 }, position, onScreen), null, status);
+    assert.equal(jumpStep(null, position, onScreen), null, "no view yet");
+    assert.equal(asked.length, 0);
 });

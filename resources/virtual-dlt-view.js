@@ -256,6 +256,17 @@ export class VirtualDltTBody extends VirtualSelect {
         return true;
     }
 
+    // Makes the row `position` current and the only one selected with `top` the
+    // first row shown (by the render componentUpdate() posts), and takes the
+    // keyboard if `focus`: a step of jumpStep (pane-state.js)
+    showRow({ position, top, focus }) {
+        this.selection.moveTo(position);
+        this.navigateTarget = top;
+        this.componentUpdate();
+        this.updateRowStates();
+        if (focus) this.state.focus = true;
+    }
+
     onkeydown(evt) {
         const current = this.selection.current;
         // Without a current row the arrows start from the rows on screen, not

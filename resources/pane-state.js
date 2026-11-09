@@ -1,6 +1,7 @@
 // What the panel of a document does with its tables and how the panels follow
 // the open documents. Pure, so it can be tested with node.
 // Tests: tests/js/pane-state.test.mjs.
+import { scrollTarget } from "./row-selection.js";
 
 // What a table of a document shows: { loaded } once it has shown rows,
 // { dataVersion } of the view they come from, null while the view isn't a table
@@ -96,4 +97,23 @@ export function keptRowStep(kept, shown, total) {
 export function searchViewKey(vm) {
     if (!vm) return "";
     return `${vm.status}/${vm.dataVersion ?? ""}/${vm.progress ?? ""}`;
+}
+
+// Where a double click on a row of one table takes the other one (the same
+// rules both ways): { position: the row of the message there, made current and
+// the only one selected, top: the first row to show, so it is near the top,
+// focus: whether that table takes the keyboard }, or null if that table doesn't
+// show the message or shows a status instead of rows: its positions belong to
+// the content being replaced then, and the backend is not asked.
+// @param vm - the view of that table (see tableStep)
+// @param positionOf - () => the row of the message there, null if none (the backend)
+// @param visibleRows - the rows that table shows: 0 when its panel is collapsed,
+//   the focus would go to a table the user can't see
+// @param inSelectable - the click was in a cell whose text it selects (a word of
+//   the Payload): the focus stays, so Cmd+C copies the word
+export function jumpStep(vm, positionOf, { visibleRows, inSelectable }) {
+    if (vm?.status !== "ready") return null;
+    const position = positionOf();
+    if (position === null || position === undefined) return null;
+    return { position, top: scrollTarget(position, visibleRows), focus: visibleRows > 0 && !inSelectable };
 }

@@ -78,8 +78,9 @@ export const mainViewItem = (docId, index) => Window.this.xcall("getMainViewItem
 export const searchViewItem = (docId, index) => Window.this.xcall("getSearchViewItem", docId, index);
 export const mainViewCount = docId => Window.this.xcall("getMainViewCount", docId);
 export const searchViewCount = docId => Window.this.xcall("getSearchViewCount", docId);
-// The row of the main view that shows message `messageIndex`, null if none does
+// The row of the main / search view that shows message `messageIndex`, null if none does
 export const mainViewPosition = (docId, messageIndex) => xcall("getMainViewPosition", docId, messageIndex);
+export const searchViewPosition = (docId, messageIndex) => xcall("getSearchViewPosition", docId, messageIndex);
 // The columns the tables of the document show, as JSON text ("[]": none): the
 // text tells whether they changed
 export const tableColumnsJson = docId => xcall("getTableColumns", docId) || "[]";

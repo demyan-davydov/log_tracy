@@ -11,8 +11,7 @@ import * as backend from "backend.js";
 import * as platform from "platform.js";
 import { noSearch, runSearch, searchPending, editRule } from "pane-commands.js";
 import { ruleColors } from "rule-colors.js";
-import { scrollTarget } from "row-selection.js";
-import { noTable, tableStep, rowLookStep, keptRowStep, searchViewKey } from "pane-state.js";
+import { noTable, tableStep, rowLookStep, keptRowStep, searchViewKey, jumpStep } from "pane-state.js";
 import { currentCatalog, tr } from "i18n/i18n.js";
 import { translateTree } from "i18n/dom.js";
 import { fileFilter, allFiles } from "file-types.js";
@@ -760,23 +759,21 @@ export class DocumentPane {
             return true; // don't change the row selection
         });
 
-        // A double click on a search result shows its message in the main view:
-        // current and the only one selected, near the top
-        on("dblclick", "table.search-view > tbody > tr", (evt, row) => {
+        // A double click on a row shows its message in the other table, if that
+        // one has it: current and the only one selected, near the top (jumpStep)
+        on("dblclick", "table.log-table > tbody > tr", (evt, row) => {
             if (evt.target.closest("td.anchor")) return; // toggles the anchor only
             const msgIndex = Number(row.$("td.anchor")?.getAttribute("msg-index"));
             if (!Number.isFinite(msgIndex)) return;
-            // Only into a main view that shows its rows: while it is rebuilt the
-            // positions belong to the content being replaced
-            if (this.mainView?.status !== "ready") return;
-            const list = this.mainList;
-            const position = backend.mainViewPosition(this.docId, msgIndex);
-            if (position === null || position === undefined) return;
-            list.selection.moveTo(position);
-            list.navigateTarget = scrollTarget(position, list.visibleRowCount());
-            list.componentUpdate();
-            list.updateRowStates();
-            list.state.focus = true;
+            const [list, vm, positionOf] = row.parentElement === this.mainList
+                ? [this.searchList, this.searchView, backend.searchViewPosition]
+                : [this.mainList, this.mainView, backend.mainViewPosition];
+            const step = jumpStep(vm, () => positionOf(this.docId, msgIndex), {
+                visibleRows: list.visibleRowCount(),
+                inSelectable: !!evt.target.closest("[selectable]"),
+            });
+            if (!step) return;
+            list.showRow(step);
             return true;
         });
 

@@ -391,6 +391,20 @@ final class AppSession
         return ui is null ? RuleId.init : ui.ruleOf(item.message);
     }
 
+    /// The row of view (the search view if `searchView`, else the main one) of
+    /// the document that shows the message `messageIndex` (a script number:
+    /// negative when the script has none)
+    /// @return false if that view doesn't show it
+    bool viewPosition(DocumentId docId, bool searchView, double messageIndex, out size_t position)
+    {
+        // a double: a message index above 2^31 doesn't fit an int
+        if (!(messageIndex >= 0) || messageIndex >= size_t.max)
+            return false;
+        auto doc = _workspace.doc(docId);
+        auto view = searchView ? doc.searchView : doc.mainView;
+        return view.positionOf(cast(size_t) messageIndex, position);
+    }
+
     /// What the chips of the search found in the payload of a row of either
     /// view; nothing for a row the search didn't find (DocumentItem.found), so
     /// the rows of the main view it didn't find cost nothing.
@@ -1183,6 +1197,15 @@ unittest
     assert(main.fetchItem(0, item) && session.matchesOf(id, item, buffer[]) == [MatchRange(2, 9, 0)]);
     assert(main.fetchItem(1, item) && session.matchesOf(id, item, buffer[]).length == 0, "not found");
     assert(main.fetchItem(2, item) && session.matchesOf(id, item, buffer[]) == [MatchRange(8, 15, 0)]);
+
+    // The rows of a message in both views, as a double click asks for them
+    size_t position;
+    assert(session.viewPosition(id, false, 2, position) && position == 2);
+    assert(session.viewPosition(id, true, 2, position) && position == 2, "the third result");
+    assert(session.viewPosition(id, true, 1, position) && position == 1, "listed by its anchor");
+    assert(!session.viewPosition(id, true, 3, position), "not found by the search");
+    assert(!session.viewPosition(id, false, -1, position), "no message index");
+    assert(!session.viewPosition(id, false, 1e12, position), "past the end of the log");
 
     auto results = session.doc(id).searchView;
     assert(results.itemsCount == 3);
