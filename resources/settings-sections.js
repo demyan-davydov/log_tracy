@@ -16,7 +16,7 @@ export const fontSizes = [80, 90, 100, 110, 125, 150, 175, 200];
 // dialog opened with (100 when none) marked `initial`, shown in italics so the
 // user sees where they started; a size not in the list (settings edited by hand) is added in its place
 export function fontSizeOptions(initial) {
-    const start = Number.isFinite(initial) && initial > 0 ? initial : 100;
+    const start = Number.isInteger(initial) && initial > 0 ? initial : 100; // settings keep an int
     const values = fontSizes.includes(start) ? fontSizes : [...fontSizes, start].sort((a, b) => a - b);
     return values.map(value => ({ value, initial: value === start, label: `${value}%` }));
 }

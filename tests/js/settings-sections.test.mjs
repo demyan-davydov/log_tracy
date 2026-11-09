@@ -32,3 +32,8 @@ test("a font size not in the list (edited settings) is offered in its place", ()
     assert.deepEqual(fontSizeOptions(120).map(o => o.value), [80, 90, 100, 110, 120, 125, 150, 175, 200]);
     assert.deepEqual(fontSizeOptions(undefined).filter(o => o.initial).map(o => o.value), [100]);
 });
+
+test("an impossible font size (edited settings) starts from 100%", () => {
+    for (const size of [0, -10, NaN, 112.5])
+        assert.deepEqual(fontSizeOptions(size).filter(o => o.initial).map(o => o.value), [100]);
+});
