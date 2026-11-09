@@ -1,6 +1,7 @@
 // What the panel of a document does with its tables and how the panels follow
 // the open documents. Pure, so it can be tested with node.
 // Tests: tests/js/pane-state.test.mjs.
+import { scrollTarget } from "./row-selection.js";
 
 // What a table of a document shows: { loaded } once it has shown rows,
 // { dataVersion } of the view they come from, null while the view isn't a table
@@ -87,4 +88,31 @@ export function keptRowStep(kept, shown, total) {
     if (shown.dataVersion === null) return { wait: true, target: null };
     if (kept.top === null || total === 0) return { wait: false, target: null };
     return { wait: false, target: Math.min(kept.top, total - 1) };
+}
+
+// The search view (vm of the search machine, null if none yet) as a value: the
+// rows of the main table show what the search found, and are refreshed when
+// this changes. The models come as new objects with every snapshot of the
+// workspace (refreshTabs), so they are compared by what they say.
+export function searchViewKey(vm) {
+    if (!vm) return "";
+    return `${vm.status}/${vm.dataVersion ?? ""}/${vm.progress ?? ""}`;
+}
+
+// Where a row selected in one table takes the other one (the same rules both
+// ways): { position: the row of the message there, made current and the only
+// one selected, top: the first row to show so that it is near the top, null
+// if it is on screen already and stays where it is }, or null if that table
+// doesn't show the message or shows a status instead of rows: its positions
+// belong to the content being replaced then, and the backend is not asked.
+// @param vm - the view of that table (see tableStep)
+// @param positionOf - () => the row of the message there, null if none (the backend)
+// @param visibleRange - [first, last] rows wholly on screen there (not cut by an edge), null if none
+// @param visibleRows - the rows that table has room for
+export function jumpStep(vm, positionOf, { visibleRange, visibleRows }) {
+    if (vm?.status !== "ready") return null;
+    const position = positionOf();
+    if (position === null || position === undefined) return null;
+    const onScreen = visibleRange && position >= visibleRange[0] && position <= visibleRange[1];
+    return { position, top: onScreen ? null : scrollTarget(position, visibleRows) };
 }

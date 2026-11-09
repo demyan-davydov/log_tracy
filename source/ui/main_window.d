@@ -18,7 +18,7 @@ import ui.app_menu : MenuItem, MenuPlatform;
 import ui.main_menu_loader : retitleAppMenu;
 import utils.ui_text : UiText;
 import log_core.rule_filter : RuleId;
-import log_core.search_filter : checkRegex, MatchRange;
+import log_core.search_filter : checkRegex, MatchBuffer, MatchRange;
 import ui.app_resources : appResourceOfUrl, appResourceUrl, builtInCatalogs;
 import ui.app_session : AppSession;
 import ui.app_settings : AppSettings, toJSON;
@@ -230,16 +230,18 @@ class MainWindow : SciterWindow
             const bool search = method == "getSearchViewItem";
             const int index = param!int(1);
             DocumentItem docItem;
+            MatchBuffer fragments;
             if (!(search ? doc.searchView : doc.mainView).fetchItem(index, docItem))
                 resultView.set(SciterValue.makeNull());
             else
-                // the fragments the chips found, after the cells (main view rows have none)
+                // the fragments the chips found, after the cells
                 resultView.set(asSciterRow(index, docItem, _session.tableColumns(doc),
-                    _session.ruleOf(docId, docItem), search, search ? _session.matchesOf(docId, docItem) : null));
+                    _session.ruleOf(docId, docItem), _session.matchesOf(docId, docItem, fragments[])));
             return true;
         case "getMainViewPosition":
-            // getMainViewPosition(docId, messageIndex) -> its row in the main
-            // view, null if the view doesn't show it. The row sends message
+        case "getSearchViewPosition":
+            // get<Main|Search>ViewPosition(docId, messageIndex) -> its row in
+            // that view, null if the view doesn't show it. The row sends message
             // indexes as doubles (see asSciterRow)
             double msgIndex = -1;
             if (params.argc > 1)
@@ -252,7 +254,7 @@ class MainWindow : SciterWindow
                     valueView.tryGet(msgIndex);
             }
             size_t position;
-            if (msgIndex >= 0 && _session.doc(docParam()).mainView.positionOf(cast(size_t) msgIndex, position))
+            if (_session.viewPosition(docParam(), method == "getSearchViewPosition", msgIndex, position))
                 resultView = cast(int) position;
             else
                 resultView.set(SciterValue.makeNull());
@@ -460,9 +462,9 @@ private struct SciterCells
 
 /// A row of the log table as a Sciter array, see ui.table_rows.writeRow
 SciterValue asSciterRow(int index, ref const(DocumentItem) item, const(ColumnInfo)[] columns,
-    RuleId rule, bool withMatches = false, const(MatchRange)[] matches = null)
+    RuleId rule, const(MatchRange)[] matches)
 {
-    auto cells = SciterCells(rowLength(columns.length, withMatches));
-    writeRow(cells, index, item.message, item.anchored, item.realIndex, columns, rule, withMatches, matches);
+    auto cells = SciterCells(rowLength(columns.length));
+    writeRow(cells, index, item.message, item.anchored, item.found, item.realIndex, columns, rule, matches);
     return cells.row;
 }

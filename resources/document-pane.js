@@ -11,8 +11,9 @@ import * as backend from "backend.js";
 import * as platform from "platform.js";
 import { noSearch, runSearch, searchPending, editRule } from "pane-commands.js";
 import { ruleColors } from "rule-colors.js";
-import { scrollTarget } from "row-selection.js";
-import { noTable, tableStep, rowLookStep, keptRowStep } from "pane-state.js";
+import { rowLayout } from "cell-format.js";
+import { followedRow, SelectionFollower } from "row-selection.js";
+import { noTable, tableStep, rowLookStep, keptRowStep, searchViewKey, jumpStep } from "pane-state.js";
 import { currentCatalog, tr } from "i18n/i18n.js";
 import { translateTree } from "i18n/dom.js";
 import { fileFilter, allFiles } from "file-types.js";
@@ -221,6 +222,7 @@ export class DocumentPane {
         this.visible = false;
         this.mainShown = noTable; // what the tables show, see pane-state.js
         this.searchShown = noTable;
+        this.foundShownFor = null; // the search view (searchViewKey) the main rows show the found rows of
         this.appliedColumns = null; // JSON of the columns the tables show
         this.filtersShown = false; // the filter panel is built on the first show
         this.filters = noFilters; // what showFilters() got last
@@ -254,6 +256,9 @@ export class DocumentPane {
         this.searchList = this.searchTable.$("tbody");
         this.mainList.docId = docId;
         this.searchList.docId = docId;
+        // A row the user selects in one table is shown in the other (followSelection,
+        // the "rowchosen" events of the tables)
+        this.follower = new SelectionFollower(list => this.followSelection(list));
         this.applyRowLook();
 
         this.chipEditor = new SearchEditor(this.root.$(".chip-search"), {
@@ -358,6 +363,7 @@ export class DocumentPane {
             bottomPage: this.bottomPage,
         };
         this.visible = false;
+        this.follower.cancel(); // not into a hidden panel
         this.root.style.display = "none";
         return splitters;
     }
@@ -365,6 +371,7 @@ export class DocumentPane {
     // The document is closed
     destroy() {
         this.destroyed = true; // a frame asked by applyRowLook() leaves the lists alone
+        this.follower.cancel();
         this.keptRows.clear();
         this.chipEditor.destroy();
         this.root.remove();
@@ -375,7 +382,7 @@ export class DocumentPane {
         if (!this.filtersShown) this.showFilters();
         // The rules first: the rows the columns re-render refer to them
         for (const list of this.lists) list.ruleColors = this.ruleColors;
-        this.searchList.matchColors = this.search.colors;
+        for (const list of this.lists) list.matchColors = this.search.colors;
         // The columns before the rows: a reload of a view renders them with these
         const changed = this.setColumns();
         this.updateMainView();
@@ -574,9 +581,28 @@ export class DocumentPane {
         }
     }
 
+    // Shows the row selected in the table `from` (followedRow) in the other
+    // one, if that one has its message: selected there, near the top unless it
+    // is on screen (jumpStep). The keyboard stays in `from`.
+    followSelection(from) {
+        const fromMain = from === this.mainList;
+        if ((fromMain ? this.mainView : this.searchView)?.status !== "ready") return; // its rows are being replaced
+        const row = followedRow(from.selection);
+        const msgIndex = row === null ? NaN : Number(from.itemAt(row)?.[rowLayout.messageIndex]);
+        if (!Number.isFinite(msgIndex)) return;
+        const [list, vm, positionOf] = fromMain
+            ? [this.searchList, this.searchView, backend.searchViewPosition]
+            : [this.mainList, this.mainView, backend.mainViewPosition];
+        const step = jumpStep(vm, () => positionOf(this.docId, msgIndex),
+            { visibleRange: list.wholeRowsRange(), visibleRows: list.visibleRowCount() });
+        if (step) list.showRow(step);
+    }
+
     reloadTable(list, step) {
         if (step.resetSelection) list.resetSelection(); // the rows are other messages now
         if (step.reload) reloadList(list, step.reload === "start" ? "start" : null);
+        // reloaded main rows show what the search found now: not refreshed again for it
+        if (step.reload && list === this.mainList) this.foundShownFor = searchViewKey(this.searchView);
         this.scrollToKeptRows(); // kept while a status view covered the table, see applyRowLook()
     }
 
@@ -597,6 +623,15 @@ export class DocumentPane {
         this.takeFocus(this.searchList, step.table ? null : loading);
         if (step.table) this.reloadTable(this.searchList, step);
         else showStatus(loading, vm, searchViewTexts, searchViewDetails);
+        // The rows of the main view show what the search found: more of them
+        // while it runs, other ones after a new search or none after a reset.
+        // Only when the search view changed since they were shown, not on
+        // every show of the panel.
+        const key = searchViewKey(this.searchView);
+        if (key !== this.foundShownFor && this.shows(this.mainList)) {
+            this.mainList.refreshVisibleRows();
+            this.foundShownFor = key;
+        }
     }
 
     // Runs the search for the chips of the editor (Enter, the Search button),
@@ -607,7 +642,8 @@ export class DocumentPane {
             () => editor.firstError(), chips => backend.startChipSearch(this.docId, chips));
         this.search = run.search;
         this.root.$(".chip-search-message").innerText = run.message;
-        if (run.started) this.searchList.matchColors = this.search.colors; // before the results come
+        if (run.started) // before the results come
+            for (const list of this.lists) list.matchColors = this.search.colors;
         this.updateChipPending();
     }
 
@@ -747,24 +783,9 @@ export class DocumentPane {
             return true; // don't change the row selection
         });
 
-        // A double click on a search result shows its message in the main view:
-        // current and the only one selected, near the top
-        on("dblclick", "table.search-view > tbody > tr", (evt, row) => {
-            if (evt.target.closest("td.anchor")) return; // toggles the anchor only
-            const msgIndex = Number(row.$("td.anchor")?.getAttribute("msg-index"));
-            if (!Number.isFinite(msgIndex)) return;
-            // Only into a main view that shows its rows: while it is rebuilt the
-            // positions belong to the content being replaced
-            if (this.mainView?.status !== "ready") return;
-            const list = this.mainList;
-            const position = backend.mainViewPosition(this.docId, msgIndex);
-            if (position === null || position === undefined) return;
-            list.selection.moveTo(position);
-            list.navigateTarget = scrollTarget(position, list.visibleRowCount());
-            list.componentUpdate();
-            list.updateRowStates();
-            list.state.focus = true;
-            return true;
+        // Posted: it may come after hide() cancelled the follower, not into a hidden panel
+        on("rowchosen", "table.log-table > tbody", (evt, list) => {
+            if (this.visible && !this.destroyed) this.follower.changed(list, evt.data?.delayed === true);
         });
 
         on("click", ".btn-lost-close", () => this.host.closeTab(this.docId));

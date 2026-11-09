@@ -80,8 +80,8 @@ test("a cell is copied as it is shown", () => {
 
 test("a row of the backend is copied as Index and its columns, without the fixed cells", () => {
     const columns = [{ kind: "Text" }, { kind: "Payload" }];
-    // anchored, rule id, view index, message index, level, then the columns
-    const item = [true, 3, 7, 1234, 4, "ECU1", "hello"];
+    // anchored, rule id, view index, message index, level, found, then the columns
+    const item = [true, 3, 7, 1234, 4, true, "ECU1", "hello"];
     assert.equal(itemText(item, columns), "1234\tECU1\thello");
     assert.equal(itemText(null, columns), null, "no such row");
 });
@@ -98,7 +98,9 @@ test("matchPieces: the text cut at the fragments, each with its chip", () => {
 
 test("matchPieces: no fragments, the text as one piece", () => {
     assert.deepEqual(matchPieces("abc", []), [{ text: "abc", chip: null }]);
-    assert.deepEqual(matchPieces("abc", undefined), [{ text: "abc", chip: null }], "a main view row has none");
+    assert.deepEqual(matchPieces("abc", null), [{ text: "abc", chip: null }], "a row the search didn't find has none");
+    assert.deepEqual(matchPieces("abc", undefined), [{ text: "abc", chip: null }],
+        "no such cell: the columns of the script and the backend differ for a moment");
     assert.deepEqual(matchPieces("", []), []);
 });
 
@@ -110,7 +112,12 @@ test("matchPieces: fragments out of the text or out of order are not trusted", (
         "an overlap is cut off");
 });
 
-test("rowLayout: the fragments of a search row come after the cells", () => {
+test("rowLayout: whether the search found the record comes after the level (writeRow in table_rows.d)", () => {
+    assert.equal(rowLayout.found, rowLayout.level + 1);
+    assert.equal(rowLayout.firstColumn, rowLayout.found + 1);
+});
+
+test("rowLayout: the fragments the search found come after the cells", () => {
     assert.equal(rowLayout.matches(3), rowLayout.firstColumn + 3);
 });
 

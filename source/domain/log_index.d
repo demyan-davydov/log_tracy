@@ -146,8 +146,19 @@ struct LogIndex
             (ref ProgressReporter progress) => buildFilterIndex(progress, filter, anchors));
     }
 
+    //! The results of the previous search are dropped before this returns, not
+    //! later by the worker: from now on the document marks found what the index
+    //! lists as found by `filter`
     bool runBuildSearchIndex(Filter filter, Anchors anchors)
     {
+        if (_backgroundSlot.busy())
+            return false;
+        if (filter !is null)
+            synchronized (cast(Mutex)_mutex)
+            {
+                _searchIndex.clear();
+                _searchIndex.isReady = false;
+            }
         return runOperation(Operation.BuildSearchIndex,
             (ref ProgressReporter progress) => buildSearchIndex(progress, filter, anchors));
     }
@@ -481,6 +492,10 @@ struct LogIndex
         // the offset index changes while this runs
         const bool viewIsFiltered = _viewIsFiltered;
         const size_t viewLength = viewIsFiltered ? _filterIndex.length : _offsetIndex.length;
+        // A failed search (an exception) leaves no partial results either
+        scope (failure)
+            synchronized (cast(Mutex)_mutex)
+                _searchIndex.clear();
         if (!collectMatches(progress, _searchIndex, viewLength,
                 (size_t position) => viewIsFiltered ? cast(size_t) _filterIndex[position] : position,
                 filter, anchors, uiText("the search index can't grow: too many records or not enough memory")))
@@ -567,8 +582,8 @@ struct LogIndex
             return false; // no record there: e.g. the file was read as zeros
         item.realIndex = index;
         item.filterMask = fileOffset.filterMask;
-        item.searchMask = 0;
         item.anchored = false;
+        item.found = false;
         item.selected = false;
         return true;
     }
@@ -608,8 +623,8 @@ struct LogIndex
             return false; // no record there: e.g. the file was read as zeros
         item.realIndex = globalIndex;
         item.filterMask = fileOffset.filterMask;
-        item.searchMask = 0;
         item.anchored = false;
+        item.found = false;
         item.selected = false;
         return true;
     }

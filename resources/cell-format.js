@@ -58,10 +58,10 @@ export function rowText(cellTexts) {
 }
 
 // The cells of a row of the backend (asSciterRow in main_window.d): the fixed
-// cells by their position, then a cell per column from firstColumn on; a row of
-// the search results then has what the chips found in its payload (matches)
+// cells by their position, then a cell per column from firstColumn on, then
+// what the chips of the search found in its payload (matches, null if none)
 export const rowLayout = {
-    anchored: 0, rule: 1, viewIndex: 2, messageIndex: 3, level: 4, firstColumn: 5,
+    anchored: 0, rule: 1, viewIndex: 2, messageIndex: 3, level: 4, found: 5, firstColumn: 6,
     matches(columnCount) { return this.firstColumn + columnCount; },
 };
 
@@ -88,7 +88,7 @@ export function itemText(item, columns) {
 // The payload cut at the fragments the search chips found in it, for the
 // table to show them in the colors of their chips.
 // @param fragments - [[start, end, chip]] of the backend (UTF-16 positions, by
-//   start, not overlapping); undefined for a row of the main view
+//   start, not overlapping); null for a row the search didn't find
 // @returns [{text, chip}], chip null for the text between the fragments
 export function matchPieces(text, fragments) {
     // not a list of fragments (e.g. a Time cell, while the columns of the script

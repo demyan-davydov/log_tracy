@@ -4,7 +4,7 @@ import * as backend from "backend.js";
 import * as platform from "platform.js";
 import { cellClass, cellText, columnClass, itemText, rowLayout, matchPieces } from "cell-format.js";
 import { matchColorClass } from "match-colors.js";
-import { RowSelection, selectedText, autoScrollSpeed } from "row-selection.js";
+import { RowSelection, selectedText, autoScrollSpeed, selectsOnPress } from "row-selection.js";
 import { anchorEdit } from "pane-state.js";
 
 // The header row of a log table for `columns`: table.css gives the columns
@@ -20,7 +20,7 @@ function renderHeader(columns) {
 
 // A cell of `column`; `level` (a LogLevel of the record) colors it if the
 // column asks for it (byLevel: an HTTP status shown as it is). `matches` are
-// what the search chips found in the payload (rows of the search results only).
+// what the search chips found in the payload (rows the search found only).
 // `matchColors` are those of the chips by their place in the query.
 function renderCell(column, value, level, matches, matchColors) {
     const text = cellText(column, value);
@@ -41,6 +41,11 @@ function renderCell(column, value, level, matches, matchColors) {
     return <td class={cellClass(column, level)}>{text}</td>;
 }
 
+// True if text is selected inside the selectable element `cell`
+function hasTextSelected(cell) {
+    return !!cell?.selection && !cell.selection.isCollapsed;
+}
+
 // Cmd+click toggles a row on macOS, where Ctrl+click opens the context menu:
 // it comes as a left press with Ctrl, which must not select like a click
 const toggleKey = platform.isMac() ? "metaKey" : "ctrlKey";
@@ -48,8 +53,8 @@ const contextClickKey = platform.isMac() ? "ctrlKey" : null;
 
 // select with virtual data source
 // The rows show the document `docId` (set by the script) with what the script
-// gives each table: its columns, the colors of the rules of the document and,
-// for the search results, the match colors of the chips.
+// gives each table: its columns, the colors of the rules of the document and
+// the match colors of the chips of the search.
 export class VirtualDltTBody extends VirtualSelect {
     // The columns the rows show, from backend.tableColumnsJson:
     // [{ id, title, kind, width, timeKind?, unitsPerSecond?, labels? }].
@@ -79,7 +84,7 @@ export class VirtualDltTBody extends VirtualSelect {
 
     // The match colors of the chips of the search the rows were found by, by
     // the place of the chip in that query: a fragment of a chip is shown in its
-    // color (see matchPieces). Rows of the main view have no fragments.
+    // color (see matchPieces). Rows the search didn't find have no fragments.
     get matchColors() {
         return this._matchColors ?? [];
     }
@@ -95,9 +100,18 @@ export class VirtualDltTBody extends VirtualSelect {
         return this._selection ??= new RowSelection();
     }
 
+    // Tells the panel that the user chose a row (a "rowchosen" event, bubbling;
+    // a click on the row already selected too): a click at once, a drag or a
+    // key `delayed`, followed once the row rests. Not when the script moves the
+    // selection (showRow, resetSelection).
+    rowChosen(delayed) {
+        this.post(new Event("rowchosen", { bubbles: true, data: { delayed } }));
+    }
+
     // Nothing is selected or current any more: the view shows other rows now
     resetSelection() {
         this.selection.reset();
+        this.pressedRow = this.pressedCell = null; // its index is another message now
         this.updateRowStates();
     }
 
@@ -121,6 +135,7 @@ export class VirtualDltTBody extends VirtualSelect {
         // sets a runtime state (:current, :checked) instead, see updateRowStates()
         return <tr row-current={selection.current === viewIndex ? "true" : "false"}
             row-selected={selection.has(viewIndex) ? "true" : "false"} view-index={viewIndex}
+            row-found={item[rowLayout.found] ? "true" : "false"}
             rule-color={ruleColor ? "true" : "false"} style={ruleColor ? `--rule-color: ${ruleColor}` : ""}>
             <td class="anchor" has-anchor={item[rowLayout.anchored] ? "true" : "false"} msg-index={item[rowLayout.messageIndex]}></td>
             <td class="aux">{item[rowLayout.messageIndex]}</td>
@@ -159,18 +174,55 @@ export class VirtualDltTBody extends VirtualSelect {
 
     // A press of the left button selects (Shift: a range, Cmd/Ctrl: one more
     // row) and starts a drag that selects the rows the mouse passes over, see
-    // moveRowDrag(). Dragging inside a Payload cell selects its text instead:
-    // the event is not consumed.
-    ["on mousedown"](evt) {
+    // moveRowDrag(). Dragging inside a Payload cell selects its text instead,
+    // so a plain press there selects its row only on a release that selected
+    // no text (selectsOnPress). Heard in the sinking phase (^): a selectable
+    // cell consumes the press and the release itself, they never bubble here.
+    // Not consumed: the cell still selects its text. Text selected before in
+    // another cell is dropped, so Cmd+C copies what this press selects.
+    // pressedRow, pressedCell: the row a plain press in a Payload selects on
+    // the release and that cell, unset or null if none.
+    ["on ^mousedown"](evt) {
+        this.pressedRow = this.pressedCell = null;
         if (evt.buttons & 6) return; // right (2) or middle (4) button
         if (contextClickKey && evt[contextClickKey]) return; // the context menu, see contextmenu
         if (evt.target.closest("td.anchor")) return; // toggles the anchor only
         const viewIndex = this.viewIndexOf(evt.target);
         if (viewIndex === null) return;
-        const toggle = evt[toggleKey];
-        this.selection.click(viewIndex, { shift: evt.shiftKey, toggle });
+        const modifiers = { shift: evt.shiftKey, toggle: evt[toggleKey] };
+        const cell = evt.target.closest("[selectable]");
+        for (const other of this.$$("td[selectable]"))
+            if (other !== cell && hasTextSelected(other)) other.selection.collapse();
+        const inSelectable = cell !== null;
+        if (!selectsOnPress(modifiers, inSelectable)) {
+            this.pressedRow = viewIndex;
+            this.pressedCell = cell;
+            return;
+        }
+        this.selectByPress(viewIndex, modifiers);
+        if (!inSelectable) beginRowDrag(this, modifiers.toggle, evt.clientY);
+    }
+
+    // The release of a plain press in a Payload: a click selects its row, a
+    // drag that selected text in that cell doesn't. Only a release in the cell
+    // pressed counts: one outside the list isn't heard, and a later release
+    // here may end a press made elsewhere.
+    ["on ^mouseup"](evt) {
+        const viewIndex = this.pressedRow ?? null;
+        const cell = this.pressedCell;
+        this.pressedRow = this.pressedCell = null;
+        if (viewIndex === null || evt.target.closest("[selectable]") !== cell) return;
+        if (hasTextSelected(cell) || viewIndex >= this.totalItems()) return;
+        this.selectByPress(viewIndex);
+    }
+
+    // Selects by a press on the row `viewIndex` (RowSelection.click) and tells
+    // the panel, even if the row was selected already: a click shows it in the
+    // other table again, which may have been scrolled away from it
+    selectByPress(viewIndex, modifiers = {}) {
+        this.selection.click(viewIndex, modifiers);
         this.updateRowStates();
-        if (!evt.target.closest("[selectable]")) beginRowDrag(this, toggle, evt.clientY);
+        this.rowChosen(false);
     }
 
     // The view index of the row at the window coordinate `y`, null if none.
@@ -242,17 +294,46 @@ export class VirtualDltTBody extends VirtualSelect {
         return Math.floor(this.getBoundingClientRect().height / rowHeight);
     }
 
-    // Moves the current row (and the selection with it) to `index`, scrolling
-    // it into view
+    // A key moves the current row (and the selection with it) to `index`,
+    // scrolling it into view; the panel is told unless nothing changed (a key
+    // at the edge of the log)
     moveCurrentTo(index, navigation) {
         const total = this.totalItems();
         if (total === 0) return true;
         index = Math.max(0, Math.min(total - 1, index));
-        this.selection.moveTo(index);
+        const changed = this.selection.moveTo(index);
         if (navigation) this.vlist.navigateTo(navigation);
         else this.vlist.advanceTo(index);
         this.updateRowStates();
+        if (changed) this.rowChosen(true);
         return true;
+    }
+
+    // Makes the row `position` current and the only one selected with `top` the
+    // first row shown (by the render componentUpdate() posts; null: the scroll
+    // stays), a step of jumpStep (pane-state.js). The keyboard stays where it is.
+    showRow({ position, top }) {
+        this.selection.moveTo(position);
+        if (top !== null) {
+            this.navigateTarget = top;
+            this.componentUpdate();
+        }
+        this.updateRowStates();
+    }
+
+    // [first, last] rows wholly on screen, null if none: a row cut by an edge
+    // of the list is not counted (visibleRange counts it)
+    wholeRowsRange() {
+        const range = this.visibleRange();
+        if (!range) return null;
+        const list = this.getBoundingClientRect();
+        const whole = row => {
+            const box = row.getBoundingClientRect();
+            return box.top >= list.top && box.bottom <= list.bottom;
+        };
+        const first = range[0] + (whole(this.vlist.firstVisibleItem) ? 0 : 1);
+        const last = range[1] - (whole(this.vlist.lastVisibleItem) ? 0 : 1);
+        return first <= last ? [first, last] : null;
     }
 
     onkeydown(evt) {
@@ -281,7 +362,7 @@ export class VirtualDltTBody extends VirtualSelect {
     // True if text is selected in a cell of a row on screen (a Payload)
     hasSelectedText() {
         for (const cell of this.$$("td[selectable]"))
-            if (cell.selection && !cell.selection.isCollapsed) return true;
+            if (hasTextSelected(cell)) return true;
         return false;
     }
 
@@ -346,6 +427,7 @@ export function moveRowDrag(evt) {
     if (viewIndex === null || viewIndex === list.selection.current) return;
     list.selection.dragTo(viewIndex);
     list.updateRowStates();
+    list.rowChosen(true);
 }
 
 // True if the mouse event is over the window's client area
@@ -384,6 +466,7 @@ function autoScrollRowDrag() {
     if (!range) return;
     list.selection.dragTo(up ? range[0] : range[1]);
     list.updateRowStates();
+    list.rowChosen(true);
 }
 
 // The rows of the main view of the document `docId` (set by the script; null:

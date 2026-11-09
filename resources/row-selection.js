@@ -54,9 +54,16 @@ export class RowSelection {
     }
 
     // The keyboard moves to the row `index`: only it is selected
+    // @returns whether the selection changed: not by a key at the edge of the
+    // log, where the row is already current and the only one selected (the
+    // other table isn't pulled back to it)
     moveTo(index) {
+        const [only, ...more] = this.ranges;
+        const unchanged = this.current === index && more.length === 0
+            && only?.[0] === index && only?.[1] === index;
         this._only(index);
         this.current = index;
+        return !unchanged;
     }
 
     // The mouse is pressed on a row (after click()) and may drag: dragTo()
@@ -188,4 +195,57 @@ export function autoScrollSpeed(distance) {
     if (distance <= 0) return 0;
     if (distance <= nearDistance) return minSpeed;
     return Math.min(maxSpeed, minSpeed + (distance - nearDistance) * acceleration);
+}
+
+// ── Following the current row in the other table ──────────────────────────
+// A new row selected in one log table is shown in the other one, if that one
+// has it (see jumpStep in pane-state.js). See docs/stories/search-highlight.md.
+
+// How long the row must rest, in ms, before a drag or the keys are followed:
+// the other table doesn't jump along with every row the mouse passes over
+export const followDelay = 500;
+
+// The row the other table follows: the current one (the last row clicked,
+// dragged to or moved to by the keys), null if it isn't selected (Cmd+click
+// took it out of the selection, Escape cleared it)
+export function followedRow(selection) {
+    const current = selection.current;
+    return current !== null && selection.has(current) ? current : null;
+}
+
+// Follows a change of the current row of a table: a click at once, a drag or
+// the keys (`delayed`) once the row rests for followDelay. Only the last change
+// counts: a newer one, of either table, drops the one waiting.
+// follow(list) does it; timers: { set(fn, ms) -> id, clear(id) } (by hand in tests)
+export class SelectionFollower {
+    constructor(follow, timers = { set: (fn, ms) => setTimeout(fn, ms), clear: id => clearTimeout(id) }) {
+        this.follow = follow;
+        this.timers = timers;
+        this.timer = null;
+    }
+
+    changed(list, delayed) {
+        this.cancel();
+        if (!delayed) {
+            this.follow(list);
+            return;
+        }
+        this.timer = this.timers.set(() => {
+            this.timer = null;
+            this.follow(list);
+        }, followDelay);
+    }
+
+    cancel() {
+        if (this.timer !== null) this.timers.clear(this.timer);
+        this.timer = null;
+    }
+}
+
+// Whether a press of the left button selects its row at once. A plain press in
+// a cell whose text can be selected (a Payload) may start selecting that text:
+// it selects the row on the release, if no text was selected by then. With
+// Shift or Cmd it is about the rows.
+export function selectsOnPress({ shift, toggle }, inSelectable) {
+    return !inSelectable || shift || toggle;
 }

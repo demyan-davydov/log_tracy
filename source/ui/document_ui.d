@@ -1,13 +1,12 @@
 //! The UI side of one open document: the machines of its main and search
-//! views, the views they show (sent to the script from the idle loop), its
-//! filter sets and the search its results were found by.
+//! views, the views they show (sent to the script from the idle loop) and its
+//! filter sets.
 module ui.document_ui;
 
 import domain.workspace : Workspace;
 import domain.document_id : DocumentId;
 import log_core.log_message : LogMessage;
 import log_core.rule_filter : RuleId;
-import log_core.search_filter : SearchFilter;
 import ui.filter_commands : DocumentFilters;
 import ui.main_view_fsm;
 import ui.search_view_fsm;
@@ -27,11 +26,6 @@ final class DocumentUi : MainViewSink, MainViewCommands, SearchViewSink, SearchV
     SearchViewModel searchViewShown; // likewise for the search view
     bool searchViewChanged;
     bool closeRequested; // the machine asked to close the document
-    // The search the results were found by, to show what its chips found in
-    // them; null without one. The same filter the indexing thread searches with:
-    // its rules are only read, and std.regex keeps the state of a search in the
-    // matcher of each call, not in the compiled regex
-    SearchFilter searchShown;
 
     this(Workspace workspace, DocumentId docId)
     {

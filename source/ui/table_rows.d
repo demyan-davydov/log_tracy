@@ -12,8 +12,8 @@ import log_core.search_filter : MatchRange;
 import std.json : JSONValue;
 
 /// The cells of a row before those of the columns: anchored, rule id, view
-/// index, message index, level
-enum fixedCells = 5;
+/// index, message index, level, found
+enum fixedCells = 6;
 
 /// Whether W can write the cells of a row: W.nothing(cell), W.boolean(cell,
 /// bool), W.integer(cell, int), W.number(cell, double), W.text(cell, wchar[] or
@@ -30,22 +30,24 @@ enum isCellWriter(W) = __traits(compiles, (ref W w, const(wchar)[] s, const(char
     w.matches(0, m);
 });
 
-/// The number of cells of a row with `columnCount` columns
-size_t rowLength(size_t columnCount, bool withMatches) pure nothrow @nogc
+/// The number of cells of a row with `columnCount` columns: the fixed ones,
+/// the columns, what the chips found
+size_t rowLength(size_t columnCount) pure nothrow @nogc
 {
-    return fixedCells + columnCount + (withMatches ? 1 : 0);
+    return fixedCells + columnCount + 1;
 }
 
 /// Writes a row of the log table: anchored, rule id, view index, message index,
-/// level, then a cell per column. The level colors the cells of the columns
+/// level, found, then a cell per column. The level colors the cells of the columns
 /// that ask for it (ColumnInfo.byLevel, done by the script).
 /// @param index - the position of the row in its view
+/// @param found - the current search found the record (DocumentItem.found)
 /// @param rule - the first filter rule with a color the record matches (the
 /// script shows it by its color); none is written as nothing
-/// @param withMatches - a row of the search results: after the cells comes what
-/// the chips found in the payload, [[start, end, chip]] (see MatchRange)
-void writeRow(W)(ref W writer, int index, ref const(LogMessage!wchar) msg, bool anchored, size_t messageIndex,
-    const(ColumnInfo)[] columns, RuleId rule, bool withMatches = false, const(MatchRange)[] matches = null)
+/// @param matches - after the cells comes what the chips of the search found in
+/// the payload, [[start, end, chip]] (see MatchRange); none is written as nothing
+void writeRow(W)(ref W writer, int index, ref const(LogMessage!wchar) msg, bool anchored, bool found, size_t messageIndex,
+    const(ColumnInfo)[] columns, RuleId rule, const(MatchRange)[] matches)
     if (isCellWriter!W)
 {
     writer.boolean(0, anchored);
@@ -56,6 +58,7 @@ void writeRow(W)(ref W writer, int index, ref const(LogMessage!wchar) msg, bool 
     writer.integer(2, index);
     writer.number(3, cast(double) messageIndex);
     writer.integer(4, cast(int) msg.level);
+    writer.boolean(5, found);
 
     foreach (i, ref column; columns)
     {
@@ -95,8 +98,10 @@ void writeRow(W)(ref W writer, int index, ref const(LogMessage!wchar) msg, bool 
             break;
         }
     }
-    if (withMatches)
+    if (matches.length)
         writer.matches(fixedCells + columns.length, matches);
+    else
+        writer.nothing(fixedCells + columns.length); // most rows: the search didn't find them
 }
 
 //! @brief The text of a hex cell: all 64 bits, as typed into the quick filter
@@ -212,12 +217,12 @@ unittest
 {
     LogMessage!wchar msg;
     fillRecord(msg);
-    auto cells = TextCells(rowLength(testColumns.length, false));
-    writeRow(cells, 7, msg, true, 1234, testColumns, RuleId(3));
+    auto cells = TextCells(rowLength(testColumns.length));
+    writeRow(cells, 7, msg, true, false, 1234, testColumns, RuleId(3), null);
     assert(cells.cells == [
-        "b:true", "n:3", "i:7", "n:1234", "i:" ~ (cast(int) LogLevel.Warn).to!string,
+        "b:true", "n:3", "i:7", "n:1234", "i:" ~ (cast(int) LogLevel.Warn).to!string, "b:false",
         "time:1500:Absolute", "i:" ~ (cast(int) LogLevel.Warn).to!string, "t:TAG", "n:42",
-        "s:FFFFFFFFFFFFFFFF", "t:hello"
+        "s:FFFFFFFFFFFFFFFF", "t:hello", "-"
     ], cells.cells.to!string);
 }
 
@@ -234,12 +239,15 @@ unittest
         builder.appendUtf8("hello");
     } // the payload is stored when the builder goes
 
-    auto cells = TextCells(rowLength(testColumns.length, false));
-    writeRow(cells, 0, msg, false, 0, testColumns, RuleId.init);
+    auto cells = TextCells(rowLength(testColumns.length));
+    writeRow(cells, 0, msg, false, true, 0, testColumns, RuleId.init, null);
+    assert(cells.cells[0] == "b:false", "not anchored");
     assert(cells.cells[1] == "-", "no rule");
+    assert(cells.cells[5] == "b:true", "found by the search");
     assert(cells.cells[fixedCells] == "time:1500:Absolute");
     assert(cells.cells[fixedCells + 2 .. fixedCells + 5] == ["-", "-", "-"], "fields the record hasn't");
-    assert(cells.cells[$ - 1] == "t:hello");
+    assert(cells.cells[$ - 2] == "t:hello");
+    assert(cells.cells[$ - 1] == "-", "the search found nothing in it");
 }
 
 @("writeRow: a record without a time has none in its time cell")
@@ -247,19 +255,19 @@ unittest
 {
     LogMessage!wchar msg;
     fillRecord(msg, false);
-    auto cells = TextCells(rowLength(testColumns.length, false));
-    writeRow(cells, 0, msg, false, 0, testColumns, RuleId.init);
+    auto cells = TextCells(rowLength(testColumns.length));
+    writeRow(cells, 0, msg, false, false, 0, testColumns, RuleId.init, null);
     assert(cells.cells[fixedCells] == "-");
     assert(cells.cells[fixedCells + 2] == "t:TAG", "the fields are there");
 }
 
-@("writeRow: a search result ends with what the chips found")
+@("writeRow: a row the search found ends with what the chips found")
 unittest
 {
     LogMessage!wchar msg;
     fillRecord(msg);
-    auto cells = TextCells(rowLength(testColumns.length, true));
-    writeRow(cells, 0, msg, false, 0, testColumns, RuleId.init, true, [MatchRange(0, 2, 1)]);
+    auto cells = TextCells(rowLength(testColumns.length));
+    writeRow(cells, 0, msg, false, true, 0, testColumns, RuleId.init, [MatchRange(0, 2, 1)]);
     assert(cells.cells[$ - 1] == "m:0-2/1 ");
 }
 
