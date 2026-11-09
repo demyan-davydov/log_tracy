@@ -46,6 +46,9 @@
     --bg-table: #222222;
     --bg-table-header: #3e372d;
     --bg-row-stripe: #2c2b28;
+    /* The rows the search found, in both tables: the row and the stripe a bit lighter */
+    --bg-row-found: #333333;
+    --bg-row-found-stripe: #3d3c37;
 
     /* Details Panel */
     --bg-details: #252526;

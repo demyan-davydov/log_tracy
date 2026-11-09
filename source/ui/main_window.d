@@ -18,7 +18,7 @@ import ui.app_menu : MenuItem, MenuPlatform;
 import ui.main_menu_loader : retitleAppMenu;
 import utils.ui_text : UiText;
 import log_core.rule_filter : RuleId;
-import log_core.search_filter : checkRegex, MatchRange;
+import log_core.search_filter : checkRegex, MatchBuffer, MatchRange;
 import ui.app_resources : appResourceOfUrl, appResourceUrl, builtInCatalogs;
 import ui.app_session : AppSession;
 import ui.app_settings : AppSettings, toJSON;
@@ -230,12 +230,13 @@ class MainWindow : SciterWindow
             const bool search = method == "getSearchViewItem";
             const int index = param!int(1);
             DocumentItem docItem;
+            MatchBuffer fragments;
             if (!(search ? doc.searchView : doc.mainView).fetchItem(index, docItem))
                 resultView.set(SciterValue.makeNull());
             else
-                // the fragments the chips found, after the cells (main view rows have none)
+                // the fragments the chips found, after the cells
                 resultView.set(asSciterRow(index, docItem, _session.tableColumns(doc),
-                    _session.ruleOf(docId, docItem), search, search ? _session.matchesOf(docId, docItem) : null));
+                    _session.ruleOf(docId, docItem), _session.matchesOf(docId, docItem, fragments[])));
             return true;
         case "getMainViewPosition":
             // getMainViewPosition(docId, messageIndex) -> its row in the main
@@ -460,9 +461,9 @@ private struct SciterCells
 
 /// A row of the log table as a Sciter array, see ui.table_rows.writeRow
 SciterValue asSciterRow(int index, ref const(DocumentItem) item, const(ColumnInfo)[] columns,
-    RuleId rule, bool withMatches = false, const(MatchRange)[] matches = null)
+    RuleId rule, const(MatchRange)[] matches)
 {
-    auto cells = SciterCells(rowLength(columns.length, withMatches));
-    writeRow(cells, index, item.message, item.anchored, item.realIndex, columns, rule, withMatches, matches);
+    auto cells = SciterCells(rowLength(columns.length));
+    writeRow(cells, index, item.message, item.anchored, item.found, item.realIndex, columns, rule, matches);
     return cells.row;
 }

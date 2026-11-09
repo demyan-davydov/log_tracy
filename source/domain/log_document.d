@@ -37,7 +37,6 @@ class LogDocument : Document
     private EventBusAsync _events; // must outlive _index: its worker publishes here
     // The latest search completed (no search yet: an empty result): a new
     // filter repeats it. False while it runs, after it was cancelled or failed.
-    private bool _searchShown = true;
     private LogIndex _index;
 
     //! A filter request waiting for the background slot. Only the latest
@@ -93,13 +92,11 @@ class LogDocument : Document
         _events = new EventBusAsync();
         // Subscribed before anyone else: the document is up to date before
         // external subscribers see the event
-        _events.subscribe((const OperationStarted e) {
-            if (isSearchOperation(e.operation))
-                _searchShown = false;
-        });
         _events.subscribe((const OperationFinished e) {
-            if (isSearchOperation(e.operation))
-                _searchShown = e.result == OperationFinished.Result.Completed;
+            // A cancelled or failed search left no results (its index is
+            // cleared): nothing is found, and a new filter doesn't repeat it
+            if (isSearchOperation(e.operation) && e.result != OperationFinished.Result.Completed)
+                _searchFilter = null;
             _running = Operation.None;
             startPending();
         });
@@ -175,9 +172,9 @@ class LogDocument : Document
         if (sourceLost)
             return;
         _pendingViewFilter = PendingRequest(filter, true);
-        const bool searchShown = _running == Operation.BuildSearchIndex
-            || _searchShown;
-        if (!_pendingSearch.requested && _searchFilter !is null && searchShown)
+        // _searchFilter: the running or completed search (see the
+        // OperationFinished handler)
+        if (!_pendingSearch.requested && _searchFilter !is null)
             _pendingSearch = PendingRequest(_searchFilter, true);
         if (_running == Operation.BuildFilterIndex || _running == Operation.BuildSearchIndex)
             _index.cancelCurrentOperation();
@@ -194,6 +191,11 @@ class LogDocument : Document
         if (_running == Operation.BuildSearchIndex)
             _index.cancelCurrentOperation();
         startPending();
+    }
+
+    override const(LogFilter!wchar) searchFilter()
+    {
+        return _searchFilter;
     }
 
     //! @brief Starts the next pending request if the slot is free: the view
@@ -267,6 +269,16 @@ class LogDocument : Document
         return true;
     }
 
+    //! @brief Whether the search found `item`, a message the search view lists:
+    //! an anchored message is listed there whether it matches or not, so it is
+    //! matched again (anchors are few); any other one was found
+    private bool searchFound(ref const(DocumentItem) item) const
+    {
+        if (_searchFilter is null)
+            return false; // no search, or it left no results
+        return !item.anchored || _searchFilter.matches(item.message);
+    }
+
     /// Views
 
     private class MainDocumentView : DocumentView
@@ -281,6 +293,9 @@ class LogDocument : Document
             if (!this.outer._index.fetchMainViewItem(index, item))
                 return false;
             item.anchored = this.outer._anchors.has(item.realIndex);
+            size_t position;
+            item.found = this.outer.searchFound(item) // no lookup without a search
+                && this.outer._index.searchViewPositionOf(item.realIndex, position);
             return true;
         }
 
@@ -322,6 +337,7 @@ class LogDocument : Document
             if (!this.outer._index.fetchSearchViewItem(index, item))
                 return false;
             item.anchored = this.outer._anchors.has(item.realIndex);
+            item.found = this.outer.searchFound(item);
             return true;
         }
 
@@ -1243,4 +1259,107 @@ unittest
     runAndWait(doc, () => doc.applySearchFilter(ecuFilter("ECU2")));
     assert(doc.searchView.positionOf(43, position) && position == 21);
     assert(!doc.searchView.positionOf(42, position), "not found by the search");
+}
+
+@("LogDocument: the messages the search found are marked in both views, an anchor only if it matches")
+unittest
+{
+    import std.algorithm : any;
+    import std.file : remove, tempDir, write;
+    import std.path : buildPath;
+
+    enum messageCount = 20;
+    ubyte[] data; // even messages from ECU1, odd ones from ECU2
+    foreach (i; 0 .. messageCount)
+        data ~= buildDltMessage(i % 2 ? "ECU2" : "ECU1", cast(uint) i, 0, 0, cast(ubyte) i, [0xAA]);
+    auto path = buildPath(tempDir(), "dlt_document_found.dlt");
+    write(path, data);
+    scope (exit)
+        remove(path);
+
+    auto doc = new LogDocument(path);
+    auto views = new Views(doc);
+    dispatchUntil(doc, () => views.mainReady);
+
+    bool[] foundIn(DocumentView view)
+    {
+        bool[] result;
+        DocumentItem item;
+        foreach (i; 0 .. view.itemsCount)
+        {
+            assert(view.fetchItem(i, item));
+            result ~= item.found;
+        }
+        return result;
+    }
+
+    bool[] expected;
+    foreach (i; 0 .. messageCount)
+        expected ~= i % 2 == 1;
+
+    assert(!foundIn(doc.mainView).any, "no search: nothing is found");
+
+    assert(doc.setAnchor(4, true) && doc.setAnchor(5, true));
+    runAndWait(doc, () => doc.applySearchFilter(ecuFilter("ECU2")));
+    assert(foundIn(doc.mainView) == expected, "the anchored 4 doesn't match, the anchored 5 does");
+    assert(realIndexes(doc.searchView)[0 .. 3] == [1, 3, 4]);
+    assert(foundIn(doc.searchView)[0 .. 4] == [true, true, false, true], "4 is listed by its anchor only");
+
+    // Over a filtered main view
+    runAndWait(doc, () => doc.applyViewFilter(ecuFilter("ECU1")));
+    assert(realIndexes(doc.mainView) == [0, 2, 4, 5, 6, 8, 10, 12, 14, 16, 18]);
+    assert(foundIn(doc.mainView) == [false, false, false, true, false, false, false, false, false, false, false]);
+
+    runAndWait(doc, () => doc.searchView.resetFilter());
+    assert(!foundIn(doc.mainView).any && !foundIn(doc.searchView).any, "the search is cleared");
+}
+
+@("LogDocument: a new search doesn't take the results of the previous one for its own")
+unittest
+{
+    import std.file : remove;
+
+    string path;
+    auto doc = openLoaded("dlt_document_found_new_search.dlt", 1000, path);
+    scope (exit)
+        remove(path);
+
+    runAndWait(doc, () => doc.applySearchFilter(new ConstFilter(true)));
+    DocumentItem item;
+    assert(doc.mainView.fetchItem(1, item) && item.found);
+
+    // Right after the request, before the worker ran: the old results are gone
+    doc.applySearchFilter(new ConstFilter(false));
+    assert(doc.mainView.fetchItem(1, item) && !item.found, "found by the previous search only");
+    waitIdle(doc);
+    assert(doc.mainView.fetchItem(1, item) && !item.found);
+}
+
+@("LogDocument: after a cancelled search nothing is found, the anchors are only listed")
+unittest
+{
+    import std.file : remove;
+
+    string path;
+    auto doc = openLoaded("dlt_document_found_cancelled.dlt", 200_000, path);
+    auto views = new Views(doc, Views.State.Ready); // loaded
+    scope (exit)
+        remove(path);
+
+    assert(doc.setAnchor(7, true));
+    doc.applySearchFilter(new ConstFilter(true)); // would match every message
+    assert(doc.requestCancel());
+    waitIdle(doc);
+    assert(views.search == Views.State.NotReady, "the search must be cancelled");
+
+    DocumentItem item;
+    // An anchor set and cleared after the cancel doesn't stay as a result
+    assert(doc.setAnchor(9, true) && doc.setAnchor(9, false));
+    assert(doc.mainView.fetchItem(9, item) && !item.found, "the cancelled search found nothing");
+
+    // A new filter doesn't repeat the cancelled search: the results list the anchor only
+    runAndWait(doc, () => doc.mainView.resetFilter());
+    assert(realIndexes(doc.searchView) == [7]);
+    assert(doc.searchView.fetchItem(0, item) && item.anchored && !item.found);
+    assert(doc.mainView.fetchItem(7, item) && item.anchored && !item.found);
 }

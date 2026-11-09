@@ -12,7 +12,7 @@ import * as platform from "platform.js";
 import { noSearch, runSearch, searchPending, editRule } from "pane-commands.js";
 import { ruleColors } from "rule-colors.js";
 import { scrollTarget } from "row-selection.js";
-import { noTable, tableStep, rowLookStep, keptRowStep } from "pane-state.js";
+import { noTable, tableStep, rowLookStep, keptRowStep, searchViewKey } from "pane-state.js";
 import { currentCatalog, tr } from "i18n/i18n.js";
 import { translateTree } from "i18n/dom.js";
 import { fileFilter, allFiles } from "file-types.js";
@@ -221,6 +221,7 @@ export class DocumentPane {
         this.visible = false;
         this.mainShown = noTable; // what the tables show, see pane-state.js
         this.searchShown = noTable;
+        this.foundShownFor = null; // the search view (searchViewKey) the main rows show the found rows of
         this.appliedColumns = null; // JSON of the columns the tables show
         this.filtersShown = false; // the filter panel is built on the first show
         this.filters = noFilters; // what showFilters() got last
@@ -375,7 +376,7 @@ export class DocumentPane {
         if (!this.filtersShown) this.showFilters();
         // The rules first: the rows the columns re-render refer to them
         for (const list of this.lists) list.ruleColors = this.ruleColors;
-        this.searchList.matchColors = this.search.colors;
+        for (const list of this.lists) list.matchColors = this.search.colors;
         // The columns before the rows: a reload of a view renders them with these
         const changed = this.setColumns();
         this.updateMainView();
@@ -577,6 +578,8 @@ export class DocumentPane {
     reloadTable(list, step) {
         if (step.resetSelection) list.resetSelection(); // the rows are other messages now
         if (step.reload) reloadList(list, step.reload === "start" ? "start" : null);
+        // reloaded main rows show what the search found now: not refreshed again for it
+        if (step.reload && list === this.mainList) this.foundShownFor = searchViewKey(this.searchView);
         this.scrollToKeptRows(); // kept while a status view covered the table, see applyRowLook()
     }
 
@@ -597,6 +600,15 @@ export class DocumentPane {
         this.takeFocus(this.searchList, step.table ? null : loading);
         if (step.table) this.reloadTable(this.searchList, step);
         else showStatus(loading, vm, searchViewTexts, searchViewDetails);
+        // The rows of the main view show what the search found: more of them
+        // while it runs, other ones after a new search or none after a reset.
+        // Only when the search view changed since they were shown, not on
+        // every show of the panel.
+        const key = searchViewKey(this.searchView);
+        if (key !== this.foundShownFor && this.shows(this.mainList)) {
+            this.mainList.refreshVisibleRows();
+            this.foundShownFor = key;
+        }
     }
 
     // Runs the search for the chips of the editor (Enter, the Search button),
@@ -607,7 +619,8 @@ export class DocumentPane {
             () => editor.firstError(), chips => backend.startChipSearch(this.docId, chips));
         this.search = run.search;
         this.root.$(".chip-search-message").innerText = run.message;
-        if (run.started) this.searchList.matchColors = this.search.colors; // before the results come
+        if (run.started) // before the results come
+            for (const list of this.lists) list.matchColors = this.search.colors;
         this.updateChipPending();
     }
 

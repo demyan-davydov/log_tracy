@@ -186,11 +186,14 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
     gives the columns of all of them.
   - Dragging to reorder (tabs, columns in Settings) shares `resources/drag-strip.js` (the
     elements: shifts, classes, marker) over the Sciter-free `resources/drag-order.js` (the math).
-- A row is: anchored, rule id, view index, message index, level, then one cell per column
-  (`rowLayout` in `resources/cell-format.js`). A row of the search results (`getSearchViewItem`
-  only) has one more cell after the columns: what the chips of the search found in the payload,
-  `[[start, end, chip]]` in UTF-16 units (`SearchFilter.matchRanges`), shown in the chips' match
-  colors; main view rows don't have it and compute nothing.
+- A row is: anchored, rule id, view index, message index, level, found, then one cell per column
+  (`rowLayout` in `resources/cell-format.js`), then one more cell after the columns: what the
+  chips of the search found in the payload, `[[start, end, chip]]` in UTF-16 units
+  (`SearchFilter.matchRanges`), shown in the chips' match colors in both tables; null for a row
+  the search didn't find (`AppSession.matchesOf`), which computes nothing.
+  - Found: the current search found the record (`DocumentItem.found`; an anchor the search
+    doesn't match is listed in the results but not found), both tables color the row by it
+    (`row-found` in `table.css`); the main view looks the record up in the search index.
   - The rule id is the first rule with a color the record matches (null if none); the script
     looks its color up in the rules of the panel (`resources/rule-colors.js`) and sets it on the
     row, `table.css` shows it on the Index cell only, as a fade from the left edge.

@@ -13,8 +13,10 @@ struct DocumentItem
     // index in the original log file, can differ from the index in the document if filters are applied
     size_t realIndex;
     uint filterMask;
-    uint searchMask;
     bool anchored;
+    //! The current search found it: it matches the search, not only listed by
+    //! its anchor (an anchored message is always in the search view)
+    bool found;
     bool selected;
 
     package LogMessage!Char _message;

@@ -3,7 +3,7 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { noTable, tableStep, paneChanges, anchorEdit, rowLookStep, keptRowStep } from "../../resources/pane-state.js";
+import { noTable, tableStep, paneChanges, anchorEdit, rowLookStep, keptRowStep, searchViewKey } from "../../resources/pane-state.js";
 
 const ready = (dataVersion) => ({ status: "ready", dataVersion });
 
@@ -130,4 +130,24 @@ test("a kept first row waits while a status view covers the table", () => {
 
 test("no row was on screen: nothing to scroll to", () => {
     assert.deepEqual(keptRowStep({ top: null }, { loaded: true, dataVersion: 3 }, 100), { wait: false, target: null });
+});
+
+// ---- the found rows of the main table follow the search view ----
+
+test("searchViewKey: the same search view gives the same key, whatever object it came in", () => {
+    const a = { status: "ready", canCancel: false, dataVersion: 3 };
+    assert.equal(searchViewKey(a), searchViewKey(JSON.parse(JSON.stringify(a))), "a snapshot of the workspace");
+    assert.equal(searchViewKey(null), searchViewKey(null));
+});
+
+test("searchViewKey: another status, result or progress gives another key", () => {
+    const keys = [
+        { status: "ready", dataVersion: 3 },
+        { status: "ready", dataVersion: 4 },
+        { status: "searching", canCancel: true, progress: 0.25 },
+        { status: "searching", canCancel: true, progress: 0.5 },
+        { status: "searchCancelled", canCancel: false },
+        null,
+    ].map(searchViewKey);
+    assert.equal(new Set(keys).size, keys.length, keys.join(", "));
 });

@@ -25,8 +25,19 @@ struct MatchRange
     uint chip;
 }
 
-//! The most fragments matchRanges gives for one message
+//! @brief The most fragments of one payload shown highlighted, in the rows of
+//! both tables. A payload with more matches shows the first ones in the order
+//! of the chips (see SearchFilter.matchRanges) and the rest of it plain: this
+//! bounds the work and the cell sent to the script for a row with thousands of
+//! matches. Nothing else depends on the number: the script shows as many as
+//! the row has, so it can be changed here alone (MatchBuffer follows it).
+//! matchRanges itself has no limit of its own, the length of the buffer it is
+//! given is: another use may pass a buffer of any size.
 enum maxMatchRanges = 20;
+
+//! The fragments of one payload: a caller keeps one (on the stack) and lets
+//! SearchFilter.matchRanges write into it, so finding them allocates nothing
+alias MatchBuffer = MatchRange[maxMatchRanges];
 
 //! @brief Checks a regular expression of a chip with the engine the search uses.
 //! @return the error message, "" for a valid one
@@ -123,46 +134,50 @@ final class SearchFilter : LogFilter!wchar
     //! @brief The fragments of the payload of `msg` the chips found, to show them:
     //! the chips in their order, each over the whole payload; the part of a match
     //! already found by an earlier chip is left out, the rest of it is kept.
-    //! Empty matches are skipped.
-    //! @param limit - the most fragments, taken in the order of the chips
-    //! @return the fragments by their start
-    MatchRange[] matchRanges(scope ref const(Message) msg, size_t limit = maxMatchRanges) const
+    //! Empty matches are skipped. Allocates nothing for text chips (a regex
+    //! chip's matcher may).
+    //! @param buffer - where the fragments are written (usually a MatchBuffer);
+    //! its length is the most fragments: once it is full the chips left and the
+    //! matches left are not looked for, so it holds the first ones in the order
+    //! of the chips. That is not an error: the rest of the payload is shown plain.
+    //! @return the fragments by their start: the start of `buffer`
+    MatchRange[] matchRanges(scope ref const(Message) msg, return scope MatchRange[] buffer) const
     {
         import std.regex : matchAll;
 
-        MatchRange[] found; // kept by start: they never overlap
+        size_t count; // buffer[0 .. count], kept by start: they never overlap
         const text = msg.payloadText;
 
         // Adds the parts of [start, end) no fragment covers yet, each at its place
-        // by start (no copy, no sort); false once there are `limit` fragments
+        // by start (no sort); false once the buffer is full
         bool add(size_t start, size_t end, uint chip)
         {
-            import std.array : insertInPlace;
-
             size_t from = start, i = 0;
             while (from < end)
             {
-                while (i < found.length && found[i].end <= from)
+                while (i < count && buffer[i].end <= from)
                     i++; // before the part left
-                const covering = i < found.length && found[i].start < end;
-                const gapEnd = covering ? found[i].start : end;
+                const covering = i < count && buffer[i].start < end;
+                const gapEnd = covering ? buffer[i].start : end;
                 if (gapEnd > from)
                 {
-                    found.insertInPlace(i, MatchRange(cast(uint) from, cast(uint) gapEnd, chip));
+                    foreach_reverse (j; i .. count)
+                        buffer[j + 1] = buffer[j]; // room at i: count < buffer.length here
+                    buffer[i] = MatchRange(cast(uint) from, cast(uint) gapEnd, chip);
                     i++;
-                    if (found.length >= limit)
+                    if (++count == buffer.length)
                         return false;
                 }
                 if (!covering)
                     break;
-                from = found[i].end; // the covered part is the earlier chip's
+                from = buffer[i].end; // the covered part is the earlier chip's
             }
             return true;
         }
 
         rules: foreach (const ref rule; _rules)
         {
-            if (found.length >= limit)
+            if (count == buffer.length)
                 break;
             if (rule.isRegex)
             {
@@ -186,7 +201,7 @@ final class SearchFilter : LogFilter!wchar
                 }
             }
         }
-        return found;
+        return buffer[0 .. count];
     }
 
     // implement LogFilter
@@ -228,6 +243,14 @@ version (unittest)
         builder.appendAscii(payload);
         builder.storePayload();
         return msg;
+    }
+
+    /// The fragments matchRanges writes to a buffer of `size`, copied out of it
+    private MatchRange[] matchesIn(const SearchFilter filter, ref const(LogMessage!wchar) msg,
+        size_t size = maxMatchRanges)
+    {
+        auto buffer = new MatchRange[size];
+        return filter.matchRanges(msg, buffer).dup;
     }
 }
 
@@ -322,7 +345,7 @@ unittest
 {
     auto msg = messageWithPayload("error: disk error, net ok");
     const filter = SearchFilter.fromChips([SearchChip("error"), SearchChip(`n\w+`, true)]);
-    assert(filter.matchRanges(msg) == [MatchRange(0, 5, 0), MatchRange(12, 17, 0), MatchRange(19, 22, 1)]);
+    assert(matchesIn(filter, msg) == [MatchRange(0, 5, 0), MatchRange(12, 17, 0), MatchRange(19, 22, 1)]);
 }
 
 @("matchRanges: an earlier chip wins, a later one keeps only what is left")
@@ -331,15 +354,15 @@ unittest
     auto msg = messageWithPayload("timeout after 30s");
     // "time" first; "timeout" is shown only for "out"; "after 30s" is whole
     const filter = SearchFilter.fromChips([SearchChip("time"), SearchChip("timeout"), SearchChip(`after \d+s`, true)]);
-    assert(filter.matchRanges(msg) == [MatchRange(0, 4, 0), MatchRange(4, 7, 1), MatchRange(8, 17, 2)]);
+    assert(matchesIn(filter, msg) == [MatchRange(0, 4, 0), MatchRange(4, 7, 1), MatchRange(8, 17, 2)]);
 
     // a later match covered in the middle is split around it
     const inside = SearchFilter.fromChips([SearchChip("out"), SearchChip("timeout after")]);
-    assert(inside.matchRanges(msg) == [MatchRange(0, 4, 1), MatchRange(4, 7, 0), MatchRange(7, 13, 1)]);
+    assert(matchesIn(inside, msg) == [MatchRange(0, 4, 1), MatchRange(4, 7, 0), MatchRange(7, 13, 1)]);
 
     // a later match covered whole is not shown
     const covered = SearchFilter.fromChips([SearchChip("timeout"), SearchChip("time")]);
-    assert(covered.matchRanges(msg) == [MatchRange(0, 7, 0)]);
+    assert(matchesIn(covered, msg) == [MatchRange(0, 7, 0)]);
 }
 
 @("matchRanges: a regex sees the whole payload, its anchors too")
@@ -348,17 +371,17 @@ unittest
     auto msg = messageWithPayload("foo bar foo");
     // "bar" is found first; ^foo is still the foo at the start only
     const filter = SearchFilter.fromChips([SearchChip("bar"), SearchChip("^foo", true)]);
-    assert(filter.matchRanges(msg) == [MatchRange(0, 3, 1), MatchRange(4, 7, 0)]);
+    assert(matchesIn(filter, msg) == [MatchRange(0, 3, 1), MatchRange(4, 7, 0)]);
 }
 
 @("matchRanges: the case of each chip, empty regex matches skipped")
 unittest
 {
     auto msg = messageWithPayload("Error ERROR error");
-    assert(SearchFilter.fromChips([SearchChip("error", false, true)]).matchRanges(msg)
+    assert(matchesIn(SearchFilter.fromChips([SearchChip("error", false, true)]), msg)
         == [MatchRange(0, 5, 0), MatchRange(6, 11, 0), MatchRange(12, 17, 0)]);
-    assert(SearchFilter.fromChips([SearchChip("error")]).matchRanges(msg) == [MatchRange(12, 17, 0)]);
-    assert(SearchFilter.fromChips([SearchChip("x*", true)]).matchRanges(msg).length == 0, "only empty matches");
+    assert(matchesIn(SearchFilter.fromChips([SearchChip("error")]), msg) == [MatchRange(12, 17, 0)]);
+    assert(matchesIn(SearchFilter.fromChips([SearchChip("x*", true)]), msg).length == 0, "only empty matches");
 }
 
 @("matchRanges: the chip is its place in the query, empty chips counted")
@@ -366,16 +389,50 @@ unittest
 {
     auto msg = messageWithPayload("abc");
     const filter = SearchFilter.fromChips([SearchChip(""), SearchChip("b")]);
-    assert(filter.matchRanges(msg) == [MatchRange(1, 2, 1)]);
+    assert(matchesIn(filter, msg) == [MatchRange(1, 2, 1)]);
 }
 
-@("matchRanges: at most `limit` fragments, the earlier chips first")
+@("matchRanges: as many fragments as the buffer holds, the earlier chips first")
 unittest
 {
     auto msg = messageWithPayload("a a a b");
     const filter = SearchFilter.fromChips([SearchChip("a"), SearchChip("b")]);
-    assert(filter.matchRanges(msg, 2) == [MatchRange(0, 1, 0), MatchRange(2, 3, 0)]);
-    assert(filter.matchRanges(msg).length == 4);
+    assert(matchesIn(filter, msg, 2) == [MatchRange(0, 1, 0), MatchRange(2, 3, 0)]);
+    assert(matchesIn(filter, msg, 0).length == 0, "no room, nothing found");
+    assert(matchesIn(filter, msg).length == 4);
+
+    // a later chip found earlier in the payload is inserted before the rest:
+    // what is left out is still the end of the order of the chips
+    auto late = messageWithPayload("b a a");
+    assert(matchesIn(filter, late, 2) == [MatchRange(2, 3, 0), MatchRange(4, 5, 0)]);
+    assert(matchesIn(filter, late, 3) == [MatchRange(0, 1, 1), MatchRange(2, 3, 0), MatchRange(4, 5, 0)]);
+}
+
+@("matchRanges: a payload with more matches than maxMatchRanges shows the first of them")
+unittest
+{
+    import std.array : replicate;
+
+    auto msg = messageWithPayload("x ".replicate(maxMatchRanges + 5));
+    MatchBuffer buffer;
+    const found = SearchFilter.fromChips([SearchChip("x")]).matchRanges(msg, buffer[]);
+    assert(found.length == maxMatchRanges);
+    assert(found[$ - 1] == MatchRange(2 * (maxMatchRanges - 1), 2 * maxMatchRanges - 1, 0), "the first ones, in order");
+    assert(found.ptr == buffer.ptr, "written to the caller's buffer");
+}
+
+@("matchRanges: text chips allocate nothing")
+unittest
+{
+    import core.memory : GC;
+
+    auto msg = messageWithPayload("error: disk error, net ok");
+    const filter = SearchFilter.fromChips([SearchChip("error"), SearchChip("ok")]);
+    MatchBuffer buffer;
+    const before = GC.stats().allocatedInCurrentThread;
+    const found = filter.matchRanges(msg, buffer[]);
+    assert(GC.stats().allocatedInCurrentThread == before, "no GC memory");
+    assert(found.length == 3);
 }
 
 @("matchRanges: positions in UTF-16 code units, as the script counts them")
@@ -387,7 +444,7 @@ unittest
     builder.appendUtf8("щит 😀 ok");
     builder.storePayload();
     // "щит " is 4 units, the emoji 2, then a space
-    assert(SearchFilter.fromChips([SearchChip("ok")]).matchRanges(wide) == [MatchRange(7, 9, 0)]);
+    assert(matchesIn(SearchFilter.fromChips([SearchChip("ok")]), wide) == [MatchRange(7, 9, 0)]);
 }
 
 @("SearchFilter: dup keeps the rules")
@@ -405,5 +462,5 @@ unittest
     filter.addText("", true);
     filter.addText("b", false);
     auto msg = messageWithPayload("abc");
-    assert(filter.matchRanges(msg) == [MatchRange(1, 2, 0)]); // added without a chip
+    assert(matchesIn(filter, msg) == [MatchRange(1, 2, 0)]); // added without a chip
 }

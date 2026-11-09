@@ -88,3 +88,12 @@ export function keptRowStep(kept, shown, total) {
     if (kept.top === null || total === 0) return { wait: false, target: null };
     return { wait: false, target: Math.min(kept.top, total - 1) };
 }
+
+// The search view (vm of the search machine, null if none yet) as a value: the
+// rows of the main table show what the search found, and are refreshed when
+// this changes. The models come as new objects with every snapshot of the
+// workspace (refreshTabs), so they are compared by what they say.
+export function searchViewKey(vm) {
+    if (!vm) return "";
+    return `${vm.status}/${vm.dataVersion ?? ""}/${vm.progress ?? ""}`;
+}

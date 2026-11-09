@@ -75,6 +75,17 @@
     background-color: var(--bg-row-stripe);
 }
 
+/* The rows the search found (in the main view and in the search results; a
+   row listed there only by its anchor is not): the row and the stripe in
+   their own colors. The selection stays above them. */
+.log-table>tbody>tr[row-found="true"][row-selected="false"] {
+    background-color: var(--bg-row-found);
+}
+
+.log-table>tbody>tr:nth-child(even)[row-found="true"][row-selected="false"] {
+    background-color: var(--bg-row-found-stripe);
+}
+
 .log-table>tbody>tr>td:first-child {
     font-family: 'Courier New', Courier, monospace;
     font-size: 100%;
@@ -278,7 +289,7 @@ popup.notice {
     box-shadow: 0 2dip 8dip rgba(0, 0, 0, 0.25);
 }
 
-/* What a search chip found in the payload of a row of the results: the chip's
+/* What a search chip found in the payload of a row the search found: the chip's
    match color behind the text (match-colors.css), see matchPieces */
 .log-table td>span.match {
     border-radius: 2dip;

@@ -87,6 +87,11 @@ interface Document
 
     void applySearchFilter(LogFilter!wchar filter);
 
+    //! The search the results of the search view were found by (the running
+    //! search too, while it finds them); null without one, or after a search
+    //! that was cancelled or failed and left no results
+    const(LogFilter!wchar) searchFilter();
+
     bool setAnchor(size_t index, bool value);
 
     size_t[] exportAnchors() const pure;

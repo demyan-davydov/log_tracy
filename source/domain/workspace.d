@@ -111,6 +111,11 @@ private class NullDocument : Document
     {
     }
 
+    override const(LogFilter!wchar) searchFilter()
+    {
+        return null;
+    }
+
     override bool setAnchor(size_t index, bool value)
     {
         return false;

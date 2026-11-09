@@ -17,7 +17,7 @@ import domain.document_item : DocumentItem;
 import domain.workspace;
 import log_core.log_format : ColumnInfo, FormatChoice;
 import log_core.rule_filter : RuleId;
-import log_core.search_filter : MatchRange;
+import log_core.search_filter : MatchBuffer, MatchRange, SearchFilter;
 import ui.app_menu : hostMenuPlatform, MenuItem, MenuPlatform, WindowMenu, windowMenu;
 import ui.app_settings;
 import ui.document_ui : DocumentUi;
@@ -391,11 +391,24 @@ final class AppSession
         return ui is null ? RuleId.init : ui.ruleOf(item.message);
     }
 
-    /// What the chips of the search found in the payload of a search result
-    const(MatchRange)[] matchesOf(DocumentId docId, ref const(DocumentItem) item)
+    /// What the chips of the search found in the payload of a row of either
+    /// view; nothing for a row the search didn't find (DocumentItem.found), so
+    /// the rows of the main view it didn't find cost nothing.
+    ///
+    /// The chips are those of the search the document found the rows by, not of
+    /// a search asked for that hasn't started yet. The same filter the indexing
+    /// thread searches with: its rules are only read, and std.regex keeps the
+    /// state of a search in the matcher of each call, not in the compiled regex.
+    /// @param buffer - where they are written, its length the most of them (a
+    /// MatchBuffer for a table row, see maxMatchRanges)
+    /// @return the start of `buffer`
+    const(MatchRange)[] matchesOf(DocumentId docId, ref const(DocumentItem) item, return scope MatchRange[] buffer)
     {
-        auto ui = _documentUis.get(docId, null);
-        return ui is null || ui.searchShown is null ? null : ui.searchShown.matchRanges(item.message());
+        if (!item.found)
+            return null;
+        // null for another filter (none of the chips' searches)
+        auto search = cast(const(SearchFilter)) _workspace.doc(docId).searchFilter;
+        return search is null ? null : search.matchRanges(item.message(), buffer);
     }
 
     /// Returns: true if the anchor changed; false while an operation is
@@ -438,8 +451,6 @@ final class AppSession
             if (!docId.isValid)
                 return _catalog.translate(uiText("the document is not open"));
             _workspace.doc(docId).applySearchFilter(filter); // null clears the search
-            if (auto ui = _documentUis.get(docId, null))
-                ui.searchShown = filter;
             // the history of the file, remembered as its filters are (the
             // latest query again changes nothing)
             if (filter !is null)
@@ -730,6 +741,27 @@ version (unittest)
     import std.algorithm : canFind;
     import std.json : parseJSON;
 
+    /// Dispatches the events of `session` until the script is told that the view
+    /// `call` (onMainViewChanged, onSearchViewChanged) has one of `statuses`
+    /// Returns: the status reached
+    private string waitForStatus(AppSession session, string call, string[] statuses...)
+    {
+        import core.thread : Thread;
+
+        string shown;
+        foreach (attempt; 0 .. 500)
+        {
+            session.dispatchEvents();
+            foreach (c; session.takeScriptCalls())
+                if (c.name == call)
+                    shown = parseJSON(c.json)["status"].str;
+            if (statuses.canFind(shown))
+                return shown;
+            Thread.sleep(10.msecs);
+        }
+        assert(false, call ~ ": " ~ shown);
+    }
+
     private final class FakeView : DocumentView
     {
         size_t itemsCount() nothrow @nogc { return 0; }
@@ -747,6 +779,7 @@ version (unittest)
         EventBusAsync bus;
         FakeView view;
         LogFilter!wchar[] searches;
+        LogFilter!wchar current; // the search searchFilter() tells
         bool cancelAsked;
         size_t records; // what messageCount() tells
         ulong bytes; // what byteSize() tells
@@ -759,11 +792,13 @@ version (unittest)
         DocumentView searchView() { return view; }
         const(LogFormat) format() { return plainText; }
         void applyViewFilter(LogFilter!wchar filter) {}
-        void applySearchFilter(LogFilter!wchar filter) { searches ~= filter; }
+        void applySearchFilter(LogFilter!wchar filter) { searches ~= filter; current = filter; }
+        // As LogDocument's: the search asked last, none once it is cancelled
+        const(LogFilter!wchar) searchFilter() { return current; }
         bool setAnchor(size_t index, bool value) { return true; }
         size_t[] exportAnchors() const pure { return null; }
         void importAnchors(const(size_t[]) anchors) {}
-        bool requestCancel() { cancelAsked = true; return true; }
+        bool requestCancel() { cancelAsked = true; current = null; return true; }
         bool sourceLost() { return false; }
         FormatChoice formatChoice() const { return FormatChoice("plain-text", 0); }
         size_t messageCount() nothrow @nogc { return records; }
@@ -1110,22 +1145,65 @@ unittest
     const id = session.openFile(path).docId;
     assert(id.isValid);
 
-    string status;
-    foreach (attempt; 0 .. 500)
-    {
-        session.dispatchEvents();
-        foreach (call; session.takeScriptCalls())
-            if (call.name == "onMainViewChanged")
-                status = parseJSON(call.json)["status"].str;
-        if (status == "ready")
-            break;
-        Thread.sleep(10.msecs);
-    }
-    assert(status == "ready", status);
+    waitForStatus(session, "onMainViewChanged", "ready");
     assert(session.doc(id).mainView.itemsCount == 2);
     assert(session.settings.recentFiles[0].format.id.length, "the format detected is remembered");
     const info = parseJSON(session.documentInfoJson(id));
     assert(info["records"].integer == 2 && info["bytes"].integer == "first line\nsecond line\n".length);
+}
+
+@("AppSession: what the chips found is shown in the rows the search found, in both views")
+unittest
+{
+    import std.array : replicate;
+    import std.file : remove, tempDir, write;
+    import std.path : buildPath;
+    import domain.log_document : LogDocument;
+
+    const path = buildPath(tempDir(), "dlt_explorer_session_matches.log");
+    // Many lines after the three, so that a search can be cancelled before it ends
+    write(path, "a timeout here\nnothing\nanother timeout\n" ~ "filler\n".replicate(500_000));
+    scope (exit) remove(path);
+
+    auto session = new AppSession(AppSettings.init,
+        (string path, FormatChoice choice) => cast(Document) new LogDocument(path, choice),
+        (in AppSettings s) {});
+    scope (exit) session.closeAll();
+    const id = session.openFile(path).docId;
+
+    waitForStatus(session, "onMainViewChanged", "ready");
+    assert(session.doc(id).setAnchor(1, true), "listed in the results by its anchor only");
+    enum timeout = `[{"text": "timeout", "isRegex": false, "matchCase": false}]`;
+    assert(session.startChipSearch(id, timeout) == "");
+    waitForStatus(session, "onSearchViewChanged", "ready");
+
+    DocumentItem item;
+    MatchBuffer buffer;
+    auto main = session.doc(id).mainView;
+    assert(main.fetchItem(0, item) && session.matchesOf(id, item, buffer[]) == [MatchRange(2, 9, 0)]);
+    assert(main.fetchItem(1, item) && session.matchesOf(id, item, buffer[]).length == 0, "not found");
+    assert(main.fetchItem(2, item) && session.matchesOf(id, item, buffer[]) == [MatchRange(8, 15, 0)]);
+
+    auto results = session.doc(id).searchView;
+    assert(results.itemsCount == 3);
+    assert(results.fetchItem(1, item) && item.realIndex == 1 && session.matchesOf(id, item, buffer[]).length == 0);
+    assert(results.fetchItem(2, item) && session.matchesOf(id, item, buffer[]) == [MatchRange(8, 15, 0)]);
+
+    // A cancelled search found nothing: no row shows its chips. Cancelled at
+    // once (the machine hears of the search later); a search that ends first
+    // is run again
+    string reached;
+    foreach (attempt; 0 .. 10)
+    {
+        assert(session.startChipSearch(id, timeout) == "");
+        assert(session.doc(id).requestCancel());
+        reached = waitForStatus(session, "onSearchViewChanged", "searchCancelled", "ready");
+        if (reached == "searchCancelled")
+            break;
+    }
+    assert(reached == "searchCancelled", "the search always ended before the cancel");
+    assert(main.fetchItem(0, item) && !item.found);
+    assert(session.matchesOf(id, item, buffer[]).length == 0, "the cancelled search shows nothing");
 }
 
 @("AppSession: the recent list remembers the format the document was opened with")

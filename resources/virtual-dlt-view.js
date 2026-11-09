@@ -20,7 +20,7 @@ function renderHeader(columns) {
 
 // A cell of `column`; `level` (a LogLevel of the record) colors it if the
 // column asks for it (byLevel: an HTTP status shown as it is). `matches` are
-// what the search chips found in the payload (rows of the search results only).
+// what the search chips found in the payload (rows the search found only).
 // `matchColors` are those of the chips by their place in the query.
 function renderCell(column, value, level, matches, matchColors) {
     const text = cellText(column, value);
@@ -48,8 +48,8 @@ const contextClickKey = platform.isMac() ? "ctrlKey" : null;
 
 // select with virtual data source
 // The rows show the document `docId` (set by the script) with what the script
-// gives each table: its columns, the colors of the rules of the document and,
-// for the search results, the match colors of the chips.
+// gives each table: its columns, the colors of the rules of the document and
+// the match colors of the chips of the search.
 export class VirtualDltTBody extends VirtualSelect {
     // The columns the rows show, from backend.tableColumnsJson:
     // [{ id, title, kind, width, timeKind?, unitsPerSecond?, labels? }].
@@ -79,7 +79,7 @@ export class VirtualDltTBody extends VirtualSelect {
 
     // The match colors of the chips of the search the rows were found by, by
     // the place of the chip in that query: a fragment of a chip is shown in its
-    // color (see matchPieces). Rows of the main view have no fragments.
+    // color (see matchPieces). Rows the search didn't find have no fragments.
     get matchColors() {
         return this._matchColors ?? [];
     }
@@ -121,6 +121,7 @@ export class VirtualDltTBody extends VirtualSelect {
         // sets a runtime state (:current, :checked) instead, see updateRowStates()
         return <tr row-current={selection.current === viewIndex ? "true" : "false"}
             row-selected={selection.has(viewIndex) ? "true" : "false"} view-index={viewIndex}
+            row-found={item[rowLayout.found] ? "true" : "false"}
             rule-color={ruleColor ? "true" : "false"} style={ruleColor ? `--rule-color: ${ruleColor}` : ""}>
             <td class="anchor" has-anchor={item[rowLayout.anchored] ? "true" : "false"} msg-index={item[rowLayout.messageIndex]}></td>
             <td class="aux">{item[rowLayout.messageIndex]}</td>
