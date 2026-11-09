@@ -286,10 +286,11 @@ function setTableFontSize(percent) {
 }
 
 
-// The Settings dialog; Save applies all its sections at once
-function openSettingsAction() {
+// The Settings dialog, on its `section` (Appearance by default); Save applies
+// all its sections at once
+function openSettingsAction(section = "appearance") {
     const result = platform.showModal("settings.htm", {
-        theme: currentTheme, tableFontSize,
+        section, theme: currentTheme, tableFontSize,
         language: currentLanguage, languages: backend.languages(), catalog: currentCatalog(),
         columns: backend.columnSettings()
     });
@@ -355,6 +356,15 @@ function setupEvents() {
         if (item) item.textContent = tr("Copy Row"); // a menu kept: in the language now
         else if (menu) menu.append(copyRowItem());
     });
+    // Context menu of a table header: Settings on its Columns section, which
+    // opens on the format of the active document, the one the table shows
+    document.on("contextmenu", "table.log-table > thead", evt => {
+        evt.source = Element.create(<menu class="context">
+            <li class="column-settings">{tr("Settings...")}</li>
+        </menu>);
+        return true;
+    });
+    document.on("click", "menu.context > li.column-settings", () => openSettingsAction("columns"));
     document.on("click", "menu.context > li.copy-row", () => {
         if (contextList) copySelectedRows(contextList);
         contextList = null;

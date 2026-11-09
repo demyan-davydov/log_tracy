@@ -114,6 +114,7 @@
         import { toggleColumn, moveColumn, resetColumns, isDefaultLayout, layoutsOf, initialFormat, formatLabel } from "column-settings.js";
         import { setShift, pressItem, dragTo, drop, showDropMarker } from "drag-strip.js";
         import * as platform from "platform.js";
+        import { initialSection } from "settings-sections.js";
         import { applyTheme } from "theme.js";
         import { setCatalog, tr } from "i18n/i18n.js";
         import { translateTree } from "i18n/dom.js";
@@ -325,7 +326,8 @@
                 $("#columns-content").style.display = "none";
                 $("#no-columns").style.display = "block";
             }
-            showSection(platform.dialogParameters() ? "appearance" : "columns");
+            const sections = [...$$(".section-tab")].map(tab => tab.getAttribute("section"));
+            showSection(initialSection(platform.dialogParameters(), sections));
         });
 
         $("#btn-save").on("click", () => {

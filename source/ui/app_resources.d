@@ -46,6 +46,7 @@ private enum string[] builtIn = [
     "search-editor.css",
     "search-editor.js",
     "search-query.js",
+    "settings-sections.js",
     "settings.htm",
     "style.css",
     "tab-content.css",
