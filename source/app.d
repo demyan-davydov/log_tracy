@@ -3,7 +3,7 @@ import std.stdio;
 import ui.app_resources : appResource, appResourceUrl;
 import ui.main_window;
 import ui.app_settings;
-import ui.main_menu_loader : loadAppMenu;
+import ui.main_menu_loader : forgetAppMenuWindow, loadAppMenu;
 
 import sciter.capi.def;
 
@@ -123,6 +123,7 @@ int main()
 		// Cancel and join indexing threads: they are not daemon threads, so the
 		// runtime would otherwise wait for them to finish after main() returns.
 		win.closeAllDocuments();
+		forgetAppMenuWindow(); // `win` is destroyed at the end of this block
 		writeln("Documents closed");
 
 		//win.detachEventHandler();

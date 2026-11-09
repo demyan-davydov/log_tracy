@@ -14,6 +14,13 @@ void loadAppMenu(MainWindow window)
     }
 }
 
+/// The window is about to be destroyed: the application no longer tells it that it terminates
+void forgetAppMenuWindow()
+{
+    version (OSX)
+        terminatingWindow = null;
+}
+
 /// Puts the labels of the menu of `window` in the language of the interface now (the native
 /// menu on macOS; the script draws its menu bar on the other platforms itself). The items
 /// stay as they are, only their titles change: one may be running its action (Settings...
@@ -106,8 +113,22 @@ private void* makeItem(in MenuItem sub, MainWindow window)
     return item;
 }
 
-private void registerDelegateClass()
+// The window the application delegate tells that the application terminates
+private __gshared MainWindow terminatingWindow;
+
+// NSApplicationDelegate: Quit, Quit of the Dock, logging out. Cocoa exits the process right
+// after this (exit() inside the event loop: main() never goes on) and closes the window
+// without its closerequest, so the window saves now, while its script is alive.
+private extern (C) ulong applicationShouldTerminate(void* self, void* _cmd, void* sender)
 {
+    if (terminatingWindow)
+        terminatingWindow.terminate();
+    return 1; // NSTerminateNow
+}
+
+private void registerDelegateClass(MainWindow window)
+{
+    terminatingWindow = window;
     auto clsDelegate = cls("AppDelegate");
     bool created = false;
     if (!clsDelegate)
@@ -118,6 +139,8 @@ private void registerDelegateClass()
         created = true;
     }
     class_addMethod(clsDelegate, sel_registerName("menuItemClicked:"), cast(void*)&menuItemClicked, "v@:@");
+    class_addMethod(clsDelegate, sel_registerName("applicationShouldTerminate:"),
+        cast(void*)&applicationShouldTerminate, "Q@:@");
     if (created)
         objc_registerClassPair(clsDelegate);
 }
@@ -232,7 +255,7 @@ private void setupMainMenuOSX(MainWindow window, MenuItem[] bar)
     auto app = msg(cls("NSApplication"), "sharedApplication");
     msg!void(app, "setActivationPolicy:", 0L); // NSApplicationActivationPolicyRegular
 
-    registerDelegateClass();
+    registerDelegateClass(window);
     msg!void(app, "setDelegate:", make("AppDelegate"));
 
     // Critical for menus in non-bundled apps:

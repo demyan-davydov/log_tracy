@@ -277,7 +277,8 @@ static AppSettings loadSettings(string path = defaultSettingsPath())
 {
     AppSettings settings;
     // Default values
-    settings.windowRect = WindowRect(100, 100, 1200, 800);
+    // None: the markup sizes the window and the script restores a saved frame
+    settings.windowRect = WindowRect.init;
     settings.theme = "light";
 
     writeln("Loading settings from: ", path);

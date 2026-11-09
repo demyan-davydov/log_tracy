@@ -155,6 +155,24 @@ final class AppSession
         closeAll();
     }
 
+    /// The user moved or resized the window: the settings are written by the
+    /// next idle round, with the frame of the script's getAppState()
+    void windowFrameChanged()
+    {
+        _settingsChanged = true;
+    }
+
+    /// The application terminates (macOS: Quit, the Dock, logging out), the event
+    /// loop won't return: writes the settings with `appStateJson` unless the
+    /// window already did (then the script isn't asked for it), and closes all
+    /// documents
+    void terminate(lazy const(char)[] appStateJson)
+    {
+        if (!_closing)
+            saveOnClose(appStateJson);
+        finish();
+    }
+
     /// Writes the settings with `appStateJson` (the script's getAppState())
     /// merged in. The open files are marked used now, in place: the time
     /// survives a crash, the order of the list stays that of the files opened
@@ -1038,6 +1056,44 @@ unittest
     f.session.finish();
     assert(f.writes.length == 2, "written without the state of the script");
     assert(f.session.findDocument(cast(int) id.toInt()) == DocumentId.init);
+}
+
+
+@("AppSession: a window moved or resized makes the settings due, not once the window closes")
+unittest
+{
+    auto f = Fixture.make();
+    assert(!f.session.settingsDue);
+    f.session.windowFrameChanged();
+    assert(f.session.settingsDue, "written by the idle loop with the frame of getAppState()");
+    f.session.saveSettings(`{"windowRect": {"left": 10, "top": 20, "width": 300, "height": 400}}`);
+    assert(f.writes[$ - 1].windowRect == WindowRect(10, 20, 300, 400));
+
+    f.session.saveOnClose(`{}`);
+    f.session.windowFrameChanged();
+    assert(!f.session.settingsDue, "no getAppState() of a closing window");
+}
+
+@("AppSession: the application terminates (macOS Quit): written with the state of the script, documents closed")
+unittest
+{
+    auto f = Fixture.make();
+    const id = f.session.openFile("/logs/a.log").docId;
+    f.session.terminate(`{"tableFontSize": 120}`);
+    assert(f.writes.length == 1 && f.writes[0].tableFontSize == 120);
+    assert(pathsOf(f.writes[0].recentFiles) == ["/logs/a.log"]);
+    assert(f.session.closing);
+    assert(f.session.findDocument(cast(int) id.toInt()) == DocumentId.init, "documents closed");
+}
+
+@("AppSession: terminating after the window closed keeps what the window wrote")
+unittest
+{
+    auto f = Fixture.make();
+    f.session.saveOnClose(`{"tableFontSize": 130}`);
+    f.session.terminate(`{"tableFontSize": 90}`); // the window is gone: no state of the script
+    assert(f.writes.length == 1, "nothing changed since the window wrote");
+    assert(f.session.settings.tableFontSize == 130);
 }
 
 

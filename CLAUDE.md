@@ -78,6 +78,11 @@ thread, never from inside an `xcall`. The settings are likewise only marked chan
 `onIdle()` writes them (`settingsDue`), with the script's `getAppState()` merged in.
 `saveAppState` on closing writes them at once; from then on the script is not called any more
 (its view is being torn down), and what changes after that is written on exit (`finish`).
+On macOS Quit (Cmd+Q, the Dock, logging out) closes the window without `closerequest` and
+exits inside the event loop: the application delegate's `applicationShouldTerminate:`
+(`ui/main_menu_loader`) writes the settings first (`MainWindow.terminate`). The window frame
+is also written when the user is done moving or resizing it (`replacementend`), and restored by
+the script (`resources/window-frame.js`): `main.htm` sizes the window, not the creation rect.
 
 ### Where things live
 A package imports only the packages to its left (unittests may import more, e.g. a format to build

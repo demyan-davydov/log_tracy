@@ -20,6 +20,7 @@ import { translateTree } from "i18n/dom.js";
 import { fileFilter, allFiles } from "file-types.js";
 import { requestedLocale } from "i18n/languages.js";
 import { showNotice } from "notice.js";
+import { restorableFrame } from "window-frame.js";
 
 // The table whose context menu is open: "Copy" copies its selected text,
 // "Copy Row" its selected rows
@@ -87,6 +88,10 @@ platform.onWindowCloseRequest(() => {
     }
 });
 
+// The frame is written once the user is done with it: a Quit that can't ask
+// the script any more (the Dock, logging out) or a crash keeps it
+platform.onWindowFrameChanged(() => backend.windowFrameChanged());
+
 platform.onWindowClose(() => {
     console.log("Closing Window...");
 
@@ -120,11 +125,25 @@ function initApp() {
     } catch (e) {
         console.error("Failed to read the settings:", e);
     }
+    // Not before "ready": a window moved while the document loads is laid out
+    // again by Sciter, its frame then is not the one given
+    restoreWindowFrame(settings?.windowRect);
     restoreSettings(settings);
     restoreLanguage(settings?.language || "");
     setupMenuBar();
     setupEvents();
     refreshTabs();
+}
+
+// The frame of the window as saved, unless none was or it is out of reach now
+// (window-frame.js); the markup sizes the window otherwise
+function restoreWindowFrame(saved) {
+    try {
+        const frame = restorableFrame(saved, platform.workAreas());
+        if (frame) platform.moveWindow(frame);
+    } catch (e) {
+        console.error("Failed to restore the window frame:", e);
+    }
 }
 
 // The theme and the font size of the settings as saved (null: none)
@@ -607,7 +626,8 @@ globalThis.onDocumentClosed = function (docId) {
 };
 
 globalThis.getAppState = function () {
-    const windowRect = platform.windowFrame();
+    // Left out (the saved one kept) while the window isn't shown normally
+    const windowRect = platform.windowFrame() ?? undefined;
     const list = panes.get(activeDocId(win))?.mainList; // shown or under the New Tab
     return JSON.stringify({
         windowRect,

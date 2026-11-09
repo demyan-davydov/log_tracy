@@ -38,11 +38,28 @@ export const setDialogTitle = title => { Window.this.caption = title; };
 
 // ── The window ───────────────────────────────────────────────────────────────
 
-// The frame of the window on the screen: { left, top, width, height }
+// The frame of the window on the screen: { left, top, width, height } in
+// physical pixels; null while the window isn't shown normally (minimized,
+// maximized, full screen: its frame then is not the one to restore)
 export function windowFrame() {
+    if (Window.this.state !== Window.WINDOW_SHOWN) return null;
     const [left, top, width, height] = Window.this.box("xywh", "border", "screen", true);
     return { left, top, width, height };
 }
+
+// The work areas of the monitors (without the taskbar, the Dock):
+// [{ left, top, width, height }] in physical pixels, as windowFrame()
+export function workAreas() {
+    const areas = [];
+    for (let i = 0; i < Window.screens; i++) {
+        const [left, top, width, height] = Window.screenBox(i, "workarea", "xywh");
+        areas.push({ left, top, width, height });
+    }
+    return areas;
+}
+
+// Moves the window to `frame` as windowFrame() gives it
+export const moveWindow = frame => Window.this.move(frame.left, frame.top, frame.width, frame.height);
 
 // Closes the window, as its close button does (closerequest, then close)
 export const closeWindow = () => Window.this.close();
@@ -56,6 +73,9 @@ export const repaintWindow = () => Window.this.update();
 // The window is about to close: the last moment the script and the DOM are
 // fully alive (not the BEHAVIOR_DETACH of the backend, see main_window.d)
 export const onWindowCloseRequest = handler => Window.this.on("closerequest", handler);
+
+// The user finished moving or resizing the window
+export const onWindowFrameChanged = handler => Window.this.on("replacementend", handler);
 
 // The window closes
 export const onWindowClose = handler => Window.this.on("close", handler);

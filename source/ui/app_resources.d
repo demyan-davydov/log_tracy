@@ -63,6 +63,7 @@ private enum string[] builtIn = [
     "virtual-select.css",
     "virtual-select.js",
     "win-frame.css",
+    "window-frame.js",
     "window-state.js",
 ];
 

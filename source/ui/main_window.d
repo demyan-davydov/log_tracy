@@ -79,11 +79,10 @@ class MainWindow : SciterWindow
             | SCITER_CREATE_WINDOW_FLAGS.SW_RESIZEABLE
             | SCITER_CREATE_WINDOW_FLAGS.SW_CONTROLS;
 
-        RECT frame;
-        frame.left = settings.windowRect.left;
-        frame.top = settings.windowRect.top;
-        frame.right = settings.windowRect.right;
-        frame.bottom = settings.windowRect.bottom;
+        // Only until the document loads: Sciter sizes the window by the markup of main.htm
+        // (window-width, window-height), the script moves it to the saved frame
+        // (restoreWindowFrame), in the pixels it saves it in
+        RECT frame = RECT(100, 100, 1100, 900);
 
         super(creationFlags, frame);
 
@@ -146,6 +145,10 @@ class MainWindow : SciterWindow
         case "saveAppState":
             // saveAppState(appStateJson): the window closes
             _session.saveOnClose(param!string(0));
+            return true;
+        case "windowFrameChanged":
+            // windowFrameChanged(): the user moved or resized the window
+            _session.windowFrameChanged();
             return true;
         case "getMenu":
             answer(_session.menuJson());
@@ -381,6 +384,14 @@ class MainWindow : SciterWindow
     void closeAllDocuments()
     {
         _session.finish();
+    }
+
+    /// The application terminates and the event loop won't return (macOS: Quit, the Dock,
+    /// logging out): writes the settings with the state of the script, unless the window
+    /// already closed, and closes all documents
+    void terminate()
+    {
+        _session.terminate(appStateOfScript());
     }
 
     /// Called from main() after each iteration of the event loop: delivers the
