@@ -170,6 +170,7 @@ struct AppSettings
     RecentFile[] recentFiles; /// files opened recently, the newest first
     string theme;
     int tableFontSize = 100; /// font size of the log tables, % of the normal one
+    bool singleLineRows; /// every row of the log tables one line high, the payload cut
     ColumnLayouts columnLayouts; /// the columns of the log tables, by format
     string language; /// of the interface: a BCP 47 tag ("ru", "x-pseudo"); "": the language of the system
 
@@ -181,6 +182,7 @@ struct AppSettings
         this.recentFiles = copyOf(rhs.recentFiles);
         this.theme = rhs.theme;
         this.tableFontSize = rhs.tableFontSize;
+        this.singleLineRows = rhs.singleLineRows;
         this.columnLayouts = copyOf(rhs.columnLayouts);
         this.language = rhs.language;
     }
@@ -193,6 +195,7 @@ struct AppSettings
         this.recentFiles = copyOf(rhs.recentFiles);
         this.theme = rhs.theme;
         this.tableFontSize = rhs.tableFontSize;
+        this.singleLineRows = rhs.singleLineRows;
         this.columnLayouts = copyOf(rhs.columnLayouts);
         this.language = rhs.language;
     }
@@ -205,6 +208,7 @@ struct AppSettings
             recentFiles == rhs.recentFiles &&
             theme == rhs.theme &&
             tableFontSize == rhs.tableFontSize &&
+            singleLineRows == rhs.singleLineRows &&
             columnLayouts == rhs.columnLayouts &&
             language == rhs.language;
     }
@@ -217,6 +221,7 @@ struct AppSettings
         hash = hashOf(recentFiles, hash);
         hash = hashOf(theme, hash);
         hash = hashOf(tableFontSize, hash);
+        hash = hashOf(singleLineRows, hash);
         hash = hashOf(language, hash);
         foreach (id, layout; columnLayouts) // in no order: summed
             hash += hashOf(layout, hashOf(id));
@@ -260,6 +265,7 @@ static JSONValue toJSON(in AppSettings settings)
     j.object["recentFiles"] = recentFilesToJson(settings.recentFiles);
     j.object["theme"] = JSONValue(settings.theme);
     j.object["tableFontSize"] = JSONValue(settings.tableFontSize);
+    j.object["singleLineRows"] = JSONValue(settings.singleLineRows);
     j.object["language"] = JSONValue(settings.language);
     if (settings.columnLayouts.length)
         j.object["columnLayouts"] = columnLayoutsToJson(settings.columnLayouts);
@@ -362,7 +368,8 @@ AppSettings mergeAppStateFromScript(const AppSettings base, const(char)[] appSta
 }
 
 /// Reads what both the settings file and the state of the script hold: the
-/// window rect, the theme, the font size of the tables and the language. Keys
+/// window rect, the theme, the font size of the tables, whether their rows are
+/// single-line and the language. Keys
 /// `j` doesn't have leave their values in `settings`.
 private void readPreferences(in JSONValue j, ref AppSettings settings)
 {
@@ -373,6 +380,9 @@ private void readPreferences(in JSONValue j, ref AppSettings settings)
         settings.theme = theme.str;
     if (const fontSize = "tableFontSize" in j)
         settings.tableFontSize = fontSize.integer.to!int;
+    if (const singleLine = "singleLineRows" in j)
+        if (singleLine.type == JSONType.true_ || singleLine.type == JSONType.false_)
+            settings.singleLineRows = singleLine.boolean;
     if (const language = "language" in j)
         settings.language = language.type == JSONType.string ? language.str : "";
 }
@@ -406,6 +416,51 @@ unittest
     settings.recentFiles = [RecentFile("/new.dlt", FormatChoice("syslog", 3)), RecentFile("/old.dlt")];
     saveSettings(settings, path);
     assert(loadSettings(path).recentFiles == settings.recentFiles, "with the formats");
+}
+
+@("settings: single-line rows survive a save and a load, off by default")
+unittest
+{
+    const path = buildPath(tempDir(), "dlt_explorer_settings_single_line_test.json");
+    scope (exit) if (exists(path)) remove(path);
+
+    AppSettings settings;
+    assert(!settings.singleLineRows);
+    saveSettings(settings, path);
+    assert(parseJSON(readText(path))["singleLineRows"].type == JSONType.false_, "written as a JSON bool");
+    settings.singleLineRows = true;
+    saveSettings(settings, path);
+    assert(parseJSON(readText(path))["singleLineRows"].type == JSONType.true_, "written as a JSON bool");
+    assert(loadSettings(path).singleLineRows);
+
+    std.file.write(path, `{"theme": "dark"}`);
+    assert(!loadSettings(path).singleLineRows, "settings without the key: off");
+    std.file.write(path, `{"theme": "dark", "singleLineRows": 1}`);
+    const bad = loadSettings(path);
+    assert(!bad.singleLineRows && bad.theme == "dark", "a value not a bool is ignored");
+}
+
+@("mergeAppStateFromScript: single-line rows come from the script")
+unittest
+{
+    AppSettings base;
+    assert(mergeAppStateFromScript(base, `{"singleLineRows": true}`).singleLineRows);
+    base.singleLineRows = true;
+    assert(mergeAppStateFromScript(base, `{"theme": "dark"}`).singleLineRows, "kept when not sent");
+    assert(!mergeAppStateFromScript(base, `{"singleLineRows": false}`).singleLineRows);
+}
+
+@("AppSettings: single-line rows are copied and compared")
+unittest
+{
+    AppSettings a;
+    a.singleLineRows = true;
+    const AppSettings b = a;
+    assert(b.singleLineRows);
+    AppSettings c;
+    assert(c != a);
+    c = b;
+    assert(c == a);
 }
 
 /// Settings written before the recent list existed: its files seed the list

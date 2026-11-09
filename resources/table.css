@@ -286,3 +286,22 @@ popup.notice {
        match colors are pale, and what was found must stay readable */
     color: var(--text-main);
 }
+
+/* Single-line rows (Settings, applySingleLineRows in document-pane.js): every
+   row is exactly one line high, whatever its payload, so the virtual list
+   gets rows of one height. The line height is set on the row in units of the
+   table's font, so the cells of the smaller auxiliary font inherit the same
+   absolute line; the auxiliary cells are on one line anyway and never cut
+   (see above), the Payload cell is given exactly one line and its text goes
+   on to the right uncut: the column is as wide as the longest payload of the
+   rows rendered, the table scrolls sideways to it (the width follows the rows
+   rendered as the list scrolls). */
+.log-table.single-line>tbody>tr {
+    line-height: 1.25em;
+}
+
+.log-table.single-line>tbody>tr>td:last-child {
+    height: 1.25em;
+    white-space: nowrap;
+    word-break: normal;
+}

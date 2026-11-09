@@ -185,6 +185,12 @@ export class VirtualDltTBody extends VirtualSelect {
         return null;
     }
 
+    // The view index of the first row on screen, null if none. The list keeps
+    // it while hidden too
+    firstVisibleIndex() {
+        return this.viewIndexOf(this.vlist?.firstVisibleItem);
+    }
+
     // The view indexes of the first and the last row on screen, null if none
     visibleRange() {
         const first = this.viewIndexOf(this.vlist?.firstVisibleItem);

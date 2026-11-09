@@ -12,7 +12,7 @@ import * as platform from "platform.js";
 import { noSearch, runSearch, searchPending, editRule } from "pane-commands.js";
 import { ruleColors } from "rule-colors.js";
 import { scrollTarget } from "row-selection.js";
-import { noTable, tableStep } from "pane-state.js";
+import { noTable, tableStep, rowLookStep, keptRowStep } from "pane-state.js";
 import { currentCatalog, tr } from "i18n/i18n.js";
 import { translateTree } from "i18n/dom.js";
 import { fileFilter, allFiles } from "file-types.js";
@@ -233,6 +233,15 @@ export class DocumentPane {
         this.mainStatus = null; // the view a status over the table shows, null: none
         this.searchStatus = null;
         this.bottomPage = "search"; // the page of the bottom panel shown (data-page)
+        // How the rows look (Settings): { fontSize (%), singleLine }, as asked
+        // and as the tables have it (null: not yet), see applyRowLook()
+        this.rowLook = { fontSize: host.tableFontSize(), singleLine: host.singleLineRows() };
+        this.appliedRowLook = null;
+        // The first rows on screen to scroll back to after the look changed, by
+        // list: { top } (see keptRowStep), see applyRowLook()
+        this.keptRows = new Map();
+        this.keptRowsFrame = false; // a frame is asked to scroll to them
+        this.destroyed = false;
 
         container.append(renderPane(splitters));
         this.root = container.lastElementChild;
@@ -245,7 +254,7 @@ export class DocumentPane {
         this.searchList = this.searchTable.$("tbody");
         this.mainList.docId = docId;
         this.searchList.docId = docId;
-        this.applyFontSize(host.tableFontSize());
+        this.applyRowLook();
 
         this.chipEditor = new SearchEditor(this.root.$(".chip-search"), {
             checkRegex: (pattern, matchCase) => backend.checkRegex(pattern, matchCase),
@@ -301,6 +310,8 @@ export class DocumentPane {
     show(splitters) {
         this.root.style.display = "";
         this.visible = true;
+        this.applyRowLook(); // changed in Settings while hidden
+        this.scrollToKeptRows(); // of a hidden page or panel, see applyRowLook()
         if (splitters) {
             this.root.frameset.state = splitters.colsState;
             this.root.$("frameset").frameset.state = splitters.rowsState;
@@ -353,6 +364,8 @@ export class DocumentPane {
 
     // The document is closed
     destroy() {
+        this.destroyed = true; // a frame asked by applyRowLook() leaves the lists alone
+        this.keptRows.clear();
         this.chipEditor.destroy();
         this.root.remove();
     }
@@ -396,6 +409,7 @@ export class DocumentPane {
         }
         this.bottomPage = name;
         if (this.visible && this.inHiddenPage(document.$(":focus"))) this.defaultFocus().state.focus = true;
+        this.scrollToKeptRows(); // of the list of this page, see applyRowLook()
         return true;
     }
 
@@ -421,8 +435,67 @@ export class DocumentPane {
         });
     }
 
+    // The font size of the tables (Settings), % of the normal one
     applyFontSize(percent) {
-        for (const table of [this.mainTable, this.searchTable]) table.style.fontSize = `${percent}%`;
+        this.rowLook = { ...this.rowLook, fontSize: percent };
+        this.applyRowLook();
+    }
+
+    // Single-line rows (Settings): see .log-table.single-line in table.css
+    applySingleLineRows(on) {
+        this.rowLook = { ...this.rowLook, singleLine: on };
+        this.applyRowLook();
+    }
+
+    // Gives the tables the look of the rows asked (rowLook); a hidden panel
+    // gets it when shown (see rowLookStep). Rows of another height move the
+    // content under the scroll position of a list, which is in pixels: rows
+    // that got lower leave it past the end, with no row on screen. So the first
+    // row on screen before the change is scrolled back to the top after it
+    // (scrollToKeptRows), at the next frame: until then Sciter hasn't laid the
+    // rows out anew (not even in a posted call) and a navigation would go by
+    // the old geometry. A list whose row is kept already (a change before that
+    // frame, a list of a hidden page) keeps it: its geometry is the old one.
+    applyRowLook() {
+        const look = this.rowLook;
+        const step = rowLookStep(this.appliedRowLook, look, this.visible);
+        if (!step.apply) return;
+        if (step.keep)
+            for (const list of this.lists)
+                if (this.shows(list) && !this.keptRows.has(list))
+                    this.keptRows.set(list, { top: list.firstVisibleIndex() });
+        for (const table of [this.mainTable, this.searchTable]) {
+            table.style.fontSize = `${look.fontSize}%`;
+            table.classList.toggle("single-line", look.singleLine);
+        }
+        this.appliedRowLook = { ...look };
+        this.scrollToKeptRows();
+    }
+
+    // Scrolls the lists shown to the rows applyRowLook() kept, at the next
+    // frame; a list of a hidden page or panel keeps its row until it is shown,
+    // a table under a status view until it shows rows again (reloadTable)
+    scrollToKeptRows() {
+        if (this.keptRowsFrame || this.keptRows.size === 0) return;
+        this.keptRowsFrame = true;
+        requestAnimationFrame(() => {
+            this.keptRowsFrame = false;
+            if (this.destroyed || !this.visible) return; // show() asks again
+            for (const [list, kept] of this.keptRows) {
+                if (this.inHiddenPage(list)) continue; // selectBottomPage() asks again
+                const step = keptRowStep(kept, this.shownOf(list), list.totalItems());
+                if (step.wait) continue; // reloadTable() asks again
+                this.keptRows.delete(list);
+                if (step.target === null) continue;
+                list.navigateTarget = step.target; // by the render componentUpdate() posts, see VirtualList
+                list.componentUpdate();
+            }
+        });
+    }
+
+    // What `list` shows, see tableStep
+    shownOf(list) {
+        return list === this.mainList ? this.mainShown : this.searchShown;
     }
 
     // The layouts of the columns changed (Settings): the tables show them
@@ -458,8 +531,7 @@ export class DocumentPane {
     // True if the rows of `list` are on screen: the panel is shown and no
     // status view covers its table
     shows(list) {
-        const shown = list === this.mainList ? this.mainShown : this.searchShown;
-        return this.visible && shown.dataVersion !== null;
+        return this.visible && this.shownOf(list).dataVersion !== null;
     }
 
     // ---- main view ----
@@ -505,6 +577,7 @@ export class DocumentPane {
     reloadTable(list, step) {
         if (step.resetSelection) list.resetSelection(); // the rows are other messages now
         if (step.reload) reloadList(list, step.reload === "start" ? "start" : null);
+        this.scrollToKeptRows(); // kept while a status view covered the table, see applyRowLook()
     }
 
     // Reloads the rows of the main view in place (e.g. decoding changed)
