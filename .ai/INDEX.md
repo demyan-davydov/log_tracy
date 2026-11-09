@@ -8,7 +8,7 @@ session needs (commands, package layering, conventions).
 
 - `.ai/knowledge/`: orientation — how the code is built and where to start for a change.
 - `.ai/rules/`: binding rules for every code change and every review.
-- `.ai/workflows/`: recurring processes end to end (the git flow, a review against the rules,
+- `.ai/workflows/`: recurring processes end to end (the git flow, a review by lenses,
   adding a format or a backend call, updating Sciter, a screenshot of the app). In Claude Code
   most of them are skills too (`.claude/skills/`).
 
