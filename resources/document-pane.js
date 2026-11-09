@@ -350,19 +350,32 @@ export class DocumentPane {
         return this.root.$$(".bottom-page").some(page => page.style.display === "none" && isInside(element, page));
     }
 
-    // Hides the panel. @returns the sizes of its splitters for the next panel
-    // shown: { cols, rows } (strings, for a new panel), their frameset states
-    // and the page of the bottom panel
-    hide() {
-        const focused = document.$(":focus");
-        this.lastFocus = isInside(focused, this.root) ? focused : null;
+    // The sizes of its splitters now: { cols, rows } (strings, for a new
+    // panel) and their frameset states { colsState, rowsState }
+    splitterSizes() {
         const inner = this.root.$("frameset");
-        const splitters = {
+        return {
             colsState: this.root.frameset?.state, rowsState: inner.frameset?.state,
             cols: this.root.frameset?.state?.join(",") ?? this.root.getAttribute("cols"),
             rows: inner.frameset?.state?.join(",") ?? inner.getAttribute("rows"),
-            bottomPage: this.bottomPage,
         };
+    }
+
+    // The width of the side panel and the height of the search (bottom) panel
+    // as they are shown: { sidePanelWidth, searchPanelHeight } ("230dip").
+    // Only while the panel is shown: a hidden one has no sizes. Their content
+    // boxes: a frameset sizes those, without the padding and the borders.
+    panelSizes() {
+        const dip = (selector, side) => `${Math.round(this.root.$(selector).state.box(side, "inner"))}dip`;
+        return { sidePanelWidth: dip(".left-panel", "width"), searchPanelHeight: dip(".bottom-panel", "height") };
+    }
+
+    // Hides the panel. @returns the sizes of its splitters for the next panel
+    // shown (splitterSizes(), panelSizes()) and the page of the bottom panel
+    hide() {
+        const focused = document.$(":focus");
+        this.lastFocus = isInside(focused, this.root) ? focused : null;
+        const splitters = { ...this.splitterSizes(), ...this.panelSizes(), bottomPage: this.bottomPage };
         this.visible = false;
         this.follower.cancel(); // not into a hidden panel
         this.root.style.display = "none";

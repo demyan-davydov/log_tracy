@@ -47,6 +47,9 @@ export function windowFrame() {
     return { left, top, width, height };
 }
 
+// True while the window is minimized
+export const windowMinimized = () => Window.this.state === Window.WINDOW_MINIMIZED;
+
 // The work areas of the monitors (without the taskbar, the Dock):
 // [{ left, top, width, height }] in physical pixels, as windowFrame()
 export function workAreas() {

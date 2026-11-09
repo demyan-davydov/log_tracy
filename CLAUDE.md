@@ -227,7 +227,9 @@ three-letter `shortName` for the badge of a recent file) and return it from the 
   decided by `script.js`.
   - The calls of a document's views, filters and search take its id first
     (`backend.mainViewItem(docId, index)`, ...); only the menu and Settings use the active document.
-  - The sizes of the splitters follow from the panel shown before.
+  - The sizes of the splitters follow from the panel shown before. They are written with the
+    rest of `getAppState()` (`AppSettings.sidePanelWidth`, `searchPanelHeight`; the mapping is
+    `resources/panel-sizes.js`), not on each move of a splitter, and the first panel starts with them.
   - Never hide a log table itself: one hidden by `display: none` before it was ever laid out
     keeps its cells 1px wide for good (Sciter). Status views cover it instead
     (`.status-view.overlay`).

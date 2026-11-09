@@ -21,6 +21,7 @@ import { fileFilter, allFiles } from "file-types.js";
 import { requestedLocale } from "i18n/languages.js";
 import { showNotice } from "notice.js";
 import { restorableFrame } from "window-frame.js";
+import { panelSizesOf, splittersOf } from "panel-sizes.js";
 
 // The table whose context menu is open: "Copy" copies its selected text,
 // "Copy Row" its selected rows
@@ -128,6 +129,7 @@ function initApp() {
     // Not before "ready": a window moved while the document loads is laid out
     // again by Sciter, its frame then is not the one given
     restoreWindowFrame(settings?.windowRect);
+    restoreSplitters(settings);
     restoreSettings(settings);
     restoreLanguage(settings?.language || "");
     setupMenuBar();
@@ -144,6 +146,13 @@ function restoreWindowFrame(saved) {
     } catch (e) {
         console.error("Failed to restore the window frame:", e);
     }
+}
+
+// The sizes of the panels as saved on exit (sidePanelWidth, searchPanelHeight
+// of the settings), for the first panel; the defaults of `splitters` for a
+// size not saved
+function restoreSplitters(settings) {
+    splitters = { ...splittersOf(settings, splitters), colsState: null, rowsState: null };
 }
 
 // The theme and the font size of the settings as saved (null: none)
@@ -558,9 +567,10 @@ function showDocument() {
     const pane = view.placeholder ? null : panes.get(view.docId) ?? null;
     const empty = $("#empty-placeholder");
     empty.style.display = pane ? "none" : "flex";
+    // Hidden before its container is: hide() measures the panels it shows
+    if (pane !== shownPane && shownPane) splitters = shownPane.hide();
     $("#document-panes").style.display = pane ? "" : "none";
     if (pane !== shownPane) {
-        if (shownPane) splitters = shownPane.hide();
         shownPane = pane;
         if (pane) pane.show(splitters.colsState ? splitters : null);
     } else if (pane) {
@@ -629,12 +639,17 @@ globalThis.getAppState = function () {
     // Left out (the saved one kept) while the window isn't shown normally
     const windowRect = platform.windowFrame() ?? undefined;
     const list = panes.get(activeDocId(win))?.mainList; // shown or under the New Tab
+    // Of the panel shown, or as the last one shown left them: written with the
+    // rest, not on each move of a splitter
+    // Not measured on a minimized window: its panels have no size then
+    const sizes = shownPane && !platform.windowMinimized() ? shownPane.panelSizes() : panelSizesOf(splitters);
     return JSON.stringify({
         windowRect,
         theme: currentTheme,
         tableFontSize,
         singleLineRows,
         language: currentLanguage,
+        ...sizes,
         scrollPosition: list ? (list.state.scrollPos || 0) : 0
     });
 }
