@@ -30,7 +30,7 @@
 4. Docs for people (`docs/`, English) and `.ai/` updated where the feature changes them
    (`.ai/rules/docs.md`).
 5. Before the merge: `/code-review` (bugs) and `/review` (the lenses of this repository); they
-   find different things (`docs/stories/review-lenses.md`).
+   find different things (`docs/experiments/2026-11-09-review-lenses-vs-code-review.md`).
 6. The user checks the result, then it is merged into `master` with `--no-ff`.
 
 ## Agent Boundaries

@@ -19,7 +19,8 @@ the files). A lens can also be asked for by name.
 When: before the merge of a feature, and on request when a change touches the threads or the
 interface. Not on every commit: a lens costs 40–90 thousand tokens. `/code-review` (bugs of
 logic and state) is a different review, run as well: compared on three features, the two
-overlapped by about a third, each finding real issues of its own kind.
+overlapped by about a third, each finding real issues of its own kind
+(`docs/experiments/2026-11-09-review-lenses-vs-code-review.md`).
 
 Not lenses (yet): architecture belongs to the plan of a feature, before the code; acceptance
 (was the asked thing done) to the end of a feature. See `docs/backlog.md`.

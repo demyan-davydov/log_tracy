@@ -3,6 +3,9 @@ docs/*
 !docs/stories/
 docs/stories/*
 !docs/stories/*.md
+!docs/experiments/
+docs/experiments/*
+!docs/experiments/*.md
 .dub
 /build/
 .DS_Store

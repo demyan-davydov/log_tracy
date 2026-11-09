@@ -37,6 +37,8 @@ Setting up the tools on each system and the other commands: [docs/building.md](d
 - [docs/performance.md](docs/performance.md): measurements of indexing and table rendering.
 - [docs/stories/](docs/stories/): the story of each feature, what was decided and why
   (Russian).
+- [docs/experiments/](docs/experiments/): experiments and measurements decisions rest on, such
+  as ways of working compared (Russian).
 - [docs/backlog.md](docs/backlog.md): what was noticed and left for later (Russian).
 
 ## Repository Context
