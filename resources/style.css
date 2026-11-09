@@ -589,16 +589,53 @@ frameset {
 
 
 
-.search-results-panel {
+/* The bottom panel: its pages over the strip of their tabs */
+.bottom-panel {
+    flow: vertical;
     border-top: 1dip solid var(--border-color);
     background: var(--bg-details);
 }
 
-.search-results-panel header {
-    padding: 4dip;
-    background: var(--bg-details-header);
-    font-weight: bold;
-    font-size: 0.9em;
+.bottom-page {
+    size: *;
+    flow: vertical;
+}
+
+/* The tabs of the bottom panel, under its pages: the top tabs turned upside
+   down, the active one covers the top border of the strip and merges with
+   its page above */
+.bottom-tabs {
+    flow: horizontal;
+    height: 18pt;
+    padding: 0 3pt 2pt;
+    border-top: 1dip solid var(--border-color);
+    background: var(--bg-header);
+    white-space: nowrap;
+    overflow: visible;
+}
+
+.bottom-tab {
+    flow: horizontal;
+    height: *;
+    max-width: max-content;
+    padding: 0 8pt;
+    margin-top: -1dip;
+    border: 1dip solid transparent;
+    border-top: none;
+    border-radius: 0 0 5pt 5pt;
+    color: var(--tab-text);
+    cursor: default;
+}
+
+.bottom-tab.active {
+    color: var(--text-main);
+    background: var(--bg-details);
+    border-color: var(--border-color);
+}
+
+.bottom-tab .bottom-tab-name {
+    margin: * 0; /* Sciter: flexible margins center it vertically */
+    font-size: 9pt;
 }
 
 /* Settings Dialog */

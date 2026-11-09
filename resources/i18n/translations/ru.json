@@ -40,7 +40,6 @@
     "DLT filters (.dlf) are for DLT logs only": "Фильтры DLT (.dlf) — только для журналов DLT",
     "Dark": "Темная",
     "Dec|month": "дек",
-    "Details / Search Results": "Подробности / результаты поиска",
     "E&xit": "&Выход",
     "Edit Rule": "Изменить правило",
     "Edit this rule (or double-click it)": "Изменить правило (или дважды щелкните по нему)",
@@ -115,6 +114,7 @@
     "Search history (↓)": "История поиска (↓)",
     "Search in payload: | starts the next condition (Enter)": "Поиск в тексте сообщения: | начинает следующее условие (Enter)",
     "Searching... {percent}%": "Поиск... {percent}%",
+    "Search|noun": "Поиск",
     "Sep|month": "сен",
     "Settings": "Настройки",
     "Settings...": "Настройки...",
@@ -193,6 +193,7 @@
   },
   "obsolete": {
     "Decoding": "Декодирование",
+    "Details / Search Results": "Подробности / результаты поиска",
     "Load FIBEX": "Загрузить FIBEX"
   }
 }
