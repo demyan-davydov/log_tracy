@@ -97,6 +97,8 @@ export const cancelSearchView = docId => xcall("cancelSearchView", docId);
 export const startChipSearch = (docId, chips) => message(xcall("startChipSearch", docId, JSON.stringify(chips)));
 // The queries searched in the file, the latest first: [[chips]]
 export const searchHistory = docId => parsed(xcall("getSearchHistory", docId), []);
+// {name, path, format, bytes, records} of the document for its File Info page, null if it isn't open
+export const documentInfo = docId => parsed(xcall("getDocumentInfo", docId), null);
 // What is wrong with a regular expression, "" if nothing
 export const checkRegex = (pattern, matchCase) => message(xcall("checkRegex", pattern, matchCase));
 

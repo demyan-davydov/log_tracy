@@ -461,6 +461,26 @@ final class AppSession
         }
     }
 
+    /// What the File Info page shows of the document: {name, path, format,
+    /// bytes, records}, null if it isn't open
+    string documentInfoJson(DocumentId docId)
+    {
+        import std.path : baseName;
+
+        const path = sourcePathOf(docId);
+        if (!path.length)
+            return "null";
+        auto document = _workspace.doc(docId);
+        const format = document.format;
+        return JSONValue([
+            "name": JSONValue(path.baseName),
+            "path": JSONValue(path),
+            "format": JSONValue(format is null ? "" : format.name),
+            "records": JSONValue(document.messageCount),
+            "bytes": JSONValue(document.byteSize)
+        ]).toString();
+    }
+
     /// The queries searched in the file of the document, the latest first: [[chips]]
     string searchHistoryJson(DocumentId docId)
     {
@@ -728,6 +748,8 @@ version (unittest)
         FakeView view;
         LogFilter!wchar[] searches;
         bool cancelAsked;
+        size_t records; // what messageCount() tells
+        ulong bytes; // what byteSize() tells
         PlainTextFormat plainText; // filters need the columns of a format
         this() { bus = new EventBusAsync(); view = new FakeView(); plainText = new PlainTextFormat(); }
 
@@ -744,6 +766,8 @@ version (unittest)
         bool requestCancel() { cancelAsked = true; return true; }
         bool sourceLost() { return false; }
         FormatChoice formatChoice() const { return FormatChoice("plain-text", 0); }
+        size_t messageCount() nothrow @nogc { return records; }
+        ulong byteSize() nothrow @nogc { return bytes; }
     }
 
     /// A session over fake documents: a path with "missing" in it can't be opened
@@ -948,6 +972,28 @@ unittest
 }
 
 
+@("AppSession: the info of a document: its file, its size, its format and how many records it has")
+unittest
+{
+    auto f = Fixture.make();
+    const id = f.session.openFile("/logs/a.log").docId;
+    f.docOf("/logs/a.log").records = 1234;
+    f.docOf("/logs/a.log").bytes = 5_000_000_000;
+    const info = parseJSON(f.session.documentInfoJson(id));
+    assert(info["name"].str == "a.log");
+    assert(info["path"].str == "/logs/a.log");
+    assert(info["format"].str == "Plain text", info["format"].str);
+    assert(info["records"].integer == 1234);
+    assert(info["bytes"].integer == 5_000_000_000);
+}
+
+@("AppSession: a document that isn't open has no info")
+unittest
+{
+    auto f = Fixture.make();
+    assert(f.session.documentInfoJson(DocumentId.init) == "null");
+}
+
 @("AppSession: a search is started in the document and kept in the history of its file")
 unittest
 {
@@ -1078,6 +1124,8 @@ unittest
     assert(status == "ready", status);
     assert(session.doc(id).mainView.itemsCount == 2);
     assert(session.settings.recentFiles[0].format.id.length, "the format detected is remembered");
+    const info = parseJSON(session.documentInfoJson(id));
+    assert(info["records"].integer == 2 && info["bytes"].integer == "first line\nsecond line\n".length);
 }
 
 @("AppSession: the recent list remembers the format the document was opened with")

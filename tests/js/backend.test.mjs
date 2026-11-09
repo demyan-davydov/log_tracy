@@ -32,12 +32,15 @@ test("JSON results come parsed", () => {
     assert.deepEqual(callOf(() => backend.recentFiles(), `[{"path": "/a.log"}]`).value, [{ path: "/a.log" }]);
     assert.deepEqual(callOf(() => backend.filters(3), `{"sets": []}`).value, { sets: [] });
     assert.deepEqual(callOf(() => backend.searchHistory(3), `[[]]`).value, [[]]);
+    assert.deepEqual(callOf(() => backend.documentInfo(3), `{"records": 5}`),
+        { call: ["getDocumentInfo", 3], value: { records: 5 } });
 });
 
 test("no answer gives the value of nothing", () => {
     assert.deepEqual(callOf(() => backend.recentFiles(), "").value, []);
     assert.deepEqual(callOf(() => backend.columns(3), undefined).value, []);
     assert.equal(callOf(() => backend.filters(3), "").value, null);
+    assert.equal(callOf(() => backend.documentInfo(3), "null").value, null);
     assert.equal(callOf(() => backend.settings(), "").value, null);
     assert.equal(callOf(() => backend.workspaceInfo(), undefined).value, null);
 });

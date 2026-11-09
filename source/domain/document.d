@@ -63,6 +63,13 @@ interface Document
     //! way again; unset for a document without one
     FormatChoice formatChoice() const;
 
+    //! The number of records of the log found so far: grows while the file
+    //! loads, all of them once it is loaded
+    size_t messageCount() nothrow @nogc;
+
+    //! The size of the log in bytes; kept once its file is lost
+    ulong byteSize() nothrow @nogc;
+
     //! Columns of the log table, as declared by the format of the document
     final const(ColumnInfo)[] columns()
     {

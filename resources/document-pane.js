@@ -16,6 +16,7 @@ import { noTable, tableStep } from "pane-state.js";
 import { currentCatalog, tr } from "i18n/i18n.js";
 import { translateTree } from "i18n/dom.js";
 import { fileFilter, allFiles } from "file-types.js";
+import { fileInfoRows } from "file-info.js";
 
 // Texts of the main view statuses other than the table and the lost file
 const mainViewTexts = {
@@ -123,9 +124,9 @@ function renderPane(splitters) {
             </section>
 
             {/* The bottom panel: pages over a strip of their tabs, below them.
-                One page for now, the search */}
+                One page is shown, the one of the active tab (data-page) */}
             <section class="bottom-panel">
-                <div class="bottom-page search-page">
+                <div class="bottom-page search-page" data-page="search">
                     <div class="toolbar search-toolbar chip-search-toolbar">
                         <div class="chip-search chip-editor" tabindex="0"></div>
                         <button class="btn-chip-history" data-tr-title="Search history (↓)">▾</button>
@@ -156,9 +157,15 @@ function renderPane(splitters) {
                         </table>
                     </div>
                 </div>
+                <div class="bottom-page file-info-page" data-page="file-info" style="display:none;">
+                    <dl class="file-info"></dl>
+                </div>
                 <div class="bottom-tabs">
-                    <div class="bottom-tab active">
+                    <div class="bottom-tab active" data-page="search">
                         <span class="bottom-tab-name" data-tr="Search" data-tr-context="noun" />
+                    </div>
+                    <div class="bottom-tab" data-page="file-info">
+                        <span class="bottom-tab-name" data-tr="File Info" />
                     </div>
                 </div>
             </section>
@@ -225,6 +232,7 @@ export class DocumentPane {
         this.textsStale = false; // the language changed while hidden: rendered again on show
         this.mainStatus = null; // the view a status over the table shows, null: none
         this.searchStatus = null;
+        this.bottomPage = "search"; // the page of the bottom panel shown (data-page)
 
         container.append(renderPane(splitters));
         this.root = container.lastElementChild;
@@ -262,7 +270,10 @@ export class DocumentPane {
         if (searchView !== undefined) this.searchView = searchView;
         if (path !== undefined) this.path = path;
         if (!this.visible || !render) return;
-        if (mainView !== undefined) this.updateMainView();
+        if (mainView !== undefined) {
+            this.updateMainView();
+            this.updateFileInfo(); // the records found so far, while the file loads
+        }
         if (searchView !== undefined) this.updateSearchView();
     }
 
@@ -281,17 +292,19 @@ export class DocumentPane {
             showStatus(this.root.$(".main-status"), this.mainStatus, mainViewTexts, mainViewDetails);
         if (this.searchStatus)
             showStatus(this.root.$(".search-status"), this.searchStatus, searchViewTexts, searchViewDetails);
+        this.updateFileInfo();
     }
 
     // Shows the panel, up to date. `splitters` are the sizes of the panel
-    // shown before (colsState, rowsState: its frameset states, see hide()),
-    // null to keep its own.
+    // shown before (colsState, rowsState: its frameset states, see hide())
+    // and the page of its bottom panel (bottomPage), null to keep its own.
     show(splitters) {
         this.root.style.display = "";
         this.visible = true;
         if (splitters) {
             this.root.frameset.state = splitters.colsState;
             this.root.$("frameset").frameset.state = splitters.rowsState;
+            if (splitters.bottomPage) this.selectBottomPage(splitters.bottomPage); // refresh() fills it
         }
         if (this.textsStale) { // the language changed while hidden: refresh() renders it all
             this.textsStale = false;
@@ -299,13 +312,30 @@ export class DocumentPane {
         }
         this.refresh();
         // Keys go to this panel, not to the hidden one; not into a hidden table
-        const focus = isInside(this.lastFocus, this.root) ? this.lastFocus
-            : this.shows(this.mainList) ? this.mainList : this.root.$(".chip-search");
+        // or a page of the bottom panel hidden since
+        const focus = isInside(this.lastFocus, this.root) && !this.inHiddenPage(this.lastFocus)
+            ? this.lastFocus : this.defaultFocus();
         focus.state.focus = true;
     }
 
+    // What takes the keys when nothing in the panel has them: the main table
+    // if it shows its rows, otherwise the search editor if its page is shown,
+    // otherwise the status view covering the main table
+    defaultFocus() {
+        if (this.shows(this.mainList)) return this.mainList;
+        if (this.bottomPage === "search") return this.root.$(".chip-search");
+        return [this.root.$(".main-status"), this.root.$(".source-lost")]
+            .find(view => view.style.display === "block") ?? this.mainList;
+    }
+
+    // True if `element` is on a page of the bottom panel that isn't shown
+    inHiddenPage(element) {
+        return this.root.$$(".bottom-page").some(page => page.style.display === "none" && isInside(element, page));
+    }
+
     // Hides the panel. @returns the sizes of its splitters for the next panel
-    // shown: { cols, rows } (strings, for a new panel) and their frameset states
+    // shown: { cols, rows } (strings, for a new panel), their frameset states
+    // and the page of the bottom panel
     hide() {
         const focused = document.$(":focus");
         this.lastFocus = isInside(focused, this.root) ? focused : null;
@@ -314,6 +344,7 @@ export class DocumentPane {
             colsState: this.root.frameset?.state, rowsState: inner.frameset?.state,
             cols: this.root.frameset?.state?.join(",") ?? this.root.getAttribute("cols"),
             rows: inner.frameset?.state?.join(",") ?? inner.getAttribute("rows"),
+            bottomPage: this.bottomPage,
         };
         this.visible = false;
         this.root.style.display = "none";
@@ -336,7 +367,58 @@ export class DocumentPane {
         const changed = this.setColumns();
         this.updateMainView();
         this.updateSearchView();
+        this.updateFileInfo();
         if (changed) this.renderShownRows();
+    }
+
+    // ---- the bottom panel ----
+
+    // The page `name` of the bottom panel (its data-page), null if none
+    bottomPageElement(name) {
+        return this.root.$$(".bottom-page").find(page => page.getAttribute("data-page") === name) ?? null;
+    }
+
+    // Shows the page `name` of the bottom panel, up to date, and marks its tab
+    showBottomPage(name) {
+        if (!this.selectBottomPage(name)) return;
+        this.updateFileInfo();
+    }
+
+    // Shows the page `name` of the bottom panel as it is and marks its tab.
+    // The focus leaves a page hidden. @returns false if there is no such page
+    selectBottomPage(name) {
+        const page = this.bottomPageElement(name);
+        if (!page) return false;
+        for (const element of this.root.$$(".bottom-page, .bottom-tab")) {
+            const shown = element.getAttribute("data-page") === name;
+            if (element.classList.contains("bottom-tab")) element.classList.toggle("active", shown);
+            else element.style.display = shown ? "" : "none";
+        }
+        this.bottomPage = name;
+        if (this.visible && this.inHiddenPage(document.$(":focus"))) this.defaultFocus().state.focus = true;
+        return true;
+    }
+
+    // Fills the File Info page with what the backend knows of the document now,
+    // if it is shown. Only the texts that changed are set: the rows are not
+    // rebuilt by the progress of a load, a value being selected stays selected.
+    updateFileInfo() {
+        if (!this.visible || this.bottomPage !== "file-info") return;
+        const rows = fileInfoRows(backend.documentInfo(this.docId), this.mainView?.status);
+        const list = this.root.$(".file-info");
+        const cells = rows.flatMap(({ label, value }) => [label, value]);
+        if (list.children.length !== cells.length) {
+            list.innerHTML = "";
+            for (const { label, value } of rows) {
+                list.append(<dt>{label}</dt>);
+                list.append(<dd>{value}</dd>);
+            }
+            return;
+        }
+        cells.forEach((text, i) => {
+            const cell = list.children[i];
+            if (cell.innerText !== text) cell.innerText = text;
+        });
     }
 
     applyFontSize(percent) {
@@ -562,6 +644,8 @@ export class DocumentPane {
         const on = (event, selector, handler) => root.on(event, selector, handler);
         const setOf = (element) => parseInt(element.getAttribute("set-index"));
         const ruleOf = (element) => parseInt(element.getAttribute("rule-index"));
+
+        on("click", ".bottom-tab", (evt, tab) => this.showBottomPage(tab.getAttribute("data-page")));
 
         on("click", ".btn-chip-search", () => {
             this.chipEditor.closeChip();

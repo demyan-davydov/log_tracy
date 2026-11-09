@@ -18,6 +18,7 @@ private enum string[] builtIn = [
     "drag-order.js",
     "drag-strip.js",
     "edit-history.js",
+    "file-info.js",
     "file-types.js",
     "i18n/dom.js",
     "i18n/i18n.js",

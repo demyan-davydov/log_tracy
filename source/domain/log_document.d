@@ -149,6 +149,16 @@ class LogDocument : Document
         return _index.format;
     }
 
+    override size_t messageCount() nothrow @nogc
+    {
+        return _index.messageCount;
+    }
+
+    override ulong byteSize() nothrow @nogc
+    {
+        return _index.byteSize;
+    }
+
     /*override string sourcePath() const
     {
         return _sourcePath;
