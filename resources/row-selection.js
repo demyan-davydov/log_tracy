@@ -54,9 +54,16 @@ export class RowSelection {
     }
 
     // The keyboard moves to the row `index`: only it is selected
+    // @returns whether the selection changed: not by a key at the edge of the
+    // log, where the row is already current and the only one selected (the
+    // other table isn't pulled back to it)
     moveTo(index) {
+        const [only, ...more] = this.ranges;
+        const unchanged = this.current === index && more.length === 0
+            && only?.[0] === index && only?.[1] === index;
         this._only(index);
         this.current = index;
+        return !unchanged;
     }
 
     // The mouse is pressed on a row (after click()) and may drag: dragTo()
@@ -207,8 +214,8 @@ export function followedRow(selection) {
 }
 
 // Follows a change of the current row of a table: a click at once, a drag or
-// the keys once the row rests for followDelay. Only the last change counts: a
-// newer one, of either table, drops the one waiting.
+// the keys (`delayed`) once the row rests for followDelay. Only the last change
+// counts: a newer one, of either table, drops the one waiting.
 // follow(list) does it; timers: { set(fn, ms) -> id, clear(id) } (by hand in tests)
 export class SelectionFollower {
     constructor(follow, timers = { set: (fn, ms) => setTimeout(fn, ms), clear: id => clearTimeout(id) }) {
@@ -217,10 +224,9 @@ export class SelectionFollower {
         this.timer = null;
     }
 
-    // cause: "click", "drag" or "keys"
-    changed(list, cause) {
+    changed(list, delayed) {
         this.cancel();
-        if (cause === "click") {
+        if (!delayed) {
             this.follow(list);
             return;
         }
@@ -242,17 +248,4 @@ export class SelectionFollower {
 // Shift or Cmd it is about the rows.
 export function selectsOnPress({ shift, toggle }, inSelectable) {
     return !inSelectable || shift || toggle;
-}
-
-// What tells whether a press or a key changed the selection of a table
-// (selectionMoved): its current row and how many rows are selected
-export function selectionMark(selection) {
-    return { current: selection.current, count: selection.count };
-}
-
-// Whether the selection moved since `before` (selectionMark): a click on the
-// row that is already the only one selected, or a key at the edge of the log,
-// changes nothing, and the other table is not pulled back to it
-export function selectionMoved(before, selection) {
-    return before.current !== selection.current || before.count !== selection.count;
 }

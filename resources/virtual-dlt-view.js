@@ -4,7 +4,7 @@ import * as backend from "backend.js";
 import * as platform from "platform.js";
 import { cellClass, cellText, columnClass, itemText, rowLayout, matchPieces } from "cell-format.js";
 import { matchColorClass } from "match-colors.js";
-import { RowSelection, selectedText, autoScrollSpeed, selectsOnPress, selectionMark, selectionMoved } from "row-selection.js";
+import { RowSelection, selectedText, autoScrollSpeed, selectsOnPress } from "row-selection.js";
 import { anchorEdit } from "pane-state.js";
 
 // The header row of a log table for `columns`: table.css gives the columns
@@ -100,12 +100,12 @@ export class VirtualDltTBody extends VirtualSelect {
         return this._selection ??= new RowSelection();
     }
 
-    // Tells onCurrentChanged(cause) that the user changed the current row, cause
-    // "click", "drag" or "keys" (the panel sets it, as docId: no field
-    // initializer, which could run after it; unset: nobody is told). Not told
-    // when the script moves it (showRow, resetSelection).
-    currentChanged(cause) {
-        this.onCurrentChanged?.(cause);
+    // Tells the panel that the user chose a row (a "rowchosen" event, bubbling;
+    // a click on the row already selected too): a click at once, a drag or a
+    // key `delayed`, followed once the row rests. Not when the script moves the
+    // selection (showRow, resetSelection).
+    rowChosen(delayed) {
+        this.post(new Event("rowchosen", { bubbles: true, data: { delayed } }));
     }
 
     // Nothing is selected or current any more: the view shows other rows now
@@ -217,13 +217,12 @@ export class VirtualDltTBody extends VirtualSelect {
     }
 
     // Selects by a press on the row `viewIndex` (RowSelection.click) and tells
-    // the panel if that changed the selection: a click on the row already the
-    // only one selected doesn't pull the other table back to it
+    // the panel, even if the row was selected already: a click shows it in the
+    // other table again, which may have been scrolled away from it
     selectByPress(viewIndex, modifiers = {}) {
-        const before = selectionMark(this.selection);
         this.selection.click(viewIndex, modifiers);
         this.updateRowStates();
-        if (selectionMoved(before, this.selection)) this.currentChanged("click");
+        this.rowChosen(false);
     }
 
     // The view index of the row at the window coordinate `y`, null if none.
@@ -295,16 +294,18 @@ export class VirtualDltTBody extends VirtualSelect {
         return Math.floor(this.getBoundingClientRect().height / rowHeight);
     }
 
-    // Moves the current row (and the selection with it) to `index`, scrolling
-    // it into view
+    // A key moves the current row (and the selection with it) to `index`,
+    // scrolling it into view; the panel is told unless nothing changed (a key
+    // at the edge of the log)
     moveCurrentTo(index, navigation) {
         const total = this.totalItems();
         if (total === 0) return true;
         index = Math.max(0, Math.min(total - 1, index));
-        this.selection.moveTo(index);
+        const changed = this.selection.moveTo(index);
         if (navigation) this.vlist.navigateTo(navigation);
         else this.vlist.advanceTo(index);
         this.updateRowStates();
+        if (changed) this.rowChosen(true);
         return true;
     }
 
@@ -318,15 +319,6 @@ export class VirtualDltTBody extends VirtualSelect {
             this.componentUpdate();
         }
         this.updateRowStates();
-    }
-
-    // Moves the current row by a key; a key at the edge of the log changes
-    // nothing, and the panel isn't told
-    moveByKeys(index, navigation) {
-        const before = selectionMark(this.selection);
-        this.moveCurrentTo(index, navigation);
-        if (selectionMoved(before, this.selection)) this.currentChanged("keys");
-        return true;
     }
 
     // [first, last] rows wholly on screen, null if none: a row cut by an edge
@@ -350,10 +342,10 @@ export class VirtualDltTBody extends VirtualSelect {
         // from the top of the log
         const range = current === null ? this.visibleRange() : null;
         switch (evt.code) {
-            case "ArrowDown": return this.moveByKeys(current === null ? (range?.[0] ?? 0) : current + 1);
-            case "ArrowUp": return this.moveByKeys(current === null ? (range?.[1] ?? 0) : current - 1);
-            case "Home": return this.moveByKeys(0, "start");
-            case "End": return this.moveByKeys(this.totalItems() - 1, "end");
+            case "ArrowDown": return this.moveCurrentTo(current === null ? (range?.[0] ?? 0) : current + 1);
+            case "ArrowUp": return this.moveCurrentTo(current === null ? (range?.[1] ?? 0) : current - 1);
+            case "Home": return this.moveCurrentTo(0, "start");
+            case "End": return this.moveCurrentTo(this.totalItems() - 1, "end");
             case "Escape":
                 if (this.selection.count === 0) return false;
                 this.selection.clear();
@@ -435,7 +427,7 @@ export function moveRowDrag(evt) {
     if (viewIndex === null || viewIndex === list.selection.current) return;
     list.selection.dragTo(viewIndex);
     list.updateRowStates();
-    list.currentChanged("drag");
+    list.rowChosen(true);
 }
 
 // True if the mouse event is over the window's client area
@@ -474,7 +466,7 @@ function autoScrollRowDrag() {
     if (!range) return;
     list.selection.dragTo(up ? range[0] : range[1]);
     list.updateRowStates();
-    list.currentChanged("drag");
+    list.rowChosen(true);
 }
 
 // The rows of the main view of the document `docId` (set by the script; null:

@@ -2,7 +2,7 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { RowSelection, selectedText, scrollTarget, autoScrollSpeed, autoScroll, followedRow, followDelay, SelectionFollower, selectsOnPress, selectionMark, selectionMoved } from "../../resources/row-selection.js";
+import { RowSelection, selectedText, scrollTarget, autoScrollSpeed, autoScroll, followedRow, followDelay, SelectionFollower, selectsOnPress } from "../../resources/row-selection.js";
 
 const click = (selection, index, modifiers = {}) => selection.click(index, modifiers);
 
@@ -245,7 +245,7 @@ test("SelectionFollower: a click is followed at once", () => {
     const timers = fakeTimers();
     const followed = [];
     const follower = new SelectionFollower(list => followed.push(list), timers);
-    follower.changed("main", "click");
+    follower.changed("main", false);
     assert.deepEqual(followed, ["main"]);
     assert.equal(timers.pending().length, 0);
 });
@@ -254,9 +254,9 @@ test("SelectionFollower: a drag or the keys are followed once the row rests", ()
     const timers = fakeTimers();
     const followed = [];
     const follower = new SelectionFollower(list => followed.push(list), timers);
-    follower.changed("main", "drag");
-    follower.changed("main", "drag");
-    follower.changed("main", "keys");
+    follower.changed("main", true);
+    follower.changed("main", true);
+    follower.changed("main", true);
     assert.deepEqual(followed, [], "not while it moves");
     assert.equal(timers.pending().length, 1, "one timer, started anew by every change");
     assert.equal(timers.pending()[0].ms, followDelay);
@@ -268,11 +268,11 @@ test("SelectionFollower: the last change wins, a click drops the waiting one, ca
     const timers = fakeTimers();
     const followed = [];
     const follower = new SelectionFollower(list => followed.push(list), timers);
-    follower.changed("main", "drag");
-    follower.changed("search", "click");
+    follower.changed("main", true);
+    follower.changed("search", false);
     timers.fire();
     assert.deepEqual(followed, ["search"], "the drag of the other table is not followed after");
-    follower.changed("main", "keys");
+    follower.changed("main", true);
     follower.cancel();
     timers.fire();
     assert.deepEqual(followed, ["search"]);
@@ -285,18 +285,13 @@ test("selectsOnPress: a plain press in a Payload waits for the release, the othe
     assert.equal(selectsOnPress({ shift: false, toggle: true }, true), true, "Cmd adds a row");
 });
 
-test("selectionMoved: a change the other table follows, not a press that changed nothing", () => {
+test("moveTo tells whether the selection changed", () => {
     const selection = new RowSelection();
-    let before = selectionMark(selection);
-    selection.click(4);
-    assert.equal(selectionMoved(before, selection), true, "a new row");
-    before = selectionMark(selection);
-    selection.click(4);
-    assert.equal(selectionMoved(before, selection), false, "the same row clicked again");
-    selection.moveTo(4);
-    assert.equal(selectionMoved(before, selection), false, "a key at the edge of the log");
-    selection.click(6, { shift: true });
-    before = selectionMark(selection);
-    selection.click(6);
-    assert.equal(selectionMoved(before, selection), true, "a range narrowed to its current row");
+    assert.equal(selection.moveTo(4), true, "a new row");
+    assert.equal(selection.moveTo(4), false, "a key at the edge of the log");
+    assert.equal(selection.moveTo(5), true, "a key to the next row");
+    selection.click(7, { shift: true });
+    assert.equal(selection.moveTo(7), true, "a range narrowed to its current row");
+    selection.clear(); // Escape: the current row stays, nothing selected
+    assert.equal(selection.moveTo(7), true, "the current row selected again");
 });

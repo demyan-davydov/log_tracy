@@ -35,8 +35,6 @@ class LogDocument : Document
     private FormatChoice _formatChoice;
 
     private EventBusAsync _events; // must outlive _index: its worker publishes here
-    // The latest search completed (no search yet: an empty result): a new
-    // filter repeats it. False while it runs, after it was cancelled or failed.
     private LogIndex _index;
 
     //! A filter request waiting for the background slot. Only the latest

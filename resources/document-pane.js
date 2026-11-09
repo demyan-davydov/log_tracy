@@ -256,10 +256,9 @@ export class DocumentPane {
         this.searchList = this.searchTable.$("tbody");
         this.mainList.docId = docId;
         this.searchList.docId = docId;
-        // A row the user selects in one table is shown in the other (followSelection)
+        // A row the user selects in one table is shown in the other (followSelection,
+        // the "rowchosen" events of the tables)
         this.follower = new SelectionFollower(list => this.followSelection(list));
-        for (const list of [this.mainList, this.searchList])
-            list.onCurrentChanged = cause => this.follower.changed(list, cause);
         this.applyRowLook();
 
         this.chipEditor = new SearchEditor(this.root.$(".chip-search"), {
@@ -782,6 +781,11 @@ export class DocumentPane {
                 }
             }
             return true; // don't change the row selection
+        });
+
+        // Posted: it may come after hide() cancelled the follower, not into a hidden panel
+        on("rowchosen", "table.log-table > tbody", (evt, list) => {
+            if (this.visible && !this.destroyed) this.follower.changed(list, evt.data?.delayed === true);
         });
 
         on("click", ".btn-lost-close", () => this.host.closeTab(this.docId));
