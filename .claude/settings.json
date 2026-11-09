@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node --test tests/js)",
+      "Bash(dub test --compiler=ldc2)",
+      "Bash(node scripts/build.mjs)",
+      "Bash(dub build --compiler=ldc2)",
+      "Bash(node scripts/build.mjs test)",
+      "Bash(dub test)",
+      "Bash(dub build)",
+      "Bash(node scripts/build.mjs check-windows)",
+      "Bash(dub describe *)",
+      "Bash(git check-ignore *)",
+      "mcp__terminal__read_terminal"
+    ]
+  }
+}
