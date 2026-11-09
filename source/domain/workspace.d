@@ -93,6 +93,16 @@ private class NullDocument : Document
         return FormatChoice.init;
     }
 
+    override size_t messageCount() nothrow @nogc
+    {
+        return 0;
+    }
+
+    override ulong byteSize() nothrow @nogc
+    {
+        return 0;
+    }
+
     override void applyViewFilter(LogFilter!wchar filter)
     {
     }

@@ -284,6 +284,10 @@ class MainWindow : SciterWindow
             // startChipSearch(docId, chipsJson) -> error message, "" on success
             answer(_session.startChipSearch(docParam(), param!string(1)));
             return true;
+        case "getDocumentInfo":
+            // getDocumentInfo(docId) -> {name, path, format, bytes, records}, null if not open
+            answer(_session.documentInfoJson(docParam()));
+            return true;
         case "getSearchHistory":
             // getSearchHistory(docId) -> [[chips]] of the document, the latest first
             answer(_session.searchHistoryJson(docParam()));

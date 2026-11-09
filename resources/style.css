@@ -638,6 +638,30 @@ frameset {
     font-size: 9pt;
 }
 
+/* The File Info page: a label and its value on each row */
+.file-info {
+    flow: row(dt, dd);
+    flow-columns: max-content *;
+    size: *;
+    margin: 0;
+    padding: 6pt 9pt;
+    overflow: auto;
+}
+
+.file-info dt {
+    padding: 2pt 12pt 2pt 0;
+    color: var(--text-label);
+}
+
+.file-info dd {
+    margin: 0;
+    padding: 2pt 0;
+    color: var(--text-main);
+    overflow-wrap: break-word; /* a long path wraps instead of a scrollbar */
+    behavior: selectable; /* the values are selected and copied */
+    cursor: text;
+}
+
 /* Settings Dialog */
 main {
     padding: 20dip;

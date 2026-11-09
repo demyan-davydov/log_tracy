@@ -225,6 +225,13 @@ struct LogIndex
     /// The error of an operation the loss of the file fails
     static UiText sourceLostText() @safe => uiText("the file is no longer available");
 
+    //! @return the size of the log in bytes, as it was mapped: kept once
+    //! its file is lost
+    ulong byteSize() const nothrow @nogc
+    {
+        return _source.data.length;
+    }
+
     //! @return the number of messages in the file (the offset index)
     size_t messageCount() nothrow @nogc
     {

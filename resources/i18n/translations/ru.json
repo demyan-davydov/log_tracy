@@ -49,6 +49,7 @@
     "Failed to load the file": "Не удалось загрузить файл",
     "Failed to open: {reason}": "Не удалось открыть: {reason}",
     "Feb|month": "фев",
+    "File Info": "О файле",
     "File not found": "Файл не найден",
     "Filter Files": "Файлы фильтров",
     "Filter Rule": "Правило фильтра",
@@ -96,6 +97,7 @@
     "Open a file": "Откройте файл",
     "Opened": "Открыт",
     "Other conditions, kept as they are": "Другие условия, сохраняются как есть",
+    "Path": "Путь",
     "Quit": "Выход",
     "Recent files": "Недавние файлы",
     "Regular expression": "Регулярное выражение",
@@ -120,6 +122,7 @@
     "Settings...": "Настройки...",
     "Show in Folder": "Показать в папке",
     "Shows the records it matches": "Показывает подходящие записи",
+    "Size": "Размер",
     "Still unavailable: {error}": "По-прежнему недоступен: {error}",
     "System": "Системный",
     "Text Logs": "Текстовые журналы",
@@ -172,6 +175,16 @@
     "{column}: unknown value \"{value}\", expected one of {values}": "{column}: неизвестное значение «{value}», ожидается одно из: {values}",
     "{column}: {reason}": "{column}: {reason}",
     "{condition} (any case)": "{condition} (без учета регистра)",
+    "{count} byte": {
+      "one": "{count} байт",
+      "few": "{count} байта",
+      "many": "{count} байт"
+    },
+    "{count} record": {
+      "one": "{count} запись",
+      "few": "{count} записи",
+      "many": "{count} записей"
+    },
     "{day} {month} {year}, {time}": "{day} {month} {year}, {time}",
     "{day} {month}, {time}": "{day} {month}, {time}",
     "{file} is loaded already: remove it to load it again": "{file} уже загружен: удалите его, чтобы загрузить снова",
@@ -189,7 +202,13 @@
       "many": "{n} минут назад"
     },
     "{open} a log": "{open} журнал",
-    "{open} a log with {shortcut}": "{open} журнал ({shortcut})"
+    "{open} a log with {shortcut}": "{open} журнал ({shortcut})",
+    "{records}, loading...": "{records}, загрузка...",
+    "{records}, not loaded completely": "{records}, загружен не полностью",
+    "{size} GB": "{size} ГБ",
+    "{size} KB": "{size} КБ",
+    "{size} MB": "{size} МБ",
+    "{size} TB": "{size} ТБ"
   },
   "obsolete": {
     "Decoding": "Декодирование",
