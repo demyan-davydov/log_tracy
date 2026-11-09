@@ -43,6 +43,9 @@ node --test tests/js                     # JS unit tests only (pure modules such
   - `settings.json` sits next to the executable and is rewritten on exit: every build folder
     has its own. Run a copy of the binary from another folder to keep the developer's own
     settings.
+  - A release build runs one copy per `settings.json` (`utils/single_instance`, a lock on
+    `settings.lock` next to it): a second one brings the first forward and exits. Debug builds
+    run side by side.
   - The script's `console.log` goes to the app's stdout as `info [script]: ...` lines (errors as
     `error [script]: ...`), next to the backend's `writeln`.
 

@@ -4,6 +4,7 @@ import ui.app_resources : appResource, appResourceUrl;
 import ui.main_window;
 import ui.app_settings;
 import ui.main_menu_loader : forgetAppMenuWindow, loadAppMenu;
+import utils.single_instance : SingleInstance;
 
 import sciter.capi.def;
 
@@ -44,6 +45,26 @@ int main()
 	enableSciterDebugOutput();
 
 	writeln("DLT Explorer starting...");
+
+	// A release build runs one copy per settings.json: two would overwrite each other's
+	// settings. A second copy brings the first one forward and exits. Debug builds run side by
+	// side, for debugging.
+	debug {} else
+	{
+		SingleInstance instance;
+		try
+			instance = new SingleInstance(instanceLockPath());
+		catch (Exception e)
+			writeln("Can't check for a running copy: ", e.msg); // started anyway
+		scope (exit) if (instance) instance.release(); // also keeps it alive till the end
+
+		if (instance && !instance.isFirst)
+		{
+			writeln("DLT Explorer is running already (process ", instance.firstPid, ")");
+			instance.activateFirst();
+			return 0;
+		}
+	}
 
 	sciterApplication().start();
 

@@ -36,24 +36,11 @@ version (OSX):
 import std.string : toStringz, fromStringz;
 import std.utf : toUTF16;
 
-extern (C) void* objc_getClass(const char* name);
-extern (C) void* sel_registerName(const char* name);
-extern (C) void* objc_msgSend(void* self, void* op, ...);
+import utils.objc : cls, msg, sel_registerName;
+
 extern (C) bool class_addMethod(void* cls, void* name, void* imp, const char* types);
 extern (C) void* objc_allocateClassPair(void* superclass, const char* name, size_t extraBytes);
 extern (C) void objc_registerClassPair(void* cls);
-
-/// Calls objc_msgSend through an exact prototype derived from the argument types.
-private R msg(R = void*, Args...)(void* obj, const(char)* sel, Args args)
-{
-    alias Fn = extern (C) R function(void*, void*, Args) @trusted;
-    return (cast(Fn)&objc_msgSend)(obj, sel_registerName(sel), args);
-}
-
-private void* cls(const(char)* name)
-{
-    return objc_getClass(name);
-}
 
 private void* alloc(const(char)* className)
 {
