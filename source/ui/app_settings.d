@@ -252,6 +252,21 @@ static string defaultSettingsPath()
     return buildPath(exeDir, "settings.json");
 }
 
+/// The lock file of the running copy (utils/single_instance), next to the settings it guards:
+/// copies in other folders have settings of their own and run side by side.
+static string instanceLockPath(string settingsPath = defaultSettingsPath())
+{
+    import std.path : dirName;
+
+    return buildPath(dirName(settingsPath), "settings.lock");
+}
+
+@("instanceLockPath: next to the settings")
+unittest
+{
+    assert(instanceLockPath(buildPath("a", "b", "settings.json")) == buildPath("a", "b", "settings.lock"));
+}
+
 static JSONValue toJSON(in AppSettings settings)
 {
     JSONValue j;
