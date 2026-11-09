@@ -23,6 +23,9 @@ test("a call is the xcall of its name, the document first", () => {
         { call: ["setAnchor", 3, 42, true], value: true });
     assert.deepEqual(callOf(() => backend.mainViewItem(3, 7), null).call, ["getMainViewItem", 3, 7]);
     assert.deepEqual(callOf(() => backend.reorderTab(5, 0)).call, ["reorderTab", 5, 0]);
+    assert.deepEqual(callOf(() => backend.removeRecentFile("/a.log"), true),
+        { call: ["removeRecentFile", "/a.log"], value: true });
+    assert.deepEqual(callOf(() => backend.showInFolder("/a.log"), ""), { call: ["showInFolder", "/a.log"], value: "" });
 });
 
 test("JSON results come parsed", () => {

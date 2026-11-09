@@ -171,6 +171,14 @@ class MainWindow : SciterWindow
         case "getRecentFiles":
             answer(_session.recentFilesJson());
             return true;
+        case "removeRecentFile":
+            // removeRecentFile(path) -> whether it was removed (not an open file)
+            resultView = _session.removeRecentFile(param!string(0));
+            return true;
+        case "showInFolder":
+            // showInFolder(path) -> "" or why the file manager can't be started
+            answer(_session.showInFolder(param!string(0)));
+            return true;
         case "openFile":
             // openFile(path) -> the id of the new document, or why the file
             // can't be opened: {"path" (as in the recent list), "error"}

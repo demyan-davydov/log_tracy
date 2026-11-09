@@ -27,6 +27,13 @@ string recentFilePath(string path)
     return buildNormalizedPath(absolutePath(path));
 }
 
+/// Whether two paths name the same file of the recent list: compared
+/// normalized, ignoring case where the OS does
+bool sameRecentFile(string a, string b)
+{
+    return filenameCmp(recentFilePath(a), recentFilePath(b)) == 0;
+}
+
 /// A filter set of a log: a copy of the rules of the .dlf it was loaded
 /// from (or made from scratch), with the edits and switches made since
 struct SavedFilter
@@ -214,9 +221,16 @@ RecentFile[] withFilesStamped(const RecentFile[] list, const string[] paths, lon
 {
     RecentFile[] result = copyOf(list);
     foreach (ref file; result)
-        if (paths.canFind!(p => filenameCmp(recentFilePath(p), file.path) == 0))
+        if (paths.canFind!(p => sameRecentFile(p, file.path)))
             file.lastUsed = now;
     return result;
+}
+
+/// Returns the recent list without `path` (spelled in any way), and so
+/// without what was kept for it: its format, filter sets, search history
+RecentFile[] withoutRecentFile(const RecentFile[] list, string path)
+{
+    return copyOf(list).filter!(f => !sameRecentFile(f.path, path)).array;
 }
 
 /// Returns: the format `path` was opened with last time, unset if it isn't in the list
@@ -403,6 +417,19 @@ version (unittest)
     {
         return list.map!(f => f.path).array;
     }
+}
+
+/// A file removed from the list takes what was kept for it along
+unittest
+{
+    auto list = [RecentFile("/a.dlt", FormatChoice("dlt"), 10), RecentFile("/b.dlt", FormatChoice("logcat"), 20),
+        RecentFile("/c.dlt")];
+    list[1].filters = [SavedFilter("f")];
+    const removed = withoutRecentFile(list, "/logs/../b.dlt");
+    assert(removed.pathsOf == ["/a.dlt", "/c.dlt"], "the same file spelled otherwise");
+    assert(removed[0] == list[0] && removed[1] == list[2], "the others as they were");
+    assert(savedFilters(removed, "/b.dlt").length == 0);
+    assert(withoutRecentFile(list, "/other.dlt").pathsOf == ["/a.dlt", "/b.dlt", "/c.dlt"], "not in the list");
 }
 
 /// Opening a file puts it on top of the recent list, without duplicates

@@ -44,6 +44,11 @@ export const setColumnLayouts = layouts => xcall("setColumnLayouts", JSON.string
 
 // The recent files, the newest first: [{ path, exists, opened, format, lastUsed }]
 export const recentFiles = () => parsed(xcall("getRecentFiles"), []);
+// Removes a file from the recent files, with its saved filters and searches:
+// whether it was removed (an open file isn't)
+export const removeRecentFile = path => xcall("removeRecentFile", path) === true;
+// Shows the file in the file manager of the system: why it can't, "" if shown
+export const showInFolder = path => message(xcall("showInFolder", path));
 // Opens a file: { docId } of its document, or { failure: { path (as in the
 // recent files), error } } if it can't be opened
 export function openFile(path) {
