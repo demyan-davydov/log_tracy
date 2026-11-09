@@ -529,7 +529,7 @@ unittest
     assert(loadSettings(path).recentFiles == settings.recentFiles);
 
     std.file.write(path, `{"recentFiles": [{"path": "/a.dlt", "searches": [5, [{"text": 1}],
-        [{"text": "ok", "isRegex": false, "ignoreCase": false}], [], "x"]}]}`);
+        [{"text": "ok", "isRegex": false, "matchCase": true}], [], "x"]}]}`);
     assert(loadSettings(path).recentFiles[0].searches == [[SearchChip("ok")]]);
 }
 

@@ -7,8 +7,8 @@
 export const queryPrefix = "dlt-explorer-search:";
 
 // @returns a chip; a new one is text and ignores case
-export function makeChip(text, { isRegex = false, ignoreCase = true } = {}) {
-    return { text, isRegex, ignoreCase };
+export function makeChip(text, { isRegex = false, matchCase = false } = {}) {
+    return { text, isRegex, matchCase };
 }
 
 // A text in quotes escapes '"' and '\'; a regex between slashes escapes a bare '/'
@@ -28,7 +28,7 @@ function formatChip(chip) {
     } else {
         body = `"${chip.text.replace(/[\\"]/g, c => "\\" + c)}"`;
     }
-    return chip.ignoreCase ? body + "i" : body;
+    return chip.matchCase ? body : body + "i";
 }
 
 // @returns the text form of the chips, starting with queryPrefix
@@ -58,9 +58,9 @@ function parseChip(text, pos) {
             return null;
     }
     i++;
-    const ignoreCase = text[i] === "i";
-    if (ignoreCase) i++;
-    return { chip: makeChip(body, { isRegex, ignoreCase }), end: i };
+    const matchCase = text[i] !== "i";
+    if (!matchCase) i++;
+    return { chip: makeChip(body, { isRegex, matchCase }), end: i };
 }
 
 // @returns the chips of a text form, or null if `text` is not a query

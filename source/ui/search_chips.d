@@ -1,7 +1,7 @@
 module ui.search_chips;
 
 //! The chips of a search query as the search editor of the script sends them:
-//! a JSON array of {"text", "isRegex", "ignoreCase"} (resources/search-query.js).
+//! a JSON array of {"text", "isRegex", "matchCase"} (resources/search-query.js).
 //! The same form keeps the queries of a file in the settings (its search history).
 //! Apart from the window so it can be tested.
 
@@ -25,7 +25,7 @@ SearchChip[] chipsFromJson(const JSONValue json)
     {
         if (item.type != JSONType.object)
             throw new JSONException("a chip is not an object");
-        chips ~= SearchChip(item["text"].str, flag(item, "isRegex"), flag(item, "ignoreCase"));
+        chips ~= SearchChip(item["text"].str, flag(item, "isRegex"), !flag(item, "matchCase"));
     }
     return chips;
 }
@@ -36,7 +36,7 @@ JSONValue chipsToJson(const(SearchChip)[] chips)
     JSONValue[] items;
     foreach (const ref chip; chips)
         items ~= JSONValue(["text": JSONValue(chip.text), "isRegex": JSONValue(chip.isRegex),
-            "ignoreCase": JSONValue(chip.ignoreCase)]);
+            "matchCase": JSONValue(!chip.ignoreCase)]);
     return JSONValue(items);
 }
 
@@ -48,8 +48,8 @@ private bool flag(const ref JSONValue chip, string name)
 @("chipsFromJson: the chips in their order, with their type and case")
 unittest
 {
-    const chips = chipsFromJson(`[{"text": "a|b", "isRegex": false, "ignoreCase": true},
-        {"text": "time(out|d)", "isRegex": true, "ignoreCase": false}, {"text": " ", "isRegex": false, "ignoreCase": false}]`);
+    const chips = chipsFromJson(`[{"text": "a|b", "isRegex": false, "matchCase": false},
+        {"text": "time(out|d)", "isRegex": true, "matchCase": true}, {"text": " ", "isRegex": false, "matchCase": true}]`);
     assert(chips == [SearchChip("a|b", false, true), SearchChip("time(out|d)", true, false), SearchChip(" ")]);
     assert(chipsFromJson(`[]`).length == 0);
 }
@@ -60,9 +60,10 @@ unittest
     import std.exception : assertThrown;
 
     assertThrown(chipsFromJson(`{"text": "a"}`), "not an array");
-    assertThrown(chipsFromJson(`[{"isRegex": false, "ignoreCase": false}]`), "no text");
-    assertThrown(chipsFromJson(`[{"text": 1, "isRegex": false, "ignoreCase": false}]`), "a text that isn't a string");
-    assertThrown(chipsFromJson(`[{"text": "a", "isRegex": "yes", "ignoreCase": false}]`), "a flag that isn't a boolean");
+    assertThrown(chipsFromJson(`[{"isRegex": false, "matchCase": true}]`), "no text");
+    assertThrown(chipsFromJson(`[{"text": 1, "isRegex": false, "matchCase": true}]`), "a text that isn't a string");
+    assertThrown(chipsFromJson(`[{"text": "a", "isRegex": "yes", "matchCase": true}]`), "a flag that isn't a boolean");
+    assertThrown(chipsFromJson(`[{"text": "a", "isRegex": false, "ignoreCase": true}]`), "no matchCase");
     assertThrown(chipsFromJson(`[`), "not JSON");
 }
 
@@ -72,4 +73,5 @@ unittest
     const chips = [SearchChip("a|b", false, true), SearchChip(`x\d+`, true, false)];
     assert(chipsFromJson(chipsToJson(chips)) == chips);
     assert(chipsToJson(chips)[0]["text"].str == "a|b");
+    assert(!chipsToJson(chips)[0]["matchCase"].boolean && chipsToJson(chips)[1]["matchCase"].boolean);
 }

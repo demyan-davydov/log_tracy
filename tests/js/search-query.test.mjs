@@ -4,15 +4,15 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { queryPrefix, makeChip, formatQuery, parseQuery, typeBar, pastedText, pasteLimit } from "../../resources/search-query.js";
 
-const text = (t, ignoreCase = false) => makeChip(t, { ignoreCase });
-const regex = (t, ignoreCase = false) => makeChip(t, { isRegex: true, ignoreCase });
+const text = (t, matchCase = true) => makeChip(t, { matchCase });
+const regex = (t, matchCase = true) => makeChip(t, { isRegex: true, matchCase });
 
 test("a new chip is text and ignores case", () => {
-    assert.deepEqual(makeChip("error"), { text: "error", isRegex: false, ignoreCase: true });
+    assert.deepEqual(makeChip("error"), { text: "error", isRegex: false, matchCase: false });
 });
 
 test("formatQuery: chips after the prefix, joined by ' | '", () => {
-    assert.equal(formatQuery([text("connection lost"), regex("time(out|d)", true), text("Ok", true)]),
+    assert.equal(formatQuery([text("connection lost"), regex("time(out|d)", false), text("Ok", false)]),
         `${queryPrefix} "connection lost" | /time(out|d)/i | "Ok"i`);
     assert.equal(formatQuery([]), queryPrefix);
 });
@@ -28,8 +28,8 @@ test("parseQuery reverses formatQuery", () => {
     const queries = [
         [],
         [text("error")],
-        [text(" spaced "), text("", true)],
-        [text(`a"b\\c|d`), regex("x|y/z", true), regex("\\d+\\.\\s")],
+        [text(" spaced "), text("", false)],
+        [text(`a"b\\c|d`), regex("x|y/z", false), regex("\\d+\\.\\s")],
         [regex("[/\\\\]"), text("/not a regex/")],
     ];
     for (const chips of queries)
@@ -41,7 +41,7 @@ test("parseQuery: an escaped slash of a regex is read as a slash", () => {
 });
 
 test("parseQuery: spaces around the chips and the separators are optional", () => {
-    assert.deepEqual(parseQuery(`${queryPrefix}"a"|/b/i   |  "c"  `), [text("a"), regex("b", true), text("c")]);
+    assert.deepEqual(parseQuery(`${queryPrefix}"a"|/b/i   |  "c"  `), [text("a"), regex("b", false), text("c")]);
     assert.deepEqual(parseQuery(`  ${queryPrefix}  `), []);
 });
 
@@ -68,9 +68,9 @@ test("parseQuery: a malformed query is not a query", () => {
 });
 
 test("typeBar: '|' in a text chip closes it and starts the next one", () => {
-    assert.deepEqual(typeBar(text("abc", true), 3), { split: [text("abc", true), makeChip("")] },
+    assert.deepEqual(typeBar(text("abc", false), 3), { split: [text("abc", false), makeChip("")] },
         "at the end the next chip is a new one");
-    assert.deepEqual(typeBar(text("abcdef", true), 3), { split: [text("abc", true), text("def", true)] },
+    assert.deepEqual(typeBar(text("abcdef", false), 3), { split: [text("abc", false), text("def", false)] },
         "in the middle the rest keeps the properties of the chip");
     assert.deepEqual(typeBar(text("abc"), 0), { split: [text(""), text("abc")] });
 });
@@ -81,7 +81,7 @@ test("typeBar: '|' right after '\\' replaces it with '|'", () => {
 });
 
 test("typeBar: '|' in a regex chip is a part of the regex", () => {
-    assert.deepEqual(typeBar(regex("ab", true), 1), { chip: regex("a|b", true), caret: 2 });
+    assert.deepEqual(typeBar(regex("ab", false), 1), { chip: regex("a|b", false), caret: 2 });
     assert.deepEqual(typeBar(regex("a\\"), 2), { chip: regex("a\\|"), caret: 3 }, "an escaped '|' of the regex");
 });
 

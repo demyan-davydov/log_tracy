@@ -289,8 +289,8 @@ class MainWindow : SciterWindow
             answer(_session.searchHistoryJson(docParam()));
             return true;
         case "checkRegex":
-            // checkRegex(pattern, ignoreCase) -> error message, "" for a valid regex
-            answer(checkRegex(param!string(0), param!bool(1)));
+            // checkRegex(pattern, matchCase) -> error message, "" for a valid regex
+            answer(checkRegex(param!string(0), !param!bool(1)));
             return true;
 
         // ── Filters: the commands return a message for the user (an error, or

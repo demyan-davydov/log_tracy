@@ -953,12 +953,12 @@ unittest
 {
     auto f = Fixture.make();
     const id = f.session.openFile("/logs/a.log").docId;
-    const chips = `[{"text": "error", "isRegex": false, "ignoreCase": true}]`;
+    const chips = `[{"text": "error", "isRegex": false, "matchCase": false}]`;
     assert(f.session.startChipSearch(id, chips) == "");
     assert(f.docOf("/logs/a.log").searches.length == 1);
     assert(parseJSON(f.session.searchHistoryJson(id)).array.length == 1);
 
-    assert(f.session.startChipSearch(id, `[{"text": "(", "isRegex": true, "ignoreCase": false}]`).length,
+    assert(f.session.startChipSearch(id, `[{"text": "(", "isRegex": true, "matchCase": true}]`).length,
         "an invalid regex is an error");
     assert(f.docOf("/logs/a.log").searches.length == 1, "and searches nothing");
 }

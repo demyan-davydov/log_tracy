@@ -8,7 +8,7 @@ import {
     sameQuery, assignColors, historyIndex, selection, extendCaret, selectChipsFrom, selectTo, selectAll, selectedChips, insertChips,
 } from "../../resources/search-editing.js";
 
-const text = (t, ignoreCase = true) => makeChip(t, { ignoreCase });
+const text = (t, matchCase = false) => makeChip(t, { matchCase });
 const regex = (t) => makeChip(t, { isRegex: true });
 const gap = (g) => ({ gap: g });
 const at = (chip, offset) => ({ chip, offset });
@@ -89,8 +89,8 @@ test("typeInGap: '|' in a gap does nothing", () => {
 test("typeBarInChip: '|' closes a text chip and goes on in the next one", () => {
     assert.deepEqual(typeBarInChip({ chips: ab, pos: at(0, 2) }),
         { chips: [text("ab"), text(""), text("cd")], pos: at(1, 0) }, "at the end: a new chip");
-    assert.deepEqual(typeBarInChip({ chips: [text("abcd", true)], pos: at(0, 2) }),
-        { chips: [text("ab", true), text("cd", true)], pos: at(1, 0) }, "in the middle: the chip is split");
+    assert.deepEqual(typeBarInChip({ chips: [text("abcd")], pos: at(0, 2) }),
+        { chips: [text("ab"), text("cd")], pos: at(1, 0) }, "in the middle: the chip is split");
 });
 
 test("typeBarInChip: no empty chip is left before the caret", () => {
@@ -195,7 +195,7 @@ test("insertChips: in a chip they go after it, an empty chip they replace", () =
 test("sameQuery: queries differ by their chips, not by the empty ones being edited", () => {
     assert.equal(sameQuery([text("a"), text("")], [text("a")]), true);
     assert.equal(sameQuery([text("a"), text("b")], [text("b"), text("a")]), false, "the order matters");
-    assert.equal(sameQuery([text("a")], [text("a", false)]), false, "the case matters");
+    assert.equal(sameQuery([text("a")], [text("a", true)]), false, "the case matters");
     assert.equal(sameQuery([text("a")], [regex("a")]), false, "the type matters");
 });
 

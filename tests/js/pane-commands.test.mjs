@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { noSearch, runSearch, searchPending, editRule } from "../../resources/pane-commands.js";
 
-const chips = [{ text: "error", isRegex: false, ignoreCase: true }];
+const chips = [{ text: "error", isRegex: false, matchCase: false }];
 
 test("a search the backend starts is committed with its colors", () => {
     const run = runSearch(noSearch, chips, () => ["c0"], () => "", query => { assert.deepEqual(query, chips); return ""; });

@@ -23,7 +23,7 @@ const isMac = platform.isMac;
 
 export class SearchEditor {
     // @param root - the editor element (focusable: tabindex="0")
-    // @param checkRegex(pattern, ignoreCase) -> error message, "" for a valid regex
+    // @param checkRegex(pattern, matchCase) -> error message, "" for a valid regex
     // @param onEdited() - the chips changed
     // @param onCommit() - Enter: run the search
     // @param history() -> the queries searched in the document, the latest first
@@ -38,7 +38,7 @@ export class SearchEditor {
         this.historyPopup = null; // {element, queries, current} while the history is shown
         this.state = { chips: [], pos: { gap: 0 } };
         this.history = new EditHistory(); // the undo steps of the chips shown
-        this.regexErrors = new Map(); // "ignoreCase\0pattern" -> error
+        this.regexErrors = new Map(); // "matchCase\0pattern" -> error
         this.entryText = null; // the text of the chip edited, as it was when the caret came in (Esc)
         this.textAnchor = null; // where a Shift selection inside the edited chip started
         this.blinkTimer = null; // while the caret between chips is shown
@@ -63,7 +63,7 @@ export class SearchEditor {
 
     // The chips the search runs with (their colors are no part of the query)
     searchChips() {
-        return searchChips(this.state.chips).map(({ text, isRegex, ignoreCase }) => ({ text, isRegex, ignoreCase }));
+        return searchChips(this.state.chips).map(({ text, isRegex, matchCase }) => ({ text, isRegex, matchCase }));
     }
 
     // The match colors of the chips the search runs with, in the same order
@@ -102,8 +102,8 @@ export class SearchEditor {
 
     regexError(chip) {
         if (!chip.isRegex || chip.text === "") return "";
-        const key = `${chip.ignoreCase ? 1 : 0}\0${chip.text}`;
-        if (!this.regexErrors.has(key)) this.regexErrors.set(key, this.checkRegexBy(chip.text, chip.ignoreCase));
+        const key = `${chip.matchCase ? 1 : 0}\0${chip.text}`;
+        if (!this.regexErrors.has(key)) this.regexErrors.set(key, this.checkRegexBy(chip.text, chip.matchCase));
         return this.regexErrors.get(key);
     }
 
@@ -151,7 +151,7 @@ export class SearchEditor {
             const chip = chips[i];
             root.append(<span class={`chip ${matchColorClass(chip.color ?? i)}`} data-chip={i}>
                 <span class="chip-toggle chip-regex" data-tr-title="Regular expression">.*</span>
-                <span class="chip-toggle chip-case" data-tr-title="Ignore case">Aa</span>
+                <span class="chip-toggle chip-case" data-tr-title="Match case">Aa</span>
                 <span class="chip-text"></span>
             </span>);
             root.lastElementChild.$(".chip-text").value = chip.text;
@@ -170,7 +170,7 @@ export class SearchEditor {
             const chip = chips[i];
             const edited = pos.gap === undefined && pos.chip === i;
             el.classList.toggle("regex", chip.isRegex);
-            el.classList.toggle("nocase", chip.ignoreCase);
+            el.classList.toggle("matchcase", chip.matchCase);
             el.classList.toggle("active", edited);
             const error = edited ? "" : this.regexError(chip);
             el.classList.toggle("invalid", !!error);
@@ -463,7 +463,7 @@ export class SearchEditor {
                 {assignColors(query, matchColorCount).map(chip =>
                     <span class={`history-chip ${matchColorClass(chip.color)}`}>
                         {chip.isRegex ? <span class="history-flag">.*</span> : ""}
-                        {chip.ignoreCase ? <span class="history-flag">Aa</span> : ""}
+                        {chip.matchCase ? <span class="history-flag">Aa</span> : ""}
                         <span class={chip.isRegex ? "history-text regex" : "history-text"}>{chip.text}</span>
                     </span>)}
             </div>);
@@ -620,7 +620,7 @@ export class SearchEditor {
         const target = evt.target;
         const toggle = target.closest?.(".chip-toggle");
         if (toggle) {
-            this.toggle(this.chipIndexOf(toggle), toggle.classList.contains("chip-regex") ? "isRegex" : "ignoreCase");
+            this.toggle(this.chipIndexOf(toggle), toggle.classList.contains("chip-regex") ? "isRegex" : "matchCase");
             return true;
         }
         const synced = this.syncedState();

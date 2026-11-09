@@ -232,7 +232,7 @@ export class DocumentPane {
         this.applyFontSize(host.tableFontSize());
 
         this.chipEditor = new SearchEditor(this.root.$(".chip-search"), {
-            checkRegex: (pattern, ignoreCase) => backend.checkRegex(pattern, ignoreCase),
+            checkRegex: (pattern, matchCase) => backend.checkRegex(pattern, matchCase),
             onEdited: () => this.updateChipPending(),
             onCommit: () => this.runChipSearch(),
             history: () => backend.searchHistory(this.docId),

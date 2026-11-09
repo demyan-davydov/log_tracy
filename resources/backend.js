@@ -92,13 +92,13 @@ export const cancelSearchView = docId => xcall("cancelSearchView", docId);
 
 // ── Search ───────────────────────────────────────────────────────────────────
 
-// Searches the chips [{ text, isRegex, ignoreCase }]; none clear the search.
+// Searches the chips [{ text, isRegex, matchCase }]; none clear the search.
 // Returns: the error, "" if the search started
 export const startChipSearch = (docId, chips) => message(xcall("startChipSearch", docId, JSON.stringify(chips)));
 // The queries searched in the file, the latest first: [[chips]]
 export const searchHistory = docId => parsed(xcall("getSearchHistory", docId), []);
 // What is wrong with a regular expression, "" if nothing
-export const checkRegex = (pattern, ignoreCase) => message(xcall("checkRegex", pattern, ignoreCase));
+export const checkRegex = (pattern, matchCase) => message(xcall("checkRegex", pattern, matchCase));
 
 // ── Filters ──────────────────────────────────────────────────────────────────
 // The commands return a message for the user (an error, what was lost), "" if none

@@ -103,7 +103,7 @@
 }
 
 .chip-editor .chip.regex > .chip-regex,
-.chip-editor .chip.nocase > .chip-case {
+.chip-editor .chip.matchcase > .chip-case {
     color: var(--chip-toggle-on);
     opacity: 1;
 }
