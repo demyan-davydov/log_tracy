@@ -33,6 +33,7 @@ private enum string[] builtIn = [
     "menu-bar.js",
     "menu-shortcuts.js",
     "new-tab.js",
+    "notice.js",
     "osx-frame.css",
     "pane-commands.js",
     "pane-state.js",

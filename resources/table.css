@@ -102,23 +102,51 @@
     background: linear-gradient(to right, var(--rule-color), transparent 33%);
 }
 
-/* Anchor column: the mark of an anchored message, a faint one on hover.
-   The mark is always there and only shown or hidden: an anchor set or cleared
-   then repaints the cell only, adding content would lay the table out again
-   and make the rows below blink. */
+/* Anchor column: the mark of an anchored message, an anchor in a grey circle,
+   a faint anchor on hover. The mark is always there and only shown or hidden:
+   an anchor set or cleared then repaints the cell only, adding content would
+   lay the table out again and make the rows below blink. It appears growing
+   from its centre while its colors come up, and collapses back: a transform
+   and colors, since Sciter ignores opacity and visibility on a :before. Sizes
+   in em: the mark follows the font size of the table. */
 .log-table>tbody>tr>td.anchor:before {
     content: "⚓";
-    color: transparent; /* Sciter ignores opacity and visibility on a :before */
+    display: inline-block;
+    width: 1.25em;
+    height: 1.25em;
+    line-height: 1.25em;
+    margin: -0.1em 0; /* the circle may be a bit higher than the line, not the row */
+    text-align: center;
+    border-radius: 50%;
+    transform: scale(0);
+    color: transparent;
+    background-color: transparent;
+    transition: transform ease-out 180ms, color linear 180ms, background-color linear 180ms;
 }
 
 .log-table>tbody>tr>td.anchor[has-anchor="true"]:before {
-    color: inherit;
+    transform: scale(1);
+    color: var(--text-main);
+    background-color: var(--bg-anchor);
 }
 
 .log-table>tbody>tr>td.anchor[has-anchor="false"]:hover:before {
-    content: "·";
-    color: inherit;
-    opacity: 0.3;
+    transform: scale(1);
+    color: var(--anchor-faint);
+}
+
+/* No room for another anchor (document-pane.js): an empty cell shows on hover
+   that none can be set, clicking it shows why. Only the hovered cell changes
+   its content. */
+.log-table.anchors-full>tbody>tr>td.anchor[has-anchor="false"]:hover:before {
+    content: "⊘";
+    color: var(--anchor-refused);
+    /* A larger glyph in a box of the same size (1.25em of the cell's font):
+       the row keeps its height */
+    font-size: 140%;
+    width: 0.9em;
+    height: 0.9em;
+    line-height: 0.9em;
 }
 
 /* Auxiliary columns (index, time, IDs...): see renderCell() in virtual-dlt-view.js */
@@ -278,15 +306,26 @@
     outline-offset: -1dip;
 }
 
-/* A notice over the table (e.g. the clipboard limit), see showNotice() */
+/* A notice by an element (the clipboard limit over the table, a refused
+   anchor right of its cell), see notice.js */
 popup.notice {
     background-color: var(--bg-header);
     color: var(--text-main);
     border: 1dip solid var(--border-color);
     border-radius: 6dip;
     padding: 6dip 12dip;
-    margin-bottom: 12dip;
     box-shadow: 0 2dip 8dip rgba(0, 0, 0, 0.25);
+}
+
+popup.notice.below {
+    margin-bottom: 12dip;
+}
+
+/* Slides out of its element, from left to right */
+popup.notice.right {
+    padding: 3dip 9dip;
+    margin-left: 3dip;
+    popup-animation: popup-animation(type:slide, axis:horizontal, heading:start-to-end, duration:200ms);
 }
 
 /* What a search chip found in the payload of a row the search found: the chip's

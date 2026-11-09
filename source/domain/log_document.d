@@ -229,20 +229,26 @@ class LogDocument : Document
     //! always listed in the main view and in the search results; the views are
     //! updated in place.
     //! @param index - message index in the file (DocumentItem.realIndex)
-    //! @return false (nothing changed) while an operation is running, since the
-    //! operation works on a snapshot of the anchors and is building the indexes;
-    //! also when the anchor limit is reached or index is out of range
-    override bool setAnchor(size_t index, bool value)
+    //! @return true if done; refused (nothing changed) as busy while an
+    //! operation is running, since the operation works on a snapshot of the
+    //! anchors and is building the indexes, and when the source is lost or the
+    //! index is out of range; as limit when there is no room for another anchor
+    override AnchorChange setAnchor(size_t index, bool value)
     {
         if (_running != Operation.None || sourceLost || index >= _index.messageCount)
-            return false;
+            return AnchorChange(AnchorRefusal.busy);
         if (_anchors.has(index) == value)
-            return true;
-        if (!_anchors.set(index, value)) // anchor limit
-            return false;
+            return AnchorChange.init;
+        if (!_anchors.set(index, value))
+            return AnchorChange(AnchorRefusal.limit);
 
         _index.updateAnchor(index, value, _viewFilter, _searchFilter);
-        return true;
+        return AnchorChange.init;
+    }
+
+    override bool anchorsFull() const
+    {
+        return _anchors.length == Anchors.MaxAnchors;
     }
 
     size_t[] exportAnchors() const pure
@@ -1030,6 +1036,34 @@ unittest
     assert(doc.setAnchor(1, true), "allowed again once the search is done");
 }
 
+@("LogDocument anchors: a refusal tells why; a running operation comes before the limit")
+unittest
+{
+    import domain.anchors : Anchors;
+    import std.file : remove;
+
+    auto path = writeTestDlt("dlt_document_anchors_reason.dlt", 200_000);
+    scope (exit)
+        remove(path);
+
+    auto doc = new LogDocument(path);
+    auto views = new Views(doc);
+    assert(doc.setAnchor(1, true).refusal == AnchorRefusal.busy, "the file loads");
+    dispatchUntil(doc, () => views.mainReady);
+
+    foreach (i; 0 .. Anchors.MaxAnchors)
+        assert(doc.setAnchor(i, true).refusal == AnchorRefusal.none);
+    assert(doc.setAnchor(100, true).refusal == AnchorRefusal.limit);
+
+    doc.applySearchFilter(new ConstFilter(true));
+    assert(doc.setAnchor(100, true).refusal == AnchorRefusal.busy,
+        "full and searching: the search refuses it, removing one wouldn't help");
+    assert(doc.setAnchor(0, false).refusal == AnchorRefusal.busy);
+    assert(doc.setAnchor(1_000_000, true).refusal == AnchorRefusal.busy, "out of range");
+    assert(doc.requestCancel());
+    waitIdle(doc);
+}
+
 @("LogDocument anchors: the limit is enforced silently")
 unittest
 {
@@ -1043,12 +1077,17 @@ unittest
         remove(path);
 
     foreach (i; 0 .. Anchors.MaxAnchors)
+    {
+        assert(!doc.anchorsFull, "room for one more");
         assert(doc.setAnchor(i, true));
+    }
+    assert(doc.anchorsFull);
     assert(!doc.setAnchor(50, true), "over the limit");
     assert(doc.searchView.itemsCount == Anchors.MaxAnchors);
 
     assert(!doc.setAnchor(1000, true), "out of range");
-    assert(doc.setAnchor(0, false) && doc.setAnchor(50, true), "room again after removing one");
+    assert(doc.setAnchor(0, false) && !doc.anchorsFull, "room again after removing one");
+    assert(doc.setAnchor(50, true) && doc.anchorsFull);
 }
 
 version (Posix)

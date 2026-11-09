@@ -4,7 +4,8 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { noSearch, runSearch, searchPending, editRule } from "../../resources/pane-commands.js";
+import { noSearch, runSearch, searchPending, editRule, anchorRefusalText } from "../../resources/pane-commands.js";
+import { setCatalog } from "../../resources/i18n/i18n.js";
 
 const chips = [{ text: "error", isRegex: false, matchCase: false }];
 
@@ -61,4 +62,22 @@ test("a cancelled editor applies nothing", () => {
     let applied = false;
     assert.equal(editRule({ name: "r" }, () => null, () => { applied = true; return ""; }), false);
     assert.equal(applied, false);
+});
+
+test("an anchor refused at the limit says the limit, in the plural form of its number", () => {
+    assert.equal(anchorRefusalText({ refused: null, max: 16 }), "", "not refused");
+    assert.equal(anchorRefusalText({ refused: "limit", max: 16 }), "16 anchors at most");
+    assert.equal(anchorRefusalText({ refused: "limit", max: 1 }), "1 anchor at most");
+    setCatalog({ locale: "ru", messages: { "{n} anchor at most": { one: "Максимум {n} якорь", few: "Максимум {n} якоря", many: "Максимум {n} якорей" } } });
+    try {
+        assert.equal(anchorRefusalText({ refused: "limit", max: 16 }), "Максимум 16 якорей");
+        assert.equal(anchorRefusalText({ refused: "limit", max: 21 }), "Максимум 21 якорь");
+        assert.equal(anchorRefusalText({ refused: "limit", max: 3 }), "Максимум 3 якоря");
+    } finally {
+        setCatalog(null);
+    }
+});
+
+test("an anchor refused while an operation runs says so", () => {
+    assert.equal(anchorRefusalText({ refused: "busy", max: 16 }), "Not while searching or filtering");
 });

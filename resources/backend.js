@@ -86,8 +86,11 @@ export const searchViewPosition = (docId, messageIndex) => xcall("getSearchViewP
 export const tableColumnsJson = docId => xcall("getTableColumns", docId) || "[]";
 // All the columns of the document (the rules may test any of them)
 export const columns = docId => parsed(xcall("getColumns", docId), []);
-// Sets or clears the anchor of a message: true if it changed
-export const setAnchor = (docId, messageIndex, value) => xcall("setAnchor", docId, messageIndex, value);
+// Sets or clears the anchor of a message: { refused, max, full }, refused:
+// "limit" | "busy" (nothing changed then), null if done; max: the anchor limit;
+// full: no room for another anchor (the text: anchorRefusalText in pane-commands.js)
+export const setAnchor = (docId, messageIndex, value) =>
+    parsed(xcall("setAnchor", docId, messageIndex, value), { refused: null, max: 0, full: false });
 export const cancelMainView = docId => xcall("cancelMainView", docId);
 export const cancelSearchView = docId => xcall("cancelSearchView", docId);
 

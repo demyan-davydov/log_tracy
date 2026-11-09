@@ -90,6 +90,7 @@
     "No format has columns to arrange.": "Ни у одного формата нет колонок, которые можно упорядочить.",
     "No searches in this file yet": "В этом файле еще ничего не искали",
     "Not applied: {error}": "Не применяется: {error}",
+    "Not while searching or filtering": "Не во время поиска или фильтрации",
     "Nov|month": "ноя",
     "Numbers: an empty \"to\" is a single value; hex columns take hex digits. Regular expressions are found anywhere in the text.": "Числа: пустое «до» — одно значение; в шестнадцатеричных колонках — шестнадцатеричные цифры. Регулярное выражение ищется в любом месте текста.",
     "OK": "ОК",
@@ -194,6 +195,11 @@
     "{file}: {notes}": "{file}: {notes}",
     "{format} (current file)": "{format} (текущий файл)",
     "{lines}\n{line}": "{lines}\n{line}",
+    "{n} anchor at most": {
+      "one": "Максимум {n} якорь",
+      "few": "Максимум {n} якоря",
+      "many": "Максимум {n} якорей"
+    },
     "{n} hour ago": {
       "one": "{n} час назад",
       "few": "{n} часа назад",

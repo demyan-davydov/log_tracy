@@ -14,6 +14,25 @@ import domain.anchors;
 
 import utils.event_bus.event_bus_interface : SignalConsumer;
 
+//! Why Document.setAnchor changed nothing
+enum AnchorRefusal
+{
+    none, /// not refused: the anchor is as asked
+    busy, /// an operation is running (or the document can't change: its source is lost, no such message)
+    limit, /// no room for another anchor (Anchors.MaxAnchors)
+}
+
+//! What Document.setAnchor did: true if the anchor is as asked now
+struct AnchorChange
+{
+    AnchorRefusal refusal;
+
+    bool opCast(T : bool)() const pure nothrow @nogc @safe
+    {
+        return refusal == AnchorRefusal.none;
+    }
+}
+
 //! The rows of one view of a document. What the view shows (loading, ready,
 //! failed...) is told by the operation events of the document, see
 //! ui.main_view_fsm and ui.search_view_fsm.
@@ -92,7 +111,10 @@ interface Document
     //! that was cancelled or failed and left no results
     const(LogFilter!wchar) searchFilter();
 
-    bool setAnchor(size_t index, bool value);
+    AnchorChange setAnchor(size_t index, bool value);
+
+    //! No room for another anchor: setting one is refused (Anchors.MaxAnchors)
+    bool anchorsFull() const;
 
     size_t[] exportAnchors() const pure;
 

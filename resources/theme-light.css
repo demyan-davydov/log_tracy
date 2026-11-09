@@ -51,6 +51,11 @@
     --bg-row-found-stripe: #ebebc4;
     /* Text selected in the cells of a log table (text-selection.js), on any row */
     --bg-text-selected: #b4d5fe;
+    /* The anchor mark (table.css): its circle, the faint one on hover, the one
+       of an anchor that can't be set (the limit) */
+    --bg-anchor: #d6d6d6;
+    --anchor-faint: #b0b0b0;
+    --anchor-refused: #c75b5b;
 
     /* Details Panel */
     --bg-details: #f5f5f5;
