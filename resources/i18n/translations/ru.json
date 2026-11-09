@@ -34,6 +34,7 @@
     "Copied {copied} of {total} rows: the clipboard limit is 16 MB": "Скопировано строк: {copied} из {total}, в буфер обмена помещается не больше 16 МБ",
     "Copy Path": "Копировать путь",
     "Copy Row": "Копировать строку",
+    "Customize Table...": "Настроить таблицу...",
     "DLT Explorer Filters": "Фильтры DLT Explorer",
     "DLT Files": "Файлы DLT",
     "DLT filters (.dlf) apply to DLT logs only": "Фильтры DLT (.dlf) применяются только к журналам DLT",
@@ -119,7 +120,6 @@
     "Search|noun": "Поиск",
     "Sep|month": "сен",
     "Settings": "Настройки",
-    "Settings...": "Настройки...",
     "Show in Folder": "Показать в папке",
     "Shows the records it matches": "Показывает подходящие записи",
     "Size": "Размер",
@@ -213,6 +213,7 @@
   "obsolete": {
     "Decoding": "Декодирование",
     "Details / Search Results": "Подробности / результаты поиска",
-    "Load FIBEX": "Загрузить FIBEX"
+    "Load FIBEX": "Загрузить FIBEX",
+    "Settings...": "Настройки..."
   }
 }

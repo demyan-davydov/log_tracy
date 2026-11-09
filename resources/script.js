@@ -408,11 +408,11 @@ function setupEvents() {
         if (item) item.textContent = tr("Copy Row"); // a menu kept: in the language now
         else if (menu) menu.append(copyRowItem());
     });
-    // Context menu of a table header: Settings on its Columns section, which
+    // Context menu of a table header: Customize Table, Settings on its Columns section, which
     // opens on the format of the active document, the one the table shows
     document.on("contextmenu", "table.log-table > thead", evt => {
         evt.source = Element.create(<menu class="context">
-            <li class="column-settings">{tr("Settings...")}</li>
+            <li class="column-settings">{tr("Customize Table...")}</li>
         </menu>);
         return true;
     });
