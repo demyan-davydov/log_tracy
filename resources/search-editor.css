@@ -7,7 +7,7 @@
     min-height: 1.6em;
     padding: 1dip 2dip;
     background: var(--bg-input);
-    border: 1dip solid var(--border-input);
+    border: 1dip solid var(--border-popup);
     border-radius: 3dip;
     cursor: text;
 }
