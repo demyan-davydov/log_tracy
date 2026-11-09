@@ -100,11 +100,10 @@ platform.onWindowCloseRequest(() => {
 platform.onWindowClose(() => {
     console.log("Closing Window...");
 
-    // 1. Останавливаем инерционный скролл
-    // Перебрасываем скролл в текущую позицию без анимации
+    // Stop the inertial scroll: jump to the current position without animation
     for (const pane of panes.values()) for (const list of pane.lists) stopList(list);
 
-    console.log("Окно закрывается, ресурсы зачищены");
+    console.log("Window is closing, resources released");
 });
 
 function stopList(logList) {
@@ -122,8 +121,6 @@ function stopList(logList) {
     //logList.stopTimers();
 
     logList.remove(); // remove from DOM
-    // 2. Если есть специфические таймеры в виртуальной таблице:
-    // logList.stopTimers(); // если вы их создавали
 }
 
 function initApp() {

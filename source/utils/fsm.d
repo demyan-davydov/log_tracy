@@ -1,13 +1,14 @@
+//! A finite state machine over state structs, events dispatched to their handlers at compile time.
 module utils.fsm;
 
 import std.meta : AliasSeq, NoDuplicates, anySatisfy, staticIndexOf;
 
-/// Результат обработчика события: либо переход в состояние, либо "остаёмся".
-/// Один тип для обоих случаев, чтобы работал тернарный оператор:
+/// The result of an event handler: either a transition to a state or "stay".
+/// One type for both, so that the ternary operator works:
 ///     return cond ? To!Focused : NoTransition;
 struct Transition
 {
-    private const(void)* m_target; // уникальный тег типа состояния, null = нет перехода
+    private const(void)* m_target; // the unique tag of the state type, null = no transition
 
     bool isActive() const pure nothrow @nogc @safe
     {
@@ -15,39 +16,39 @@ struct Transition
     }
 }
 
-/// Переход в состояние TState.
+/// A transition to the state TState.
 Transition To(TState)() pure nothrow @nogc @safe
 {
     return Transition(&StateTag!TState.value);
 }
 
-/// Отсутствие перехода.
+/// No transition.
 enum Transition NoTransition = Transition.init;
 
-// Уникальный адрес на каждый тип состояния — идентификатор без TypeInfo/хешей.
+// A unique address per state type: an identifier without TypeInfo or hashes.
 private struct StateTag(TState)
 {
     static immutable ubyte value;
 }
 
-/// Конечный автомат.
-///   TContext — общие данные, передаются по ref во все обработчики.
-///   TStates  — структуры состояний; первое — начальное.
+/// A finite state machine.
+///   TContext: the shared data, passed by ref to every handler.
+///   TStates:  the state structs; the first one is the initial state.
 ///
-/// Состояние может (необязательно) иметь:
+/// A state may (optionally) have:
 ///   void onEnter(ref TContext ctx);
 ///   void onExit(ref TContext ctx);
-///   Transition on(in TEvent e, ref TContext ctx);   // или void => без перехода
+///   Transition on(in TEvent e, ref TContext ctx);   // or void => no transition
 ///
-/// Если текущее состояние не обрабатывает событие — оно игнорируется.
-/// Если событие не обрабатывает ни одно состояние — ошибка компиляции.
+/// An event the current state doesn't handle is ignored.
+/// An event no state handles is a compile error.
 struct Fsm(TContext, TStates...)
 {
     static assert(TStates.length > 0, "Fsm requires at least one state");
     static assert(is(NoDuplicates!TStates == TStates), "Fsm states must be unique");
 
     private TContext m_context;
-    private TStates m_states; // все состояния живут внутри автомата, без кучи
+    private TStates m_states; // all states live inside the machine, no heap
     private size_t m_currentStateId;
     private bool m_started;
     private bool m_processing;
@@ -58,8 +59,8 @@ public:
         m_context = context;
     }
 
-    /// Только для unittest'ов этого модуля: контекст — внутренняя память
-    /// автомата; наружу он действует через объекты, переданные в контексте.
+    /// For the unittests of this module only: the context is the machine's own
+    /// memory; it acts outside through the objects passed in the context.
     private ref const(TContext) context() const return
     {
         return m_context;
@@ -70,7 +71,7 @@ public:
         return m_started;
     }
 
-    /// Входит в начальное состояние (вызывает его onEnter).
+    /// Enters the initial state (calls its onEnter).
     void start()
     {
         assert(!m_started, "Fsm is already started");
@@ -79,7 +80,7 @@ public:
         callEnter(m_currentStateId);
     }
 
-    /// Выходит из текущего состояния (вызывает его onExit).
+    /// Exits the current state (calls its onExit).
     void stop()
     {
         assert(m_started, "Fsm is not started");
@@ -87,8 +88,8 @@ public:
         m_started = false;
     }
 
-    /// Только для unittest'ов этого модуля: внешний код не должен зависеть
-    /// от того, какое состояние текущее, — он видит лишь выход автомата.
+    /// For the unittests of this module only: outside code must not depend on
+    /// which state is current, it sees only the output of the machine.
     private bool isIn(TState)() const
     {
         enum id = staticIndexOf!(TState, TStates);
@@ -96,8 +97,8 @@ public:
         return m_currentStateId == id;
     }
 
-    /// Только для unittest'ов этого модуля: чтение полей состояния.
-    /// Ссылка константная — состояния меняются только обработчиками событий.
+    /// For the unittests of this module only: reads the fields of a state.
+    /// The reference is const: states change only in their event handlers.
     private ref const(TState) state(TState)() const return
     {
         enum id = staticIndexOf!(TState, TStates);
@@ -155,7 +156,7 @@ private:
 
     void transit(size_t target)
     {
-        // Самопереход тоже вызывает onExit + onEnter.
+        // A transition to the same state calls onExit + onEnter too.
         callExit(m_currentStateId);
         m_currentStateId = target;
         callEnter(m_currentStateId);
@@ -233,9 +234,9 @@ version (unittest) private
         int keys;
 
         void onEnter(ref Context c) { c.log ~= "+F"; }
-        // onExit отсутствует — это нормально
+        // no onExit, which is fine
 
-        void on(in KeyEvent e, ref Context c) { ++keys; } // void => без перехода
+        void on(in KeyEvent e, ref Context c) { ++keys; } // void => no transition
 
         Transition on(in MouseDoubleClickEvent e, ref Context c)
         {
@@ -250,10 +251,10 @@ unittest
     fsm.start();
     assert(fsm.isIn!InitState);
 
-    fsm.process(MouseDoubleClickEvent(1, 2)); // isActive == false -> остаёмся
+    fsm.process(MouseDoubleClickEvent(1, 2)); // isActive == false -> stays
     assert(fsm.isIn!InitState);
 
-    fsm.process(KeyEvent('a'));               // InitState не обрабатывает -> игнор
+    fsm.process(KeyEvent('a'));               // InitState doesn't handle it -> ignored
     assert(fsm.isIn!InitState);
 
     fsm.process(MouseClickEvent(1, 2));
@@ -269,7 +270,7 @@ unittest
 
     assert(fsm.context.log == "+I-I+F+I", fsm.context.log);
 
-    static assert(!__traits(compiles, fsm.process(42)));      // никто не обрабатывает int
-    static assert(!__traits(compiles, fsm.isIn!Context));     // не состояние
-    static assert(!__traits(compiles, fsm.state!Focused.keys = 0)); // состояние только для чтения
+    static assert(!__traits(compiles, fsm.process(42)));      // no state handles int
+    static assert(!__traits(compiles, fsm.isIn!Context));     // not a state
+    static assert(!__traits(compiles, fsm.state!Focused.keys = 0)); // a state is read-only
 }
