@@ -16,8 +16,9 @@ what every session needs.
 - A change in an area you haven't read this session: its file in `.ai/knowledge/`
   (architecture, formats, filters, ui, i18n, sciter).
 - UI work: `.ai/rules/ux.md` (the user's UX requirements) and `.ai/knowledge/sciter.md`.
-- Adding a format, a backend call, a resource file, updating Sciter, the git flow, previewing
-  the UI: its file in `.ai/workflows/`.
+- Adding a format, a backend call, a resource file, updating Sciter, the git flow, a review
+  against the rules, a screenshot of the app: its file in `.ai/workflows/` (most are skills
+  too: `/add-format`, `/add-backend-call`, `/update-sciter`, `/review-rules`, `/screenshot`).
 
 The traps that cost most, whatever the task (the rest in `.ai/rules/` and
 `.ai/knowledge/sciter.md`):
@@ -46,6 +47,7 @@ node scripts/build.mjs --help            # the commands and options (run.mjs --h
 dub build --compiler=ldc2                # the same build without the script; dub test likewise
 node --test tests/js                     # JS unit tests only (pure modules such as resources/new-tab.js)
 node scripts/i18n-extract.mjs            # brings the translation catalogs up to the texts of the code
+node scripts/screenshot.mjs --open <log> # the app's window with a log → build/screenshot.png (--help)
 ```
 
 - `dub.sdl` puts every build in `build/<platform>-<arch>-<build type>/` (`osx-aarch64-unittest`

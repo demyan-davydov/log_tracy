@@ -72,7 +72,8 @@ final class AppSession
     private WindowMenu _menu = windowMenu(hostMenuPlatform(), ""); // the menu of the window
     private Translation[] _translations; // of the interface, by locale
     private Catalog _catalog; // of the language of the interface: the texts of the session
-    private bool _offerPseudo; // the pseudo locale among the languages (DLT_PSEUDO_LOCALE=1)
+    private bool _offerPseudo; // the pseudo locale among the languages (PSEUDO_LOCALE=1)
+    private string[] _startFiles; // to open once the window is up (OPEN_AT_START)
 
     /// @param open - opens a document (a LogDocument in the app)
     /// @param write - writes the settings, to their file if not given
@@ -611,6 +612,26 @@ final class AppSession
     void offerPseudoLocale(bool offer)
     {
         _offerPseudo = offer;
+    }
+
+    /// The files to open once the window is up (OPEN_AT_START): `paths` one per line. Not the
+    /// path separator of PATH: a ':' is common in the names of logs (a time), and a single file
+    /// needs no separator at all.
+    void openAtStart(string paths)
+    {
+        import std.algorithm : filter;
+        import std.array : array;
+        import std.string : lineSplitter;
+
+        _startFiles = paths.lineSplitter.filter!(path => path.length > 0).array;
+    }
+
+    /// The files to open at start, as `openAtStart` was told: a JSON array of paths
+    string startFilesJson()
+    {
+        import std.json : JSONValue;
+
+        return JSONValue(_startFiles).toString();
     }
 
     /// The languages there are translations to: [{"locale", "name"}], the pseudo locale last if
@@ -1413,7 +1434,7 @@ unittest
     assert(parseJSON(f.session.setAnchor(id, -1, true))["refused"].str == "busy", "no such message");
 }
 
-@("AppSession: the pseudo locale is offered only when asked for (DLT_PSEUDO_LOCALE)")
+@("AppSession: the pseudo locale is offered only when asked for (PSEUDO_LOCALE)")
 unittest
 {
     import std.json : parseJSON;
@@ -1424,6 +1445,20 @@ unittest
     const languages = parseJSON(f.session.languagesJson());
     assert(languages.array.length == 1 && languages[0]["locale"].str == "x-pseudo");
     assert(languages[0]["name"].str == "Pseudo (for testing)");
+}
+
+@("AppSession: the files to open at start (OPEN_AT_START), one per line")
+unittest
+{
+    import std.json : parseJSON;
+
+    auto f = Fixture.make();
+    assert(parseJSON(f.session.startFilesJson()).array.length == 0, "none unless told");
+    f.session.openAtStart("/logs/trace 10:06:05.dlt\n\r\nC:\\logs\\b.dlt\r\n");
+    const files = parseJSON(f.session.startFilesJson());
+    assert(files.array.length == 2, "empty lines dropped");
+    assert(files[0].str == "/logs/trace 10:06:05.dlt", "a ':' of a name is not a separator");
+    assert(files[1].str == "C:\\logs\\b.dlt", "nor of a drive, the line end taken off");
 }
 
 @("AppSession: the message of a filter command is in the language of the interface")

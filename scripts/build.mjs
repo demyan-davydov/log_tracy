@@ -231,9 +231,13 @@ function checkSciterLibrary(arch) {
 /// Builds (`{ release, arch }`) and gives the folder of the program.
 export function build(options) {
     checkSciterLibrary(options.arch ?? process.arch);
-    const args = dubArgs("build", options);
-    runOrFail("dub", args, "Build failed.");
-    return describe("target-path", args)[0];
+    runOrFail("dub", dubArgs("build", options), "Build failed.");
+    return targetPath(options);
+}
+
+/// The folder a build of `options` ({ release, arch }) goes to, as dub says (nothing is built)
+export function targetPath(options) {
+    return describe("target-path", dubArgs("build", options))[0];
 }
 
 function test(options) {

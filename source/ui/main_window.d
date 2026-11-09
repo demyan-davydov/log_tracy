@@ -58,16 +58,25 @@ class MainWindow : SciterWindow
 
     this(AppSettings settings)
     {
+        bool sciterDebugMode;
         _session = new AppSession(settings,
             (string path, FormatChoice choice) => cast(Document) new LogDocument(path, choice));
+        // The environment variables for development (docs/building.md), all read here
         {
             import std.process : environment;
             import ui.app_menu : hostMenuPlatform, windowMenu;
 
-            // DLT_MENU_BAR=windows|linux: that menu bar in the window, for a try on any platform
-            _session.showMenu(windowMenu(hostMenuPlatform(), environment.get("DLT_MENU_BAR", "")));
-            // DLT_PSEUDO_LOCALE=1: the pseudo translation among the languages of Settings
-            _session.offerPseudoLocale(environment.get("DLT_PSEUDO_LOCALE", "") == "1");
+            // MENU_BAR_PLATFORM=windows|linux: that menu bar in the window, for a try on any platform
+            _session.showMenu(windowMenu(hostMenuPlatform(), environment.get("MENU_BAR_PLATFORM", "")));
+            // PSEUDO_LOCALE=1: the pseudo translation among the languages of Settings
+            _session.offerPseudoLocale(environment.get("PSEUDO_LOCALE", "") == "1");
+            // OPEN_AT_START=<path>[<new line><path>...]: files opened at start, to look at the app
+            // with a log (scripts/screenshot.mjs)
+            _session.openAtStart(environment.get("OPEN_AT_START", ""));
+            // SCITER_DEBUG_MODE=1: the debug mode of Sciter, for its inspector (inspector.app of
+            // the SDK, started first): Ctrl+Shift+I connects the window to it, Ctrl+Shift+click
+            // shows the element clicked. Set on the window, once it is created (below).
+            sciterDebugMode = environment.get("SCITER_DEBUG_MODE", "") == "1";
         }
         _session.useTranslations(builtInCatalogs());
 
@@ -88,6 +97,15 @@ class MainWindow : SciterWindow
 
         // Disable extended touchpad support on Mac to prevent gesture-related crashes
         _api.SciterSetOption(hwnd, SCITER_RT_OPTIONS.SCITER_EXTENDED_TOUCHPAD_SUPPORT, 0);
+
+        if (sciterDebugMode)
+        {
+            import std.stdio : writeln;
+
+            const on = _api.SciterSetOption(hwnd, SCITER_RT_OPTIONS.SCITER_SET_DEBUG_MODE, 1);
+            writeln(on ? "Sciter debug mode on: Ctrl+Shift+I connects to the inspector"
+                : "Can't turn the debug mode of Sciter on");
+        }
     }
 
     override void handleAttached(HELEMENT he)
@@ -155,6 +173,9 @@ class MainWindow : SciterWindow
             return true;
         case "getLanguages":
             answer(_session.languagesJson());
+            return true;
+        case "getStartFiles":
+            answer(_session.startFilesJson());
             return true;
         case "useLanguage":
             // useLanguage(locale): the texts of the backend in that language from now on (the

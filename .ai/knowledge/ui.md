@@ -80,7 +80,7 @@ behaviour: `.ai/knowledge/sciter.md`.
   gets it as JSON (`menuJson`, `backend.menu()`: what the items are, not how they look) and
   draws a Sciter menu bar from it (`resources/menu-bar.js`); on every platform the script takes
   the texts of shortcuts in hints from it (`resources/menu-shortcuts.js`).
-- A label marks its mnemonic with `&` (`E&xit`). `DLT_MENU_BAR=windows|linux` shows that menu
+- A label marks its mnemonic with `&` (`E&xit`). `MENU_BAR_PLATFORM=windows|linux` shows that menu
   bar on macOS too, to try it.
 
 ## If You Need X, Start Here (resources/)

@@ -85,6 +85,12 @@ test("the menu of the window: whether it is a menu bar, its menus", () => {
     assert.deepEqual(callOf(() => backend.menu(), "").value, { menuBar: false, menus: [] });
 });
 
+test("the files to open at start", () => {
+    assert.deepEqual(callOf(() => backend.startFiles(), `["/logs/a.dlt"]`),
+        { call: ["getStartFiles"], value: ["/logs/a.dlt"] });
+    assert.deepEqual(callOf(() => backend.startFiles(), undefined).value, []);
+});
+
 test("the languages of the translations and the catalog a language takes", () => {
     assert.deepEqual(callOf(() => backend.languages(), `[{"locale": "ru", "name": "Русский"}]`),
         { call: ["getLanguages"], value: [{ locale: "ru", name: "Русский" }] });

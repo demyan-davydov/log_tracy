@@ -42,6 +42,27 @@ version (OSX)
 
 int main()
 {
+	// Debug builds write a line out as soon as it ends, also when the output goes to a file or a
+	// pipe (scripts/screenshot.mjs keeps it in app.log, a redirected run): fully buffered there,
+	// the lines still in the buffer are lost when the process is killed or crashes, and the log
+	// of a failure comes out empty. Windows has no line buffering (_IOLBF is full buffering in
+	// its C library): unbuffered there. Release builds keep the default. A stdout that can't be
+	// set up (a Windows program without a console) is left as it is: the app runs anyway.
+	debug
+	{
+		import core.stdc.stdio : _IOLBF, _IONBF;
+
+		try
+		{
+			version (Windows)
+				stdout.setvbuf(0, _IONBF);
+			else
+				stdout.setvbuf(0, _IOLBF);
+		}
+		catch (Exception e)
+			writeln("Can't make the output line buffered: ", e.msg);
+	}
+
 	enableSciterDebugOutput();
 
 	writeln("DLT Explorer starting...");

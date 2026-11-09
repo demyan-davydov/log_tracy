@@ -84,6 +84,10 @@ utils  ←  sciter  ←  ui
   `settings.lock` next to it): a second one brings the first forward and exits. Debug builds
   run side by side.
 - A recent file (`ui/recent_files`) keeps its format choice and its filter sets.
+- Environment variables for trying things, read in the `MainWindow` constructor and passed to
+  the session: `OPEN_AT_START` (logs opened at start, `backend.startFiles()`), `MENU_BAR_PLATFORM`,
+  `PSEUDO_LOCALE`, `SCITER_DEBUG_MODE` (the debug mode of Sciter, for its inspector). The table of them: `docs/building.md`, "Environment variables for
+  development"; a new one goes there.
 
 ## Indexing and Threads
 

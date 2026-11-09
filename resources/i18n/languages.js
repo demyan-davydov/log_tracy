@@ -8,7 +8,7 @@ export const systemSetting = "";
 
 // The options of the language setting, given the languages the backend offers
 // ([{locale, name}]): the system's, english (the source), the translations, and last the
-// pseudo translation if offered (DLT_PSEUDO_LOCALE=1: to look for texts not translated). A
+// pseudo translation if offered (PSEUDO_LOCALE=1: to look for texts not translated). A
 // language is named in itself. The language set now (`current`) is an option even if not
 // offered (its catalog gone, set by hand): named by its tag, so that saving the settings
 // keeps it.

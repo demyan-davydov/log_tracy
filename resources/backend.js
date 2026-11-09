@@ -33,6 +33,9 @@ export const menu = () => parsed(xcall("getMenu"), { menuBar: false, menus: [] }
 // The languages there are translations to: [{ locale, name }] (english, the
 // source, is none of them)
 export const languages = () => parsed(xcall("getLanguages"), []);
+// The paths of the files to open at start (OPEN_AT_START, for a look at the app
+// with a log): [path]
+export const startFiles = () => parsed(xcall("getStartFiles"), []);
 // The texts of the backend (the menu) are in the language `locale` (BCP 47 tag:
 // "ru-KZ", the pseudo locale) from now on. Gives the catalog of translations
 // it takes for the script: { locale, name, messages }, see i18n/i18n.js; null:

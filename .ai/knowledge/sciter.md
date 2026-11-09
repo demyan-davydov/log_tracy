@@ -5,7 +5,10 @@ library, `libs/VERSION`). Check a surprising behaviour here before blaming our c
 you find. When a behaviour differs between scapp and the app, the app wins: check it there.
 
 The Sciter.JS SDK (docs in `docs/md`, samples in `samples.sciter/`, e.g. `tooltips++`,
-`popup`) is not in the repository; keep a copy next to the project. In scapp a plain
+`popup`) is not in the repository; keep a copy next to the project. Its `inspector.app` shows
+the DOM, the styles and a script console of the running app started with `SCITER_DEBUG_MODE=1`
+(Ctrl+Shift+I in the window connects, Ctrl+Shift+click shows an element): for people, an
+agent can't drive it. In scapp a plain
 `<script>` with JSX doesn't run: use `<script type="module">`. Previewing a page or the app:
 `.ai/workflows/preview-ui.md`.
 

@@ -20,6 +20,9 @@ Applies to comments, `docs/` and `.ai/`.
 - What was noticed but left for later goes to `docs/backlog.md`, with enough context to pick
   it up.
 - A format or a variant added or planned: `docs/formats.md`.
+- An environment variable the program reads: the table "Environment variables for
+  development" of `docs/building.md`. It is named for what it does, without the name of the
+  app or of a log format (`OPEN_AT_START`, `SCITER_DEBUG_MODE`, not `DLT_...`).
 - A responsibility moved or an extension point added: the knowledge file of its area in
   `.ai/knowledge/`.
 

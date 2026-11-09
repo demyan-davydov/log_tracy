@@ -135,6 +135,7 @@ function initApp() {
     setupMenuBar();
     setupEvents();
     refreshTabs();
+    for (const path of backend.startFiles()) openFile(path);
 }
 
 // The frame of the window as saved, unless none was or it is out of reach now
