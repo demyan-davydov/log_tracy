@@ -116,7 +116,7 @@
    - Селекты в `rule-editor.htm` не имеют кастомного оформления рамок и скруглений.
 4. **Несогласованность заголовков панелей**:
    - `.sidebar header`: `1.1em; font-weight: 600;`.
-   - `.search-results-panel header`: `0.9em; font-weight: bold; padding: 2dip;`.
+   - `.bottom-tab-name` (вкладки нижней панели): `9pt`, без отдельного заголовка страницы.
 5. **Хардкод цвета ошибки**:
    - `.filter-message` и `.chip-search-message` используют `color: red;` вместо темы `var(--log-error)`.
 6. **Мёртвые стили**:

@@ -122,36 +122,44 @@ function renderPane(splitters) {
                 </div>
             </section>
 
-            <section class="search-results-panel">
-                <div class="toolbar search-toolbar chip-search-toolbar">
-                    <div class="chip-search chip-editor" tabindex="0"></div>
-                    <button class="btn-chip-history" data-tr-title="Search history (↓)">▾</button>
-                    <button class="btn-chip-search" data-tr="Search" />
-                </div>
-                <div class="chip-search-message"></div>
+            {/* The bottom panel: pages over a strip of their tabs, below them.
+                One page for now, the search */}
+            <section class="bottom-panel">
+                <div class="bottom-page search-page">
+                    <div class="toolbar search-toolbar chip-search-toolbar">
+                        <div class="chip-search chip-editor" tabindex="0"></div>
+                        <button class="btn-chip-history" data-tr-title="Search history (↓)">▾</button>
+                        <button class="btn-chip-search" data-tr="Search" />
+                    </div>
+                    <div class="chip-search-message"></div>
 
-                <header data-tr="Details / Search Results" />
-                <div class="search-body">
-                    <div class="status-view overlay compact search-status" tabindex="0" style="display:none;">
-                        <div class="status-body">
-                            <div class="status-title"></div>
-                            <progress value="0" max="100"></progress>
-                            <div class="status-detail"></div>
-                            <div class="status-actions">
-                                <button class="btn-cancel" data-tr="Cancel" />
+                    <div class="search-body">
+                        <div class="status-view overlay compact search-status" tabindex="0" style="display:none;">
+                            <div class="status-body">
+                                <div class="status-title"></div>
+                                <progress value="0" max="100"></progress>
+                                <div class="status-detail"></div>
+                                <div class="status-actions">
+                                    <button class="btn-cancel" data-tr="Cancel" />
+                                </div>
                             </div>
                         </div>
+                        <table class="log-table search-view" fixed-layout="true">
+                            <thead>
+                                <tr>
+                                    <th class="col-anchor">⚓</th>
+                                    <th class="col-index">Index</th>
+                                    <th class="payload">Payload</th>
+                                </tr>
+                            </thead>
+                            <tbody />
+                        </table>
                     </div>
-                    <table class="log-table search-view" fixed-layout="true">
-                        <thead>
-                            <tr>
-                                <th class="col-anchor">⚓</th>
-                                <th class="col-index">Index</th>
-                                <th class="payload">Payload</th>
-                            </tr>
-                        </thead>
-                        <tbody />
-                    </table>
+                </div>
+                <div class="bottom-tabs">
+                    <div class="bottom-tab active">
+                        <span class="bottom-tab-name" data-tr="Search" data-tr-context="noun" />
+                    </div>
                 </div>
             </section>
         </frameset>

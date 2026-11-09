@@ -124,16 +124,37 @@ const mark = /(?<![\w-])data-tr(?:-title|-placeholder)?(?![\w-])/g;
 // "text" or 'text' in markup; in JSX also {"text"}, {'text'}
 const markValue = /\s*=\s*(?:"([^"]*)"|'([^']*)'|\{\s*"([^"\\]*)"\s*\}|\{\s*'([^'\\]*)'\s*\})/y;
 
-// The texts of the elements marked in `code` (dom.js: data-tr="Filters", data-tr-title="..."),
-// added to `texts`; a mark without a literal text to `errors`. `decode`: the entities of HTML.
+const contextMark = /(?<![\w-])data-tr-context(?![\w-])/g;
+
+// The literal of the mark value at `pos` of `code`, or null.
+function markLiteral(code, pos, decode) {
+    markValue.lastIndex = pos;
+    const value = markValue.exec(code);
+    if (!value)
+        return null;
+    const literal = value[1] ?? value[2] ?? value[3] ?? value[4];
+    return decode ? decodeEntities(literal) : literal;
+}
+
+// The context of the element whose tag holds the mark at `pos` (data-tr-context="noun"), or null.
+function markContext(code, pos, decode) {
+    const start = code.lastIndexOf("<", pos);
+    const end = code.indexOf(">", pos);
+    const tag = code.slice(start, end < 0 ? code.length : end);
+    contextMark.lastIndex = 0;
+    const m = contextMark.exec(tag);
+    return m ? markLiteral(tag, m.index + m[0].length, decode) : null;
+}
+
+// The texts of the elements marked in `code` (dom.js: data-tr="Filters", data-tr-title="...",
+// with data-tr-context="noun" the key of trc for the text of data-tr), added to `texts`; a mark without a literal text
+// to `errors`. `decode`: the entities of HTML.
 function markedTexts(code, decode, texts, errors) {
     for (const m of code.matchAll(mark)) {
-        markValue.lastIndex = m.index + m[0].length;
-        const value = markValue.exec(code);
-        if (value) {
-            const literal = value[1] ?? value[2] ?? value[3] ?? value[4];
-            const text = decode ? decodeEntities(literal) : literal;
-            texts.push({ key: text, source: text, plural: false });
+        const text = markLiteral(code, m.index + m[0].length, decode);
+        if (text !== null) {
+            const context = m[0] === "data-tr" ? markContext(code, m.index, decode) : null;
+            texts.push({ key: context ? `${text}|${context}` : text, source: text, plural: false });
         } else
             errors.push({ line: code.slice(0, m.index).split("\n").length, call: code.slice(m.index, m.index + 40).split("\n")[0] });
     }
