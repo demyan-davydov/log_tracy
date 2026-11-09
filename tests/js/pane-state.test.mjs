@@ -153,23 +153,24 @@ test("searchViewKey: another status, result or progress gives another key", () =
 });
 
 const at = (position) => () => position;
-const onScreen = { visibleRows: 30, inSelectable: false };
+const screen = { visibleRange: [200, 229], visibleRows: 30 };
 
-test("jumpStep: the row of the message becomes the only one selected, near the top, focused", () => {
-    assert.deepEqual(jumpStep(ready(1), at(100), onScreen), { position: 100, top: 98, focus: true });
-    assert.deepEqual(jumpStep(ready(1), at(1), onScreen), { position: 1, top: 0, focus: true }, "no rows above the first");
-    assert.deepEqual(jumpStep(ready(1), at(0), onScreen), { position: 0, top: 0, focus: true }, "the first row is a position too");
+test("jumpStep: the row of the message becomes the only one selected, near the top", () => {
+    assert.deepEqual(jumpStep(ready(1), at(100), screen), { position: 100, top: 98 });
+    assert.deepEqual(jumpStep(ready(1), at(1), screen), { position: 1, top: 0 }, "no rows above the first");
+    assert.deepEqual(jumpStep(ready(1), at(0), screen), { position: 0, top: 0 }, "the first row is a position too");
+    assert.deepEqual(jumpStep(ready(1), at(5), { visibleRange: null, visibleRows: 30 }), { position: 5, top: 3 }, "no rows on screen");
 });
 
-test("jumpStep: the focus stays when the double click selected a word, or the table is collapsed", () => {
-    // Cmd+C then copies the word, not the row of the other table
-    assert.equal(jumpStep(ready(1), at(5), { visibleRows: 30, inSelectable: true }).focus, false, "a word");
-    assert.equal(jumpStep(ready(1), at(5), { visibleRows: 0, inSelectable: false }).focus, false, "no rows on screen");
+test("jumpStep: a row already on screen is selected where it is", () => {
+    assert.deepEqual(jumpStep(ready(1), at(200), screen), { position: 200, top: null }, "the first on screen");
+    assert.deepEqual(jumpStep(ready(1), at(229), screen), { position: 229, top: null }, "the last on screen");
+    assert.equal(jumpStep(ready(1), at(230), screen).top, 228, "just below");
 });
 
 test("jumpStep: nowhere to go when the other table doesn't show the message", () => {
-    assert.equal(jumpStep(ready(1), at(null), onScreen), null, "not in that view");
-    assert.equal(jumpStep(ready(1), at(undefined), onScreen), null, "no answer");
+    assert.equal(jumpStep(ready(1), at(null), screen), null, "not in that view");
+    assert.equal(jumpStep(ready(1), at(undefined), screen), null, "no answer");
 });
 
 test("jumpStep: nowhere to go while the other table shows a status, the backend isn't asked", () => {
@@ -177,7 +178,7 @@ test("jumpStep: nowhere to go while the other table shows a status, the backend 
     const asked = [];
     const position = () => { asked.push(1); return 5; };
     for (const status of ["searching", "filtering", "loading", "searchCancelled", "sourceLost"])
-        assert.equal(jumpStep({ status, dataVersion: 1 }, position, onScreen), null, status);
-    assert.equal(jumpStep(null, position, onScreen), null, "no view yet");
+        assert.equal(jumpStep({ status, dataVersion: 1 }, position, screen), null, status);
+    assert.equal(jumpStep(null, position, screen), null, "no view yet");
     assert.equal(asked.length, 0);
 });

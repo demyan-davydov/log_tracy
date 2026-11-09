@@ -99,21 +99,20 @@ export function searchViewKey(vm) {
     return `${vm.status}/${vm.dataVersion ?? ""}/${vm.progress ?? ""}`;
 }
 
-// Where a double click on a row of one table takes the other one (the same
-// rules both ways): { position: the row of the message there, made current and
-// the only one selected, top: the first row to show, so it is near the top,
-// focus: whether that table takes the keyboard }, or null if that table doesn't
-// show the message or shows a status instead of rows: its positions belong to
-// the content being replaced then, and the backend is not asked.
+// Where a row selected in one table takes the other one (the same rules both
+// ways): { position: the row of the message there, made current and the only
+// one selected, top: the first row to show so that it is near the top, null
+// if it is on screen already and stays where it is }, or null if that table
+// doesn't show the message or shows a status instead of rows: its positions
+// belong to the content being replaced then, and the backend is not asked.
 // @param vm - the view of that table (see tableStep)
 // @param positionOf - () => the row of the message there, null if none (the backend)
-// @param visibleRows - the rows that table shows: 0 when its panel is collapsed,
-//   the focus would go to a table the user can't see
-// @param inSelectable - the click was in a cell whose text it selects (a word of
-//   the Payload): the focus stays, so Cmd+C copies the word
-export function jumpStep(vm, positionOf, { visibleRows, inSelectable }) {
+// @param visibleRange - [first, last] rows wholly on screen there (not cut by an edge), null if none
+// @param visibleRows - the rows that table has room for
+export function jumpStep(vm, positionOf, { visibleRange, visibleRows }) {
     if (vm?.status !== "ready") return null;
     const position = positionOf();
     if (position === null || position === undefined) return null;
-    return { position, top: scrollTarget(position, visibleRows), focus: visibleRows > 0 && !inSelectable };
+    const onScreen = visibleRange && position >= visibleRange[0] && position <= visibleRange[1];
+    return { position, top: onScreen ? null : scrollTarget(position, visibleRows) };
 }

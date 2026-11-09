@@ -2,7 +2,7 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { RowSelection, selectedText, scrollTarget, autoScrollSpeed, autoScroll } from "../../resources/row-selection.js";
+import { RowSelection, selectedText, scrollTarget, autoScrollSpeed, autoScroll, followedRow, followDelay, SelectionFollower, selectsOnPress, selectionMark, selectionMoved } from "../../resources/row-selection.js";
 
 const click = (selection, index, modifiers = {}) => selection.click(index, modifiers);
 
@@ -213,4 +213,90 @@ test("rows past the end of the view are neither read nor counted", () => {
     const result = selectedText(selection, (i) => { ++read; return `r${i}`; }, 1000, 5);
     assert.deepEqual(result, { text: "r2\nr3\nr4", copied: 3, total: 3, truncated: false });
     assert.equal(read, 3);
+});
+
+// ── Following the current row in the other table ──────────────────────────
+
+test("followedRow: the last row clicked, dragged to or moved to, while it is selected", () => {
+    const selection = new RowSelection();
+    assert.equal(followedRow(selection), null, "nothing selected");
+    selection.click(3);
+    selection.click(7, { shift: true });
+    assert.equal(followedRow(selection), 7, "the end of a Shift range");
+    selection.click(5, { toggle: true }); // removed from the selection by Cmd+click
+    assert.equal(followedRow(selection), null, "a row taken out of the selection");
+    selection.click(9, { toggle: true });
+    assert.equal(followedRow(selection), 9);
+});
+
+// Timers by hand: { set(fn, ms) -> id, clear(id) }, fired by fire()
+function fakeTimers() {
+    const timers = new Map();
+    let next = 1;
+    return {
+        set(fn, ms) { timers.set(next, { fn, ms }); return next++; },
+        clear(id) { timers.delete(id); },
+        pending() { return [...timers.values()]; },
+        fire() { const all = [...timers.values()]; timers.clear(); for (const t of all) t.fn(); },
+    };
+}
+
+test("SelectionFollower: a click is followed at once", () => {
+    const timers = fakeTimers();
+    const followed = [];
+    const follower = new SelectionFollower(list => followed.push(list), timers);
+    follower.changed("main", "click");
+    assert.deepEqual(followed, ["main"]);
+    assert.equal(timers.pending().length, 0);
+});
+
+test("SelectionFollower: a drag or the keys are followed once the row rests", () => {
+    const timers = fakeTimers();
+    const followed = [];
+    const follower = new SelectionFollower(list => followed.push(list), timers);
+    follower.changed("main", "drag");
+    follower.changed("main", "drag");
+    follower.changed("main", "keys");
+    assert.deepEqual(followed, [], "not while it moves");
+    assert.equal(timers.pending().length, 1, "one timer, started anew by every change");
+    assert.equal(timers.pending()[0].ms, followDelay);
+    timers.fire();
+    assert.deepEqual(followed, ["main"]);
+});
+
+test("SelectionFollower: the last change wins, a click drops the waiting one, cancel drops it too", () => {
+    const timers = fakeTimers();
+    const followed = [];
+    const follower = new SelectionFollower(list => followed.push(list), timers);
+    follower.changed("main", "drag");
+    follower.changed("search", "click");
+    timers.fire();
+    assert.deepEqual(followed, ["search"], "the drag of the other table is not followed after");
+    follower.changed("main", "keys");
+    follower.cancel();
+    timers.fire();
+    assert.deepEqual(followed, ["search"]);
+});
+
+test("selectsOnPress: a plain press in a Payload waits for the release, the others select at once", () => {
+    assert.equal(selectsOnPress({ shift: false, toggle: false }, false), true, "another cell");
+    assert.equal(selectsOnPress({ shift: false, toggle: false }, true), false, "may start selecting text");
+    assert.equal(selectsOnPress({ shift: true, toggle: false }, true), true, "Shift extends the rows");
+    assert.equal(selectsOnPress({ shift: false, toggle: true }, true), true, "Cmd adds a row");
+});
+
+test("selectionMoved: a change the other table follows, not a press that changed nothing", () => {
+    const selection = new RowSelection();
+    let before = selectionMark(selection);
+    selection.click(4);
+    assert.equal(selectionMoved(before, selection), true, "a new row");
+    before = selectionMark(selection);
+    selection.click(4);
+    assert.equal(selectionMoved(before, selection), false, "the same row clicked again");
+    selection.moveTo(4);
+    assert.equal(selectionMoved(before, selection), false, "a key at the edge of the log");
+    selection.click(6, { shift: true });
+    before = selectionMark(selection);
+    selection.click(6);
+    assert.equal(selectionMoved(before, selection), true, "a range narrowed to its current row");
 });

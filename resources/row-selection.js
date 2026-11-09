@@ -189,3 +189,70 @@ export function autoScrollSpeed(distance) {
     if (distance <= nearDistance) return minSpeed;
     return Math.min(maxSpeed, minSpeed + (distance - nearDistance) * acceleration);
 }
+
+// ── Following the current row in the other table ──────────────────────────
+// A new row selected in one log table is shown in the other one, if that one
+// has it (see jumpStep in pane-state.js). See docs/stories/search-highlight.md.
+
+// How long the row must rest, in ms, before a drag or the keys are followed:
+// the other table doesn't jump along with every row the mouse passes over
+export const followDelay = 500;
+
+// The row the other table follows: the current one (the last row clicked,
+// dragged to or moved to by the keys), null if it isn't selected (Cmd+click
+// took it out of the selection, Escape cleared it)
+export function followedRow(selection) {
+    const current = selection.current;
+    return current !== null && selection.has(current) ? current : null;
+}
+
+// Follows a change of the current row of a table: a click at once, a drag or
+// the keys once the row rests for followDelay. Only the last change counts: a
+// newer one, of either table, drops the one waiting.
+// follow(list) does it; timers: { set(fn, ms) -> id, clear(id) } (by hand in tests)
+export class SelectionFollower {
+    constructor(follow, timers = { set: (fn, ms) => setTimeout(fn, ms), clear: id => clearTimeout(id) }) {
+        this.follow = follow;
+        this.timers = timers;
+        this.timer = null;
+    }
+
+    // cause: "click", "drag" or "keys"
+    changed(list, cause) {
+        this.cancel();
+        if (cause === "click") {
+            this.follow(list);
+            return;
+        }
+        this.timer = this.timers.set(() => {
+            this.timer = null;
+            this.follow(list);
+        }, followDelay);
+    }
+
+    cancel() {
+        if (this.timer !== null) this.timers.clear(this.timer);
+        this.timer = null;
+    }
+}
+
+// Whether a press of the left button selects its row at once. A plain press in
+// a cell whose text can be selected (a Payload) may start selecting that text:
+// it selects the row on the release, if no text was selected by then. With
+// Shift or Cmd it is about the rows.
+export function selectsOnPress({ shift, toggle }, inSelectable) {
+    return !inSelectable || shift || toggle;
+}
+
+// What tells whether a press or a key changed the selection of a table
+// (selectionMoved): its current row and how many rows are selected
+export function selectionMark(selection) {
+    return { current: selection.current, count: selection.count };
+}
+
+// Whether the selection moved since `before` (selectionMark): a click on the
+// row that is already the only one selected, or a key at the edge of the log,
+// changes nothing, and the other table is not pulled back to it
+export function selectionMoved(before, selection) {
+    return before.current !== selection.current || before.count !== selection.count;
+}

@@ -11,6 +11,8 @@ import * as backend from "backend.js";
 import * as platform from "platform.js";
 import { noSearch, runSearch, searchPending, editRule } from "pane-commands.js";
 import { ruleColors } from "rule-colors.js";
+import { rowLayout } from "cell-format.js";
+import { followedRow, SelectionFollower } from "row-selection.js";
 import { noTable, tableStep, rowLookStep, keptRowStep, searchViewKey, jumpStep } from "pane-state.js";
 import { currentCatalog, tr } from "i18n/i18n.js";
 import { translateTree } from "i18n/dom.js";
@@ -254,6 +256,10 @@ export class DocumentPane {
         this.searchList = this.searchTable.$("tbody");
         this.mainList.docId = docId;
         this.searchList.docId = docId;
+        // A row the user selects in one table is shown in the other (followSelection)
+        this.follower = new SelectionFollower(list => this.followSelection(list));
+        for (const list of [this.mainList, this.searchList])
+            list.onCurrentChanged = cause => this.follower.changed(list, cause);
         this.applyRowLook();
 
         this.chipEditor = new SearchEditor(this.root.$(".chip-search"), {
@@ -358,6 +364,7 @@ export class DocumentPane {
             bottomPage: this.bottomPage,
         };
         this.visible = false;
+        this.follower.cancel(); // not into a hidden panel
         this.root.style.display = "none";
         return splitters;
     }
@@ -365,6 +372,7 @@ export class DocumentPane {
     // The document is closed
     destroy() {
         this.destroyed = true; // a frame asked by applyRowLook() leaves the lists alone
+        this.follower.cancel();
         this.keptRows.clear();
         this.chipEditor.destroy();
         this.root.remove();
@@ -574,6 +582,23 @@ export class DocumentPane {
         }
     }
 
+    // Shows the row selected in the table `from` (followedRow) in the other
+    // one, if that one has its message: selected there, near the top unless it
+    // is on screen (jumpStep). The keyboard stays in `from`.
+    followSelection(from) {
+        const fromMain = from === this.mainList;
+        if ((fromMain ? this.mainView : this.searchView)?.status !== "ready") return; // its rows are being replaced
+        const row = followedRow(from.selection);
+        const msgIndex = row === null ? NaN : Number(from.itemAt(row)?.[rowLayout.messageIndex]);
+        if (!Number.isFinite(msgIndex)) return;
+        const [list, vm, positionOf] = fromMain
+            ? [this.searchList, this.searchView, backend.searchViewPosition]
+            : [this.mainList, this.mainView, backend.mainViewPosition];
+        const step = jumpStep(vm, () => positionOf(this.docId, msgIndex),
+            { visibleRange: list.wholeRowsRange(), visibleRows: list.visibleRowCount() });
+        if (step) list.showRow(step);
+    }
+
     reloadTable(list, step) {
         if (step.resetSelection) list.resetSelection(); // the rows are other messages now
         if (step.reload) reloadList(list, step.reload === "start" ? "start" : null);
@@ -757,24 +782,6 @@ export class DocumentPane {
                 }
             }
             return true; // don't change the row selection
-        });
-
-        // A double click on a row shows its message in the other table, if that
-        // one has it: current and the only one selected, near the top (jumpStep)
-        on("dblclick", "table.log-table > tbody > tr", (evt, row) => {
-            if (evt.target.closest("td.anchor")) return; // toggles the anchor only
-            const msgIndex = Number(row.$("td.anchor")?.getAttribute("msg-index"));
-            if (!Number.isFinite(msgIndex)) return;
-            const [list, vm, positionOf] = row.parentElement === this.mainList
-                ? [this.searchList, this.searchView, backend.searchViewPosition]
-                : [this.mainList, this.mainView, backend.mainViewPosition];
-            const step = jumpStep(vm, () => positionOf(this.docId, msgIndex), {
-                visibleRows: list.visibleRowCount(),
-                inSelectable: !!evt.target.closest("[selectable]"),
-            });
-            if (!step) return;
-            list.showRow(step);
-            return true;
         });
 
         on("click", ".btn-lost-close", () => this.host.closeTab(this.docId));
