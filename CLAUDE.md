@@ -16,9 +16,9 @@ what every session needs.
 - A change in an area you haven't read this session: its file in `.ai/knowledge/`
   (architecture, formats, filters, ui, i18n, sciter).
 - UI work: `.ai/rules/ux.md` (the user's UX requirements) and `.ai/knowledge/sciter.md`.
-- Adding a format, a backend call, a resource file, updating Sciter, the git flow, a review
-  against the rules, a screenshot of the app: its file in `.ai/workflows/` (most are skills
-  too: `/add-format`, `/add-backend-call`, `/update-sciter`, `/review-rules`, `/screenshot`).
+- Adding a format, a backend call, a resource file, updating Sciter, the git flow, a review by
+  lenses, a screenshot of the app: its file in `.ai/workflows/` (most are skills
+  too: `/add-format`, `/add-backend-call`, `/update-sciter`, `/review`, `/screenshot`).
 
 The traps that cost most, whatever the task (the rest in `.ai/rules/` and
 `.ai/knowledge/sciter.md`):
