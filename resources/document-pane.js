@@ -9,7 +9,7 @@
 import { SearchEditor } from "search-editor.js";
 import * as backend from "backend.js";
 import * as platform from "platform.js";
-import { noSearch, runSearch, searchPending, editRule } from "pane-commands.js";
+import { noSearch, runSearch, searchPending, editRule, anchorRefusalText } from "pane-commands.js";
 import { ruleColors } from "rule-colors.js";
 import { rowLayout } from "cell-format.js";
 import { followedRow, SelectionFollower } from "row-selection.js";
@@ -18,6 +18,7 @@ import { currentCatalog, tr } from "i18n/i18n.js";
 import { translateTree } from "i18n/dom.js";
 import { fileFilter, allFiles } from "file-types.js";
 import { fileInfoRows } from "file-info.js";
+import { showNotice } from "notice.js";
 
 // Texts of the main view statuses other than the table and the lost file
 const mainViewTexts = {
@@ -694,6 +695,12 @@ export class DocumentPane {
         return true;
     }
 
+    // No room for another anchor (`full`): the empty anchor cells of both
+    // tables show on hover that none can be set (anchors-full in table.css)
+    markAnchorsFull(full) {
+        for (const table of this.root.$$("table.log-table")) table.classList.toggle("anchors-full", full);
+    }
+
     // Shows the filter sets: a set is a row with its switch, name and remove
     // button, followed by a row per rule
     showFilters() {
@@ -761,13 +768,18 @@ export class DocumentPane {
             this.runChipSearch();
         });
 
-        // Anchor column: toggles the anchor of the message in both views. Ignored by
-        // the backend while an operation runs or at the anchor limit.
+        // Anchor column: toggles the anchor of the message in both views. Refused
+        // by the backend while an operation runs or at the anchor limit: a notice
+        // by the cell says why. At the limit the tables are marked anchors-full:
+        // their empty anchor cells show on hover that no anchor can be set.
         on("click", "table.log-table td.anchor", (evt, cell) => {
             const index = Number(cell.getAttribute("msg-index"));
             const anchored = cell.getAttribute("has-anchor") === "true";
             const counts = this.lists.map(list => list.totalItems());
-            if (backend.setAnchor(this.docId, index, !anchored)) {
+            const answer = backend.setAnchor(this.docId, index, !anchored);
+            this.markAnchorsFull(answer.full);
+            if (answer.refused) showNotice(cell, anchorRefusalText(answer), { at: "right", ms: 2500, untilLeave: true });
+            else {
                 for (const [i, list] of this.lists.entries()) {
                     const count = list.totalItems();
                     if (count === counts[i]) {
@@ -801,7 +813,8 @@ export class DocumentPane {
                 return;
             }
             // A new document with the same id: its first rows start at the top,
-            // its filters are restored, it has no search yet
+            // its filters are restored, it has no search and no anchors yet
+            this.markAnchorsFull(false);
             this.mainShown = noTable;
             this.searchShown = noTable;
             this.appliedColumns = null;

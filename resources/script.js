@@ -19,6 +19,7 @@ import { currentCatalog, pseudoLocale, setCatalog, tr, trParts } from "i18n/i18n
 import { translateTree } from "i18n/dom.js";
 import { fileFilter, allFiles } from "file-types.js";
 import { requestedLocale } from "i18n/languages.js";
+import { showNotice } from "notice.js";
 
 // The table whose context menu is open: "Copy" copies its selected text,
 // "Copy Row" its selected rows
@@ -47,17 +48,6 @@ function copyFromTable(list, read) {
     if (copied > 0) platform.copyText(text);
     if (truncated)
         showNotice(list, tr("Copied {copied} of {total} rows: the clipboard limit is 16 MB", { copied, total }));
-}
-
-// A notice over the bottom of `owner` that hides itself after a few seconds
-function showNotice(owner, text) {
-    const popup = Element.create(<popup class="notice">{text}</popup>);
-    document.body.append(popup);
-    owner.popup(popup, { anchorAt: 2, popupAt: 2 }); // bottom-center on bottom-center
-    setTimeout(() => {
-        popup.state.popup = false;
-        popup.remove();
-    }, 4000);
 }
 
 globalThis.VirtualDltTBody = VirtualDltTBody;

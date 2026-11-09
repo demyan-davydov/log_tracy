@@ -1,7 +1,7 @@
 // The flows of the commands of a document panel (document-pane.js), free of
 // Sciter: what the backend and the dialogs are asked comes in as functions.
 // Tests: tests/js/pane-commands.test.mjs.
-import { tr } from "./i18n/i18n.js";
+import { tr, trn } from "./i18n/i18n.js";
 
 // ── Search ───────────────────────────────────────────────────────────────────
 // The query is committed only by Enter or the Search button; editing it doesn't
@@ -44,4 +44,14 @@ export function editRule(values, open, apply) {
         if (!error) return true;
         values = result;
     }
+}
+
+// ── Anchors ──────────────────────────────────────────────────────────────────
+
+// What the user is told when the backend refused an anchor: its answer
+// { refused: "limit" | "busy" | null, max }; "" if it wasn't refused
+export function anchorRefusalText(answer) {
+    if (answer.refused === "limit") return trn("{n} anchor at most", "{n} anchors at most", answer.max);
+    if (answer.refused === "busy") return tr("Not while searching or filtering");
+    return "";
 }

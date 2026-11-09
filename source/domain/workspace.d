@@ -116,7 +116,12 @@ private class NullDocument : Document
         return null;
     }
 
-    override bool setAnchor(size_t index, bool value)
+    override AnchorChange setAnchor(size_t index, bool value)
+    {
+        return AnchorChange(AnchorRefusal.busy);
+    }
+
+    override bool anchorsFull() const
     {
         return false;
     }

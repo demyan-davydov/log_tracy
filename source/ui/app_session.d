@@ -425,11 +425,27 @@ final class AppSession
         return search is null ? null : search.matchRanges(item.message(), buffer);
     }
 
-    /// Returns: true if the anchor changed; false while an operation is
-    /// running or at the anchor limit (nothing changes then)
-    bool setAnchor(DocumentId docId, int messageIndex, bool value)
+    /// Sets or clears the anchor of a message.
+    /// Returns: JSON `{"refused": null | "limit" | "busy", "max": <the anchor
+    /// limit>, "full": <no room for another anchor now>}`; nothing changes when
+    /// refused: at the anchor limit, or while an operation is running. The
+    /// script writes the text (plural forms of the limit: trn).
+    string setAnchor(DocumentId docId, int messageIndex, bool value)
     {
-        return messageIndex >= 0 && _workspace.doc(docId).setAnchor(cast(size_t) messageIndex, value);
+        import domain.anchors : Anchors;
+
+        auto doc = _workspace.doc(docId);
+        const change = messageIndex < 0 ? AnchorChange(AnchorRefusal.busy)
+            : doc.setAnchor(cast(size_t) messageIndex, value);
+        JSONValue json = ["full": doc.anchorsFull];
+        json["max"] = Anchors.MaxAnchors;
+        final switch (change.refusal)
+        {
+        case AnchorRefusal.none: json["refused"] = null; break;
+        case AnchorRefusal.busy: json["refused"] = "busy"; break;
+        case AnchorRefusal.limit: json["refused"] = "limit"; break;
+        }
+        return json.toString;
     }
 
     /// Cancel pressed in the main view of the document: its machine decides
@@ -809,7 +825,11 @@ version (unittest)
         void applySearchFilter(LogFilter!wchar filter) { searches ~= filter; current = filter; }
         // As LogDocument's: the search asked last, none once it is cancelled
         const(LogFilter!wchar) searchFilter() { return current; }
-        bool setAnchor(size_t index, bool value) { return true; }
+        // What setAnchor answers and anchorsFull tells after it
+        AnchorChange anchorChange;
+        bool full;
+        AnchorChange setAnchor(size_t index, bool value) { return anchorChange; }
+        bool anchorsFull() const { return full; }
         size_t[] exportAnchors() const pure { return null; }
         void importAnchors(const(size_t[]) anchors) {}
         bool requestCancel() { cancelAsked = true; current = null; return true; }
@@ -1305,6 +1325,37 @@ unittest
     assert(f.session.retryDocument(12345) == "документ не открыт");
 }
 
+
+@("AppSession: setAnchor tells why an anchor was refused, the limit, and whether there is room for more")
+unittest
+{
+    import domain.anchors : Anchors;
+    import std.json : parseJSON;
+
+    auto f = Fixture.make();
+    const id = f.session.openFile("/logs/a.log").docId;
+    auto doc = f.docOf("/logs/a.log");
+
+    auto answer = parseJSON(f.session.setAnchor(id, 3, true));
+    assert(answer["refused"].isNull && !answer["full"].boolean);
+    assert(answer["max"].integer == Anchors.MaxAnchors, "the limit comes from the constant");
+
+    doc.full = true;
+    answer = parseJSON(f.session.setAnchor(id, 3, true));
+    assert(answer["refused"].isNull && answer["full"].boolean, "the last anchor that fits");
+
+    doc.anchorChange = AnchorChange(AnchorRefusal.limit);
+    answer = parseJSON(f.session.setAnchor(id, 4, true));
+    assert(answer["refused"].str == "limit" && answer["full"].boolean);
+
+    doc.anchorChange = AnchorChange(AnchorRefusal.busy);
+    answer = parseJSON(f.session.setAnchor(id, 4, true));
+    assert(answer["refused"].str == "busy" && answer["full"].boolean,
+        "the reason of the document, though the anchors are full");
+
+    doc.anchorChange = AnchorChange.init;
+    assert(parseJSON(f.session.setAnchor(id, -1, true))["refused"].str == "busy", "no such message");
+}
 
 @("AppSession: the pseudo locale is offered only when asked for (DLT_PSEUDO_LOCALE)")
 unittest
