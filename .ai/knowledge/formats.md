@@ -34,6 +34,10 @@ Adding a format, step by step: `.ai/workflows/add-format.md`.
 - Parser: `formats/dlt/parser`, headers `formats/dlt/protocol`, `formats/dlt/header_v2`.
 - DLT fields are read through UFCS accessors in `formats/dlt/fields` (`msg.ecuId`,
   `msg.appId`, ...). UFCS accessors don't work through a pointer.
+- The length of a record is decided in one place, `DltFormat.layoutOf`, for the scan and for
+  `recordAt` alike (the index keeps offsets only): with storage headers a length too long is
+  cut at the first storage header inside the record when none follows it (`cutAtNextHeader`,
+  O(1) for a sound record).
 - DLT records for unittests are built by `formats/dlt/testing_utils` (`BuildV1`, `BuildV2`,
   `buildDltMessage`), also for the tests of other packages.
 - `.dlf` filter files of dlt-viewer: `formats/dlt/dlf`. FIBEX (non-verbose): `formats/dlt/fibex`,
