@@ -214,6 +214,7 @@
     "{open} a log with {shortcut}": "{open} журнал ({shortcut})",
     "{records}, loading...": "{records}, загрузка...",
     "{records}, not loaded completely": "{records}, загружен не полностью",
+    "{rule}: not applied: {error}": "{rule}: не применяется: {error}",
     "{size} GB": "{size} ГБ",
     "{size} KB": "{size} КБ",
     "{size} MB": "{size} МБ",

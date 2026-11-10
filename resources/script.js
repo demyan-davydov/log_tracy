@@ -149,11 +149,10 @@ function restoreWindowFrame(saved) {
     }
 }
 
-// The sizes of the panels as saved on exit (sidePanelWidth, searchPanelHeight
-// of the settings), for the first panel; the defaults of `splitters` for a
-// size not saved
+// The size of the bottom panel as saved on exit (searchPanelHeight of the
+// settings), for the first panel; the default of `splitters` if not saved
 function restoreSplitters(settings) {
-    splitters = { ...splittersOf(settings, splitters), colsState: null, rowsState: null };
+    splitters = { ...splittersOf(settings, splitters), rowsState: null };
 }
 
 // The theme and the font size of the settings as saved (null: none)
@@ -557,9 +556,9 @@ function closeTab(docId) {
 // The panel shown: that of the document of the active tab, none while the
 // placeholder is (no document, or the New Tab)
 let shownPane = null;
-// The sizes of the splitters of the panel shown last: a panel shown next
-// gets them, so the panels look the same (see DocumentPane.show)
-let splitters = { cols: "200dip, *", rows: "*, 250dip", colsState: null, rowsState: null };
+// The splitter of the panel shown last: a panel shown next gets it, so the
+// panels look the same (see DocumentPane.show)
+let splitters = { rows: "*, 250dip", rowsState: null };
 
 // Shows the panel of the active document, or the placeholder instead of all
 // the panels while no document is shown
@@ -573,7 +572,7 @@ function showDocument() {
     $("#document-panes").style.display = pane ? "" : "none";
     if (pane !== shownPane) {
         shownPane = pane;
-        if (pane) pane.show(splitters.colsState ? splitters : null);
+        if (pane) pane.show(splitters.rowsState ? splitters : null);
     } else if (pane) {
         pane.refresh();
     }

@@ -36,15 +36,6 @@ header {
     background: var(--bg-search-pending);
 }
 
-.filter-message:empty {
-    display: none;
-}
-
-.filter-message {
-    color: red;
-    padding: 2dip 4dip;
-}
-
 .main-content {
     size: *;
     position: relative;
@@ -441,154 +432,6 @@ frameset {
     size: *;
 }
 
-.sidebar {
-    background: var(--bg-sidebar);
-    border-right: 1dip solid var(--border-color);
-    padding: 10dip;
-    width: 250dip;
-}
-
-.sidebar header {
-    background: transparent;
-    border-bottom: 2dip solid var(--border-sidebar-header);
-    margin-bottom: 10dip;
-    padding: 0 0 5dip 0;
-    font-size: 1.1em;
-    color: var(--text-header-sidebar);
-    font-weight: 600;
-}
-
-/* ---- Filter sets of a document: FilterPanel.render() in filter-panel.js ---- */
-
-.filter-sets {
-    flow: vertical;
-}
-
-.filters-empty {
-    color: var(--text-label);
-    font-size: 0.9em;
-}
-
-.filter-set {
-    margin-bottom: 8dip;
-}
-
-.filter-row {
-    flow: horizontal;
-    vertical-align: middle;
-    border-spacing: 4dip;
-    padding: 2dip 4dip;
-    border-radius: 4dip;
-}
-
-.filter-row:hover {
-    background: var(--bg-tab-hover);
-}
-
-.filter-set-head {
-    font-weight: 600;
-}
-
-.filter-rule {
-    padding-left: 22dip; /* under the name of the set */
-}
-
-.filter-row input {
-    margin: 0;
-}
-
-/* Cut at the end, the full name in the overflow tooltip */
-.filter-name {
-    width: *;
-    overflow-x: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-}
-
-/* What the rule does: + include, − exclude, ◆ marker */
-.filter-kind {
-    width: 1em;
-    text-align: center;
-    color: var(--text-label);
-}
-
-.filter-swatch {
-    width: 10dip;
-    height: 10dip;
-    border-radius: 2dip;
-    border: 1dip solid var(--border-color);
-}
-
-/* Switched off, or in a set switched off, or not applied: muted */
-.filter-set.off .filter-rule .filter-name,
-.filter-rule.off .filter-name,
-.filter-rule.error .filter-name {
-    color: var(--text-label);
-}
-
-/* Why the rule isn't applied, under it */
-.filter-note {
-    padding-left: 48dip;
-    font-size: 0.85em;
-    color: var(--log-error);
-}
-
-
-/* The buttons of a set (⤓ export, +, ×) and of a rule (✎, ×) */
-.filter-button {
-    min-width: 16dip;
-    height: 16dip;
-    line-height: 16dip;
-    text-align: center;
-    border-radius: 8dip;
-    color: var(--tab-close);
-    cursor: pointer;
-}
-
-.filter-button:hover {
-    background: var(--tab-close-hover);
-}
-
-/* The buttons of a rule only where the mouse is: the list stays calm */
-.filter-rule .filter-button {
-    visibility: hidden;
-}
-
-.filter-rule:hover .filter-button {
-    visibility: visible;
-}
-
-.filter-actions {
-    flow: horizontal-wrap;
-    border-spacing: 8dip;
-    margin-top: 20dip;
-    content-horizontal-align: right;
-}
-
-/* A further section of the sidebar, below the filters */
-.sidebar header.sidebar-section {
-    margin-top: 24dip;
-}
-
-.sidebar header + .filter-actions {
-    margin-top: 0;
-}
-
-.sidebar .filter-actions button {
-    padding: 6dip 12dip;
-    background: var(--btn-default-bg);
-    border: 1dip solid var(--border-color);
-    border-radius: 4dip;
-    cursor: pointer;
-    color: var(--text-main);
-}
-
-.sidebar .filter-actions button:hover {
-    background: var(--btn-default-hover);
-}
-
-
-
 /* The bottom panel: its pages over the strip of their tabs */
 .bottom-panel {
     flow: vertical;
@@ -662,7 +505,7 @@ frameset {
     opacity: 1;
 }
 
-/* ---- The Filters page: FilterPanel, layout "chips" (filter-panel.js) ---- */
+/* ---- The Filters page: FilterPanel (filter-panel.js) ---- */
 
 .filter-toolbar {
     vertical-align: middle;
@@ -670,54 +513,94 @@ frameset {
     margin-bottom: 0;
 }
 
-.filter-toolbar .filter-message {
+/* The message of the last command: an error, whole, wrapped (shown by the
+   script: FilterPanel.render) */
+.filter-message {
     width: *;
     padding: 0 4dip;
-    white-space: nowrap;
-    overflow-x: hidden;
-    text-overflow: ellipsis;
+    color: var(--log-error);
 }
 
-.filter-page .filter-sets {
+.filter-sets {
+    flow: vertical;
     size: *;
     overflow-y: auto;
     padding: 0 9pt 6pt 4dip;
 }
 
-.filter-page .filters-empty {
-    margin: *; /* Sciter: flexible margins center it */
+.filters-empty {
+    margin: * 0; /* Sciter: flexible margins center it vertically */
+    text-align: center;
+    color: var(--text-label);
+    font-size: 0.9em;
 }
 
-/* A row per set: its head, then its rules as chips that wrap */
-.filter-grid {
-    flow: row(dt, dd);
-    flow-columns: max-content *;
-    margin: 0;
-}
-
-.filter-grid dt {
-    max-width: 16em;
-    padding: 2pt 12pt 2pt 0;
-}
-
-.filter-grid dd {
-    flow: horizontal-wrap;
-    border-spacing: 4dip;
-    margin: 0;
+/* A row per set: its head, then its rules as chips wrapping in the rest */
+.filter-set {
+    flow: horizontal;
     padding: 2pt 0;
 }
 
-.filter-set-cell .filter-set-head {
+.filter-set > .filter-set-head {
+    width: 12em; /* one for all the sets: the chips line up */
+    margin: 0 8pt * 0; /* Sciter: the flexible bottom margin keeps it at the top of the row */
+}
+
+.filter-chips {
+    width: *;
+    flow: horizontal-wrap;
+    border-spacing: 4dip;
+    overflow-x: hidden; /* Sciter: without it the row grows to its widest chip */
+}
+
+.filter-set-head {
     flow: horizontal;
     vertical-align: middle;
     border-spacing: 4dip;
     height: 1.6em;
     padding: 0 4dip;
     border-radius: 4dip;
+    font-weight: 600;
 }
 
-.filter-set-cell .filter-set-head:hover {
+.filter-set-head:hover {
     background: var(--bg-tab-hover);
+}
+
+.filter-chip {
+    flow: horizontal;
+    vertical-align: middle;
+    border-spacing: 3dip;
+    width: max-content;
+    max-width: 100%; /* of the row's rest: a long name is cut, the buttons stay in */
+    box-sizing: border-box;
+    height: 1.6em;
+    padding: 0 3dip;
+    border: 1dip solid var(--chip-border);
+    border-radius: 3dip;
+    background: var(--bg-main);
+}
+
+.filter-chip:hover {
+    background: var(--bg-tab-hover);
+}
+
+.filter-chip.error {
+    border-color: var(--log-error);
+}
+
+/* Why a rule isn't applied: under the chips of its set, across the row */
+.filter-note {
+    padding: 0 0 2pt 4dip;
+    font-size: 0.85em;
+    color: var(--log-error);
+}
+
+/* Takes what the chip leaves, cut when the chip reaches its max-width. Its
+   max-width is its text, so the chip's own max-content is the text (Sciter
+   takes a child's max-width for it) */
+.filter-chip .filter-name {
+    max-width: max-content;
 }
 
 .filter-set-head input,
@@ -725,36 +608,58 @@ frameset {
     margin: 0;
 }
 
-.filter-chips .filter-chip {
-    flow: horizontal;
-    vertical-align: middle;
-    border-spacing: 3dip;
-    width: max-content;
-    height: 1.6em;
-    max-width: 24em;
-    padding: 0 3dip;
-    border: 1dip solid var(--chip-border);
-    border-radius: 3dip;
-    background: var(--bg-main);
+/* Takes the room left in the head or the chip, cut at the end when there is
+   too little, the full name in the overflow tooltip */
+.filter-name {
+    width: *;
+    overflow-x: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 
-.filter-chips .filter-chip:hover {
-    background: var(--bg-tab-hover);
+/* What the rule does: + include, − exclude, ◆ marker */
+.filter-kind {
+    width: 1em;
+    text-align: center;
+    color: var(--text-label);
 }
 
-/* As long as its name, cut at the end beyond the width of the chip or the column */
-.filter-set-cell .filter-name,
-.filter-chip .filter-name {
-    width: max-content;
+.filter-swatch {
+    width: 10dip;
+    height: 10dip;
+    border-radius: 2dip;
+    border: 1dip solid var(--border-color);
 }
 
-.filter-chips .filter-chip.error {
-    border-color: var(--log-error);
+/* The buttons of a set (⤓ export, +, ×) and of a rule (✎, ×) */
+.filter-button {
+    width: 16dip; /* not min-width: Sciter leaves it out of the chip's max-content, cutting the name */
+    height: 16dip;
+    line-height: 16dip;
+    text-align: center;
+    border-radius: 8dip;
+    color: var(--tab-close);
+    cursor: pointer;
 }
 
-/* Switched off, or in a set switched off: muted (a chip not applied: .filter-rule.error) */
-.filter-set-cell.off .filter-name,
-.filter-chips.off .filter-name {
+.filter-button:hover {
+    background: var(--tab-close-hover);
+}
+
+/* The buttons of a rule only where the mouse is: the chips stay calm. Hidden,
+   not removed: nothing moves */
+.filter-chip .filter-button {
+    visibility: hidden;
+}
+
+.filter-chip:hover .filter-button {
+    visibility: visible;
+}
+
+/* Switched off, in a set switched off, or not applied: muted */
+.filter-chip.off .filter-name,
+.filter-chip.error .filter-name,
+.filter-set.off .filter-name {
     color: var(--text-label);
 }
 
