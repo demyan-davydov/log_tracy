@@ -14,8 +14,11 @@ of a gigabyte (tens of millions of records), and safe across the threads that ru
 - **UI thread:** the Sciter window and its script, `MainWindow`, `AppSession`, the rows of the
   tables (`getMainViewItem` / `getSearchViewItem`, `writeRow`, rule matching, match ranges),
   `Document.dispatchEvents()` delivering the events of the indexing.
-- **Indexing thread:** one operation at a time in the `BackgroundSlot` of a `LogIndex`
-  (offset, filter or search index), reporting on an `EventBusAsync`.
+- **Indexing thread:** one pass at a time in the `BackgroundSlot` of a `LogIndex`
+  (`runPass`): its stages (offset, filter, search index) take turns, each over the range it
+  doesn't cover yet, so the operations the views see overlap; it reports on an
+  `EventBusAsync`. The state of the stages is written by the UI thread only while no pass
+  runs, and by the worker of a pass.
 - **Task pool workers:** the blocks of a filter or search scan (`utils/parallel_scan`), each
   decoding records and matching them **at the same time** as the others.
 - So a `LogFormat` and a `LogFilter` are called from several threads at once; the indexes are

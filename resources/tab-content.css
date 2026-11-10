@@ -109,6 +109,7 @@
 .status-view.compact .status-actions {
     margin-top: 8dip;
 }
+
 /* ---- The progress of a filter or a search under the table it is filling:
    the table shows what was found so far. A row of its own, so no row of the
    table is covered: text, thin progress bar, Cancel ---- */

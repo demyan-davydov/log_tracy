@@ -136,7 +136,11 @@ utils  ←  sciter  ←  ui
   filter, the search) overlap. `LogDocument` tells them on the UI thread from the index's
   `StageFinished` and `PassFinished`; `OperationProgress` carries all of them in one event
   (events of one type override each other in the queue). `Document.dispatchEvents()` delivers
-  the events on the UI thread.
+  the events on the UI thread. The load and the filter tell their end apart, as soon as they
+  have nothing left: the file may be loaded while its filter still fills the main view (the
+  main view machine goes on as `Filtering`, the same content). A failure is of a stage
+  (`PassFinished.failed`): a filter or a search that fails leaves the file loading; a cancel
+  names its operation (`Document.requestCancel(Operation)`).
 - A source may grow (`ByteSource.complete` false: a file being written, a stream; its bytes
   don't move): a record cut by the end waits, `Document.dispatchEvents()` starts a pass when
   the index is `behind`, the views stay ready and `ContentGrown` tells them to count their

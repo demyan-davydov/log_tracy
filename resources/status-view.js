@@ -1,8 +1,9 @@
 // The status views of a document panel: what covers a table while its view
 // isn't showing rows (a filter or a search before its first row, a failure),
-// and the progress under a table a filter or a search is filling. The texts of each status of the main view and the search view, see
+// and the progress under a table a filter or a search is filling. The texts
+// of each status of the main view and the search view, see
 // source/ui/main_view_fsm.d and source/ui/search_view_fsm.d, and the filling
-// of a view (an element of .status-view).
+// of a view (an element of .status-view) and of a progress (.view-progress).
 
 import { tr } from "i18n/i18n.js";
 

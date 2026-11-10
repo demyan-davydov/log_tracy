@@ -106,17 +106,14 @@ interface Document
 
     void importAnchors(const(size_t[]) anchors);
 
-    //! @brief Cancels the running filter, with the search over its view, or
-    //! the running search, and drops pending requests. Loading the file
-    //! (BuildOffsetIndex) is not cancelled, nor a filter that runs with the load.
+    //! @brief Cancels `operation` and drops the requests waiting for it:
+    //! BuildFilterIndex — the running filter with the search over its view (a
+    //! filter that runs with the load of the file is not cancelled);
+    //! BuildSearchIndex — the running search alone, a filter running with it
+    //! goes on. Loading the file is not cancelled.
     //! A cancelled operation reports OperationFinished(Cancelled).
     //! @return true if a running operation was asked to stop
-    bool requestCancel();
-
-    //! @brief Cancels the running search and drops a pending one; a filter
-    //! running with it goes on.
-    //! @return true if a running search was asked to stop
-    bool requestCancelSearch();
+    bool requestCancel(Operation operation);
 
     //! @return true once the file can't be read any more (its disk was removed,
     //! a read failed). The document is unusable then: its views are empty and
@@ -177,7 +174,8 @@ struct OperationProgress
 
 //! A document that was loaded got more records (its source grows: a file
 //! being written, a stream): its views show more rows of the same content.
-//! Not published while an operation fills a view: its progress tells the same.
+//! Rows that no operation running tells of: a view an operation fills counts
+//! its rows by the progress of that operation.
 struct ContentGrown
 {
     enum isOverridable = true;

@@ -4,6 +4,7 @@
 module ui.document_ui;
 
 import domain.workspace : Workspace;
+import domain.document : Document;
 import domain.document_id : DocumentId;
 import log_core.log_message : LogMessage;
 import log_core.rule_filter : RuleId;
@@ -88,12 +89,12 @@ final class DocumentUi : MainViewSink, MainViewCommands, SearchViewSink, SearchV
     // filter is stopped with it, the search alone
     bool cancelOperation()
     {
-        return _workspace.doc(_docId).requestCancel();
+        return _workspace.doc(_docId).requestCancel(Document.Operation.BuildFilterIndex);
     }
 
     bool cancelSearch()
     {
-        return _workspace.doc(_docId).requestCancelSearch();
+        return _workspace.doc(_docId).requestCancel(Document.Operation.BuildSearchIndex);
     }
 
     void closeDocument()

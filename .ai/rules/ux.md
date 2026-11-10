@@ -87,9 +87,10 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     Errors from the core are shown; after a cancel or failure the detail says what to do next.
 21a. **Tables show rows before an operation ends.** A file being loaded shows the records
     found so far (those its filters let through), with no progress and no Cancel by the table:
-    its tab shows the progress, closing the tab stops the load. A filter or a search shows what it found so far, with its
-    progress and Cancel in a strip under the table (`.view-progress`), no row covered; until
-    the first row is found, its status view. After a cancel or a failure: the status view.
+    its tab shows the progress, closing the tab stops the load. A filter or a search shows
+    what it found so far, with its progress and Cancel in a strip under the table
+    (`.view-progress`), no row covered; until the first row is found, its status view. After
+    a cancel or a failure: the status view.
 22. **Empty states are useful and calm.** Centered; an accented title, a one-line hint with the
     shortcut, then something actionable (recent files that open on click); no decorative
     emoji, muted secondary text via theme variables.

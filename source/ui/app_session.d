@@ -870,8 +870,7 @@ version (unittest)
         bool anchorsFull() const { return full; }
         size_t[] exportAnchors() const pure { return null; }
         void importAnchors(const(size_t[]) anchors) {}
-        bool requestCancel() { cancelAsked = true; current = null; return true; }
-        bool requestCancelSearch() { return requestCancel(); }
+        bool requestCancel(Operation operation) { cancelAsked = true; current = null; return true; }
         bool sourceLost() { return false; }
         FormatChoice formatChoice() const { return FormatChoice("plain-text", 0); }
         size_t messageCount() nothrow @nogc { return records; }
@@ -1316,7 +1315,7 @@ unittest
     foreach (attempt; 0 .. 10)
     {
         assert(session.startChipSearch(id, timeout) == "");
-        assert(session.doc(id).requestCancel());
+        assert(session.doc(id).requestCancel(Document.Operation.BuildSearchIndex));
         reached = waitForStatus(session, "onSearchViewChanged", "searchCancelled", "ready");
         if (reached == "searchCancelled")
             break;

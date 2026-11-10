@@ -45,6 +45,9 @@ struct PassFinished
 {
     OperationFinished.Result result;
     UiText error; // set when result == Failed: for the user, translated where it is shown
+    /// The operation that failed: the filter or the search, while what they are
+    /// built over is sound. None: the source itself can't be read to its end
+    Document.Operation failed;
 }
 
 //! @brief Holds the data of a log and its indexes.
@@ -99,6 +102,7 @@ struct LogIndex
     private bool _searchStopped; // the search was cancelled or failed: nothing is listed
     private Anchors _anchors; // as they were when last told: the worker reads them
     private bool _reportFilter, _reportSearch; // the stage was asked for and didn't complete yet
+    private bool _grownUntold; // rows no operation tells of were added, ContentGrown is to be published
 
     private BackgroundSlot _backgroundSlot;
     private ScopedMutex _mutex; // mutex for building indexes
@@ -204,6 +208,7 @@ struct LogIndex
         _searchFilter = null;
         _searchScanned = 0;
         _searchStopped = false;
+        _reportSearch = false; // the search asked for went with the view it ran over
         _anchors = anchors;
     }
 
@@ -299,9 +304,10 @@ struct LogIndex
 
         const bool started = _backgroundSlot.runTask((BackgroundSlot.Ctx* ctx) {
             auto progress = ProgressReporter(events, ctx);
+            Operation stage = Operation.None; // the one the pass is at
             try
             {
-                finished.result = pass(progress)
+                finished.result = pass(progress, stage)
                     ? OperationFinished.Result.Completed : OperationFinished.Result.Cancelled;
                 finished.error = UiText.init;
             }
@@ -309,6 +315,8 @@ struct LogIndex
             {
                 finished.result = OperationFinished.Result.Failed;
                 finished.error = uiTextOf(e); // its template: translated where it is shown
+                // A lost source fails whatever stage reads it
+                finished.failed = _source.lost ? Operation.None : stage;
             }
         }, () { events.publish(finished); });
 
@@ -337,8 +345,8 @@ struct LogIndex
     /// The error of an operation the loss of the file fails
     static UiText sourceLostText() @safe => uiText("the file is no longer available");
 
-    //! @return the size of the log in bytes, as it was mapped: kept once
-    //! its file is lost
+    //! @return the size of the log in bytes, as its source has it now: kept
+    //! once its file is lost
     ulong byteSize() const nothrow @nogc
     {
         return _source.data.length;
@@ -415,13 +423,18 @@ struct LogIndex
     //! @brief Brings the indexes up to date, see runPass: a stage after
     //! another, each over what the one before it has added, until none has
     //! anything left
+    //! @param stage - set to the filter or the search while the pass is at it,
+    //!   None otherwise: tells which one a failure is of
     //! @return false if it was cancelled
-    private bool pass(ref ProgressReporter progress)
+    private bool pass(ref ProgressReporter progress, ref Operation stage)
     {
         auto ctx = progress.ctx;
-        // The bytes of this pass: a source that grows meanwhile is taken by the next one
-        const data = _source.data;
+        // The bytes of this pass: a source that grows meanwhile is taken by the
+        // next one. Its end is asked first: asked after the bytes, a source
+        // that got its last ones in between would have the record cut by the
+        // end of `data` taken for a whole one
         const bool final_ = _source.complete;
+        const data = _source.data;
         bool loading = !_loaded; // the load is reported until it is over
         const bool grows = _loaded; // a source that was loaded got more
         bool tailWaits = false; // the last bytes are the start of a record still to come
@@ -448,9 +461,9 @@ struct LogIndex
         {
             if (ctx.cancelled)
                 return false;
+            stage = Operation.None;
             enforceSourceAvailable();
             bool worked = false;
-            bool grown = false; // views that are ready got rows
 
             // The offset index: over the bytes not split into records yet
             if (_scannedBytes < data.length && !tailWaits)
@@ -461,7 +474,7 @@ struct LogIndex
                 if (!scanOffsets(ctx, data, final_, part, tailWaits, &report))
                     return false;
                 worked = true;
-                grown |= grows && _offsetIndex.length != before;
+                _grownUntold |= grows && _offsetIndex.length != before;
             }
             // The load is over, whatever follows it: told at once
             if (loading && (_scannedBytes == data.length || tailWaits))
@@ -476,6 +489,7 @@ struct LogIndex
             const records = _offsetIndex.length;
             if (filterBehind(records))
             {
+                stage = Operation.BuildFilterIndex;
                 const part = searchLive && _searchFilter !is null ? followRecords : size_t.max;
                 const from = _filterScanned;
                 const to = records - from > part ? from + part : records;
@@ -484,6 +498,7 @@ struct LogIndex
                         uiText("the filter index can't grow: too many records or not enough memory")))
                     return false;
                 worked = true;
+                stage = Operation.None;
             }
             // The filter covers the file, while a search may go on over its view
             if (_reportFilter && !loading && !filterBehind(records))
@@ -497,11 +512,12 @@ struct LogIndex
             const positions = viewLength();
             if (searchBehind(positions))
             {
+                stage = Operation.BuildSearchIndex;
                 const from = _searchScanned;
                 const full = uiText("the search index can't grow: too many records or not enough memory");
                 if (_searchFilter is null)
                     // With no search to tell its progress, the view may be shown as ready by now
-                    grown |= listAnchors(from, positions, full) && !_reportSearch;
+                    _grownUntold |= listAnchors(from, positions, full) && !_reportSearch;
                 else
                 {
                     const bool viewIsFiltered = _viewIsFiltered;
@@ -511,12 +527,17 @@ struct LogIndex
                         return false;
                 }
                 worked = true;
+                stage = Operation.None;
             }
 
             // Rows no operation tells of, after every stage has added its own:
-            // a view shown as ready counts them on this
-            if (grown)
+            // a view shown as ready counts them on this. Kept for the next
+            // pass if this one is stopped before
+            if (_grownUntold)
+            {
+                _grownUntold = false;
                 _events.publish(ContentGrown());
+            }
             if (!worked)
                 break;
         }

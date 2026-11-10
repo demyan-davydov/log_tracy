@@ -119,12 +119,7 @@ private class NullDocument : Document
     {
     }
 
-    override bool requestCancel()
-    {
-        return false;
-    }
-
-    override bool requestCancelSearch()
+    override bool requestCancel(Operation operation)
     {
         return false;
     }

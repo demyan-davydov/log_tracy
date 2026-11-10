@@ -137,6 +137,8 @@ struct MainViewContext
     MainViewCommands commands;
     uint dataVersion; // see ReadyView.dataVersion
     float loadProgress = 0; // of the file being loaded, 0..1
+    bool filterRuns; // a filter runs with the load of the file
+    bool sameContent; // Filtering is entered for the filter that fills the view already
     UiText error; // of the failed operation, set before the transition to the failed state
 }
 
@@ -181,6 +183,7 @@ struct Loading
     {
         if (e.operation != filterOperation)
             return;
+        c.filterRuns = true;
         ++c.dataVersion;
         showLoading(c);
     }
@@ -192,10 +195,26 @@ struct Loading
 
     Transition on(in OperationFinished e, ref MainViewContext c)
     {
+        if (e.operation == filterOperation)
+        {
+            c.filterRuns = false;
+            // Cancelled: replaced by the next filter, which starts at once.
+            // Failed: what it let through must not pass for the whole view,
+            // though the file goes on loading
+            if (e.result != OperationFinished.Result.Failed)
+                return NoTransition;
+            c.error = e.error;
+            return To!FilterFailed;
+        }
         if (e.operation != loadOperation)
             return NoTransition;
         if (e.result == OperationFinished.Result.Completed)
-            return To!Ready;
+        {
+            // The file is loaded, the filter has records left: the view is
+            // filled on, by the filter alone
+            c.sameContent = c.filterRuns;
+            return c.filterRuns ? To!Filtering : To!Ready;
+        }
         c.error = e.error; // loading can't be cancelled: Cancelled is a failure as well
         return To!LoadFailed;
     }
@@ -241,7 +260,10 @@ struct Filtering
 {
     void onEnter(ref MainViewContext c)
     {
-        ++c.dataVersion; // the filter fills the view anew
+        if (!c.sameContent)
+            ++c.dataVersion; // the filter fills the view anew
+        c.sameContent = false;
+        c.filterRuns = false; // of the load only
         c.show(FilteringView(0, c.dataVersion));
     }
 
@@ -469,8 +491,41 @@ unittest
     f.start(filterOperation);
     assert(f.sink.last == MainViewModel(LoadingFileView(0.5, 3)));
 
-    // The load and the filter end together
+    // The file is loaded before the filter has passed the last records: the
+    // view goes on being filled, with the progress of the filter from now on
     f.finish(loadOperation, Result.Completed);
+    assert(f.sink.last == MainViewModel(FilteringView(0, 3)), "the same content: the table isn't reloaded");
+    f.progress(filterOperation, 0.9);
+    assert(f.sink.last == MainViewModel(FilteringView(0.9, 3)));
+    f.finish(filterOperation, Result.Completed);
+    assert(f.sink.last == MainViewModel(ReadyView(3)));
+}
+
+@("MainViewFsm: a filter that ends with the load, or before it, leaves the view ready")
+unittest
+{
+    auto f = Fixture.started();
+    f.start(filterOperation);
+    f.finish(filterOperation, Result.Completed); // nothing left for it, the load goes on
+    assert(f.sink.last == MainViewModel(LoadingFileView(0, 2)));
+    f.finish(loadOperation, Result.Completed);
+    assert(f.sink.last == MainViewModel(ReadyView(2)));
+}
+
+@("MainViewFsm: a filter that fails while the file loads is told at once, the next filter fills the view")
+unittest
+{
+    auto f = Fixture.started();
+    f.start(filterOperation);
+    f.finish(filterOperation, Result.Failed, "bad regex");
+    assert(f.sink.last == MainViewModel(FilterFailedView(plainText("bad regex"))),
+        "the records it let through don't look like the whole view");
+
+    const shownCount = f.sink.shown.length;
+    f.finish(loadOperation, Result.Completed); // the file goes on loading
+    assert(f.sink.shown.length == shownCount);
+
+    f.start(filterOperation);
     f.finish(filterOperation, Result.Completed);
     assert(f.sink.last == MainViewModel(ReadyView(3)));
 }

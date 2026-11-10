@@ -319,16 +319,27 @@ class LogDocument : Document
                 dropSearch(Result.Cancelled);
             break;
         case Result.Failed:
-            // The source can't be taken to its end (the load, or what it got
-            // later): the document is done for. A filter or a search that
-            // failed after it leaves the file as it is
-            if (_loading || (!_filtering && !_searching))
-            {
-                _failed = true;
-                _pendingViewFilter = PendingRequest.init;
-                _pendingSearch = PendingRequest.init;
-            }
             UiText error = e.error;
+            // A search that failed leaves the file and the main view as they
+            // are; a filter that failed stops the search over its view too.
+            // Whatever else is running goes on with the next pass
+            if (e.failed == Operation.BuildSearchIndex)
+            {
+                dropSearch(Result.Failed, error);
+                break;
+            }
+            if (e.failed == Operation.BuildFilterIndex)
+            {
+                dropSearch(Result.Failed, error);
+                _index.stopViewFilter(); // the view keeps what was found, incomplete
+                finish(Operation.BuildFilterIndex, Result.Failed, error);
+                break;
+            }
+            // The source can't be taken to its end (the load, or what it got
+            // later): the document is done for
+            _failed = true;
+            _pendingViewFilter = PendingRequest.init;
+            _pendingSearch = PendingRequest.init;
             finish(Operation.BuildOffsetIndex, Result.Failed, error);
             dropSearch(Result.Failed, error);
             if (_filtering)
@@ -387,29 +398,28 @@ class LogDocument : Document
         applyPending();
     }
 
-    override bool requestCancel()
+    override bool requestCancel(Operation operation)
     {
-        _pendingViewFilter = PendingRequest.init;
-        _pendingSearch = PendingRequest.init;
+        const bool filter = operation == Operation.BuildFilterIndex;
+        if (!filter && operation != Operation.BuildSearchIndex)
+            return false; // the load is not cancelled
 
-        // A filter that runs with the load isn't stopped: the main view
-        // would be left incomplete with nothing to ask for it again
-        if (_filtering && !_loading)
+        _pendingSearch = PendingRequest.init; // a search goes with the view it would run over
+        if (filter)
+        {
+            _pendingViewFilter = PendingRequest.init;
+            // A filter that runs with the load isn't stopped: the main view
+            // would be left incomplete while the file still loads
+            if (!_filtering || _loading)
+                return false;
             _cancelFilter = true;
-        else if (_searching)
-            _cancelSearch = true;
+        }
         else
-            return false;
-        _index.cancelCurrentOperation();
-        return true;
-    }
-
-    override bool requestCancelSearch()
-    {
-        _pendingSearch = PendingRequest.init;
-        if (!_searching)
-            return false;
-        _cancelSearch = true;
+        {
+            if (!_searching)
+                return false;
+            _cancelSearch = true;
+        }
         _index.cancelCurrentOperation();
         return true;
     }
@@ -576,6 +586,84 @@ version (unittest)
         override void close() nothrow @nogc {}
     }
 
+    /// Accepts every message; holds the threads that ask it about the messages
+    /// from `held` on (of writeTestDlt: its seconds are its index) until it is
+    /// opened: what is being built with it stays unfinished meanwhile, with
+    /// the blocks before that message done
+    private final class GateFilter : LogFilter!wchar
+    {
+        import std.typecons : Nullable;
+
+        private size_t _held;
+        private shared bool _open;
+
+        this(size_t held)
+        {
+            _held = held;
+        }
+
+        void open()
+        {
+            import core.atomic : atomicStore;
+
+            atomicStore(_open, true);
+        }
+
+        bool matches(scope ref const(LogMessage!wchar) item) const
+        {
+            import core.atomic : atomicLoad;
+            import core.thread : Thread;
+            import core.time : msecs;
+            import formats.dlt.fields : timestampSeconds;
+
+            if (item.timestampSeconds >= _held)
+                while (!atomicLoad(_open))
+                    Thread.sleep(1.msecs);
+            return true;
+        }
+
+        Nullable!uint matchIndex(scope ref const(LogMessage!wchar) item) const
+        {
+            return Nullable!uint(0);
+        }
+
+        immutable(LogFilter!wchar) idup() const pure
+        {
+            assert(false);
+        }
+
+        LogFilter!wchar dup() const pure
+        {
+            assert(false);
+        }
+    }
+
+    /// Fails on the first message it is asked about
+    private final class FailingFilter : LogFilter!wchar
+    {
+        import std.typecons : Nullable;
+
+        bool matches(scope ref const(LogMessage!wchar) item) const
+        {
+            throw new Exception("the filter is broken");
+        }
+
+        Nullable!uint matchIndex(scope ref const(LogMessage!wchar) item) const
+        {
+            return Nullable!uint.init;
+        }
+
+        immutable(LogFilter!wchar) idup() const pure
+        {
+            assert(false);
+        }
+
+        LogFilter!wchar dup() const pure
+        {
+            assert(false);
+        }
+    }
+
     /// Test filter that accepts all or no messages
     private final class ConstFilter : LogFilter!wchar
     {
@@ -738,23 +826,134 @@ unittest
 
     auto doc = new LogDocument(path);
     auto views = new Views(doc);
-    doc.applySearchFilter(new ConstFilter(true));
+    // Held after the first part of the file: the load can't end meanwhile
+    auto search = new GateFilter(100_000);
+    scope (exit)
+        search.open(); // a failed test must not leave the worker held
+    doc.applySearchFilter(search);
 
-    // Rows of both views before the load is over
-    size_t mainRows, foundRows;
-    dispatchUntil(doc, () {
-        if (foundRows == 0 && !views.mainReady && doc.searchView.itemsCount > 0)
-        {
-            mainRows = doc.mainView.itemsCount;
-            foundRows = doc.searchView.itemsCount;
-        }
-        return views.mainReady;
-    });
+    dispatchUntil(doc, () => doc.searchView.itemsCount > 0);
+    const mainRows = doc.mainView.itemsCount, foundRows = doc.searchView.itemsCount;
+    doc.dispatchEvents();
+    assert(!views.mainReady, "the file is still loading");
     assert(mainRows > 0 && mainRows < messageCount, "the main view shows nothing until the file is loaded");
     assert(foundRows > 0 && foundRows < messageCount, "the search waits for the end of the load");
 
-    dispatchUntil(doc, () => views.searchReady);
+    search.open();
+    dispatchUntil(doc, () => views.mainReady && views.searchReady);
     assert(doc.searchView.itemsCount == messageCount);
+}
+
+@("LogDocument: a filter that runs with the load of the file can't be cancelled, a search can")
+unittest
+{
+    import std.file : remove;
+
+    enum messageCount = 400_000;
+    auto path = writeTestDlt("dlt_document_cancel_with_load.dlt", messageCount);
+    scope (exit)
+        remove(path);
+
+    auto doc = new LogDocument(path);
+    auto views = new Views(doc);
+    auto started = recordStarted(doc);
+    auto filter = new GateFilter(1000); // held in the first part of the file
+    scope (exit)
+        filter.open();
+    doc.applyViewFilter(filter);
+    doc.applySearchFilter(new ConstFilter(true));
+    dispatchUntil(doc, () => started.operations.length == 3);
+
+    assert(!doc.requestCancel(Document.Operation.BuildOffsetIndex), "the load is not cancelled");
+    assert(!doc.requestCancel(Document.Operation.BuildFilterIndex),
+        "the main view would be left incomplete while the file loads");
+    assert(doc.requestCancel(Document.Operation.BuildSearchIndex));
+    filter.open();
+    dispatchUntil(doc, () => views.mainReady);
+    waitIdle(doc);
+    assert(doc.mainView.itemsCount == messageCount, "the load and the filter went on");
+    assert(views.search == Views.State.NotReady && doc.searchFilter is null, "the search alone was cancelled");
+}
+
+@("LogDocument: a search cancelled while a filter runs leaves the filter running")
+unittest
+{
+    import std.file : remove;
+
+    enum messageCount = 200_000;
+    string path;
+    auto doc = openLoaded("dlt_document_cancel_search_only.dlt", messageCount, path);
+    auto views = new Views(doc, Views.State.Ready); // loaded
+    scope (exit)
+        remove(path);
+
+    auto started = recordStarted(doc);
+    auto filter = new GateFilter(1000);
+    scope (exit)
+        filter.open();
+    doc.applyViewFilter(filter);
+    doc.applySearchFilter(new ConstFilter(true));
+    dispatchUntil(doc, () => started.operations.length == 2);
+
+    assert(doc.requestCancel(Document.Operation.BuildSearchIndex));
+    filter.open();
+    waitIdle(doc);
+    assert(views.mainReady && doc.mainView.itemsCount == messageCount, "the filter must complete");
+    assert(views.search == Views.State.NotReady && doc.searchView.itemsCount == 0);
+}
+
+@("LogDocument: a filter or a search that fails leaves the file as it is")
+unittest
+{
+    import std.file : remove;
+
+    enum messageCount = 2000;
+    string path;
+    auto doc = openLoaded("dlt_document_stage_failed.dlt", messageCount, path);
+    auto views = new Views(doc, Views.State.Ready); // loaded
+    scope (exit)
+        remove(path);
+
+    runAndWait(doc, () => doc.applySearchFilter(new FailingFilter()));
+    assert(views.search == Views.State.Failed && views.mainReady);
+    assert(doc.searchView.itemsCount == 0 && doc.searchFilter is null, "a failed search leaves no results");
+
+    runAndWait(doc, () => doc.applyViewFilter(new FailingFilter()));
+    assert(views.main == Views.State.Failed);
+
+    // The document goes on working
+    runAndWait(doc, () => doc.applyViewFilter(null));
+    runAndWait(doc, () => doc.applySearchFilter(new ConstFilter(true)));
+    assert(views.mainReady && views.searchReady);
+    assert(doc.mainView.itemsCount == messageCount && doc.searchView.itemsCount == messageCount);
+}
+
+@("LogDocument: a filter that fails while the file loads doesn't stop the load")
+unittest
+{
+    import std.algorithm : canFind;
+    import std.file : remove;
+
+    enum messageCount = 400_000;
+    auto path = writeTestDlt("dlt_document_filter_failed_with_load.dlt", messageCount);
+    scope (exit)
+        remove(path);
+
+    auto doc = new LogDocument(path);
+    string[] log;
+    doc.events.subscribe((const OperationFinished e) {
+        import std.conv : to;
+        log ~= e.operation.to!string ~ " " ~ e.result.to!string;
+    });
+    doc.applyViewFilter(new FailingFilter());
+
+    dispatchUntil(doc, () => log.canFind("BuildOffsetIndex Completed") || log.canFind("BuildOffsetIndex Failed"));
+    assert(log.canFind("BuildFilterIndex Failed"), "the filter must fail");
+    assert(log.canFind("BuildOffsetIndex Completed"), "the file must load: the user can change the filters");
+    assert(doc.messageCount == messageCount);
+
+    runAndWait(doc, () => doc.applyViewFilter(null));
+    assert(doc.mainView.itemsCount == messageCount);
 }
 
 @("LogDocument: a source that gets more is followed: the views grow, a growth is told")
@@ -844,7 +1043,7 @@ unittest
     finished = null;
 
     doc.applySearchFilter(new ConstFilter(true));
-    assert(doc.requestCancel(), "a running search must be cancellable");
+    assert(doc.requestCancel(Document.Operation.BuildSearchIndex), "a running search must be cancellable");
 
     dispatchUntil(doc, () => finished.length > 0);
 
@@ -854,7 +1053,7 @@ unittest
         "search must stop at the next batch, not complete");
     assert(views.search == Views.State.NotReady, "cancelled search leaves the view not ready");
     assert(views.mainReady, "main view is not affected");
-    assert(!doc.requestCancel(), "nothing left to cancel");
+    assert(!doc.requestCancel(Document.Operation.BuildSearchIndex), "nothing left to cancel");
 }
 
 @("LogDocument: requestCancel drops pending requests but not the file load")
@@ -875,12 +1074,12 @@ unittest
     doc.events.subscribe((const OperationStarted e) { started ~= e.operation; });
     doc.events.subscribe((const OperationFinished e) { finished ~= e; });
 
-    doc.applySearchFilter(new ConstFilter(true)); // waits for BuildOffsetIndex
-    assert(!doc.requestCancel(), "loading the file is not cancellable");
+    doc.applySearchFilter(new ConstFilter(true)); // waits for the pass that loads to stop
+    assert(!doc.requestCancel(Document.Operation.BuildSearchIndex), "loading the file is not cancellable");
 
     dispatchUntil(doc, () => finished.length > 0);
-    // A pending search would start from the Finished handler; its Started
-    // is delivered by the next dispatch
+    // A pending search would start when the pass ends (passFinished); its
+    // Started is delivered by the next dispatch
     doc.dispatchEvents();
 
     assert(finished.length == 1 && finished[0].result == OperationFinished.Result.Completed,
@@ -1187,7 +1386,7 @@ unittest
         remove(path);
 
     doc.applySearchFilter(new ConstFilter(true));
-    assert(doc.requestCancel());
+    assert(doc.requestCancel(Document.Operation.BuildSearchIndex));
     waitIdle(doc);
     assert(views.search == Views.State.NotReady, "the search must be cancelled");
 
@@ -1212,7 +1411,7 @@ unittest
 
     auto started = recordStarted(doc);
     doc.applyViewFilter(ecuFilter("ECU1"));
-    assert(doc.requestCancel(), "a running filter must be cancellable");
+    assert(doc.requestCancel(Document.Operation.BuildFilterIndex), "a running filter must be cancellable");
     waitIdle(doc);
     assert(started.operations == [Document.Operation.BuildFilterIndex, Document.Operation.BuildSearchIndex],
         "the search runs with the filter");
@@ -1232,7 +1431,7 @@ unittest
         remove(path);
 
     doc.applyViewFilter(ecuFilter("ECU1"));
-    assert(doc.requestCancel());
+    assert(doc.requestCancel(Document.Operation.BuildFilterIndex));
     waitIdle(doc);
     assert(views.main == Views.State.NotReady, "the filter must be cancelled");
 
@@ -1290,7 +1489,7 @@ unittest
         "full and searching: the search refuses it, removing one wouldn't help");
     assert(doc.setAnchor(0, false).refusal == AnchorRefusal.busy);
     assert(doc.setAnchor(1_000_000, true).refusal == AnchorRefusal.busy, "out of range");
-    assert(doc.requestCancel());
+    assert(doc.requestCancel(Document.Operation.BuildSearchIndex));
     waitIdle(doc);
 }
 
@@ -1615,7 +1814,7 @@ unittest
 
     assert(doc.setAnchor(7, true));
     doc.applySearchFilter(new ConstFilter(true)); // would match every message
-    assert(doc.requestCancel());
+    assert(doc.requestCancel(Document.Operation.BuildSearchIndex));
     waitIdle(doc);
     assert(views.search == Views.State.NotReady, "the search must be cancelled");
 

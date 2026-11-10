@@ -544,7 +544,7 @@ export class DocumentPane {
         this.mainStatus = cover === loading ? vm : null;
         for (const element of [loading, lost])
             element.style.display = element === cover ? "block" : "none";
-        this.takeFocus(this.mainList, cover);
+        this.takeFocus(this.mainList, cover, [loading, lost]);
         if (step.table) {
             this.reloadTable(this.mainList, step);
         } else if (vm.status === "sourceLost") {
@@ -557,15 +557,19 @@ export class DocumentPane {
     // A status view covering the table of `list` takes the focus from it: the
     // keys must not scroll or copy rows of a view being rebuilt. The table
     // gets it back when it is uncovered, if the focus didn't go elsewhere.
-    takeFocus(list, cover) {
+    // The focus left in a view that covered it (`covers`: on the view or on
+    // its Cancel, tabbed to or pressed) goes to the table too: the view is
+    // hidden, the keys would go nowhere.
+    takeFocus(list, cover, covers) {
         const focused = document.$(":focus");
         if (cover) {
             if (!isInside(focused, list)) return;
             cover.state.focus = true;
             this.coveredFocus.add(list);
-        } else if (this.coveredFocus.delete(list)) {
-            if (!focused || focused.classList.contains("overlay")) list.state.focus = true;
+            return;
         }
+        const taken = this.coveredFocus.delete(list);
+        if (covers.some(view => isInside(focused, view)) || (taken && !focused)) list.state.focus = true;
     }
 
     // Shows the row selected in the table `from` (followedRow) in the other
@@ -618,7 +622,7 @@ export class DocumentPane {
             step.table ? this.searchList : loading);
         loading.style.display = step.table ? "none" : "block"; // over the table
         this.searchStatus = step.table ? null : vm;
-        this.takeFocus(this.searchList, step.table ? null : loading);
+        this.takeFocus(this.searchList, step.table ? null : loading, [loading]);
         if (step.table) this.reloadTable(this.searchList, step);
         else showStatus(loading, vm, searchViewStatus);
         // The rows of the main view show what the search found: more of them

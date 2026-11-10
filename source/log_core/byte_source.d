@@ -13,7 +13,10 @@ interface ByteSource
 
     //! true if no more bytes will come: the last bytes are a whole record or
     //! garbage. false for a source being written (a growing file, a stream):
-    //! a record cut by the end of data() is waited for
+    //! a record cut by the end of data() is waited for.
+    //! Once true, data() doesn't change. A reader asks complete() first, then
+    //! data(): the other way round, bytes that came in between would make it
+    //! take the end of the data it holds for the end of the source.
     bool complete() const nothrow @nogc;
 
     //! true once the bytes can't be read any more (e.g. the disk of the file
