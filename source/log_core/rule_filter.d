@@ -17,7 +17,7 @@ import std.algorithm.iteration : map;
 import std.algorithm.searching : countUntil;
 import std.array : array;
 import std.format : format;
-import std.regex : matchFirst, regex, Regex;
+import utils.text_regex : TextRegex;
 import std.typecons : Nullable;
 import std.uni : icmp;
 import std.utf : toUTF16;
@@ -102,7 +102,7 @@ private struct CompiledCondition
     //! Contains on texts: looked for by code units, cheap for every row shown
     //! and every record a filter goes through
     TextPattern substring;
-    Regex!wchar regex;
+    TextRegex regex;
 
     //! How much a check costs, roughly: a number, a field, the payload, a
     //! regular expression
@@ -153,7 +153,7 @@ private struct CompiledCondition
         case Check.Contains:
             return substring.foundIn(value);
         case Check.Regex:
-            return !matchFirst(value, regex).empty;
+            return regex.foundIn(value);
         default:
             assert(false, "rejected by compileCondition");
         }
@@ -207,7 +207,7 @@ private CompiledCondition compileCondition(const(ColumnInfo)[] columns, ref cons
         else
             compiled.text = condition.text.toUTF16;
         if (condition.check == Check.Regex)
-            compiled.regex = regex(compiled.text, condition.ignoreCase ? "i" : ""); // throws
+            compiled.regex = TextRegex(compiled.text, condition.ignoreCase); // throws
         else if (condition.check == Check.Range)
             throw unsupported();
         break;

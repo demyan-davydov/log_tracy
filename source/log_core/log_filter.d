@@ -5,6 +5,10 @@ import log_core.log_message;
 import std.traits : isSomeChar;
 import std.typecons : Nullable;
 
+//! A condition on a record. `matches` and `matchIndex` are called from many
+//! threads at once (the blocks of a filter or a search, utils/parallel_scan,
+//! and the UI thread): they must not change the filter, and what they keep per
+//! thread stays per thread.
 interface LogFilter(T) if (isSomeChar!(T))
 {
     alias CharType = T;

@@ -427,17 +427,18 @@ struct LogIndex
         scope size_t delegate(size_t position) messageAt, Filter filter, ref const(Anchors) anchors,
         UiText full)
     {
-        import utils.parallel_scan : parallelScan;
+        import utils.parallel_scan : parallelScan, ScanStop;
 
         auto ctx = progress.ctx;
         const completed = parallelScan!(Index.Type)(count, scanBlockLength,
-            (size_t lo, size_t hi, Index.Type[] found) {
+            (size_t lo, size_t hi, Index.Type[] found, ScanStop stop) {
                 Message msg; // a buffer per block: blocks run on several threads
                 size_t n = 0;
                 foreach (position; lo .. hi)
                 {
-                    // The delivery of this block stops the scan, or fails it
-                    if ((position - lo) % stopCheckRecords == 0 && (ctx.cancelled || _source.lost))
+                    // A cancel or a lost file: the delivery of this block stops
+                    // the scan, or fails it. A stop: it is never delivered
+                    if ((position - lo) % stopCheckRecords == 0 && (ctx.cancelled || _source.lost || stop()))
                         break;
                     const message = messageAt(position);
                     if (!decodeAt(msg, _offsetIndex[message].offset))
@@ -460,8 +461,10 @@ struct LogIndex
                 return true;
             });
 
+        if (!completed)
+            return false; // cancelled: a file lost meanwhile doesn't make it a failure
         enforceSourceAvailable(); // the last block may have read zeros
-        return completed;
+        return true;
     }
 
     //! @brief build search index
@@ -672,24 +675,96 @@ version (unittest)
         return path;
     }
 
-    //! Matches nothing; on its first call does `onFirst`, counts its calls
+    //! How an operation ended, by its events
+    private struct Ending
+    {
+        OperationFinished.Result result;
+        float lastProgress = 0; // the last progress it reported (an event that overrides the earlier ones)
+    }
+
+    //! @return how the last `op` the events of `events` tell of ended
+    private Ending endingOf(EventBusAsync)(EventBusAsync events, Document.Operation op)
+    {
+        import core.thread : Thread;
+        import core.time : msecs, MonoTime;
+
+        Ending ending;
+        bool seen = false;
+        auto finished = events.subscribe((const OperationFinished e) {
+            if (e.operation == op)
+            {
+                ending.result = e.result;
+                seen = true;
+            }
+        });
+        auto progress = events.subscribe((const OperationProgress e) {
+            if (e.operation == op)
+                ending.lastProgress = e.progress;
+        });
+        scope (exit)
+        {
+            events.unsubscribe(finished);
+            events.unsubscribe(progress);
+        }
+        // The slot is idle before the end is published: it may not be there yet
+        const deadline = MonoTime.currTime + 10_000.msecs;
+        do
+        {
+            events.dispatch();
+            if (!seen)
+                Thread.sleep(1.msecs);
+        }
+        while (!seen && MonoTime.currTime < deadline);
+        assert(seen, "the operation didn't finish");
+        return ending;
+    }
+
+    //! Matches nothing; on its first call does `stop`. Counts the calls each
+    //! thread makes after that: a block stopped in time makes few.
+    //! Breaks the contract of LogFilter on purpose (`matches` changes it, with
+    //! atomics and a mutex) to count: not a pattern for a real filter
+
     private final class CountingFilter : Filter
     {
-        private shared size_t* _calls;
-        private void delegate() _onFirst;
+        import core.sync.mutex : Mutex;
+        import core.thread : Thread;
 
-        this(shared size_t* calls, void delegate() onFirst)
+        private void delegate() _stop;
+        private shared bool _stopped;
+        private shared size_t _calls;
+        private Mutex _mutex;
+        private size_t[Thread] _callsAfterStop;
+
+        this(void delegate() stop)
         {
-            _calls = calls;
-            _onFirst = onFirst;
+            _stop = stop;
+            _mutex = new Mutex();
+        }
+
+        //! The most calls a thread made after the stop
+        size_t mostCallsAfterStop()
+        {
+            import std.algorithm : maxElement;
+
+            synchronized (_mutex)
+                return _callsAfterStop.length ? _callsAfterStop.byValue.maxElement : 0;
         }
 
         override bool matches(scope ref const(Message) item) const
         {
-            import core.atomic : atomicOp;
+            import core.atomic : atomicLoad, atomicOp, atomicStore;
 
-            if (atomicOp!"+="(*cast(shared size_t*) _calls, 1) == 1)
-                (cast() _onFirst)();
+            auto self = cast() this;
+            if (atomicLoad(_stopped))
+            {
+                synchronized (self._mutex)
+                    ++self._callsAfterStop.require(Thread.getThis(), 0);
+            }
+            else if (atomicOp!"+="(self._calls, 1) == 1)
+            {
+                self._stop();
+                atomicStore(self._stopped, true);
+            }
             return false;
         }
 
@@ -803,34 +878,62 @@ unittest
 @("LogIndex: a cancel or a lost file stops the blocks being scanned, not only the next ones")
 unittest
 {
-    import core.atomic : atomicLoad, atomicStore;
+    import core.atomic : atomicStore;
     import utils.event_bus.event_bus_async : EventBusAsync;
     import formats.plain_text : PlainTextFormat;
     import std.file : remove;
     import std.format : format;
-    import std.parallelism : totalCPUs;
 
     const path = writeLines("log_index_stop", 400_000, (size_t i) => format("line %s", i));
     scope (exit)
         remove(path);
-    // Each thread may go on to the next check of its block
-    const enoughCalls = (totalCPUs + 1) * LogIndex.stopCheckRecords * 2;
-    assert(enoughCalls < LogIndex.scanBlockLength * 2, "too many cores for this test");
+    // A thread goes on to the next check of its block at most: what a block
+    // would scan without the checks is a whole block
+    static assert(LogIndex.stopCheckRecords * 2 < LogIndex.scanBlockLength);
 
     {
-        auto index = LogIndex(new FileSource(path), new PlainTextFormat(), new EventBusAsync());
+        auto events = new EventBusAsync();
+        auto index = LogIndex(new FileSource(path), new PlainTextFormat(), events);
         auto indexPtr = &index;
-        shared size_t calls;
-        auto filter = new CountingFilter(&calls, () { indexPtr.cancelCurrentOperation(); });
+        auto filter = new CountingFilter(() { indexPtr.cancelCurrentOperation(); });
         waitForOperation(index, () => index.runBuildFilterIndex(filter, Anchors.init));
-        assert(atomicLoad(calls) < enoughCalls, "a cancelled block goes on");
+        assert(filter.mostCallsAfterStop < LogIndex.stopCheckRecords * 2, "a cancelled block goes on");
+        assert(endingOf(events, Document.Operation.BuildFilterIndex).result == OperationFinished.Result.Cancelled);
     }
     {
+        auto events = new EventBusAsync();
         auto source = new LosableSource(path);
-        auto index = LogIndex(source, new PlainTextFormat(), new EventBusAsync());
-        shared size_t calls;
-        auto filter = new CountingFilter(&calls, () { atomicStore(source.isLost, true); });
+        auto index = LogIndex(source, new PlainTextFormat(), events);
+        auto filter = new CountingFilter(() { atomicStore(source.isLost, true); });
         waitForOperation(index, () => index.runBuildSearchIndex(filter, Anchors.init));
-        assert(atomicLoad(calls) < enoughCalls, "a block of a lost file goes on");
+        assert(filter.mostCallsAfterStop < LogIndex.stopCheckRecords * 2, "a block of a lost file goes on");
+        const ending = endingOf(events, Document.Operation.BuildSearchIndex);
+        assert(ending.result == OperationFinished.Result.Failed);
+        assert(ending.lastProgress == 0, "blocks are delivered after the file is lost");
     }
+}
+
+@("LogIndex: a cancel ends as a cancel even when the file is lost meanwhile")
+unittest
+{
+    import core.atomic : atomicStore;
+    import utils.event_bus.event_bus_async : EventBusAsync;
+    import formats.plain_text : PlainTextFormat;
+    import std.file : remove;
+    import std.format : format;
+
+    const path = writeLines("log_index_cancel_lost", 100_000, (size_t i) => format("line %s", i));
+    scope (exit)
+        remove(path);
+
+    auto events = new EventBusAsync();
+    auto source = new LosableSource(path);
+    auto index = LogIndex(source, new PlainTextFormat(), events);
+    auto indexPtr = &index;
+    auto filter = new CountingFilter(() {
+        indexPtr.cancelCurrentOperation();
+        atomicStore(source.isLost, true);
+    });
+    waitForOperation(index, () => index.runBuildFilterIndex(filter, Anchors.init));
+    assert(endingOf(events, Document.Operation.BuildFilterIndex).result == OperationFinished.Result.Cancelled);
 }

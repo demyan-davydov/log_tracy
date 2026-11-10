@@ -13,7 +13,8 @@
   saved format, or one this build can't create (unknown id, invalid variant), is detected.
   Never change a format's `id`: settings refer to it.
 - A format instance is created per document (it may hold a variant) and must stay immutable:
-  the UI thread and the indexing thread call it concurrently.
+  the UI thread, the indexing thread (`scanRecords`) and the threads of a filter or a search
+  call it concurrently.
 - `formats/registry.formatColumns` gives the columns of all variants of a format (a column
   layout is one per format id).
 

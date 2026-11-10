@@ -12,7 +12,10 @@ struct TextPattern
 {
     private immutable(wchar)[] _pattern; // lowered if compared in any case in the BMP
     private Compare _compare;
-    private wchar _firstUpper; // ByLowered: the upper case of the first unit, if lowered back to it
+    //! ByLowered: the code units the first unit of the pattern is the lower
+    //! case of, itself among them; the free places repeat it. Checked first at
+    //! every place of a text, without lowering it
+    private wchar[maxFirstCases] _firstCases;
 
     private enum Compare : ubyte
     {
@@ -26,7 +29,6 @@ struct TextPattern
     {
         import std.algorithm.searching : any;
         import std.utf : byCodeUnit;
-        import std.uni : toUpper;
 
         if (!ignoreCase)
         {
@@ -46,12 +48,7 @@ struct TextPattern
             _pattern = cast(immutable) lower;
             _compare = Compare.ByLowered;
             if (lower.length)
-            {
-                // A quick yes only if lowered back to it (not for ı: its upper I is i)
-                _firstUpper = cast(wchar) toUpper(cast(dchar) lower[0]);
-                if (lowerOf(_firstUpper) != lower[0])
-                    _firstUpper = lower[0];
-            }
+                _firstCases = casesOf(lower[0]);
         }
     }
 
@@ -97,12 +94,13 @@ struct TextPattern
             return from;
         if (value.length - from < _pattern.length)
             return -1;
-        const first = _pattern[0];
+        static assert(maxFirstCases == 4);
+        const a = _firstCases[0], b = _firstCases[1], c2 = _firstCases[2], d = _firstCases[3];
+        const more = c2 != a; // most letters have two cases: two compares then
         outer: foreach (i; from .. value.length - _pattern.length + 1)
         {
             const c = value[i];
-            // Beyond ASCII a letter may have more upper cases (K and the Kelvin sign)
-            if (c != first && c != _firstUpper && (c < 0x80 || lowerOf(c) != first))
+            if (c != a && c != b && (!more || (c != c2 && c != d)))
                 continue;
             foreach (j; 1 .. _pattern.length)
                 if (lowerOf(value[i + j]) != _pattern[j])
@@ -203,6 +201,25 @@ unittest
     assert(TextPattern("x"w, true).foundIn("aX"w) && TextPattern("X"w, true).foundIn("ax"w));
 }
 
+@("TextPattern: in any case, a text unit is found by its lower case, whatever unit it is")
+unittest
+{
+    // A guard of the cases of the first unit counted beforehand: every unit of
+    // the BMP is found by the unit it is lowered to
+    foreach (wchar c; 0 .. 0xD800)
+    {
+        const wchar[1] pattern = [lowerOf(c)];
+        const wchar[1] text = [c];
+        assert(TextPattern(pattern[], true).foundIn(text[]));
+    }
+    foreach (wchar c; 0xE000 .. 0x10000)
+    {
+        const wchar[1] pattern = [lowerOf(c)];
+        const wchar[1] text = [c];
+        assert(TextPattern(pattern[], true).foundIn(text[]));
+    }
+}
+
 @("TextPattern: beyond the BMP")
 unittest
 {
@@ -211,6 +228,47 @@ unittest
     assert(occurrences("😀", true, "a😀"w) == [[1, 3]]);
     assert(occurrences("😀", false, "a😀😀"w) == [[1, 3], [3, 5]]);
     assert(!TextPattern("😀"w, true).foundIn("a\U0001F601"w), "the pairs differ in the second unit");
+}
+
+//! The most code units with the same lower case, in the BMP (θ: Θ, ϑ, ϴ)
+private enum maxFirstCases = 4;
+
+//! The code units of the BMP not in lower case, by their lower case: each
+//! is `lower << 16 | unit`, sorted. Built at compile time: nothing at start,
+//! and a TextPattern made at compile time sees it too
+private static immutable uint[] g_byLower = buildByLower();
+
+private immutable(uint)[] buildByLower() pure
+{
+    import std.algorithm.sorting : sort;
+
+    uint[] pairs; // packed: CTFE can't sort static arrays (they are moved by casts)
+    foreach (uint unit; 0 .. 0x10000)
+    {
+        const c = cast(wchar) unit;
+        if ((c < 0xD800 || c > 0xDFFF) && lowerOf(c) != c)
+            pairs ~= (uint(lowerOf(c)) << 16) | c;
+    }
+    sort(pairs);
+    return pairs.idup;
+}
+
+//! @return the code units of the BMP whose lower case is `lower`, `lower`
+//!   first; the free places repeat it
+private wchar[maxFirstCases] casesOf(wchar lower) pure nothrow @nogc
+{
+    import std.range : assumeSorted;
+
+    wchar[maxFirstCases] cases = lower;
+    size_t count = 1;
+    foreach (pair; g_byLower.assumeSorted!((a, b) => a >> 16 < b >> 16).equalRange(uint(lower) << 16))
+    {
+        // A guard: the unittest that walks the BMP fails first
+        assert(count < maxFirstCases, "more cases of a letter than room");
+        if (count < maxFirstCases)
+            cases[count++] = cast(wchar) pair;
+    }
+    return cases;
 }
 
 //! @returns `c` in lower case: a code unit of the BMP, a surrogate as it is

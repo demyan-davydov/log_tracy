@@ -3,7 +3,7 @@ module log_core.search_filter;
 import log_core.log_filter;
 import log_core.log_message;
 
-import std.regex : Regex, regex, matchFirst;
+import utils.text_regex : RegexSet, TextRegex;
 import utils.text_search : TextPattern;
 import std.typecons : Nullable;
 
@@ -43,12 +43,15 @@ alias MatchBuffer = MatchRange[maxMatchRanges];
 //! @return the error message, "" for a valid one
 string checkRegex(const(char)[] pattern, bool ignoreCase)
 {
+    import std.utf : toUTF16;
+    import utils.text_regex : RegexError;
+
     try
     {
-        new SearchFilter().addRegex(pattern, ignoreCase);
+        TextRegex(pattern.toUTF16(), ignoreCase);
         return "";
     }
-    catch (Exception e)
+    catch (RegexError e)
         return e.msg;
 }
 
@@ -58,7 +61,7 @@ final class SearchFilter : LogFilter!wchar
     private static struct Rule
     {
         TextPattern text; // plain text rule
-        Regex!wchar regex; // regex rule, compiled once when the rule is added
+        TextRegex regex; // regex rule, compiled once when the rule is added
         bool isRegex;
         uint chip; // the place of its chip in the query
     }
@@ -66,6 +69,8 @@ final class SearchFilter : LogFilter!wchar
     alias Message = LogMessage!wchar;
 
     private Rule[] _rules;
+    //! The regex rules, tried in one pass by `matches` (utils/text_regex)
+    private RegexSet _regexes;
 
     this()
     {
@@ -78,12 +83,13 @@ final class SearchFilter : LogFilter!wchar
 
         // Regex is not const-copyable: copy rule by rule
         _rules = other._rules.map!(r => cast(Rule) r).array;
+        _regexes = cast(RegexSet) other._regexes; // only read: may be shared
     }
 
     //! @brief Builds the filter for the chips of a query: a message matches if any
     //! chip does. Empty chips are skipped.
     //! @return null if no chip is left, which means "no search"
-    //! @throws RegexException if a regex chip is not a valid regular expression
+    //! @throws RegexError if a regex chip is not a valid regular expression
     static SearchFilter fromChips(const(SearchChip)[] chips)
     {
         auto filter = new SearchFilter();
@@ -92,11 +98,12 @@ final class SearchFilter : LogFilter!wchar
             if (chip.text.length == 0)
                 continue;
             if (chip.isRegex)
-                filter.addRegex(chip.text, chip.ignoreCase);
+                filter.addRegexRule(chip.text, chip.ignoreCase);
             else
                 filter.addText(chip.text, chip.ignoreCase);
             filter._rules[$ - 1].chip = cast(uint) i;
         }
+        filter.joinRegexes(); // once for the query, not once for each chip
         return filter._rules.length ? filter : null;
     }
 
@@ -113,21 +120,37 @@ final class SearchFilter : LogFilter!wchar
     //! @brief Adds a rule matching payloads with a match of `patternUtf8`.
     //! The pattern is compiled here, on the calling thread, so an invalid one
     //! is reported right away instead of failing the background search.
-    //! @throws RegexException if the pattern is invalid
+    //! @throws RegexError if the pattern is invalid
     void addRegex(const(char)[] patternUtf8, bool caseInsensitive)
+    {
+        addRegexRule(patternUtf8, caseInsensitive);
+        joinRegexes();
+    }
+
+    //! addRegex without joinRegexes: the caller joins once for all of its rules
+    private void addRegexRule(const(char)[] patternUtf8, bool caseInsensitive)
     {
         import std.utf : toUTF16;
 
         Rule rule;
-        rule.regex = regex(patternUtf8.toUTF16(), caseInsensitive ? "i" : "");
+        rule.regex = TextRegex(patternUtf8.toUTF16(), caseInsensitive);
         rule.isRegex = true;
         _rules ~= rule;
+    }
+
+    //! Builds the set `matches` tries the regex rules with
+    private void joinRegexes()
+    {
+        import std.algorithm : filter, map;
+        import std.array : array;
+
+        _regexes = RegexSet(_rules.filter!(r => r.isRegex).map!(r => r.regex).array);
     }
 
     private static bool matches(scope ref const(Rule) rule, scope ref const(Message) msg)
     {
         if (rule.isRegex)
-            return !matchFirst(msg.payloadText, rule.regex).empty;
+            return rule.regex.foundIn(msg.payloadText);
         return rule.text.foundIn(msg.payloadText);
     }
 
@@ -143,8 +166,6 @@ final class SearchFilter : LogFilter!wchar
     //! @return the fragments by their start: the start of `buffer`
     MatchRange[] matchRanges(scope ref const(Message) msg, return scope MatchRange[] buffer) const
     {
-        import std.regex : matchAll;
-
         size_t count; // buffer[0 .. count], kept by start: they never overlap
         const text = msg.payloadText;
 
@@ -181,12 +202,13 @@ final class SearchFilter : LogFilter!wchar
                 break;
             if (rule.isRegex)
             {
-                foreach (m; matchAll(text, rule.regex))
-                {
-                    const start = m.pre.length, end = start + m.hit.length;
-                    if (end > start && !add(start, end, rule.chip))
-                        break rules;
-                }
+                bool full = false;
+                rule.regex.forEachMatch(text, (size_t start, size_t end) {
+                    full = end > start && !add(start, end, rule.chip);
+                    return !full;
+                });
+                if (full)
+                    break rules;
             }
             else
             {
@@ -204,10 +226,15 @@ final class SearchFilter : LogFilter!wchar
         return buffer[0 .. count];
     }
 
-    // implement LogFilter
+    // implement LogFilter. Every record of a search: the regex rules are
+    // tried in one pass, not by turns (utils/text_regex.RegexSet)
     bool matches(scope ref const(Message) item) const
     {
-        return !matchIndex(item).isNull;
+        const text = item.payloadText;
+        foreach (const ref rule; _rules)
+            if (!rule.isRegex && rule.text.foundIn(text))
+                return true;
+        return _regexes.foundIn(text);
     }
 
     //! Scan all of rules and return index of first matched record or Nullable.init if no match
@@ -285,9 +312,9 @@ unittest
 unittest
 {
     import std.exception : assertThrown;
-    import std.regex : RegexException;
+    import utils.text_regex : RegexError;
 
-    assertThrown!RegexException(SearchFilter.fromChips([SearchChip("(unclosed", true, false)]));
+    assertThrown!RegexError(SearchFilter.fromChips([SearchChip("(unclosed", true, false)]));
     assert(SearchFilter.fromChips([SearchChip("(unclosed", false, false)]) !is null, "fine as plain text");
 }
 
@@ -326,9 +353,30 @@ unittest
 unittest
 {
     import std.exception : assertThrown;
-    import std.regex : RegexException;
+    import utils.text_regex : RegexError;
 
-    assertThrown!RegexException(SearchFilter.fromChips([SearchChip("ok"), SearchChip("(unclosed", true)]));
+    assertThrown!RegexError(SearchFilter.fromChips([SearchChip("ok"), SearchChip("(unclosed", true)]));
+}
+
+@("SearchFilter: several regex chips, each in its case, also in a copy; matches agrees with matchIndex")
+unittest
+{
+    const chips = [SearchChip(`err\w+ \d`, true), SearchChip("FAIL", true, true), SearchChip("plain"),
+        SearchChip(`(a)\1`, true), SearchChip(`^Start`, true)];
+    auto filter = SearchFilter.fromChips(chips);
+    auto copy = cast(SearchFilter) filter.dup();
+    const payloads = ["error 1", "Error 1", "a fail", "plain text", "aa", "Start here", "start here",
+        "nothing"];
+    const expected = [true, false, true, true, true, true, false, false];
+    foreach (i, payload; payloads)
+    {
+        auto msg = messageWithPayload(payload);
+        foreach (one; [filter, copy])
+        {
+            assert(one.matches(msg) == expected[i], payload);
+            assert(one.matches(msg) == !one.matchIndex(msg).isNull, payload);
+        }
+    }
 }
 
 @("checkRegex: the error of an invalid regex, nothing for a valid one")

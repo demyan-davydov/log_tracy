@@ -13,6 +13,8 @@
 //!                  number: decoding is cheap there, so the cost of collecting
 //!                  the matches shows most
 //!   --search-only  no filter rounds
+//!   --regex=R      one more chip, a regular expression ignoring case; repeated for
+//!                  more: a record matching none tries each chip in turn
 //!
 //! A sign that collecting the matches costs (docs/stories/parallel-indexing.md):
 //! on --generate lines, a query every record matches ("a") is slower than one
@@ -46,8 +48,9 @@ void main(string[] args)
     size_t rounds = 3, generate = 0;
     uint threads = 0;
     bool searchOnly = false;
+    string[] moreRegexes;
     getopt(args, "rounds", &rounds, "threads", &threads, "generate", &generate,
-        "search-only", &searchOnly);
+        "search-only", &searchOnly, "regex", &moreRegexes);
 
     const path = args[1];
     const text = args.length > 2 ? args[2] : "error";
@@ -84,7 +87,10 @@ void main(string[] args)
     waitFor(Document.Operation.BuildOffsetIndex);
     writefln("offsets: %s records in %.1f ms", index.messageCount, msSince(start));
 
-    auto filter = SearchFilter.fromChips([SearchChip(text, isRegex, ignoreCase)]);
+    auto chips = [SearchChip(text, isRegex, ignoreCase)];
+    foreach (more; moreRegexes)
+        chips ~= SearchChip(more, true, true);
+    auto filter = SearchFilter.fromChips(chips);
     double[] times;
 
     if (!searchOnly)
