@@ -12,7 +12,7 @@
 module ui.main_view_fsm;
 
 import utils.fsm : Fsm, NoTransition, To, Transition;
-import domain.document : Document, OperationFinished, OperationProgress, OperationStarted, SourceLost;
+import domain.document : ContentGrown, Document, OperationFinished, OperationProgress, OperationStarted, SourceLost;
 
 import std.json : JSONValue;
 import utils.ui_text : plainText, say, TextForUser, UiText;
@@ -26,6 +26,10 @@ struct LoadingFileView
     enum status = "loadingFile";
     enum canCancel = true; // cancelling closes the document
     float progress = 0; // 0..1
+    /// The content the view is being filled with, see ReadyView.dataVersion:
+    /// the records found so far are shown, those a filter asked for meanwhile
+    /// lets through
+    uint dataVersion;
 }
 
 /// The file could not be loaded; the document can only be closed
@@ -39,7 +43,11 @@ struct LoadFailedView
 struct ReadyView
 {
     enum status = "ready";
-    /// Changes each time the content of the view changes: the table reloads then
+    /// The content of the view: changes when it is replaced (a load, a filter
+    /// starts), the table reloads then. Under one version the content only
+    /// grows: rows are appended, none moves or goes away, so the table keeps
+    /// its rows, scroll and selection and only counts the new ones. A view of
+    /// a source that never ends stays ready and grows.
     uint dataVersion;
 }
 
@@ -49,6 +57,9 @@ struct FilteringView
     enum status = "filtering";
     enum canCancel = true;
     float progress = 0; // 0..1
+    /// The content the view is being filled with, see ReadyView.dataVersion:
+    /// the records the filter found so far are shown
+    uint dataVersion;
 }
 
 /// The filter was cancelled: the view has no complete content until the next one
@@ -125,6 +136,9 @@ struct MainViewContext
     MainViewSink view;
     MainViewCommands commands;
     uint dataVersion; // see ReadyView.dataVersion
+    float loadProgress = 0; // of the file being loaded, 0..1
+    bool filterRuns; // a filter runs with the load of the file
+    bool sameContent; // Filtering is entered for the filter that fills the view already
     UiText error; // of the failed operation, set before the transition to the failed state
 }
 
@@ -145,26 +159,62 @@ private void show(View)(ref MainViewContext c, View v)
     c.view.show(MainViewModel(v));
 }
 
-/// Initial state: the file is being loaded
+/// Initial state: the file is being loaded. The records found so far are shown
+/// (the tab of the document shows the progress, closing it stops the load). A
+/// filter asked for meanwhile runs with the load: the view is filled anew,
+/// with the records it lets through.
 struct Loading
 {
     void onEnter(ref MainViewContext c)
     {
-        c.show(LoadingFileView(0));
+        ++c.dataVersion;
+        showLoading(c);
     }
 
     void on(in OperationProgress e, ref MainViewContext c)
     {
-        if (e.operation == loadOperation)
-            c.show(LoadingFileView(e.progress));
+        if (!e.has(loadOperation))
+            return;
+        c.loadProgress = e.of(loadOperation);
+        showLoading(c);
+    }
+
+    void on(in OperationStarted e, ref MainViewContext c)
+    {
+        if (e.operation != filterOperation)
+            return;
+        c.filterRuns = true;
+        ++c.dataVersion;
+        showLoading(c);
+    }
+
+    private static void showLoading(ref MainViewContext c)
+    {
+        c.show(LoadingFileView(c.loadProgress, c.dataVersion));
     }
 
     Transition on(in OperationFinished e, ref MainViewContext c)
     {
+        if (e.operation == filterOperation)
+        {
+            c.filterRuns = false;
+            // Cancelled: replaced by the next filter, which starts at once.
+            // Failed: what it let through must not pass for the whole view,
+            // though the file goes on loading
+            if (e.result != OperationFinished.Result.Failed)
+                return NoTransition;
+            c.error = e.error;
+            return To!FilterFailed;
+        }
         if (e.operation != loadOperation)
             return NoTransition;
         if (e.result == OperationFinished.Result.Completed)
-            return To!Ready;
+        {
+            // The file is loaded, the filter has records left: the view is
+            // filled on, by the filter alone
+            c.sameContent = c.filterRuns;
+            return c.filterRuns ? To!Filtering : To!Ready;
+        }
         c.error = e.error; // loading can't be cancelled: Cancelled is a failure as well
         return To!LoadFailed;
     }
@@ -181,17 +231,23 @@ struct Loading
     }
 }
 
+/// The content the load or the filter filled, complete
 struct Ready
 {
     void onEnter(ref MainViewContext c)
     {
-        ++c.dataVersion;
         c.show(ReadyView(c.dataVersion));
     }
 
     Transition on(in OperationStarted e, ref MainViewContext c)
     {
         return e.operation == filterOperation ? To!Filtering : NoTransition;
+    }
+
+    /// The source of the document got more: the view shows more rows
+    void on(in ContentGrown e, ref MainViewContext c)
+    {
+        c.show(ReadyView(c.dataVersion));
     }
 
     Transition on(in SourceLost e, ref MainViewContext c)
@@ -204,13 +260,17 @@ struct Filtering
 {
     void onEnter(ref MainViewContext c)
     {
-        c.show(FilteringView(0));
+        if (!c.sameContent)
+            ++c.dataVersion; // the filter fills the view anew
+        c.sameContent = false;
+        c.filterRuns = false; // of the load only
+        c.show(FilteringView(0, c.dataVersion));
     }
 
     void on(in OperationProgress e, ref MainViewContext c)
     {
-        if (e.operation == filterOperation)
-            c.show(FilteringView(e.progress));
+        if (e.has(filterOperation))
+            c.show(FilteringView(e.of(filterOperation), c.dataVersion));
     }
 
     Transition on(in OperationFinished e, ref MainViewContext c)
@@ -401,7 +461,7 @@ version (unittest) private
 unittest
 {
     auto f = Fixture.started();
-    assert(f.sink.shown == [MainViewModel(LoadingFileView(0))]);
+    assert(f.sink.shown == [MainViewModel(LoadingFileView(0, 1))]);
 }
 
 @("MainViewFsm: shows the loading progress, then the messages")
@@ -410,10 +470,74 @@ unittest
     auto f = Fixture.started();
     f.start(loadOperation);
     f.progress(loadOperation, 0.5);
-    assert(f.sink.last == MainViewModel(LoadingFileView(0.5)));
+    assert(f.sink.last == MainViewModel(LoadingFileView(0.5, 1)));
 
     f.finish(loadOperation, Result.Completed);
-    assert(f.sink.last == MainViewModel(ReadyView(1)));
+    assert(f.sink.last == MainViewModel(ReadyView(1)), "the same content, complete: the table isn't reloaded");
+}
+
+@("MainViewFsm: a filter asked for while the file loads fills the view anew, with the load")
+unittest
+{
+    auto f = Fixture.started();
+    f.start(loadOperation);
+    f.progress(loadOperation, 0.25);
+    f.start(filterOperation);
+    assert(f.sink.last == MainViewModel(LoadingFileView(0.25, 2)), "new content: the table reloads");
+    f.progress(loadOperation, 0.5);
+    assert(f.sink.last == MainViewModel(LoadingFileView(0.5, 2)));
+
+    f.finish(filterOperation, Result.Cancelled); // replaced by another one
+    f.start(filterOperation);
+    assert(f.sink.last == MainViewModel(LoadingFileView(0.5, 3)));
+
+    // The file is loaded before the filter has passed the last records: the
+    // view goes on being filled, with the progress of the filter from now on
+    f.finish(loadOperation, Result.Completed);
+    assert(f.sink.last == MainViewModel(FilteringView(0, 3)), "the same content: the table isn't reloaded");
+    f.progress(filterOperation, 0.9);
+    assert(f.sink.last == MainViewModel(FilteringView(0.9, 3)));
+    f.finish(filterOperation, Result.Completed);
+    assert(f.sink.last == MainViewModel(ReadyView(3)));
+}
+
+@("MainViewFsm: a filter that ends with the load, or before it, leaves the view ready")
+unittest
+{
+    auto f = Fixture.started();
+    f.start(filterOperation);
+    f.finish(filterOperation, Result.Completed); // nothing left for it, the load goes on
+    assert(f.sink.last == MainViewModel(LoadingFileView(0, 2)));
+    f.finish(loadOperation, Result.Completed);
+    assert(f.sink.last == MainViewModel(ReadyView(2)));
+}
+
+@("MainViewFsm: a filter that fails while the file loads is told at once, the next filter fills the view")
+unittest
+{
+    auto f = Fixture.started();
+    f.start(filterOperation);
+    f.finish(filterOperation, Result.Failed, "bad regex");
+    assert(f.sink.last == MainViewModel(FilterFailedView(plainText("bad regex"))),
+        "the records it let through don't look like the whole view");
+
+    const shownCount = f.sink.shown.length;
+    f.finish(loadOperation, Result.Completed); // the file goes on loading
+    assert(f.sink.shown.length == shownCount);
+
+    f.start(filterOperation);
+    f.finish(filterOperation, Result.Completed);
+    assert(f.sink.last == MainViewModel(ReadyView(3)));
+}
+
+@("MainViewFsm: a view that is ready shows the rows its source gets later")
+unittest
+{
+    auto f = Fixture.ready();
+    const shownCount = f.sink.shown.length;
+    f.process(ContentGrown());
+    assert(f.sink.shown.length == shownCount + 1, "the view is shown again: the table counts its rows");
+    assert(f.sink.last == MainViewModel(ReadyView(1)), "the same content");
 }
 
 @("MainViewFsm: a failed load is final")
@@ -444,13 +568,13 @@ unittest
 unittest
 {
     auto f = Fixture.filtering();
-    assert(f.sink.last == MainViewModel(FilteringView(0)));
+    assert(f.sink.last == MainViewModel(FilteringView(0, 2)), "new content: the table reloads");
 
     f.progress(filterOperation, 0.25);
-    assert(f.sink.last == MainViewModel(FilteringView(0.25)));
+    assert(f.sink.last == MainViewModel(FilteringView(0.25, 2)));
 
     f.finish(filterOperation, Result.Completed);
-    assert(f.sink.last == MainViewModel(ReadyView(2)), "the table must reload");
+    assert(f.sink.last == MainViewModel(ReadyView(2)), "the same content, complete");
 }
 
 @("MainViewFsm: cancelling a filter asks the document and waits for its result")
@@ -460,13 +584,13 @@ unittest
     f.process(CancelPressed());
     assert(f.commands.cancelCalls == 1);
     assert(f.commands.closeCalls == 0);
-    assert(f.sink.last == MainViewModel(FilteringView(0)), "the filter is still running");
+    assert(f.sink.last == MainViewModel(FilteringView(0, 2)), "the filter is still running");
 
     f.finish(filterOperation, Result.Cancelled);
     assert(f.sink.last == MainViewModel(FilterCancelledView()));
 
     f.start(filterOperation);
-    assert(f.sink.last == MainViewModel(FilteringView(0)), "the next filter starts over");
+    assert(f.sink.last == MainViewModel(FilteringView(0, 3)), "the next filter starts over");
 }
 
 @("MainViewFsm: a failed filter waits for the next one")
@@ -477,9 +601,9 @@ unittest
     assert(f.sink.last == MainViewModel(FilterFailedView(plainText("bad regex"))));
 
     f.start(filterOperation);
-    assert(f.sink.last == MainViewModel(FilteringView(0)));
+    assert(f.sink.last == MainViewModel(FilteringView(0, 3)));
     f.finish(filterOperation, Result.Completed);
-    assert(f.sink.last == MainViewModel(ReadyView(2)));
+    assert(f.sink.last == MainViewModel(ReadyView(3)));
 }
 
 @("MainViewFsm: search operations don't affect the main view")
@@ -554,10 +678,10 @@ unittest
         assert(actual == parseJSON(expected), View.stringof ~ ": " ~ actual.toString);
     }
 
-    check(LoadingFileView(0.5), `{"status": "loadingFile", "canCancel": true, "progress": 0.5}`);
+    check(LoadingFileView(0.5, 1), `{"status": "loadingFile", "canCancel": true, "progress": 0.5, "dataVersion": 1}`);
     check(LoadFailedView(plainText("e")), `{"status": "loadFailed", "canCancel": false, "error": "e"}`);
     check(ReadyView(3), `{"status": "ready", "canCancel": false, "dataVersion": 3}`);
-    check(FilteringView(0.25), `{"status": "filtering", "canCancel": true, "progress": 0.25}`);
+    check(FilteringView(0.25, 2), `{"status": "filtering", "canCancel": true, "progress": 0.25, "dataVersion": 2}`);
     check(FilterCancelledView(), `{"status": "filterCancelled", "canCancel": false}`);
     check(FilterFailedView(plainText("e")), `{"status": "filterFailed", "canCancel": false, "error": "e"}`);
     check(SourceLostView(), `{"status": "sourceLost", "canCancel": false}`);

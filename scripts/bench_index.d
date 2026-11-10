@@ -69,22 +69,58 @@ void main(string[] args)
     auto source = new FileSource(path);
     auto format = detectFormat(path, source.data);
     auto events = new EventBusAsync();
-    Document.Operation finished = Document.Operation.None;
-    events.subscribe((const OperationFinished e) { finished = e.operation; });
-
-    void waitFor(Document.Operation op)
+    // The file measures the working tree and the ref it is compared with
+    // (build.mjs bench): an index built by passes (runPass), or by an
+    // operation per index before that
+    enum byPasses = __traits(hasMember, LogIndex, "runPass");
+    size_t ended; // the passes or the operations that ended
+    static if (byPasses)
     {
-        while (finished != op)
+        import domain.log_index : PassFinished;
+
+        events.subscribe((const PassFinished e) { ++ended; });
+    }
+    else
+        events.subscribe((const OperationFinished e) { ++ended; });
+
+    void waitEnd()
+    {
+        const before = ended;
+        while (ended == before)
         {
             events.dispatch();
             Thread.sleep(1.msecs);
         }
-        finished = Document.Operation.None;
     }
 
     auto start = MonoTime.currTime;
     auto index = LogIndex(source, format, events);
-    waitFor(Document.Operation.BuildOffsetIndex);
+    waitEnd();
+
+    void buildFilter(SearchFilter filter)
+    {
+        static if (byPasses)
+        {
+            index.setViewFilter(filter, Anchors.init);
+            index.runPass();
+        }
+        else
+            index.runBuildFilterIndex(filter, Anchors.init);
+        waitEnd();
+    }
+
+    void buildSearch(SearchFilter filter)
+    {
+        static if (byPasses)
+        {
+            index.setSearchFilter(filter, Anchors.init);
+            index.runPass();
+        }
+        else
+            index.runBuildSearchIndex(filter, Anchors.init);
+        waitEnd();
+    }
+
     writefln("offsets: %s records in %.1f ms", index.messageCount, msSince(start));
 
     auto chips = [SearchChip(text, isRegex, ignoreCase)];
@@ -98,22 +134,19 @@ void main(string[] args)
         foreach (round; 0 .. rounds)
         {
             start = MonoTime.currTime;
-            index.runBuildFilterIndex(filter, Anchors.init);
-            waitFor(Document.Operation.BuildFilterIndex);
+            buildFilter(filter);
             times ~= msSince(start);
             writefln("filter: %s shown in %.1f ms", index.mainViewItemsCount, times[$ - 1]);
         }
         summarize("filter", times);
-        index.runBuildFilterIndex(null, Anchors.init);
-        waitFor(Document.Operation.BuildFilterIndex);
+        buildFilter(null);
     }
 
     times = null;
     foreach (round; 0 .. rounds)
     {
         start = MonoTime.currTime;
-        index.runBuildSearchIndex(filter, Anchors.init);
-        waitFor(Document.Operation.BuildSearchIndex);
+        buildSearch(filter);
         times ~= msSince(start);
         writefln("search: %s found in %.1f ms", index.searchViewItemsCount, times[$ - 1]);
     }

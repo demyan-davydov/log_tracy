@@ -2,7 +2,7 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { navigationPast } from "../../resources/list-navigation.js";
+import { navigationPast, growStep } from "../../resources/list-navigation.js";
 
 // Rows 100..179 rendered, 100..129 on screen, 1000 rows in all
 const list = { firstVisible: 100, lastBuffer: 179, total: 1000, windowSize: 80 };
@@ -33,4 +33,28 @@ test("near the end of the list the step goes to the last row", () => {
 
 test("with no row on screen the step is taken: the place of the row is unknown", () => {
     assert.equal(navigationPast(140, { ...list, firstVisible: null }), 220);
+});
+
+// Rows 100..179 rendered of 1000
+const grown = (fields) => growStep({ before: 100, rendered: 80, after: 820, windowSize: 80, total: 1000, ...fields });
+
+test("a list with as many rows as before has nothing to grow", () => {
+    assert.equal(grown({}), null);
+});
+
+test("rows added after the rendered ones are only counted: the rows on screen stay", () => {
+    assert.deepEqual(grown({ total: 5000 }), { rebuild: false, append: 0, after: 4820 });
+    assert.deepEqual(grown({ after: 0, total: 5000 }), { rebuild: false, append: 0, after: 4820 },
+        "at the end of a full window too: the list asks for them when scrolled");
+});
+
+test("a list with room in its window renders the first rows added", () => {
+    const short = { before: 0, rendered: 3, after: 0, windowSize: 80 };
+    assert.deepEqual(growStep({ ...short, total: 10 }), { rebuild: false, append: 7, after: 0 });
+    assert.deepEqual(growStep({ ...short, total: 500 }), { rebuild: false, append: 77, after: 420 });
+});
+
+test("a list without rows, or with fewer rows than it renders, is rebuilt", () => {
+    assert.deepEqual(growStep({ before: 0, rendered: 0, after: 0, windowSize: 80, total: 10 }), { rebuild: true });
+    assert.deepEqual(grown({ total: 150 }), { rebuild: true });
 });

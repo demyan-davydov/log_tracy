@@ -55,3 +55,30 @@ ldc2 -O3 -release -enable-inlining -i -preview=in -preview=dip1000 -preview=dtor
 
 The footprint stays the same after the rows are fetched: fetching allocates nothing that stays. The
 fragments of the chips are allocated by the GC, which reuses that memory.
+
+## Indexes built by passes: `live-results` against master at 8947570 (2026-11-10)
+
+`LogIndex` builds its indexes by passes over ranges since `live-results`
+(`docs/stories/live-results.md`). A stage that runs alone (a filter or a search over a loaded
+file) is still one scan, and costs the same:
+
+```sh
+node scripts/build.mjs bench --bench index --against master
+```
+
+- **Machine:** Apple M1 Pro, 10 cores, macOS; LDC 1.43.0, release build.
+- **Log:** the one the generator writes (DLT, 256 MB, seed 1), query `error`; median (spread)
+  of 3 runs a side, by turns, each number the best of its rounds.
+
+| Step | master | `live-results` | Difference |
+|---|---|---|---|
+| offset index | 41.7 ms (40.3–50.3) | 41.8 ms (41.6–51.9) | +0.2 %, noise |
+| filter | 61.8 ms (59–66.1) | 60.8 ms (60.7–61.1) | −1.6 %, noise |
+| search | 61.5 ms (60.8–61.9) | 60.2 ms (60–61.3) | −2.1 %, noise |
+
+Not measured by a benchmark: stages that follow each other (a filter or a search running with
+the load, a search with a filter), where a stage takes `LogIndex.followRecords` records at a
+time. In the app (debug build, the 1 GB log of the generator, 8.9 M records): a search after
+the load ~1.5 s (~1.6 s before), a filter ~1.15 s (~1.25 s before), a search started at a third
+of the load ends with it, ~2.3 s after it was asked for. See `docs/backlog.md` for what is
+left to measure.

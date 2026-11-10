@@ -7,20 +7,46 @@ import { scrollTarget } from "./row-selection.js";
 // { dataVersion } of the view they come from, null while the view isn't a table
 export const noTable = { loaded: false, dataVersion: null };
 
+// The views an operation is filling: the table shows what it found so far
+const fillingStatuses = ["filtering", "searching"];
+
+// True if the table of the view `vm` shows rows, not the status of the view.
+// A view that is ready does; a file being loaded shows the records found so
+// far; a filter or a search shows what it found once it found something
+// (`total`: () => its rows now).
+function showsRows(vm, total) {
+    if (vm.status === "ready" || vm.status === "loadingFile") return true;
+    return fillingStatuses.includes(vm.status) && total() > 0;
+}
+
 // The next step of a table when its view (a machine of the document: { status,
-// dataVersion }) changes:
+// dataVersion, ... }) changes or tells its progress:
 //   { table: true if the table is shown (else the status of the view),
 //     reload: false, "start" (the first rows: scroll to the top) or "keep"
-//     (other rows: keep the scroll), resetSelection, shown: the next state }
-export function tableStep(shown, vm) {
-    if (vm.status !== "ready")
-        return { table: false, reload: false, resetSelection: false, shown: { ...shown, dataVersion: null } };
-    const next = { loaded: true, dataVersion: vm.dataVersion };
-    if (!shown.loaded) return { table: true, reload: "start", resetSelection: true, shown: next };
+//     (other rows: keep the scroll), resetSelection,
+//     grow: the content is the one shown and may have more rows now: they are
+//       counted, the rows on screen, the scroll and the selection stay,
+//     running: a filter or a search is filling the table: its progress and
+//       Cancel are shown by the table,
+//     shown: the next state }
+// The content of one dataVersion only grows (see ReadyView.dataVersion in
+// source/ui/main_view_fsm.d), whatever the status: while an operation fills
+// it and after, for a source that never ends.
+// @param total - () => the rows of the view now; called only if the step depends on it
+export function tableStep(shown, vm, total) {
+    if (!showsRows(vm, total)) {
+        return { table: false, reload: false, resetSelection: false, grow: false, running: false,
+            shown: { ...shown, dataVersion: null } };
+    }
+    const filling = vm.status !== "ready";
+    const step = { table: true, reload: false, resetSelection: false, grow: false,
+        running: fillingStatuses.includes(vm.status), shown: { loaded: true, dataVersion: vm.dataVersion } };
+    // New content being filled starts at the top: it has no rows yet to keep the scroll at
+    if (!shown.loaded) return { ...step, reload: "start", resetSelection: true };
     // null: a status was shown, the view may have been rebuilt meanwhile
     if (shown.dataVersion === null || shown.dataVersion !== vm.dataVersion)
-        return { table: true, reload: "keep", resetSelection: true, shown: next };
-    return { table: true, reload: false, resetSelection: false, shown: next };
+        return { ...step, reload: filling ? "start" : "keep", resetSelection: true };
+    return { ...step, grow: true };
 }
 
 // The panels to create and remove for the documents open now

@@ -12,7 +12,7 @@
 module ui.search_view_fsm;
 
 import utils.fsm : Fsm, NoTransition, To, Transition;
-import domain.document : Document, OperationFinished, OperationProgress, OperationStarted, SourceLost;
+import domain.document : ContentGrown, Document, OperationFinished, OperationProgress, OperationStarted, SourceLost;
 
 import std.json : JSONValue;
 import utils.ui_text : plainText, say, TextForUser, UiText;
@@ -30,7 +30,9 @@ struct SearchWaitingView
 struct SearchResultsView
 {
     enum status = "ready";
-    /// Changes each time the content of the view changes: the table reloads then
+    /// The content of the view: changes when it is replaced (a search starts,
+    /// the main view is rebuilt), the table reloads then. Under one version
+    /// the content only grows, see ReadyView.dataVersion of ui.main_view_fsm
     uint dataVersion;
 }
 
@@ -40,6 +42,9 @@ struct SearchingView
     enum status = "searching";
     enum canCancel = true;
     float progress = 0; // 0..1
+    /// The content the view is being filled with, see SearchResultsView.dataVersion:
+    /// what the search found so far is shown
+    uint dataVersion;
 }
 
 /// The search was cancelled: no result until the next search
@@ -150,6 +155,7 @@ struct WaitingForView
 {
     void onEnter(ref SearchViewContext c)
     {
+        ++c.dataVersion; // the results shown before are gone with the main view
         c.show(SearchWaitingView());
     }
 
@@ -171,17 +177,23 @@ struct WaitingForView
     }
 }
 
+/// The content the search filled, complete (the anchors only without a search)
 struct ShowingResults
 {
     void onEnter(ref SearchViewContext c)
     {
-        ++c.dataVersion;
         c.show(SearchResultsView(c.dataVersion));
     }
 
     Transition on(in OperationStarted e, ref SearchViewContext c)
     {
         return onSearchOrFilterStarted(e);
+    }
+
+    /// The source of the document got more: the view may show more rows
+    void on(in ContentGrown e, ref SearchViewContext c)
+    {
+        c.show(SearchResultsView(c.dataVersion));
     }
 
     Transition on(in SourceLost e, ref SearchViewContext c)
@@ -194,13 +206,14 @@ struct Searching
 {
     void onEnter(ref SearchViewContext c)
     {
-        c.show(SearchingView(0));
+        ++c.dataVersion; // the search fills the view anew
+        c.show(SearchingView(0, c.dataVersion));
     }
 
     void on(in OperationProgress e, ref SearchViewContext c)
     {
-        if (e.operation == searchOperation)
-            c.show(SearchingView(e.progress));
+        if (e.has(searchOperation))
+            c.show(SearchingView(e.of(searchOperation), c.dataVersion));
     }
 
     Transition on(in OperationFinished e, ref SearchViewContext c)
@@ -395,7 +408,33 @@ unittest
     auto f = Fixture.started();
     f.finish(loadOperation, Result.Completed);
     f.start(searchOperation);
-    assert(f.sink.last == vm(SearchingView(0)));
+    assert(f.sink.last == vm(SearchingView(0, 2)), "new content: the table reloads");
+}
+
+@("SearchViewFsm: a search asked for while the file loads runs with the load")
+unittest
+{
+    auto f = Fixture.started();
+    f.start(loadOperation);
+    f.start(searchOperation);
+    assert(f.sink.last == vm(SearchingView(0, 2)));
+    f.progress(searchOperation, 0.5);
+    assert(f.sink.last == vm(SearchingView(0.5, 2)));
+
+    // The load and the search end together
+    f.finish(loadOperation, Result.Completed);
+    assert(f.sink.last == vm(SearchingView(0.5, 2)), "the end of the load isn't the end of the search");
+    f.finish(searchOperation, Result.Completed);
+    assert(f.sink.last == vm(SearchResultsView(2)));
+}
+
+@("SearchViewFsm: the results shown get the rows the source gets later")
+unittest
+{
+    auto f = Fixture.ready();
+    const count = f.shownCount;
+    f.process(ContentGrown());
+    assert(f.shownCount == count + 1 && f.sink.last == vm(SearchResultsView(1)));
 }
 
 @("SearchViewFsm: a failed load leaves the view waiting")
@@ -411,10 +450,10 @@ unittest
 {
     auto f = Fixture.searching();
     f.progress(searchOperation, 0.25);
-    assert(f.sink.last == vm(SearchingView(0.25)));
+    assert(f.sink.last == vm(SearchingView(0.25, 2)));
 
     f.finish(searchOperation, Result.Completed);
-    assert(f.sink.last == vm(SearchResultsView(2)), "the table must reload");
+    assert(f.sink.last == vm(SearchResultsView(2)), "the same content, complete: the table isn't reloaded");
 }
 
 @("SearchViewFsm: cancelling asks the document and waits for its result")
@@ -423,13 +462,13 @@ unittest
     auto f = Fixture.searching();
     f.process(SearchCancelPressed());
     assert(f.commands.cancelCalls == 1);
-    assert(f.sink.last == vm(SearchingView(0)), "the search is still running");
+    assert(f.sink.last == vm(SearchingView(0, 2)), "the search is still running");
 
     f.finish(searchOperation, Result.Cancelled);
     assert(f.sink.last == vm(SearchCancelledView()));
 
     f.start(searchOperation);
-    assert(f.sink.last == vm(SearchingView(0)), "the next search starts over");
+    assert(f.sink.last == vm(SearchingView(0, 3)), "the next search starts over");
 }
 
 @("SearchViewFsm: a failed search waits for the next one")
@@ -441,7 +480,7 @@ unittest
 
     f.start(searchOperation);
     f.finish(searchOperation, Result.Completed);
-    assert(f.sink.last == vm(SearchResultsView(2)));
+    assert(f.sink.last == vm(SearchResultsView(3)));
 }
 
 @("SearchViewFsm: a new filter waits for the view, then shows the repeated search")
@@ -461,6 +500,15 @@ unittest
     f.start(searchOperation);
     f.finish(searchOperation, Result.Completed);
     assert(f.sink.last == vm(SearchResultsView(3)));
+}
+
+@("SearchViewFsm: a rebuilt main view without a search shows new (empty) content")
+unittest
+{
+    auto f = Fixture.ready();
+    f.start(filterOperation);
+    f.finish(filterOperation, Result.Completed);
+    assert(f.sink.last == vm(SearchResultsView(2)), "the results of before are gone: the table reloads");
 }
 
 @("SearchViewFsm: a filter replacing a running search waits for the view")
@@ -499,7 +547,7 @@ unittest
     f.start(filterOperation);
     f.finish(filterOperation, Result.Cancelled);
     f.start(searchOperation);
-    assert(f.sink.last == vm(SearchingView(0)));
+    assert(f.sink.last == vm(SearchingView(0, 3)));
 }
 
 @("SearchViewFsm: cancel is ignored unless a search is running")
@@ -558,7 +606,7 @@ unittest
 
     check(SearchWaitingView(), `{"status": "waitingForView", "canCancel": false}`);
     check(SearchResultsView(3), `{"status": "ready", "canCancel": false, "dataVersion": 3}`);
-    check(SearchingView(0.25), `{"status": "searching", "canCancel": true, "progress": 0.25}`);
+    check(SearchingView(0.25, 2), `{"status": "searching", "canCancel": true, "progress": 0.25, "dataVersion": 2}`);
     check(SearchCancelledView(), `{"status": "searchCancelled", "canCancel": false}`);
     check(SearchFailedView(plainText("e")), `{"status": "searchFailed", "canCancel": false, "error": "e"}`);
     check(SearchLostView(), `{"status": "sourceLost", "canCancel": false}`);

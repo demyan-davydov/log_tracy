@@ -1,6 +1,6 @@
 // A list that renders only the items on screen (behavior: virtual-list). The
 // selection lives in the subclasses (see VirtualDltTBody).
-import { navigationPast } from "./list-navigation.js";
+import { navigationPast, growStep } from "./list-navigation.js";
 
 export class VirtualList extends Element {
     // Where the next render() scrolls to: a row number, "start" or "end"; null
@@ -103,6 +103,33 @@ export class VirtualList extends Element {
         });
         if (past !== null) vlist.navigateTo(past);
         vlist.navigateTo(target);
+    }
+
+    // The list has more items after the ones it had (totalItems() grew, the
+    // items it had are the same): they are counted, and rendered if the list
+    // has room; the rows on screen stay as they are, see growStep(). A list it
+    // can't grow in place is rebuilt (componentUpdate).
+    grow() {
+        const vlist = this.vlist;
+        if (!vlist) return;
+        const total = this.totalItems();
+        const before = vlist.itemsBefore;
+        const rendered = this.children.length;
+        const step = growStep({ total, before, rendered, after: vlist.itemsAfter, windowSize: vlist.slidingWindowSize });
+        if (step === null) return;
+        if (step.rebuild) {
+            this.componentUpdate();
+            return;
+        }
+        for (let index = before + rendered; index < before + rendered + step.append; ++index) {
+            const item = this.itemAt(index);
+            if (!item) { // gone meanwhile: the list is rebuilt from what there is
+                this.componentUpdate();
+                return;
+            }
+            this.append(this.renderItem(item));
+        }
+        vlist.itemsAfter = step.after;
     }
 
     // scroll down

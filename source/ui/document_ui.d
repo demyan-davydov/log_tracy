@@ -4,6 +4,7 @@
 module ui.document_ui;
 
 import domain.workspace : Workspace;
+import domain.document : Document;
 import domain.document_id : DocumentId;
 import log_core.log_message : LogMessage;
 import log_core.rule_filter : RuleId;
@@ -84,16 +85,16 @@ final class DocumentUi : MainViewSink, MainViewCommands, SearchViewSink, SearchV
         searchViewChanged = true;
     }
 
-    // Only one operation runs at a time, and each machine handles Cancel only
-    // while its own operation runs: requestCancel() stops just that one
+    // A search may run with a filter, over what it has found so far: the
+    // filter is stopped with it, the search alone
     bool cancelOperation()
     {
-        return _workspace.doc(_docId).requestCancel();
+        return _workspace.doc(_docId).requestCancel(Document.Operation.BuildFilterIndex);
     }
 
     bool cancelSearch()
     {
-        return _workspace.doc(_docId).requestCancel();
+        return _workspace.doc(_docId).requestCancel(Document.Operation.BuildSearchIndex);
     }
 
     void closeDocument()

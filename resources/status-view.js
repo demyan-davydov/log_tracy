@@ -1,8 +1,9 @@
 // The status views of a document panel: what covers a table while its view
-// isn't showing rows (the file loading, a filter or a search running or
-// failed). The texts of each status of the main view and the search view, see
+// isn't showing rows (a filter or a search before its first row, a failure),
+// and the progress under a table a filter or a search is filling. The texts
+// of each status of the main view and the search view, see
 // source/ui/main_view_fsm.d and source/ui/search_view_fsm.d, and the filling
-// of a view (an element of .status-view).
+// of a view (an element of .status-view) and of a progress (.view-progress).
 
 import { tr } from "i18n/i18n.js";
 
@@ -43,6 +44,14 @@ export const searchViewStatus = {
         searchFailed: (vm) => vm.error || "",
     },
 };
+
+// Fills the progress of a table (an element of .view-progress, under a table
+// that shows what a filter or a search found so far) with the view `vm` as
+// `status` tells it: its text and progress; its Cancel is always there
+export function showProgress(strip, vm, status) {
+    strip.$(".view-progress-text").innerText = status.texts[vm.status](vm);
+    strip.$("progress").value = percent(vm.progress);
+}
 
 // Fills a status view (an element of .status-view) with the view `vm` as
 // `status` (mainViewStatus, searchViewStatus) tells it: text, progress (hidden
