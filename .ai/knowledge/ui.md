@@ -42,8 +42,14 @@ behaviour: `.ai/knowledge/sciter.md`.
   and is written with the rest of `getAppState()` (`AppSettings.searchPanelHeight`; the
   mapping is `resources/panel-sizes.js`), not on each move of the splitter, and the first panel
   starts with it.
-- What a table does on a change of its view is `resources/pane-state.js`; the flows of its
-  search and rule commands are `resources/pane-commands.js`.
+- What a table does on a change of its view is `resources/pane-state.js` (`tableStep`:
+  reload, or grow in place while the view of the same `dataVersion` gets more rows); the
+  flows of its search and rule commands are `resources/pane-commands.js`.
+- A table grows in place by `VirtualList.grow()` (`virtual-select.js`, the decision in
+  `growStep` of `list-navigation.js`): only `vlist.itemsAfter` changes, the rows on screen are
+  not rendered again. `componentUpdate()` on a changed count clears and renders the rows:
+  not for a view being filled. The progress and Cancel of a filter or a search filling a table
+  are in the strip under it (`.view-progress`, `showProgress` of `status-view.js`).
 
 ## Table Columns
 

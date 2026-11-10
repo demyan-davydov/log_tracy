@@ -131,25 +131,39 @@ struct LogIndex
             (ref ProgressReporter progress) => buildOffsetIndex(progress));
     }
 
+    //! The rows of the main view and the results of the search are dropped
+    //! before this returns, not later by the worker: the views show their
+    //! rows while the operation fills them, and what they list from now on
+    //! must be what it found
     bool runBuildFilterIndex(Filter filter, Anchors anchors)
     {
+        if (_backgroundSlot.busy())
+            return false;
+        synchronized (cast(Mutex)_mutex)
+        {
+            _viewIsFiltered = filter !is null;
+            _filterIndex.clear();
+            _searchIndex.clear();
+            _filterIndex.isReady = false;
+            _searchIndex.isReady = false;
+        }
         return runOperation(Operation.BuildFilterIndex,
             (ref ProgressReporter progress) => buildFilterIndex(progress, filter, anchors));
     }
 
     //! The results of the previous search are dropped before this returns, not
     //! later by the worker: from now on the document marks found what the index
-    //! lists as found by `filter`
+    //! lists as found by `filter`, and the search view shows what it lists
+    //! while the search fills it (a reset too: the anchors come with the worker)
     bool runBuildSearchIndex(Filter filter, Anchors anchors)
     {
         if (_backgroundSlot.busy())
             return false;
-        if (filter !is null)
-            synchronized (cast(Mutex)_mutex)
-            {
-                _searchIndex.clear();
-                _searchIndex.isReady = false;
-            }
+        synchronized (cast(Mutex)_mutex)
+        {
+            _searchIndex.clear();
+            _searchIndex.isReady = false;
+        }
         return runOperation(Operation.BuildSearchIndex,
             (ref ProgressReporter progress) => buildSearchIndex(progress, filter, anchors));
     }
@@ -843,6 +857,44 @@ unittest
     const expectedFound = expectedView.filter!(i => i % 5 == 0 || i == 3).array;
     assert(index.searchViewItemsCount == expectedFound.length);
     assert(iota(expectedFound.length).map!(p => index._searchIndex[p]).array == expectedFound);
+}
+
+@("LogIndex: a filter or a search asked for leaves no row of the content before, at once")
+unittest
+{
+    import utils.event_bus.event_bus_async : EventBusAsync;
+    import formats.plain_text : PlainTextFormat;
+    import log_core.search_filter : SearchChip, SearchFilter;
+    import std.file : remove;
+    import std.format : format;
+
+    enum lines = 50_000;
+    const path = writeLines("log_index_replaced", lines, (size_t i) => format("line %s", i));
+    scope (exit)
+        remove(path);
+
+    auto index = LogIndex(new FileSource(path), new PlainTextFormat(), new EventBusAsync());
+    waitForOperation(index, () => true);
+    assert(index.mainViewItemsCount == lines);
+
+    // The views show their rows while an operation fills them: what is there
+    // when it is started must be its own, not what the worker hasn't cleared yet
+    auto nothing = SearchFilter.fromChips([SearchChip("no such text")]);
+    while (!index.runBuildFilterIndex(nothing, Anchors.init))
+    {
+    }
+    assert(index.mainViewItemsCount == 0, "the view shows the rows of before while the filter starts");
+    waitForOperation(index, () => true);
+
+    auto every = SearchFilter.fromChips([SearchChip("line")]);
+    waitForOperation(index, () => index.runBuildFilterIndex(null, Anchors.init));
+    waitForOperation(index, () => index.runBuildSearchIndex(every, Anchors.init));
+    assert(index.searchViewItemsCount == lines);
+    while (!index.runBuildSearchIndex(null, Anchors.init))
+    {
+    }
+    assert(index.searchViewItemsCount == 0, "the results of before are listed while the search is reset");
+    waitForOperation(index, () => true);
 }
 
 @("LogIndex: a cancel or a lost file stops the blocks being scanned, not only the next ones")

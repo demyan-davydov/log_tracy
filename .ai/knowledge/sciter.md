@@ -189,6 +189,10 @@ agent can't drive it. In scapp a plain
   `display: none` before it was ever laid out keeps its cells at x=0, 1px wide, for good.
   Hidden ancestors are harmless, so is hiding a table already laid out. Show status views over
   it (`.status-view.overlay`).
+- Rows appended to the data of a virtual-list need no render: assigning `vlist.itemsAfter`
+  (6.0.5.5) grows the scrollbar range, keeps the rendered rows, the first visible item and the
+  scroll, and the list asks for the new rows when scrolled to them. A list whose window ends
+  at its last row with room left doesn't ask: append the rows (`VirtualList.grow`).
 - A virtual-list hidden (`display: none`, or `visibility`) and shown again keeps its rows, first
   visible item and pixel offset, even after a resize while hidden; a hidden list requests no
   rows. Focus stays on an element inside a hidden pane: move it on a switch.

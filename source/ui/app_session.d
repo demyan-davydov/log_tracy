@@ -1231,6 +1231,33 @@ unittest
     assert(f.session.filters(id).saved().length == 1);
 }
 
+@("AppSession: a file loading for a filter that waits doesn't show its records")
+unittest
+{
+    /// What the main view of the document shows, by the calls queued
+    static JSONValue mainView(AppSession session)
+    {
+        JSONValue shown;
+        foreach (c; session.takeScriptCalls())
+            if (c.name == "onMainViewChanged")
+                shown = parseJSON(c.json);
+        return shown;
+    }
+
+    auto f = Fixture.make();
+    auto id = f.session.openFile("/logs/a.log").docId; // a fake document: it stays loading
+    assert(mainView(f.session)["rows"].boolean, "the records found so far are shown");
+
+    enum rule = `{"name": "x", "conditions": [{"column": "payload", "check": "contains", "value": "x"}]}`;
+    f.session.filterCommand(id, (DocumentFilters filters) { filters.newSet(); return filters.addRule(0, rule); });
+    assert(!mainView(f.session)["rows"].boolean, "they would be replaced by the filtered ones");
+
+    // The filters restored with the file, likewise
+    f.session.closeTab(cast(int) id.toInt());
+    id = f.session.openFile("/logs/a.log").docId;
+    assert(!mainView(f.session)["rows"].boolean);
+}
+
 @("AppSession: a real file opens in a LogDocument and its main view gets ready")
 unittest
 {

@@ -50,7 +50,11 @@ final class DocumentUi : MainViewSink, MainViewCommands, SearchViewSink, SearchV
         if (_filters is null)
         {
             auto doc = _workspace.doc(_docId);
-            _filters = new DocumentFilters(doc.format, doc.formatChoice.id, (filter) { doc.applyViewFilter(filter); });
+            _filters = new DocumentFilters(doc.format, doc.formatChoice.id, (filter) {
+                doc.applyViewFilter(filter);
+                // Told after the request: the operation it starts at once is shown already
+                _mainView.process(FilterRequested(filter !is null));
+            });
         }
         return _filters;
     }

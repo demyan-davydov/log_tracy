@@ -17,3 +17,21 @@ export function navigationPast(target, list) {
     const past = Math.min(total - 1, target + windowSize);
     return past > target ? past : null;
 }
+
+// How a list takes rows added after the ones it has (a view being filled:
+// rows are only appended), keeping the rows on screen as they are. `list`:
+// { total (rows now), before / rendered / after (the rows it counts before
+// the rendered ones, renders, counts after them), windowSize }. Returns
+// null if it has as many; { rebuild: true } if it can't be grown in place (no
+// row rendered to grow from, or fewer rows than it renders: not a growth);
+// else { rebuild: false, append: the rows to render after the last one (the
+// window has room and ends at the last row: the list would not ask for them),
+// after: the rows to count after the rendered ones }.
+export function growStep(list) {
+    const { total, before, rendered, after, windowSize } = list;
+    if (total === before + rendered + after) return null;
+    if (rendered === 0 || total < before + rendered) return { rebuild: true };
+    const added = total - before - rendered;
+    const append = after === 0 ? Math.min(added, Math.max(0, windowSize - rendered)) : 0;
+    return { rebuild: false, append, after: added - append };
+}

@@ -140,6 +140,12 @@ utils  ←  sciter  ←  ui
   for future streaming sources (growing file, serial port), so keep that contract.
 - The view status shown to the user comes from the state machines `ui/main_view_fsm` and
   `ui/search_view_fsm` (on `utils/fsm`), free of Sciter so they can be unit-tested.
+- A view shows its rows while an operation fills it. The contract is `dataVersion` of the
+  view models: it changes when the content is replaced (a load, a filter, a search starts);
+  under one version the content only grows, rows appended in order, none moved, so the table
+  keeps its rows, scroll and selection and counts the new ones. The end of an operation keeps
+  the version. The script grows a table on any view event of the same version, `ready` too:
+  meant for sources that never end (story: `docs/stories/live-results.md`).
 
 ## If You Need X, Start Here (backend)
 
