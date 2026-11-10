@@ -643,13 +643,14 @@ export class DocumentPane {
                 return;
             }
             // A new document with the same id: its first rows start at the top,
-            // its filters are restored, it has no search and no anchors yet
+            // its filters are restored (no message of a command before), it has
+            // no search and no anchors yet
             this.markAnchorsFull(false);
             this.mainShown = noTable;
             this.searchShown = noTable;
             this.appliedColumns = null;
             this.searchBar.reset();
-            this.filterPanel.render();
+            this.filterPanel.reopened();
             const refreshStart = Date.now();
             this.host.refreshTabs(); // the reopened document starts loading
             console.log(`Retry: xcall ${retryTime} ms, views refresh ${Date.now() - refreshStart} ms`);

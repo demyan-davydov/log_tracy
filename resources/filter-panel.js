@@ -55,6 +55,13 @@ export class FilterPanel {
         if (this.rendered) this.render();
     }
 
+    // The document was reopened (Retry): its sets are those the backend restored,
+    // and the message of a command before is about the document that was lost
+    reopened() {
+        this.message = "";
+        this.render();
+    }
+
     // Shows the sets after a command of the backend, with its message
     showResult(error) {
         this.message = error || "";
