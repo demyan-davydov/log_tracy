@@ -39,7 +39,23 @@ Adding a format, step by step: `.ai/workflows/add-format.md`.
 - `.dlf` filter files of dlt-viewer: `formats/dlt/dlf`. FIBEX (non-verbose): `formats/dlt/fibex`,
   not decoded yet (`docs/fibex.md`).
 - Real logs for trying things are kept locally in `test_data/`, not in the repository (`*.dlt`
-  is ignored): a fresh clone has none. Tests build their records instead.
+  is ignored): a fresh clone has none. Tests build their records instead; a whole log (big,
+  broken on purpose) is written by the generator (below).
+
+## The Log Generator
+
+- `formats/generator/`: writes a log of a format (`dlt`, `dlt-v2`, `text`), size and content,
+  the same bytes for a seed (its own SplitMix64 `Rng`, not Phobos'). `content` gives the content
+  of a record whatever the format and the options (`GenOptions`, the kinds of `Corruption`),
+  `dlt` and `text` write it, `generator.generateLog` drives them and breaks records,
+  `command_line` is the tool's options. The tool: `scripts/gen_log.d`, built and run by
+  `node scripts/build.mjs gen-log`.
+- Its modules and `formats/dlt/testing_utils` are under `version (unittest)` or
+  `-d-version=LogGenerator`: not in the program. DLT records are built by the same `BuildV1`/`BuildV2`
+  as the tests.
+- A new format of the generator: a writer module, its `GenFormat` and name, its corruptions in
+  `corruptionsOf`, and the cases of the tests of `generator` (detected as its format, every
+  record read).
 
 ## Text Formats
 

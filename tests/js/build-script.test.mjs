@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseCommand, dubArgs, distArch, infoPlist, desktopEntry, sciterLibrary, isLfsPointer,
-    compilerArgs, commands, buildUsage, runUsage } from "../../scripts/build.mjs";
+    compilerArgs, genLogArgs, commands, buildUsage, runUsage } from "../../scripts/build.mjs";
 
 test("build in debug for the machine by default", () => {
     assert.deepEqual(parseCommand([]), { command: "build", release: false, arch: null });
@@ -96,6 +96,7 @@ test("--help or -h asks for the help, whatever else is given", () => {
     assert.deepEqual(parseCommand(["-h"]), help);
     assert.deepEqual(parseCommand(["dist", "--arch", "arm64", "--help"]), help);
     assert.deepEqual(parseCommand(["pack", "-h"]), help);
+    assert.deepEqual(parseCommand(["--help", "gen-log"]), help); // gen-log not first: the script's own help
 });
 
 test("the help names every command and option", () => {
@@ -108,4 +109,21 @@ test("the help names every command and option", () => {
     }
     assert.match(runUsage, /run\.mjs/);
     assert.doesNotMatch(runUsage, /check-windows/);
+});
+
+test("gen-log passes everything after it to the generator, its --help too", () => {
+    assert.deepEqual(parseCommand(["gen-log", "big.dlt", "--format", "dlt", "--size", "1G"]),
+        { command: "gen-log", release: false, arch: null, toolArgs: ["big.dlt", "--format", "dlt", "--size", "1G"] });
+    assert.deepEqual(parseCommand(["gen-log", "--help"]),
+        { command: "gen-log", release: false, arch: null, toolArgs: ["--help"] });
+    assert.throws(() => parseCommand(["--release", "gen-log", "x.dlt"]), /gen-log/);
+});
+
+test("the generator is compiled optimized, with its version and the flags of dub.sdl, into build/tools", () => {
+    const args = genLogArgs(["-preview=in", "-I/p/source/"], "darwin");
+    assert.ok(args.includes("-O2") && args.includes("-i") && args.includes("-d-version=LogGenerator"));
+    assert.ok(args.includes("-preview=in") && args.includes("-I/p/source/"));
+    assert.ok(args.includes("scripts/gen_log.d"));
+    assert.ok(args.includes("-of=build/tools/gen_log"));
+    assert.ok(genLogArgs([], "win32").includes("-of=build/tools/gen_log.exe"));
 });

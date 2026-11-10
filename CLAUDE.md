@@ -50,6 +50,7 @@ node --test tests/js                     # JS unit tests only (pure modules such
 node scripts/i18n-extract.mjs            # brings the translation catalogs up to the texts of the code
 node scripts/screenshot.mjs --open <log> # the app's window with a log → build/screenshot.png (--help)
 node scripts/app.mjs start --open <log>  # a running debug copy to drive: eval, wait, shot, run, stop (--help)
+node scripts/build.mjs gen-log <file> --format dlt|dlt-v2|text --size 1G  # a test log, same bytes per seed (--help)
 ```
 
 - `dub.sdl` puts every build in `build/<platform>-<arch>-<build type>/` (`osx-aarch64-unittest`

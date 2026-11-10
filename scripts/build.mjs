@@ -8,10 +8,10 @@ import { spawnSync } from "node:child_process";
 import { chmodSync, closeSync, copyFileSync, cpSync, mkdirSync, mkdtempSync, openSync, readdirSync,
     readFileSync, readSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const commands = ["build", "test", "dist", "check-windows"];
+export const commands = ["build", "test", "dist", "check-windows", "gen-log"];
 
 /// What `--help` prints. Every command and option is in it: tests/js/build-script.test.mjs.
 export const buildUsage = `Builds, tests and packs DLT Explorer. More: docs/building.md.
@@ -25,6 +25,9 @@ Commands:
   dist            a release distribution in build/dist/<macos|linux|windows>/
   check-windows   compile the program and its unittests for Windows x64 from macOS or
                   Linux, without linking
+  gen-log <file> [options]
+                  generate a test log (scripts/gen_log.d, built into build/tools/):
+                  everything after gen-log is its own, see gen-log --help
 
 Options:
   --release       a release build instead of debug (build; dist always is)
@@ -54,10 +57,14 @@ const dubArchOf = { x64: "x86_64", arm64: "aarch64" };
 export class BuildError extends Error {}
 
 /// What the command line asks: `{ command, release, arch }`, `arch` null for this machine's.
-/// A distribution is always a release. `--help` anywhere asks for the help (command "help")
-/// whatever else is there.
+/// A distribution is always a release. `gen-log` first gives everything after it to the
+/// generator (`toolArgs`), its `--help` too. Otherwise `--help` anywhere asks for the help
+/// (command "help") whatever else is there.
 export function parseCommand(argv) {
+    // the generator takes its own options, --help too
+    if (argv[0] === "gen-log") return { command: "gen-log", release: false, arch: null, toolArgs: argv.slice(1) };
     if (argv.includes("--help") || argv.includes("-h")) return { command: "help", release: false, arch: null };
+    if (argv.includes("gen-log")) throw new BuildError("gen-log comes first: node scripts/build.mjs gen-log <file> [options]");
     let command = null;
     let release = false;
     let arch = null;
@@ -186,14 +193,14 @@ echo "${bundle} is ready."
 }
 
 /// Runs a program, its output shown, or kept with `capture` (up to `maxBuffer`, 1 MB). `echo`
-/// tells the command line first.
-function run(program, args, { capture = false, echo = !capture } = {}) {
+/// tells the command line first; `cwd` is the folder it runs in (the project root).
+function run(program, args, { capture = false, echo = !capture, cwd } = {}) {
     if (echo) console.log(`> ${program} ${args.join(" ")}`);
     // dub on Windows may be a dub.cmd (a shim of scoop or chocolatey), which only a shell
     // starts; its arguments here are options without spaces, joined by the shell as they are
     const shell = process.platform === "win32" && program === "dub";
     const result = spawnSync(program, args, { stdio: capture ? ["ignore", "pipe", "pipe"] : "inherit",
-        encoding: "utf8", shell });
+        encoding: "utf8", shell, cwd });
     if (result.error) throw new BuildError(`can't run ${program}: ${result.error.message}`);
     return result;
 }
@@ -370,10 +377,34 @@ function checkWindows() {
     if (!ok) throw new BuildError("Windows compile failed.");
 }
 
+/// The arguments of ldc2 for the log generator, `dubFlags` the flags and import paths of
+/// dub.sdl as dub describes them: optimized (a gigabyte takes a while), the code of the
+/// generator in (-d-version=LogGenerator), the program in build/tools/.
+export function genLogArgs(dubFlags, platform) {
+    const program = `build/tools/gen_log${platform === "win32" ? ".exe" : ""}`;
+    return ["-O2", "-i", "-d-version=LogGenerator", ...dubFlags, "scripts/gen_log.d", `-of=${program}`,
+        "-od=build/tools/obj", "-oq"];
+}
+
+/// Builds the log generator and runs it with `toolArgs` in `callerDir`, the folder the script
+/// was started from: a relative path of a log is the user's. Its exit code is the script's.
+function genLog(toolArgs, callerDir) {
+    const described = run("dub", ["describe", "--compiler=ldc2", "--data=dflags,import-paths", "--data-0"],
+        { capture: true });
+    if (described.status !== 0) throw new BuildError(`dub describe failed:\n${described.stderr}`);
+    const args = genLogArgs(compilerArgs(described.stdout), process.platform);
+    runOrFail("ldc2", args, "Building the log generator failed.");
+    const program = resolve(args.find((arg) => arg.startsWith("-of=")).slice("-of=".length));
+    const status = run(program, toolArgs, { echo: false, cwd: callerDir }).status;
+    if (status !== 0) process.exit(status ?? 1);
+}
+
 function main(argv) {
+    const callerDir = process.cwd();
     process.chdir(fileURLToPath(new URL("..", import.meta.url))); // the project root
-    const { command, release, arch } = parseCommand(argv);
-    if (command === "help") process.stdout.write(buildUsage);
+    const { command, release, arch, toolArgs } = parseCommand(argv);
+    if (command === "gen-log") genLog(toolArgs, callerDir);
+    else if (command === "help") process.stdout.write(buildUsage);
     else if (command === "build") console.log(`Built: ${build({ release, arch })}`);
     else if (command === "test") test({ arch });
     else if (command === "dist") dist(arch);
