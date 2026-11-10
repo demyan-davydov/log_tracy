@@ -1,7 +1,8 @@
 // What the debug channel (ui/debug_channel, debug builds only) evaluates for a request
-// {"eval": code}: this function expression, called with the code. It answers the response line,
-// {"result": ...} or {"error": ...}. Not served to the window and not a module: SciterEval runs
-// it in the global scope of the window, where the code sees what the modules put on globalThis.
+// {"eval": code}: this function expression, called with the code. It answers, as JSON text, what
+// the code gave: {value} made plain JSON or {thrown} (the response line is made of it by
+// ui/debug_protocol). Not served to the window and not a module: SciterEval runs it in the
+// global scope of the window, where the code sees what the modules put on globalThis.
 (function debugEval(code) {
     const maxDepth = 4, maxItems = 100, maxText = 200;
     const cut = text => (text.length > maxText ? text.slice(0, maxText) + "…" : text);
@@ -58,9 +59,9 @@
 
     try {
         const value = (0, eval)(code); // indirect: the global scope, not this function's
-        return JSON.stringify({ result: plain(value, 0, []) });
+        return JSON.stringify({ value: plain(value, 0, []) });
     } catch (e) {
         const stack = typeof e?.stack === "string" && e.stack.trim() ? `\n${e.stack.trim()}` : "";
-        return JSON.stringify({ error: String(e) + stack });
+        return JSON.stringify({ thrown: String(e) + stack });
     }
 })

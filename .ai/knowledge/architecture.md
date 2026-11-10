@@ -99,10 +99,14 @@ utils  ←  sciter  ←  ui
 - The debug channel (debug builds only, `SCITER_DEBUG_PORT`): `ui/debug_channel` is a TCP
   server on 127.0.0.1 that runs the requests of `ui/debug_protocol` (JavaScript to evaluate,
   `resources/debug-eval.js` making its value plain JSON; a render of the window into a PNG) on
-  the window's thread through `postToWindowThread` (`sciter/window`: `SciterPostCallback`).
+  the window's thread through `postToWindowThread` and `evalInWindow` (`sciter/window`:
+  `SciterPostCallback`, `SciterEval`). The response lines are made by `ui/debug_protocol` only:
+  `debug-eval.js` gives the value or what was thrown, not a line of the protocol.
   Kept apart on purpose: `main()` starts and stops it, nothing else knows of it; a new command
-  is a request kind of the protocol, not a hook in the window or the session. Its client is
-  `scripts/app.mjs`.
+  is a request kind of the protocol, not a hook in the window or the session: a member of
+  `RequestKind` with its parsing, script and response in `ui/debug_protocol`, and its case of
+  the `final switch` of `Server.answer` in `ui/debug_channel` (the compiler asks for it). Its
+  client is `scripts/app.mjs`.
 
 ## Indexing and Threads
 
@@ -135,3 +139,5 @@ utils  ←  sciter  ←  ui
   `domain/anchors`
 - Formats and detection: `formats/registry` (see `.ai/knowledge/formats.md`)
 - Backend texts for the user: `utils/ui_text`, `ui/translations` (see `.ai/knowledge/i18n.md`)
+- Looking inside the running app (debug builds): `ui/debug_channel`, `ui/debug_protocol`,
+  `resources/debug-eval.js`, the client `scripts/app.mjs` (`.ai/workflows/preview-ui.md`)

@@ -61,10 +61,8 @@ debug:
 
 import core.sync.event : Event;
 import core.time : Duration, seconds;
-import sciter.api : sciterApi;
-import sciter.capi.types : UINT;
 import sciter.value : SciterValue;
-import sciter.window : postToWindowThread;
+import sciter.window : evalInWindow, postToWindowThread;
 import std.socket : InternetAddress, Socket, SocketOption, SocketOptionLevel, SocketShutdown, TcpSocket;
 import ui.debug_protocol;
 
@@ -202,16 +200,14 @@ private final class Server
 private final class ScriptRun
 {
     private HWINDOW _hwnd;
-    private immutable(wchar)[] _script;
+    private string _script;
     Event finished;
     WindowRun result; /// set on the window's thread before `finished`
 
     this(HWINDOW hwnd, string script)
     {
-        import std.utf : toUTF16;
-
         _hwnd = hwnd;
-        _script = script.toUTF16;
+        _script = script;
         finished.initialize(true, false);
     }
 
@@ -223,7 +219,7 @@ private final class ScriptRun
             import std.utf : toUTF8;
 
             SciterValue value;
-            if (!sciterApi().SciterEval(_hwnd, _script.ptr, cast(UINT) _script.length, value.raw))
+            if (!evalInWindow(_hwnd, _script, value))
                 result.error = "SciterEval failed (no document loaded?)";
             else
             {

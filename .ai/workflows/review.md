@@ -10,6 +10,7 @@ fresh context: a narrow question is answered more deeply than "anything wrong?".
 | Lens | File | Question | When |
 |---|---|---|---|
 | rules | `review-rules.md` | Does the change follow the rules of the repository? | every change |
+| architecture | `review-architecture.md` | Is each responsibility in its place, through the existing extension points, no more complex than needed? | a change across packages or of `app.d` / `dub.sdl`; a plan of a feature, before the code |
 | performance | `review-performance.md` | Is it fast enough for a 1 GB log, and safe across the threads? | the indexing, formats, filters, the rows of the log table |
 | ux | `review-ux.md` | Does it behave and look as the user's requirements say? | what the user sees and does |
 
@@ -22,14 +23,16 @@ logic and state) is a different review, run as well: compared on three features,
 overlapped by about a third, each finding real issues of its own kind
 (`docs/experiments/2026-11-09-review-lenses-vs-code-review.md`).
 
-Not lenses (yet): architecture belongs to the plan of a feature, before the code; acceptance
-(was the asked thing done) to the end of a feature. See `docs/backlog.md`.
+The architecture lens is the one worth running on a plan too, before the code: what it finds
+after the code is often a rework. Not a lens (yet): acceptance (was the asked thing done), at
+the end of a feature. See `docs/backlog.md`.
 
 ## Scope
 
 - By default the work of the current branch: `git diff master...HEAD` plus the uncommitted
   changes (`git diff HEAD`) and the untracked files. On `master`: the uncommitted changes only.
-  A range, a commit or paths given explicitly replace the default.
+  A range, a commit or paths given explicitly replace the default. The architecture lens also
+  takes a plan (a file or the text of the task), reviewed against the code as it is.
 - Read every changed hunk and, where the lens is about it, the code around it and its callers.
 
 ## Report of a Lens

@@ -1,6 +1,7 @@
 // Which lenses of the review (.ai/workflows/review.md) a change needs, by the files it touches:
-// the rules always, performance and threads for the indexing, the formats, the filters and the
-// hot rows of the log table, UX for what the user sees. `node scripts/review-lenses.mjs [base]`
+// the rules always, architecture for a change across packages (or of the composition root),
+// performance and threads for the indexing, the formats, the filters and the hot rows of the log
+// table, UX for what the user sees. `node scripts/review-lenses.mjs [base]`
 // prints { base, paths, lenses } as JSON for the change of the current branch against `base`
 // (default master) plus the uncommitted and untracked files; on `base` itself, the uncommitted
 // ones only.
@@ -9,12 +10,15 @@ import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 /// Every lens, in the order they are reported
-export const lenses = ["rules", "performance", "ux"];
+export const lenses = ["rules", "architecture", "performance", "ux"];
 
 /// The lenses a change of `paths` (from the project root) needs, in the order of `lenses`
 export function lensesFor(paths) {
     if (paths.length === 0) return [];
     const needed = new Set(["rules"]);
+    const layers = new Set(paths.map(layerOf).filter(layer => layer !== null));
+    if (layers.size > 1 || paths.some(path => compositionPaths.some(pattern => pattern.test(path))))
+        needed.add("architecture");
     for (const path of paths) {
         if (performancePaths.some(pattern => pattern.test(path))) needed.add("performance");
         if (uxPaths.some(pattern => pattern.test(path)) && !notUxPaths.some(pattern => pattern.test(path)))
@@ -22,6 +26,18 @@ export function lensesFor(paths) {
     }
     return lenses.filter(lens => needed.has(lens));
 }
+
+// The layer of the code a file belongs to: a package of source/ or the script of the window;
+// null for tests, docs, scripts and the rest, which don't make a change cross a boundary
+function layerOf(path) {
+    const pkg = /^source\/([^/]+)\//.exec(path);
+    if (pkg) return pkg[1];
+    if (/^resources\/.*\.(js|htm)$/.test(path)) return "script";
+    return null;
+}
+
+// What puts the packages together: main() and the build
+const compositionPaths = [/^source\/app\.d$/, /^dub\.sdl$/];
 
 // The indexing and its threads, the formats and the filters (called from several threads, for
 // every record), the rows of the log tables (rendered for every row on screen while scrolling)

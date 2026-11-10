@@ -59,7 +59,7 @@ bool parseRequest(const(char)[] line, out DebugRequest request, out string error
 }
 
 /// The script SciterEval runs for an eval request: debug-eval.js called with `code`. Its value
-/// is the response line.
+/// is JSON text of what the code gave, {"value": ...} or {"thrown": "..."} (`evalResponse`).
 string evalScript(string code)
 {
     return import("debug-eval.js") ~ "(" ~ JSONValue(code).toString() ~ ")";
@@ -93,14 +93,32 @@ struct WindowRun
     const(ubyte)[] bytes; /// its value was bytes
 }
 
-/// The response line of an eval request whose script gave `run`: the line debug-eval.js made
+/// The response line of an eval request whose script gave `run`: the value of the code as the
+/// result, what it threw as the error
 string evalResponse(const WindowRun run)
 {
+    import std.json : JSONException, JSONType, parseJSON;
+
     if (run.error.length)
         return errorLine(run.error);
     if (!run.isText)
         return errorLine("the eval script gave no text: " ~ run.text);
-    return run.text;
+    try
+    {
+        auto json = parseJSON(run.text);
+        if (json.type == JSONType.object && json.object.length == 1)
+        {
+            if (auto value = "value" in json.object)
+                return resultLine(*value);
+            if (auto thrown = "thrown" in json.object)
+                if (thrown.type == JSONType.string)
+                    return errorLine(thrown.str);
+        }
+    }
+    catch (JSONException)
+    {
+    }
+    return errorLine("the eval script gave no value: " ~ run.text);
 }
 
 /// The response line of a shot request into `path` whose script gave `run`; the image is
@@ -198,15 +216,22 @@ unittest // the eval script: the wrapper called with the code as a JSON string
     assert(script.endsWith(`("a\n\"b\"")`), script);
 }
 
-unittest // the response of an eval: the script's own line, or why there is none
+unittest // the response of an eval: the value or what was thrown, as the protocol says them
 {
     import std.json : parseJSON;
 
-    assert(evalResponse(WindowRun("", true, `{"result":1}`)) == `{"result":1}`);
-    assert(parseJSON(evalResponse(WindowRun("SciterEval failed"))) ["error"].str == "SciterEval failed");
-    // the wrapper gave no text: a bug of debug-eval.js, said as such
+    assert(parseJSON(evalResponse(WindowRun("", true, `{"value":{"a":[1,"x"]}}`)))
+        == parseJSON(`{"result":{"a":[1,"x"]}}`));
+    assert(parseJSON(evalResponse(WindowRun("", true, `{"value":null}`))) == parseJSON(`{"result":null}`));
+    assert(parseJSON(evalResponse(WindowRun("", true, `{"thrown":"Error: boom"}`)))
+        == parseJSON(`{"error":"Error: boom"}`));
+    assert(parseJSON(evalResponse(WindowRun("SciterEval failed")))["error"].str == "SciterEval failed");
+    // the wrapper gave nothing it should: a bug of debug-eval.js, said as such
     assert(parseJSON(evalResponse(WindowRun("", false, "undefined")))["error"].str
         == "the eval script gave no text: undefined");
+    foreach (bad; [`not json`, `{}`, `{"thrown":1}`, `[1]`])
+        assert(parseJSON(evalResponse(WindowRun("", true, bad)))["error"].str
+            == "the eval script gave no value: " ~ bad, bad);
 }
 
 unittest // the response of a shot: the image written, or why it isn't

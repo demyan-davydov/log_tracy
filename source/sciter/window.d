@@ -29,6 +29,17 @@ void postToWindowThread(HWINDOW hwnd, void delegate() nothrow task)
     sciterApi().SciterPostCallback(hwnd, postedTaskTag, cast(UINT_PTR) cast(void*) posted, 0);
 }
 
+/// On the thread of the window `hwnd`: runs `script` in the global scope of its document
+/// (SciterEval) and puts the value of its last expression in `result`; false if the script
+/// didn't run (no document loaded, a syntax error)
+bool evalInWindow(HWINDOW hwnd, const(char)[] script, ref SciterValue result)
+{
+    import std.utf : toUTF16;
+
+    const wide = script.toUTF16;
+    return sciterApi().SciterEval(hwnd, wide.ptr, cast(UINT) wide.length, result.raw) != 0;
+}
+
 private final class PostedTask
 {
     void delegate() nothrow run;
