@@ -50,11 +50,7 @@ final class DocumentUi : MainViewSink, MainViewCommands, SearchViewSink, SearchV
         if (_filters is null)
         {
             auto doc = _workspace.doc(_docId);
-            _filters = new DocumentFilters(doc.format, doc.formatChoice.id, (filter) {
-                doc.applyViewFilter(filter);
-                // Told after the request: the operation it starts at once is shown already
-                _mainView.process(FilterRequested(filter !is null));
-            });
+            _filters = new DocumentFilters(doc.format, doc.formatChoice.id, (filter) { doc.applyViewFilter(filter); });
         }
         return _filters;
     }
@@ -88,8 +84,8 @@ final class DocumentUi : MainViewSink, MainViewCommands, SearchViewSink, SearchV
         searchViewChanged = true;
     }
 
-    // Only one operation runs at a time, and each machine handles Cancel only
-    // while its own operation runs: requestCancel() stops just that one
+    // A search may run with a filter, over what it has found so far: the
+    // filter is stopped with it, the search alone
     bool cancelOperation()
     {
         return _workspace.doc(_docId).requestCancel();
@@ -97,7 +93,7 @@ final class DocumentUi : MainViewSink, MainViewCommands, SearchViewSink, SearchV
 
     bool cancelSearch()
     {
-        return _workspace.doc(_docId).requestCancel();
+        return _workspace.doc(_docId).requestCancelSearch();
     }
 
     void closeDocument()

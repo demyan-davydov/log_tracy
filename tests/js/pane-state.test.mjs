@@ -47,7 +47,7 @@ test("a failure instead of the table: the table is reloaded when it comes back",
 });
 
 test("a file being loaded shows the records found so far, from the top, and grows", () => {
-    const loading = { status: "loadingFile", canCancel: true, progress: 0, dataVersion: 1, rows: true };
+    const loading = { status: "loadingFile", canCancel: true, progress: 0, dataVersion: 1 };
     const first = tableStep(noTable, loading, none);
     assert.equal(first.table, true, "even before the first record");
     assert.equal(first.reload, "start");
@@ -57,14 +57,6 @@ test("a file being loaded shows the records found so far, from the top, and grow
     const done = tableStep(more.shown, ready(1), () => 2000);
     assert.deepEqual([done.table, done.reload, done.resetSelection, done.grow], [true, false, false, true],
         "the same content, complete: the last records are counted, nothing is reloaded");
-});
-
-test("a file being loaded for a filter that waits shows the status, not the records", () => {
-    const loading = { status: "loadingFile", canCancel: true, progress: 0.5, dataVersion: 1, rows: false };
-    const step = tableStep(noTable, loading, () => 1000);
-    assert.equal(step.table, false);
-    assert.deepEqual(step.shown, noTable);
-    assert.equal(tableStep(step.shown, ready(2), none).reload, "start");
 });
 
 test("a filter or a search running shows what it found so far, with its progress", () => {
@@ -96,7 +88,7 @@ test("the rows of a view are counted only when the step depends on them", () => 
     const counted = () => { throw new Error("counted"); };
     tableStep(table(1), ready(2), counted);
     tableStep(table(1), { status: "filterCancelled" }, counted);
-    tableStep(noTable, { status: "loadingFile", dataVersion: 1, rows: true }, counted);
+    tableStep(noTable, { status: "loadingFile", dataVersion: 1 }, counted);
 });
 
 test("panels are created for new documents and removed for closed ones", () => {

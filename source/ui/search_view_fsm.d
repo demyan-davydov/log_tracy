@@ -12,7 +12,7 @@
 module ui.search_view_fsm;
 
 import utils.fsm : Fsm, NoTransition, To, Transition;
-import domain.document : Document, OperationFinished, OperationProgress, OperationStarted, SourceLost;
+import domain.document : ContentGrown, Document, OperationFinished, OperationProgress, OperationStarted, SourceLost;
 
 import std.json : JSONValue;
 import utils.ui_text : plainText, say, TextForUser, UiText;
@@ -190,6 +190,12 @@ struct ShowingResults
         return onSearchOrFilterStarted(e);
     }
 
+    /// The source of the document got more: the view may show more rows
+    void on(in ContentGrown e, ref SearchViewContext c)
+    {
+        c.show(SearchResultsView(c.dataVersion));
+    }
+
     Transition on(in SourceLost e, ref SearchViewContext c)
     {
         return To!SearchLost;
@@ -206,8 +212,8 @@ struct Searching
 
     void on(in OperationProgress e, ref SearchViewContext c)
     {
-        if (e.operation == searchOperation)
-            c.show(SearchingView(e.progress, c.dataVersion));
+        if (e.has(searchOperation))
+            c.show(SearchingView(e.of(searchOperation), c.dataVersion));
     }
 
     Transition on(in OperationFinished e, ref SearchViewContext c)
@@ -403,6 +409,32 @@ unittest
     f.finish(loadOperation, Result.Completed);
     f.start(searchOperation);
     assert(f.sink.last == vm(SearchingView(0, 2)), "new content: the table reloads");
+}
+
+@("SearchViewFsm: a search asked for while the file loads runs with the load")
+unittest
+{
+    auto f = Fixture.started();
+    f.start(loadOperation);
+    f.start(searchOperation);
+    assert(f.sink.last == vm(SearchingView(0, 2)));
+    f.progress(searchOperation, 0.5);
+    assert(f.sink.last == vm(SearchingView(0.5, 2)));
+
+    // The load and the search end together
+    f.finish(loadOperation, Result.Completed);
+    assert(f.sink.last == vm(SearchingView(0.5, 2)), "the end of the load isn't the end of the search");
+    f.finish(searchOperation, Result.Completed);
+    assert(f.sink.last == vm(SearchResultsView(2)));
+}
+
+@("SearchViewFsm: the results shown get the rows the source gets later")
+unittest
+{
+    auto f = Fixture.ready();
+    const count = f.shownCount;
+    f.process(ContentGrown());
+    assert(f.shownCount == count + 1 && f.sink.last == vm(SearchResultsView(1)));
 }
 
 @("SearchViewFsm: a failed load leaves the view waiting")

@@ -12,11 +12,10 @@ const fillingStatuses = ["filtering", "searching"];
 
 // True if the table of the view `vm` shows rows, not the status of the view.
 // A view that is ready does; a file being loaded shows the records found so
-// far (vm.rows: unless a filter waits for the load); a filter or a search
-// shows what it found once it found something (`total`: () => its rows now).
+// far; a filter or a search shows what it found once it found something
+// (`total`: () => its rows now).
 function showsRows(vm, total) {
-    if (vm.status === "ready") return true;
-    if (vm.status === "loadingFile") return vm.rows === true;
+    if (vm.status === "ready" || vm.status === "loadingFile") return true;
     return fillingStatuses.includes(vm.status) && total() > 0;
 }
 

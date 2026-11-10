@@ -702,6 +702,9 @@ final class AppSession
         events.subscribe((const DocumentEvent!OperationProgress e) {
             processDocumentEvent(e.docId, e.event);
         });
+        events.subscribe((const DocumentEvent!ContentGrown e) {
+            processDocumentEvent(e.docId, e.event);
+        });
         events.subscribe((const DocumentEvent!SourceLost e) {
             writeln("Source lost, doc ", e.docId.toInt(), ": ", _workspace.displayName(e.docId));
             processDocumentEvent(e.docId, e.event);
@@ -868,6 +871,7 @@ version (unittest)
         size_t[] exportAnchors() const pure { return null; }
         void importAnchors(const(size_t[]) anchors) {}
         bool requestCancel() { cancelAsked = true; current = null; return true; }
+        bool requestCancelSearch() { return requestCancel(); }
         bool sourceLost() { return false; }
         FormatChoice formatChoice() const { return FormatChoice("plain-text", 0); }
         size_t messageCount() nothrow @nogc { return records; }
@@ -1229,33 +1233,6 @@ unittest
 
     id = f.session.openFile("/logs/a.log").docId;
     assert(f.session.filters(id).saved().length == 1);
-}
-
-@("AppSession: a file loading for a filter that waits doesn't show its records")
-unittest
-{
-    /// What the main view of the document shows, by the calls queued
-    static JSONValue mainView(AppSession session)
-    {
-        JSONValue shown;
-        foreach (c; session.takeScriptCalls())
-            if (c.name == "onMainViewChanged")
-                shown = parseJSON(c.json);
-        return shown;
-    }
-
-    auto f = Fixture.make();
-    auto id = f.session.openFile("/logs/a.log").docId; // a fake document: it stays loading
-    assert(mainView(f.session)["rows"].boolean, "the records found so far are shown");
-
-    enum rule = `{"name": "x", "conditions": [{"column": "payload", "check": "contains", "value": "x"}]}`;
-    f.session.filterCommand(id, (DocumentFilters filters) { filters.newSet(); return filters.addRule(0, rule); });
-    assert(!mainView(f.session)["rows"].boolean, "they would be replaced by the filtered ones");
-
-    // The filters restored with the file, likewise
-    f.session.closeTab(cast(int) id.toInt());
-    id = f.session.openFile("/logs/a.log").docId;
-    assert(!mainView(f.session)["rows"].boolean);
 }
 
 @("AppSession: a real file opens in a LogDocument and its main view gets ready")

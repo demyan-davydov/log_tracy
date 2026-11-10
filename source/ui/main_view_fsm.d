@@ -12,7 +12,7 @@
 module ui.main_view_fsm;
 
 import utils.fsm : Fsm, NoTransition, To, Transition;
-import domain.document : Document, OperationFinished, OperationProgress, OperationStarted, SourceLost;
+import domain.document : ContentGrown, Document, OperationFinished, OperationProgress, OperationStarted, SourceLost;
 
 import std.json : JSONValue;
 import utils.ui_text : plainText, say, TextForUser, UiText;
@@ -26,11 +26,10 @@ struct LoadingFileView
     enum status = "loadingFile";
     enum canCancel = true; // cancelling closes the document
     float progress = 0; // 0..1
-    /// The content the view is being filled with, see ReadyView.dataVersion
+    /// The content the view is being filled with, see ReadyView.dataVersion:
+    /// the records found so far are shown, those a filter asked for meanwhile
+    /// lets through
     uint dataVersion;
-    /// The view shows the records found so far. False while a filter waits for
-    /// the load: they would be replaced by the filtered ones
-    bool rows = true;
 }
 
 /// The file could not be loaded; the document can only be closed
@@ -132,20 +131,12 @@ struct CancelPressed
 {
 }
 
-/// A filter of the main view was asked of the document (it may wait for the
-/// running operation)
-struct FilterRequested
-{
-    bool filtering; // false: the filter is reset, the view shows every record
-}
-
 struct MainViewContext
 {
     MainViewSink view;
     MainViewCommands commands;
     uint dataVersion; // see ReadyView.dataVersion
     float loadProgress = 0; // of the file being loaded, 0..1
-    bool filterWaits; // a filter was asked for while the file loads, see LoadingFileView.rows
     UiText error; // of the failed operation, set before the transition to the failed state
 }
 
@@ -167,8 +158,9 @@ private void show(View)(ref MainViewContext c, View v)
 }
 
 /// Initial state: the file is being loaded. The records found so far are shown
-/// (the tab of the document shows the progress, closing it stops the load),
-/// unless a filter waits for the load.
+/// (the tab of the document shows the progress, closing it stops the load). A
+/// filter asked for meanwhile runs with the load: the view is filled anew,
+/// with the records it lets through.
 struct Loading
 {
     void onEnter(ref MainViewContext c)
@@ -179,21 +171,23 @@ struct Loading
 
     void on(in OperationProgress e, ref MainViewContext c)
     {
-        if (e.operation != loadOperation)
+        if (!e.has(loadOperation))
             return;
-        c.loadProgress = e.progress;
+        c.loadProgress = e.of(loadOperation);
         showLoading(c);
     }
 
-    void on(in FilterRequested e, ref MainViewContext c)
+    void on(in OperationStarted e, ref MainViewContext c)
     {
-        c.filterWaits = e.filtering;
+        if (e.operation != filterOperation)
+            return;
+        ++c.dataVersion;
         showLoading(c);
     }
 
     private static void showLoading(ref MainViewContext c)
     {
-        c.show(LoadingFileView(c.loadProgress, c.dataVersion, !c.filterWaits));
+        c.show(LoadingFileView(c.loadProgress, c.dataVersion));
     }
 
     Transition on(in OperationFinished e, ref MainViewContext c)
@@ -231,6 +225,12 @@ struct Ready
         return e.operation == filterOperation ? To!Filtering : NoTransition;
     }
 
+    /// The source of the document got more: the view shows more rows
+    void on(in ContentGrown e, ref MainViewContext c)
+    {
+        c.show(ReadyView(c.dataVersion));
+    }
+
     Transition on(in SourceLost e, ref MainViewContext c)
     {
         return To!Lost;
@@ -247,8 +247,8 @@ struct Filtering
 
     void on(in OperationProgress e, ref MainViewContext c)
     {
-        if (e.operation == filterOperation)
-            c.show(FilteringView(e.progress, c.dataVersion));
+        if (e.has(filterOperation))
+            c.show(FilteringView(e.of(filterOperation), c.dataVersion));
     }
 
     Transition on(in OperationFinished e, ref MainViewContext c)
@@ -454,24 +454,35 @@ unittest
     assert(f.sink.last == MainViewModel(ReadyView(1)), "the same content, complete: the table isn't reloaded");
 }
 
-@("MainViewFsm: a filter waiting for the load hides the records being loaded")
+@("MainViewFsm: a filter asked for while the file loads fills the view anew, with the load")
 unittest
 {
     auto f = Fixture.started();
     f.start(loadOperation);
     f.progress(loadOperation, 0.25);
-    f.process(FilterRequested(true));
-    assert(f.sink.last == MainViewModel(LoadingFileView(0.25, 1, false)));
+    f.start(filterOperation);
+    assert(f.sink.last == MainViewModel(LoadingFileView(0.25, 2)), "new content: the table reloads");
     f.progress(loadOperation, 0.5);
-    assert(f.sink.last == MainViewModel(LoadingFileView(0.5, 1, false)));
+    assert(f.sink.last == MainViewModel(LoadingFileView(0.5, 2)));
 
-    f.process(FilterRequested(false)); // reset meanwhile: every record is shown again
-    assert(f.sink.last == MainViewModel(LoadingFileView(0.5, 1, true)));
+    f.finish(filterOperation, Result.Cancelled); // replaced by another one
+    f.start(filterOperation);
+    assert(f.sink.last == MainViewModel(LoadingFileView(0.5, 3)));
 
-    auto ready = Fixture.ready();
-    const shownCount = ready.sink.shown.length;
-    ready.process(FilterRequested(true));
-    assert(ready.sink.shown.length == shownCount, "shown by the operation, once it starts");
+    // The load and the filter end together
+    f.finish(loadOperation, Result.Completed);
+    f.finish(filterOperation, Result.Completed);
+    assert(f.sink.last == MainViewModel(ReadyView(3)));
+}
+
+@("MainViewFsm: a view that is ready shows the rows its source gets later")
+unittest
+{
+    auto f = Fixture.ready();
+    const shownCount = f.sink.shown.length;
+    f.process(ContentGrown());
+    assert(f.sink.shown.length == shownCount + 1, "the view is shown again: the table counts its rows");
+    assert(f.sink.last == MainViewModel(ReadyView(1)), "the same content");
 }
 
 @("MainViewFsm: a failed load is final")
@@ -612,8 +623,7 @@ unittest
         assert(actual == parseJSON(expected), View.stringof ~ ": " ~ actual.toString);
     }
 
-    check(LoadingFileView(0.5, 1), `{"status": "loadingFile", "canCancel": true, "progress": 0.5,
-        "dataVersion": 1, "rows": true}`);
+    check(LoadingFileView(0.5, 1), `{"status": "loadingFile", "canCancel": true, "progress": 0.5, "dataVersion": 1}`);
     check(LoadFailedView(plainText("e")), `{"status": "loadFailed", "canCancel": false, "error": "e"}`);
     check(ReadyView(3), `{"status": "ready", "canCancel": false, "dataVersion": 3}`);
     check(FilteringView(0.25, 2), `{"status": "filtering", "canCancel": true, "progress": 0.25, "dataVersion": 2}`);

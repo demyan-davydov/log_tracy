@@ -123,15 +123,30 @@ utils  ←  sciter  ←  ui
 
 ## Indexing and Threads
 
-- `LogIndex` runs one operation at a time in a `BackgroundSlot`: build the offset, filter or
-  search index. Progress and finish are reported as events on an `EventBusAsync`;
-  `Document.dispatchEvents()` delivers them on the UI thread.
+- `LogIndex` runs one pass at a time in a `BackgroundSlot` (`runPass`). A pass brings the
+  indexes up to date, each over the range it doesn't cover yet: the offset index over the new
+  bytes of the source, the filter index over the new records, the search index over the new
+  rows of the main view; the stages take turns until none has anything left, a part at a time
+  (`followRecords`) while another follows. A rebuild is the same pass from zero
+  (`setViewFilter`, `setSearchFilter` clear and reset). A cancelled pass leaves what it did:
+  a request that comes while one runs stops it and the next pass goes on, so a filter and a
+  search asked for while the file loads run with the load. Don't add an operation that builds
+  an index whole, apart from a pass.
+- The operations the views see (`OperationStarted / Progress / Finished` of the load, the
+  filter, the search) overlap. `LogDocument` tells them on the UI thread from the index's
+  `StageFinished` and `PassFinished`; `OperationProgress` carries all of them in one event
+  (events of one type override each other in the queue). `Document.dispatchEvents()` delivers
+  the events on the UI thread.
+- A source may grow (`ByteSource.complete` false: a file being written, a stream; its bytes
+  don't move): a record cut by the end waits, `Document.dispatchEvents()` starts a pass when
+  the index is `behind`, the views stay ready and `ContentGrown` tells them to count their
+  rows. No such source exists yet (`docs/backlog.md`); tests use stand-ins.
 - The filter and search indexes are built in parallel blocks on `std.parallelism`'s task pool
   (`utils/parallel_scan`), appended in order as the blocks before them are done; the offset
   index is built sequentially. A format and a filter are called from several threads. A block
   checks a cancel, a lost file and the stop of the scan (`ScanStop`: a failed delivery)
   every `LogIndex.stopCheckRecords` records. The index grows block by block while the scan
-  runs: keep it so, the results are meant to be shown before the scan ends.
+  runs: keep it so, the results are shown before the scan ends.
 - The indexes are `BaseIndex` over `utils/chunked_array` (`domain/index/`):
   - they grow by 64K-entry chunks (mmap / VirtualAlloc) up to 2^32 entries;
   - entries never move, which is what lets the indexing thread read the offset index without

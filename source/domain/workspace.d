@@ -25,7 +25,8 @@ struct DocumentEvent(E)
 }
 
 /// Document events that Workspace forwards as DocumentEvent!E
-alias ForwardedDocumentEvents = AliasSeq!(OperationStarted, OperationProgress, OperationFinished, SourceLost);
+alias ForwardedDocumentEvents = AliasSeq!(OperationStarted, OperationProgress, OperationFinished, ContentGrown,
+    SourceLost);
 
 private class NullDocumentView : DocumentView
 {
@@ -119,6 +120,11 @@ private class NullDocument : Document
     }
 
     override bool requestCancel()
+    {
+        return false;
+    }
+
+    override bool requestCancelSearch()
     {
         return false;
     }
@@ -502,7 +508,7 @@ unittest
     float progress = -1;
     DocumentId finishedId;
     ws.events.subscribe((const DocumentEvent!OperationStarted e) { startedIds ~= e.docId; });
-    ws.events.subscribe((const DocumentEvent!OperationProgress e) { progress = e.event.progress; });
+    ws.events.subscribe((const DocumentEvent!OperationProgress e) { progress = e.event.of(Document.Operation.BuildOffsetIndex); });
     ws.events.subscribe((const DocumentEvent!OperationFinished e) { finishedId = e.docId; });
 
     doc1.bus.publish(OperationStarted(Document.Operation.BuildOffsetIndex));

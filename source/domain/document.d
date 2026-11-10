@@ -52,7 +52,7 @@ interface Document
     enum Operation
     {
         None,
-        BuildOffsetIndex, // can not be cancelled by user
+        BuildOffsetIndex, // the load of the file: can not be cancelled by user
         BuildFilterIndex,
         BuildSearchIndex,
     }
@@ -106,11 +106,17 @@ interface Document
 
     void importAnchors(const(size_t[]) anchors);
 
-    //! @brief Cancels the running filter or search and drops pending requests.
-    //! Loading the file (BuildOffsetIndex) is not cancelled.
-    //! The cancelled operation reports OperationFinished(Cancelled).
+    //! @brief Cancels the running filter, with the search over its view, or
+    //! the running search, and drops pending requests. Loading the file
+    //! (BuildOffsetIndex) is not cancelled, nor a filter that runs with the load.
+    //! A cancelled operation reports OperationFinished(Cancelled).
     //! @return true if a running operation was asked to stop
     bool requestCancel();
+
+    //! @brief Cancels the running search and drops a pending one; a filter
+    //! running with it goes on.
+    //! @return true if a running search was asked to stop
+    bool requestCancelSearch();
 
     //! @return true once the file can't be read any more (its disk was removed,
     //! a read failed). The document is unusable then: its views are empty and
@@ -126,20 +132,55 @@ bool isSearchOperation(Document.Operation operation) pure nothrow @nogc @safe
 }
 
 // ─── Document events ───────────────────────────────────────────────────────
-// Published from the indexing thread, delivered on the UI thread by
-// Document.dispatchEvents(). Order per operation: Started, Progress*, Finished.
+// Delivered on the UI thread by Document.dispatchEvents(). Order per
+// operation: Started, Progress*, Finished. Operations overlap: a filter and a
+// search asked for while the file loads run with the load, each over what the
+// one before it has found so far; a search runs with a filter likewise.
 
 struct OperationStarted
 {
     Document.Operation operation;
 }
 
+//! How far the operations running are, all of them in one event: only the
+//! latest matters, and events of one type override each other in the queue
 struct OperationProgress
 {
     enum isOverridable = true; // only the latest progress matters
 
-    Document.Operation operation;
-    float progress = 0; // 0..1
+    /// By operation, 0..1; NaN for one that isn't running
+    float[Document.Operation.max + 1] values;
+
+    this(float[Document.Operation.max + 1] values) pure nothrow @nogc @safe
+    {
+        this.values = values;
+    }
+
+    /// The progress of one operation
+    this(Document.Operation operation, float progress) pure nothrow @nogc @safe
+    {
+        values[operation] = progress;
+    }
+
+    /// True if the event tells the progress of `operation`
+    bool has(Document.Operation operation) const pure nothrow @nogc @safe
+    {
+        return values[operation] == values[operation];
+    }
+
+    /// The progress of `operation`, 0..1; NaN if it isn't running
+    float of(Document.Operation operation) const pure nothrow @nogc @safe
+    {
+        return values[operation];
+    }
+}
+
+//! A document that was loaded got more records (its source grows: a file
+//! being written, a stream): its views show more rows of the same content.
+//! Not published while an operation fills a view: its progress tells the same.
+struct ContentGrown
+{
+    enum isOverridable = true;
 }
 
 //! The file of the document can't be read any more (its disk was removed, a
