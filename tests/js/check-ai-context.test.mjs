@@ -3,7 +3,7 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { codeSpans, classify, staleReason, indexCode } from "../../scripts/check-ai-context.mjs";
+import { codeSpans, classify, staleReason, indexCode, isContext } from "../../scripts/check-ai-context.mjs";
 
 test("the spans in backquotes come with their line, the fenced blocks left out", () => {
     const text = "See `formats/dlt/fields` and `LogDocument`.\n```sh\nnode `x`\n```\nThen ``a `b` c`` and `--threads`.\n";
@@ -79,4 +79,11 @@ test("an option is found as a whole option or a quoted name, not as the start of
     assert.match(staleReason("--fast", code), /not in the code/);
     assert.match(staleReason("--release", code), /not in the code/);
     assert.equal(staleReason("--faster", code), null);
+});
+
+test("the shared context is AGENTS.md, CLAUDE.md and the Markdown of .ai/ and .claude/", () => {
+    for (const file of ["AGENTS.md", "CLAUDE.md", ".ai/INDEX.md", ".claude/skills/app/SKILL.md"])
+        assert.equal(isContext(file), true, file);
+    for (const file of ["README.md", "docs/building.md", ".ai/notes.txt"])
+        assert.equal(isContext(file), false, file);
 });

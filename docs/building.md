@@ -116,9 +116,9 @@ JS needs a rebuild.
 `test` runs the D unittests (`dub test`) and the JS tests (`node --test tests/js`), the second
 even when the first fail, and tells the result of both. The JS tests also check that the
 translation catalogs are up to date with the code (`node scripts/i18n-extract.mjs` updates
-them). Last, `scripts/check-ai-context.mjs` looks up what `.ai/`, `CLAUDE.md` and `.claude/`
-name in backquotes (paths, identifiers, options) and lists those the code no longer has; a
-name that is right though the code lacks it goes to the `allowed` list of the script.
+them). Last, `scripts/check-ai-context.mjs` looks up what `.ai/`, `AGENTS.md`, `CLAUDE.md` and
+`.claude/` name in backquotes (paths, identifiers, options) and lists those the code no longer
+has; a name that is right though the code lacks it goes to the `allowed` list of the script.
 
 `test --module <file.d>` builds the unittests of one D module and of the modules it imports
 with `ldc2` alone (the flags of `dub.sdl`, as `dub describe` gives them), into `build/tools/`:

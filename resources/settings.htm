@@ -199,7 +199,7 @@
                     <div class="column-header-row column-header">{c.title}</div>
                     <div class="visibility"><input type="checkbox" /></div>
                 </div>);
-                list.lastElementChild.$("input").value = c.visible; // not by the attribute: see CLAUDE.md
+                list.lastElementChild.$("input").value = c.visible; // not by the attribute: see AGENTS.md
             });
             $("#btn-reset-columns").state.disabled = isDefaultLayout(format);
         }

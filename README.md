@@ -46,4 +46,4 @@ Setting up the tools on each system and the other commands: [docs/building.md](d
 [`.ai/`](.ai/INDEX.md) holds the shared context of the repository, written for developers and
 agents alike: how the code is built and where to start a change (`knowledge/`), the rules
 every change and review follows (`rules/`), and recurring processes (`workflows/`). Agents
-reach it through [AGENTS.md](AGENTS.md) and [CLAUDE.md](CLAUDE.md).
+reach it through [AGENTS.md](AGENTS.md); [CLAUDE.md](CLAUDE.md) only imports it for Claude Code.

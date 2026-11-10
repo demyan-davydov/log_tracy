@@ -3,8 +3,8 @@
 ## Overview
 
 This is the entrypoint of the repository's shared context, written for developers and agents
-alike. `CLAUDE.md` and `AGENTS.md` point here; `CLAUDE.md` also holds the few facts every
-session needs (commands, package layering, conventions).
+alike. `AGENTS.md` points here and also holds the few facts every session needs (commands,
+package layering, conventions); `CLAUDE.md` only imports it for Claude Code.
 
 - `.ai/knowledge/`: orientation — how the code is built and where to start for a change.
 - `.ai/rules/`: binding rules for every code change and every review.

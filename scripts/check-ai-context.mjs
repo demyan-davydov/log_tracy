@@ -1,5 +1,5 @@
-// Finds what the shared context of the repository (.ai/, CLAUDE.md, .claude/) names in
-// backquotes and the code no longer has: a path that isn't there, an identifier or a command
+// Finds what the shared context of the repository (.ai/, AGENTS.md, CLAUDE.md, .claude/) names
+// in backquotes and the code no longer has: a path that isn't there, an identifier or a command
 // line option no file of the code has. Deterministic, no model; run by `build.mjs test`.
 // A name that is right though the code doesn't have it (a file the program writes, an API of
 // Sciter): `allowed` below. Tests: tests/js/check-ai-context.test.mjs.
@@ -113,7 +113,7 @@ function repositoryFiles() {
     return listed.stdout.split("\n").filter((file) => file !== "");
 }
 
-const isContext = (file) => file === "CLAUDE.md" || /^(\.ai|\.claude)\/.*\.md$/.test(file);
+export const isContext = (file) => file === "AGENTS.md" || file === "CLAUDE.md" || /^(\.ai|\.claude)\/.*\.md$/.test(file);
 // the check's own files name stale names on purpose
 const isCode = (file) => (file === "dub.sdl" || /^(source|resources|scripts|tests)\/.*\.(d|mjs|js|htm|html|css)$/.test(file))
     && !file.includes("check-ai-context");

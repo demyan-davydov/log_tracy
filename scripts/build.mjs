@@ -322,7 +322,7 @@ function test(options) {
     const dub = run("dub", dubArgs("test", options)).status === 0;
     // spec, not node's default: before node 23 that is TAP when the output is no terminal (--brief)
     const js = run(process.execPath, ["--test", "--test-reporter=spec", "tests/js"]).status === 0;
-    // the names of .ai/, CLAUDE.md and .claude/ the code no longer has
+    // the names of .ai/, AGENTS.md, CLAUDE.md and .claude/ the code no longer has
     const context = run(process.execPath, ["scripts/check-ai-context.mjs"]).status === 0;
     console.log(`D unittests: ${dub ? "OK" : "FAILED"}, JS tests: ${js ? "OK" : "FAILED"}, `
         + `context of .ai/: ${context ? "OK" : "STALE"}`);
