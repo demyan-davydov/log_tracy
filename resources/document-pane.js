@@ -1,68 +1,24 @@
 // The panel of one open document: everything shown while its tab is active,
-// the filters of the sidebar, the main view, the search editor and the search
-// results. Each document has its own panel, kept while the document is open
-// and only hidden while another tab is shown (display: none keeps the rows,
-// the scroll, the selection and the editor as they are). A hidden panel
-// touches none of its elements but remembers what changed: show() brings it
-// up to date.
+// the filters of the sidebar (filter-panel.js), the main view, the search bar
+// (search-bar.js) and the search results. Each document has its own panel,
+// kept while the document is open and only hidden while another tab is shown
+// (display: none keeps the rows, the scroll, the selection and the editor as
+// they are). A hidden panel touches none of its elements but remembers what
+// changed: show() brings it up to date. This module puts the parts together
+// and keeps the tables: their views, columns, look, selection and anchors.
 
-import { SearchEditor } from "search-editor.js";
 import * as backend from "backend.js";
-import * as platform from "platform.js";
-import { noSearch, runSearch, searchPending, editRule, anchorRefusalText } from "pane-commands.js";
-import { ruleColors } from "rule-colors.js";
+import { anchorRefusalText } from "pane-commands.js";
 import { rowLayout } from "cell-format.js";
 import { followedRow, SelectionFollower } from "row-selection.js";
 import { noTable, tableStep, rowLookStep, keptRowStep, searchViewKey, jumpStep } from "pane-state.js";
-import { currentCatalog, tr } from "i18n/i18n.js";
+import { tr } from "i18n/i18n.js";
 import { translateTree } from "i18n/dom.js";
-import { fileFilter, allFiles } from "file-types.js";
 import { fileInfoRows } from "file-info.js";
 import { showNotice } from "notice.js";
-
-// Texts of the main view statuses other than the table and the lost file
-const mainViewTexts = {
-    loadingFile: (vm) => tr("Loading file... {percent}%", { percent: percent(vm.progress) }),
-    loadFailed: () => tr("Failed to load the file"),
-    filtering: (vm) => tr("Filtering... {percent}%", { percent: percent(vm.progress) }),
-    filterCancelled: () => tr("Filter cancelled"),
-    filterFailed: () => tr("Filter failed"),
-};
-
-// Line under the text of a status: what the user can do, or the error
-const mainViewDetails = {
-    loadingFile: () => tr("Cancel closes the file"),
-    loadFailed: (vm) => vm.error || "",
-    filterCancelled: () => tr("Change or clear the filters to show messages again"),
-    filterFailed: (vm) => vm.error || "",
-};
-
-// Texts of the search view statuses other than the results
-const searchViewTexts = {
-    waitingForView: () => tr("Waiting for the log view..."),
-    searching: (vm) => tr("Searching... {percent}%", { percent: percent(vm.progress) }),
-    searchCancelled: () => tr("Search cancelled"),
-    searchFailed: () => tr("Search failed"),
-    sourceLost: () => tr("The file is no longer available"),
-};
-
-const searchViewDetails = {
-    searchCancelled: () => tr("Run the search again to see results"),
-    searchFailed: (vm) => vm.error || "",
-};
-
-const ruleKindMarks = { include: "+", exclude: "−", marker: "◆" };
-const ruleKindTitles = {
-    include: () => tr("Shows the records it matches"),
-    exclude: () => tr("Hides the records it matches"),
-    marker: () => tr("Marks the records it matches with its color"),
-};
-
-const noFilters = { canFilter: false, canDlf: false, sets: [] };
-
-function percent(progress) {
-    return Math.round(progress * 100);
-}
+import { FilterPanel } from "filter-panel.js";
+import { SearchBar } from "search-bar.js";
+import { mainViewStatus, searchViewStatus, showStatus } from "status-view.js";
 
 // True if `element` is `root` or inside it (and still in the document)
 function isInside(element, root) {
@@ -175,25 +131,6 @@ function renderPane(splitters) {
     </frameset>;
 }
 
-// Fills a status view (an element of .status-view): text, progress (hidden
-// without one), detail, Cancel (its row hidden when the status can't be cancelled)
-function showStatus(view, vm, texts, details) {
-    const progress = view.$("progress");
-    const hasProgress = vm.progress !== undefined;
-    progress.style.display = hasProgress ? "" : "none";
-    if (hasProgress) progress.value = percent(vm.progress);
-    const text = texts[vm.status];
-    view.$(".status-title").innerText = text ? text(vm) : vm.status;
-    const detail = details[vm.status];
-    const detailText = detail ? detail(vm) : "";
-    const detailView = view.$(".status-detail");
-    detailView.innerText = detailText;
-    // Not left to .status-detail:empty: Sciter doesn't restyle it when the
-    // text changes, only on the next state change (a click on the panel)
-    detailView.style.display = detailText ? "block" : "none";
-    view.$(".btn-cancel").parentElement.style.display = vm.canCancel ? "" : "none";
-}
-
 // Reloads the rows of `list` after its data changed. scrollTo: null keeps the
 // scroll position, "start" scrolls to the top, a number scrolls to that row
 export function reloadList(list, scrollTo = null) {
@@ -225,11 +162,6 @@ export class DocumentPane {
         this.searchShown = noTable;
         this.foundShownFor = null; // the search view (searchViewKey) the main rows show the found rows of
         this.appliedColumns = null; // JSON of the columns the tables show
-        this.filtersShown = false; // the filter panel is built on the first show
-        this.filters = noFilters; // what showFilters() got last
-        this.filterMessage = ""; // the error of the last filter command
-        this.ruleColors = new Map(); // of the rules of the filters, by rule id
-        this.search = noSearch; // the search the results were found by (pane-commands.js)
         this.lastFocus = null; // focused in the panel when it was hidden
         this.coveredFocus = new Set(); // the lists a status view took the focus from
         this.textsStale = false; // the language changed while hidden: rendered again on show
@@ -262,14 +194,14 @@ export class DocumentPane {
         this.follower = new SelectionFollower(list => this.followSelection(list));
         this.applyRowLook();
 
-        this.chipEditor = new SearchEditor(this.root.$(".chip-search"), {
-            checkRegex: (pattern, matchCase) => backend.checkRegex(pattern, matchCase),
-            onEdited: () => this.updateChipPending(),
-            onCommit: () => this.runChipSearch(),
-            history: () => backend.searchHistory(this.docId),
-            historyButton: this.root.$(".btn-chip-history"),
+        this.filterPanel = new FilterPanel(this.root.$(".left-panel"), docId, {
+            theme: () => host.theme(),
+            setRuleColors: colors => { for (const list of this.lists) list.ruleColors = colors; },
+            refreshRows: () => this.refreshRuleColors(),
         });
-        this.updateChipPending();
+        this.searchBar = new SearchBar(this.root.$(".search-page"), docId, {
+            setMatchColors: colors => { for (const list of this.lists) list.matchColors = colors; },
+        });
         this.bind();
     }
 
@@ -302,11 +234,9 @@ export class DocumentPane {
             this.textsStale = true;
             return;
         }
-        if (this.filtersShown) this.showFilters();
-        if (this.mainStatus)
-            showStatus(this.root.$(".main-status"), this.mainStatus, mainViewTexts, mainViewDetails);
-        if (this.searchStatus)
-            showStatus(this.root.$(".search-status"), this.searchStatus, searchViewTexts, searchViewDetails);
+        this.filterPanel.languageChanged();
+        if (this.mainStatus) showStatus(this.root.$(".main-status"), this.mainStatus, mainViewStatus);
+        if (this.searchStatus) showStatus(this.root.$(".search-status"), this.searchStatus, searchViewStatus);
         this.updateFileInfo();
     }
 
@@ -325,7 +255,7 @@ export class DocumentPane {
         }
         if (this.textsStale) { // the language changed while hidden: refresh() renders it all
             this.textsStale = false;
-            this.filtersShown = false;
+            this.filterPanel.invalidate();
         }
         this.refresh();
         // Keys go to this panel, not to the hidden one; not into a hidden table
@@ -387,16 +317,16 @@ export class DocumentPane {
         this.destroyed = true; // a frame asked by applyRowLook() leaves the lists alone
         this.follower.cancel();
         this.keptRows.clear();
-        this.chipEditor.destroy();
+        this.searchBar.destroy();
         this.root.remove();
     }
 
     // Brings what is shown up to date with the document
     refresh() {
-        if (!this.filtersShown) this.showFilters();
         // The rules first: the rows the columns re-render refer to them
-        for (const list of this.lists) list.ruleColors = this.ruleColors;
-        for (const list of this.lists) list.matchColors = this.search.colors;
+        this.filterPanel.ensureRendered();
+        for (const list of this.lists) list.ruleColors = this.filterPanel.ruleColors;
+        for (const list of this.lists) list.matchColors = this.searchBar.colors;
         // The columns before the rows: a reload of a view renders them with these
         const changed = this.setColumns();
         this.updateMainView();
@@ -577,7 +507,7 @@ export class DocumentPane {
         } else if (vm.status === "sourceLost") {
             this.root.$(".source-lost-path").innerText = this.path || "";
         } else {
-            showStatus(loading, vm, mainViewTexts, mainViewDetails);
+            showStatus(loading, vm, mainViewStatus);
         }
     }
 
@@ -620,11 +550,6 @@ export class DocumentPane {
         this.scrollToKeptRows(); // kept while a status view covered the table, see applyRowLook()
     }
 
-    // Reloads the rows of the main view in place (e.g. decoding changed)
-    reloadMainRows() {
-        if (this.visible) reloadList(this.mainList);
-    }
-
     // ---- search ----
 
     updateSearchView() {
@@ -636,7 +561,7 @@ export class DocumentPane {
         this.searchStatus = step.table ? null : vm;
         this.takeFocus(this.searchList, step.table ? null : loading);
         if (step.table) this.reloadTable(this.searchList, step);
-        else showStatus(loading, vm, searchViewTexts, searchViewDetails);
+        else showStatus(loading, vm, searchViewStatus);
         // The rows of the main view show what the search found: more of them
         // while it runs, other ones after a new search or none after a reset.
         // Only when the search view changed since they were shown, not on
@@ -648,64 +573,12 @@ export class DocumentPane {
         }
     }
 
-    // Runs the search for the chips of the editor (Enter, the Search button),
-    // see runSearch
-    runChipSearch() {
-        const editor = this.chipEditor;
-        const run = runSearch(this.search, editor.searchChips(), () => editor.searchChipColors(),
-            () => editor.firstError(), chips => backend.startChipSearch(this.docId, chips));
-        this.search = run.search;
-        this.root.$(".chip-search-message").innerText = run.message;
-        if (run.started) // before the results come
-            for (const list of this.lists) list.matchColors = this.search.colors;
-        this.updateChipPending();
-    }
-
-    updateChipPending() {
-        const pending = searchPending(this.search, this.chipEditor.searchChips());
-        this.root.$(".chip-search-toolbar").classList.toggle("pending", pending);
-        this.root.$(".btn-chip-search").classList.toggle("primary", pending);
-    }
-
-    // ---- filters ----
-
-    // The filter sets live in the backend (DocumentFilters), per document.
-    // Shows the sets again after a filter command of the backend, with its
-    // message; the table reloads when the filter operation reports completion.
-    showFilterResult(error) {
-        this.filterMessage = error || "";
-        this.showFilters();
-        this.refreshRuleColors();
-    }
+    // ---- the rows: rule colors and anchors ----
 
     // The rows on screen refer to the rules again: a change of a rule may change
     // the rule with a color a row matches without filtering the view again
     refreshRuleColors() {
         for (const list of this.lists) if (this.shows(list)) list.refreshVisibleRows();
-    }
-
-    // Opens the editor of a rule of a set (rule -1: a new one) and applies
-    // what it closes with, see editRule in pane-commands.js.
-    // @returns true if the rule was applied, false if the editor was cancelled
-    editRule(set, rule) {
-        const docId = this.docId;
-        const values = backend.filterRule(docId, set, rule);
-        if (!values) return false;
-        const open = (values, error) => platform.showModal("rule-editor.htm", {
-            title: rule < 0 ? tr("New Rule") : tr("Edit Rule"), theme: this.host.theme(), rule: values, error,
-            catalog: currentCatalog(),
-            columns: backend.columns(docId),
-            // What is wrong with the rule, while it is edited: the editor
-            // marks it at once instead of being reopened with the error
-            check: rule => backend.checkFilterRuleJson(docId, rule)
-        });
-        const apply = result => rule < 0 ? backend.addFilterRule(docId, set, result)
-            : backend.updateFilterRule(docId, set, rule, result);
-        if (!editRule(values, open, apply)) return false;
-        this.filterMessage = "";
-        this.showFilters();
-        this.refreshRuleColors();
-        return true;
     }
 
     // No room for another anchor (`full`): the empty anchor cells of both
@@ -714,72 +587,13 @@ export class DocumentPane {
         for (const table of this.root.$$("table.log-table")) table.classList.toggle("anchors-full", full);
     }
 
-    // Shows the filter sets: a set is a row with its switch, name and remove
-    // button, followed by a row per rule
-    showFilters() {
-        const info = backend.filters(this.docId) ?? noFilters;
-        this.filters = info;
-        this.filtersShown = true;
-        this.ruleColors = ruleColors(info.sets); // the rows refer to the rules by id
-        for (const list of this.lists) list.ruleColors = this.ruleColors;
-        const panel = this.root.$(".filter-sets");
-        // Built from scratch, as the quick filter was: reused inputs keep their state
-        panel.clear();
-        if (!info.sets || info.sets.length === 0)
-            panel.append(<div class="filters-empty">{info.canFilter
-                ? tr("No filters: load a filter file or create a new one")
-                : tr("This log has no columns to filter by")}</div>);
-        (info.sets || []).forEach((set, s) => {
-            const element = <div class={set.enabled ? "filter-set" : "filter-set off"}>
-                <div class="filter-row filter-set-head" set-index={s}>
-                    <input type="checkbox" class="filter-set-switch" />
-                    <span class="filter-name" title={set.source ? tr("Loaded from {file}", { file: set.source }) : ""}>{set.name}</span>
-                    <span class="filter-button filter-export" title={tr("Export to a filter file")}>⤓</span>
-                    <span class="filter-button filter-add" title={tr("Add a rule")}>+</span>
-                    <span class="filter-button filter-remove" title={tr("Remove this filter")}>×</span>
-                </div>
-            </div>;
-            panel.append(element);
-            const block = panel.lastElementChild;
-            block.$(".filter-set-switch").value = set.enabled;
-            set.rules.forEach((rule, r) => {
-                const classes = ["filter-row", "filter-rule"];
-                if (!rule.enabled) classes.push("off");
-                if (rule.error) classes.push("error");
-                block.append(<div class={classes.join(" ")} set-index={s} rule-index={r}>
-                    <input type="checkbox" class="filter-rule-switch" />
-                    <span class="filter-kind" title={ruleKindTitles[rule.kind]?.() ?? ""}>{ruleKindMarks[rule.kind]}</span>
-                    <span class="filter-swatch" />
-                    <span class="filter-name">{rule.name || tr("(no name)")}</span>
-                    <span class="filter-button filter-rule-edit" title={tr("Edit this rule (or double-click it)")}>✎</span>
-                    <span class="filter-button filter-rule-remove" title={tr("Remove this rule")}>×</span>
-                </div>);
-                const row = block.lastElementChild;
-                row.$(".filter-rule-switch").value = rule.enabled;
-                if (rule.color) row.$(".filter-swatch").style.setProperty("background-color", rule.color);
-                if (rule.error)
-                    block.append(<div class="filter-note">{tr("Not applied: {error}", { error: rule.error })}</div>);
-            });
-        });
-        this.root.$(".btn-dlf").style.display = info.canFilter ? "" : "none";
-        this.root.$(".btn-new-dlf").style.display = info.canFilter ? "" : "none";
-        this.root.$(".filter-message").innerText = this.filterMessage;
-    }
-
     // ---- events of the elements of the panel ----
 
     bind() {
         const root = this.root;
         const on = (event, selector, handler) => root.on(event, selector, handler);
-        const setOf = (element) => parseInt(element.getAttribute("set-index"));
-        const ruleOf = (element) => parseInt(element.getAttribute("rule-index"));
 
         on("click", ".bottom-tab", (evt, tab) => this.showBottomPage(tab.getAttribute("data-page")));
-
-        on("click", ".btn-chip-search", () => {
-            this.chipEditor.closeChip();
-            this.runChipSearch();
-        });
 
         // Anchor column: toggles the anchor of the message in both views. Refused
         // by the backend while an operation runs or at the anchor limit: a notice
@@ -831,9 +645,8 @@ export class DocumentPane {
             this.mainShown = noTable;
             this.searchShown = noTable;
             this.appliedColumns = null;
-            this.search = noSearch;
-            this.updateChipPending();
-            this.showFilters();
+            this.searchBar.reset();
+            this.filterPanel.render();
             const refreshStart = Date.now();
             this.host.refreshTabs(); // the reopened document starts loading
             console.log(`Retry: xcall ${retryTime} ms, views refresh ${Date.now() - refreshStart} ms`);
@@ -844,95 +657,5 @@ export class DocumentPane {
         // What Cancel means (stop the filter, close a loading document) is decided
         // by the main view machine of the document
         on("click", ".main-status .btn-cancel", () => backend.cancelMainView(this.docId));
-
-        on("click", ".btn-fibex", () => {
-            const fn = platform.chooseFileToOpen(fileFilter([[tr("XML Files"), "*.xml"], allFiles()]));
-            if (fn) {
-                backend.loadFibex(fn);
-                this.reloadMainRows();
-            }
-        });
-
-        // Filter sets are only appended; each one has its remove button. A filter
-        // file of DLT Explorer for any log, a .dlf of dlt-viewer for a DLT one.
-        on("click", ".btn-dlf", () => {
-            const native = [tr("DLT Explorer Filters"), "*.logfilter"];
-            const types = this.filters.canDlf
-                ? [[tr("Filter Files"), "*.logfilter;*.dlf"], native, [tr("dlt-viewer Filters"), "*.dlf"], allFiles()]
-                : [native, allFiles()];
-            const fn = platform.chooseFileToOpen(fileFilter(types));
-            if (fn) this.showFilterResult(backend.loadFilterFile(this.docId, fn));
-        });
-
-        // An empty set, kept with the log like a loaded one; its first rule is
-        // asked for right away
-        on("click", ".btn-new-dlf", () => {
-            this.showFilterResult(backend.newFilterSet(this.docId));
-            if (this.filterMessage) return;
-            const set = this.filters.sets.length - 1;
-            // No first rule: no set either, so cancelled tries don't pile up
-            if (!this.editRule(set, -1)) this.showFilterResult(backend.removeFilterSet(this.docId, set));
-        });
-
-        on("click", ".filter-add", (evt, button) => {
-            this.editRule(setOf(button.parentElement), -1);
-            return true;
-        });
-
-        // A set is a copy kept with the log: exported to share it, to a filter file
-        // of DLT Explorer or (DLT logs) to a .dlf for dlt-viewer
-        on("click", ".filter-export", (evt, button) => {
-            const set = setOf(button.parentElement);
-            const canDlf = this.filters.canDlf;
-            // Offered the file the set was loaded from or exported to last, or
-            // <name>.<format>.logfilter; its kind is offered first
-            const fileName = this.filters.sets[set]?.fileName || "";
-            const dlf = canDlf && /\.dlf$/i.test(fileName);
-            const native = [tr("DLT Explorer Filters"), "*.logfilter"];
-            const dlt = [tr("dlt-viewer Filters"), "*.dlf"];
-            const kinds = !canDlf ? [native] : dlf ? [dlt, native] : [native, dlt];
-            const params = {
-                caption: tr("Export Filter"),
-                extension: dlf ? "dlf" : "logfilter",
-                filter: fileFilter([...kinds, allFiles()])
-            };
-            // Without its extension: the dialog adds it itself (name.dlf.dlf otherwise)
-            if (fileName) params.path = fileName.replace(/\.(dlf|logfilter)$/i, "");
-            const fn = platform.chooseFileToSave(params);
-            if (fn) this.showFilterResult(backend.exportFilterSet(this.docId, set, fn));
-            return true;
-        });
-
-        on("click", ".filter-rule-edit", (evt, button) => {
-            const row = button.parentElement;
-            this.editRule(setOf(row), ruleOf(row));
-            return true;
-        });
-
-        on("dblclick", ".filter-rule", (evt, row) => {
-            if (evt.target.tag === "input") return; // the switch
-            this.editRule(setOf(row), ruleOf(row));
-            return true;
-        });
-
-        on("click", ".filter-rule-remove", (evt, button) => {
-            const row = button.parentElement;
-            this.showFilterResult(backend.removeFilterRule(this.docId, setOf(row), ruleOf(row)));
-            return true;
-        });
-
-        on("change", ".filter-set-switch", (evt, input) => {
-            this.showFilterResult(backend.enableFilterSet(this.docId, setOf(input.parentElement), input.value));
-        });
-
-        on("change", ".filter-rule-switch", (evt, input) => {
-            const row = input.parentElement;
-            this.showFilterResult(backend.enableFilterRule(this.docId, setOf(row), ruleOf(row), input.value));
-        });
-
-        on("click", ".filter-remove", (evt, button) => {
-            this.showFilterResult(backend.removeFilterSet(this.docId, setOf(button.parentElement)));
-            return true;
-        });
     }
 }

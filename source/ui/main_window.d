@@ -214,8 +214,6 @@ class MainWindow : SciterWindow
         case "reorderTab":
             _session.reorderTab(param!int(0), param!int(1));
             return true;
-        case "loadFibex":
-            return true; // FIBEX isn't decoded yet (docs/fibex.md)
 
         // ── The views ───────────────────────────────────────────────────────
         case "getMainViewCount":
