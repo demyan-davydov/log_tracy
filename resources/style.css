@@ -665,6 +665,14 @@ frameset {
 .filter-swatch.exclude { foreground-image: icon(0 0 12 12;M1.5 4.5h9v3h-9z); }
 .filter-swatch.marker { foreground-image: icon(0 0 12 12;M6 1l5 5l-5 5l-5 -5z); }
 
+/* No color: a checkerboard, as transparency is shown in image editors: a
+   tile of 2x2 cells repeated */
+.filter-swatch.no-color {
+    background-image: url(checker.png);
+    background-repeat: repeat;
+    background-size: 8dip 8dip;
+}
+
 /* The buttons of a set (⤓ export, +, ×) and of a rule (✎, ×) */
 .filter-button {
     width: 16dip; /* not min-width: Sciter leaves it out of the chip's max-content, cutting the name */

@@ -44,7 +44,7 @@ function ruleChip(rule, s, r) {
     const title = rule.error ? tr("Not applied: {error}", { error: rule.error }) : "";
     return <div class={classes.join(" ")} set-index={s} rule-index={r} title={title}>
         <input type="checkbox" class="filter-rule-switch" />
-        <span class={"filter-swatch " + rule.kind} title={ruleKindTitles[rule.kind]?.() ?? ""} />
+        <span class={"filter-swatch " + rule.kind + (rule.color ? "" : " no-color")} title={ruleKindTitles[rule.kind]?.() ?? ""} />
         <span class="filter-name">{rule.name || tr("(no name)")}</span>
         <span class="filter-button filter-rule-edit" title={tr("Edit this rule (or double-click it)")}>✎</span>
         <span class="filter-button filter-rule-remove" title={tr("Remove this rule")}>×</span>
