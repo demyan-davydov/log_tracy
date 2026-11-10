@@ -54,8 +54,10 @@ the named functions from a temporary copy of the page, then delete the copy.
 node scripts/app.mjs start --open <log> [--settings <settings.json>] [--env NAME=VALUE] [--no-build]
 node scripts/app.mjs wait "<js true when ready>" [--timeout 10]
 node scripts/app.mjs eval "<js>"          # the value of the last expression as JSON
-node scripts/app.mjs shot [build/x.png]   # then read the PNG
-node scripts/app.mjs run <steps file>     # eval <js> | wait [<n>s] <js> | shot <file>, a line each
+node scripts/app.mjs shot [build/x.png]   # then read the PNG; an open popup: x.popup-N.png too
+node scripts/app.mjs hover "<x> <y>"|"<selector>"   # the mouse there as a real event (macOS)
+node scripts/app.mjs key "Cmd+A" | type "<text>"     # keys in the focused element (macOS)
+node scripts/app.mjs run <steps file>     # eval | wait [<n>s] | shot | hover | key | type, a line each
 node scripts/app.mjs log | stop
 ```
 
@@ -67,8 +69,10 @@ node scripts/app.mjs log | stop
   `document.$(...)` and what the modules put on `globalThis`.
 - `shot` is Sciter's own render of the window: no Screen Recording permission, no title bar of
   the system. For the window as the system shows it: `screenshot.mjs`.
-- Not possible yet: real mouse and keys (hover, `:focus` from the mouse); `el.click()` and
-  `el.dispatchEvent(...)` don't move the mouse (`docs/backlog.md`).
+- Real hover and keys (macOS): `hover`, `key`, `type` hand the window events of the system:
+  `:hover`, popups the app opens on hover, `keydown`, typed text. Not possible: a press of a
+  mouse button (`:focus` from the mouse, a drag; `el.click()` doesn't move the mouse), Sciter's
+  own tooltip of `title`, a shortcut of the menu bar (call the command), Windows and Linux.
 - Stop the copy when done (`stop`): it keeps running otherwise.
 
 Refresh the binary of a copy with `rm` then `cp`, never `cp` over the old file: macOS kills an

@@ -8,6 +8,7 @@ import sciter.capi.api : SciterAPI_T;
 import sciter.capi.types;
 import sciter.capi.behavior;
 import sciter.capi.def;
+import utils.keys : KeyPress;
 import std.stdio : writeln;
 import std.string : toStringz;
 import std.utf : toUTF16z, toUTFz;
@@ -38,6 +39,140 @@ bool evalInWindow(HWINDOW hwnd, const(char)[] script, ref SciterValue result)
 
     const wide = script.toUTF16;
     return sciterApi().SciterEval(hwnd, wide.ptr, cast(UINT) wide.length, result.raw) != 0;
+}
+
+/// On the thread of the window `hwnd`: hands it the mouse moved to (`x`, `y`), dips of the
+/// window from its top left, as an event of the system: hover states, mouseenter, popups on
+/// hover follow it as if the user moved the mouse; the cursor stays where it is. An open popup
+/// at the point (a window of its own) gets it instead. Null, or why not: macOS only. A press of a button can't be handed so (Sciter ignores it: checked
+/// with the view, the window, the application and the event queue).
+string sendMouseMove(HWINDOW hwnd, double x, double y)
+{
+    version (OSX)
+    {
+        import utils.objc : cls, msg;
+
+        auto main = MacWindow(nsWindowOf(hwnd));
+        if (!main.ok)
+            return "no view of the window";
+        // an open popup is a window of its own over this one: the move goes to the window of
+        // this application on top at the point, in its own coordinates
+        const inMain = NSPoint(x, main.height - y);
+        const onScreen = msg!NSPoint(main.window, "convertPointToScreen:", inMain);
+        const number = msg!long(cls("NSWindow"), "windowNumberAtPoint:belowWindowWithWindowNumber:",
+            onScreen, cast(long) 0);
+        auto top = msg(msg(cls("NSApplication"), "sharedApplication"), "windowWithWindowNumber:", number);
+        auto view = top ? MacWindow(top) : main;
+        if (!view.ok)
+            view = main;
+        const at = view.window is main.window ? inMain : msg!NSPoint(view.window, "convertPointFromScreen:", onScreen);
+        auto event = msg(cls("NSEvent"),
+            "mouseEventWithType:location:modifierFlags:timestamp:windowNumber:context:eventNumber:clickCount:pressure:",
+            nsEventMouseMoved, at, cast(ulong) 0, view.now, view.number, cast(void*) null, cast(long) 0, cast(long) 0, 0.0f);
+        // to the view under the point: the window doesn't pass a mouse move made up so
+        auto target = msg(view.content, "hitTest:", at);
+        if (!event || !target)
+            return "no view at the point";
+        msg!void(target, "mouseMoved:", event);
+        return null;
+    }
+    else
+        return "hover is for macOS only";
+}
+
+/// On the thread of the window `hwnd`: hands it `press` pressed and released as events of the
+/// system, to the focused element of its document as if the user typed it (the codes of
+/// macOS: `utils/mac_keys`). A shortcut of the menu bar isn't a key of the window: it doesn't
+/// reach the menu. Null, or why not: macOS only.
+string sendKeyPress(HWINDOW hwnd, in KeyPress press)
+{
+    version (OSX)
+    {
+        import std.string : toStringz;
+        import utils.mac_keys : macKeyEvent;
+        import utils.objc : cls, msg;
+
+        const stroke = macKeyEvent(press);
+        auto view = MacWindow(nsWindowOf(hwnd));
+        if (!view.ok)
+            return "no view of the window";
+        auto sciterView = msg(view.content, "hitTest:", NSPoint(view.width / 2, view.height / 2));
+        if (!sciterView)
+            return "no view in the window";
+        auto characters = msg(cls("NSString"), "stringWithUTF8String:", stroke.characters.toStringz);
+        auto plain = msg(cls("NSString"), "stringWithUTF8String:", stroke.charactersIgnoringModifiers.toStringz);
+        foreach (type; [nsEventKeyDown, nsEventKeyUp])
+        {
+            auto event = msg(cls("NSEvent"),
+                "keyEventWithType:location:modifierFlags:timestamp:windowNumber:context:characters:charactersIgnoringModifiers:isARepeat:keyCode:",
+                type, NSPoint(0, 0), stroke.modifierFlags, view.now, view.number, cast(void*) null, characters,
+                plain, false, stroke.keyCode);
+            if (!event)
+                return "no event for the key";
+            // to Sciter's view: the window passes a key made up so to no one
+            msg!void(sciterView, type == nsEventKeyDown ? "keyDown:" : "keyUp:", event);
+        }
+        return null;
+    }
+    else
+        return "key and type are for macOS only";
+}
+
+version (OSX)
+{
+    private struct NSPoint
+    {
+        double x, y;
+    }
+
+    private struct NSRect
+    {
+        double x, y, width, height;
+    }
+
+    private enum ulong nsEventMouseMoved = 5, nsEventKeyDown = 10, nsEventKeyUp = 11;
+
+    // What an event made for an NSWindow takes: its content view (an NSVisualEffectView with
+    // Sciter's view inside for the main window), size, number, the time
+    private struct MacWindow
+    {
+        void* window;
+        void* content;
+        double width, height;
+        long number;
+        double now;
+
+        this(void* nsWindow)
+        {
+            import utils.objc : cls, msg;
+
+            window = nsWindow;
+            if (!window)
+                return;
+            content = msg(window, "contentView");
+            if (!content)
+                return;
+            const frame = msg!NSRect(content, "frame");
+            width = frame.width;
+            height = frame.height;
+            number = msg!long(window, "windowNumber");
+            now = msg!double(msg(cls("NSProcessInfo"), "processInfo"), "systemUptime");
+        }
+
+        bool ok() const => content !is null;
+    }
+
+    // The NSWindow of `hwnd`, null if there is none: HWINDOW may be an NSWindow* or an NSView*
+    // depending on Sciter version
+    private void* nsWindowOf(HWINDOW hwnd)
+    {
+        import utils.objc : cls, msg;
+
+        void* window = cast(void*) hwnd;
+        if (window && !msg!bool(window, "isKindOfClass:", cls("NSWindow")))
+            window = msg(window, "window");
+        return window;
+    }
 }
 
 private final class PostedTask
@@ -74,13 +209,6 @@ private void runPostedTask(SCN_POSTED_NOTIFICATION* notification) nothrow
         }
         abort();
     }
-}
-
-version (OSX)
-{
-    private extern (C) void* objc_getClass(const(char)* name);
-    private extern (C) void* sel_registerName(const(char)* name);
-    private extern (C) void* objc_msgSend(void* self, void* op, ...);
 }
 
 class SciterWindow : SciterEventHandler
@@ -246,28 +374,19 @@ class SciterWindow : SciterEventHandler
     {
         version (OSX)
         {
-            alias Msg0 = extern (C) void* function(void*, void*);
-            alias MsgPtr = extern (C) void* function(void*, void*, void*);
-            alias MsgBool = extern (C) void function(void*, void*, byte);
-            alias MsgIsKind = extern (C) byte function(void*, void*, void*);
+            import utils.objc : cls, msg;
 
-            void* w = _hwnd;
-            if (!w)
-                return;
-            // HWINDOW may be an NSWindow* or an NSView* depending on Sciter version
-            if (!(cast(MsgIsKind)&objc_msgSend)(w, sel_registerName("isKindOfClass:"), objc_getClass("NSWindow")))
-                w = (cast(Msg0)&objc_msgSend)(w, sel_registerName("window"));
+            auto w = nsWindowOf(_hwnd);
             if (!w)
                 return;
 
             // Sciter resets the window to non-opaque on first show; re-apply only when needed
-            alias MsgGetBool = extern (C) byte function(void*, void*);
-            if ((cast(MsgGetBool)&objc_msgSend)(w, sel_registerName("isOpaque")))
+            if (msg!bool(w, "isOpaque"))
                 return;
 
-            auto bg = (cast(Msg0)&objc_msgSend)(objc_getClass("NSColor"), sel_registerName("windowBackgroundColor"));
-            (cast(MsgPtr)&objc_msgSend)(w, sel_registerName("setBackgroundColor:"), bg);
-            (cast(MsgBool)&objc_msgSend)(w, sel_registerName("setOpaque:"), 1);
+            auto bg = msg(cls("NSColor"), "windowBackgroundColor");
+            msg!void(w, "setBackgroundColor:", bg);
+            msg!void(w, "setOpaque:", true);
         }
     }
 

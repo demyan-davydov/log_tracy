@@ -1,7 +1,8 @@
 //! The debug channel of debug builds: with SCITER_DEBUG_PORT=<port> a server on 127.0.0.1
-//! answers the requests of ui/debug_protocol (code to run in the window, a shot of it), for
-//! agents and scripts looking inside the running app (scripts/app.mjs). A release build has no
-//! server and only says that the variable is ignored.
+//! answers the requests of ui/debug_protocol (code to run in the window, a shot of it, the
+//! mouse moved and keys pressed as events of the system), for agents and scripts looking
+//! inside the running app (scripts/app.mjs). A release build has no server and only says that
+//! the variable is ignored.
 //!
 //! Kept apart from the rest of the app: main() starts and stops it, nothing else knows of it.
 //! A request is run on the window's thread through postToWindowThread (sciter/window), between
@@ -62,9 +63,10 @@ debug:
 import core.sync.event : Event;
 import core.time : Duration, seconds;
 import sciter.value : SciterValue;
-import sciter.window : evalInWindow, postToWindowThread;
+import sciter.window : evalInWindow, postToWindowThread, sendKeyPress, sendMouseMove;
 import std.socket : InternetAddress, Socket, SocketOption, SocketOptionLevel, SocketShutdown, TcpSocket;
 import ui.debug_protocol;
+import utils.keys : KeyPress;
 
 // How long a request waits for the window's thread: it is busy (a long call, a native dialog)
 private enum Duration windowTimeout = 30.seconds;
@@ -171,71 +173,125 @@ private final class Server
         case RequestKind.eval:
             return evalResponse(runOnWindow(evalScript(request.text)));
         case RequestKind.shot:
-            return shotResponse(runOnWindow(shotScript), request.text, (string path, const(ubyte)[] image) {
+            return shotResponse(request.text, &runOnWindow, (string path, const(ubyte)[] image) {
                 import std.file : mkdirRecurse, write;
                 import std.path : dirName;
 
                 mkdirRecurse(path.dirName);
                 write(path, image);
+            }, (string path) {
+                import std.file : dirEntries, exists, remove, SpanMode;
+                import std.path : dirName;
+
+                if (path.dirName.exists)
+                    foreach (file; dirEntries(path.dirName, SpanMode.shallow))
+                        if (isPopupFileOf(path, file.name))
+                            remove(file.name);
             });
+        case RequestKind.hover, RequestKind.key, RequestKind.type:
+            InputRequest input;
+            if (!parseInput(request, input, error))
+                return errorLine(error);
+            auto hwnd = _hwnd;
+            return inputResponse(runWork(() => WindowRun(sendInput(input,
+                (double x, double y) => sendMouseMove(hwnd, x, y), (in KeyPress press) => sendKeyPress(hwnd, press)))));
         }
     }
 
     // Runs `script` on the window's thread and waits for what it gave
     private WindowRun runOnWindow(string script)
     {
+        auto hwnd = _hwnd;
+        return runWork(() => evaluateScript(hwnd, script));
+    }
+
+    // Runs `work` on the window's thread and waits for what it gave
+    private WindowRun runWork(WindowRun delegate() work)
+    {
         import std.conv : to;
 
-        auto run = new ScriptRun(_hwnd, script);
-        postToWindowThread(_hwnd, &run.evaluate);
+        auto run = new WindowWork(work);
+        postToWindowThread(_hwnd, &run.run);
         if (!run.finished.wait(windowTimeout))
-            return WindowRun("the window didn't run the request in "
-                ~ windowTimeout.total!"seconds".to!string ~ " s");
+        {
+            // given up: the work must not run later (keys typed into whatever has the focus
+            // then); if it has just started, its end is waited for
+            if (run.abandon())
+                return WindowRun("the window didn't run the request in "
+                    ~ windowTimeout.total!"seconds".to!string ~ " s");
+            run.finished.wait();
+        }
         return run.result;
     }
 }
 
-// A script run on the window's thread, its value read there: the SciterValue doesn't leave the
-// thread. On the heap: the server may give up waiting before it runs.
-private final class ScriptRun
+// Work run on the window's thread, what it gave read on the server's. On the heap: the server
+// may give up waiting before it runs, and then it doesn't run.
+private final class WindowWork
 {
-    private HWINDOW _hwnd;
-    private string _script;
+    private WindowRun delegate() _work;
+    private shared int _state; // waiting, running or abandoned (`State`)
     Event finished;
+
+    private enum State : int
+    {
+        waiting,
+        running,
+        abandoned,
+    }
+
+    /// On the server's thread, when it gives up waiting: true if the work won't run, false if
+    /// it has started already
+    bool abandon()
+    {
+        import core.atomic : cas;
+
+        return cas(&_state, int(State.waiting), int(State.abandoned));
+    }
     WindowRun result; /// set on the window's thread before `finished`
 
-    this(HWINDOW hwnd, string script)
+    this(WindowRun delegate() work)
     {
-        _hwnd = hwnd;
-        _script = script;
+        _work = work;
         finished.initialize(true, false);
     }
 
     // On the window's thread
-    void evaluate() nothrow
+    void run() nothrow
     {
-        try
-        {
-            import std.utf : toUTF8;
+        import core.atomic : cas;
 
-            SciterValue value;
-            if (!evalInWindow(_hwnd, _script, value))
-                result.error = "SciterEval failed (no document loaded?)";
-            else
-            {
-                const(wchar)[] wide;
-                const(ubyte)[] data;
-                if (value.view.tryGet(wide))
-                {
-                    result.isText = true;
-                    result.text = wide.toUTF8;
-                }
-                else if (value.view.tryGet(data))
-                    result.bytes = data.dup; // the value's own bytes go with it
-            }
-        }
+        if (!cas(&_state, int(State.waiting), int(State.running)))
+            return; // abandoned: nobody waits for it
+        try
+            result = _work();
         catch (Exception e)
             result.error = e.msg;
         finished.setIfInitialized();
     }
+}
+
+// On the window's thread: runs `script` in the window and reads its value there (the
+// SciterValue doesn't leave the thread)
+private WindowRun evaluateScript(HWINDOW hwnd, string script)
+{
+    import std.utf : toUTF8;
+
+    WindowRun result;
+    SciterValue value;
+    if (!evalInWindow(hwnd, script, value))
+        result.error = "SciterEval failed (no document loaded?)";
+    else
+    {
+        const(wchar)[] wide;
+        const(ubyte)[] data;
+        if (value.view.tryGet(wide))
+        {
+            result.isText = true;
+            result.text = wide.toUTF8;
+        }
+        else if (value.view.tryGet(data))
+            result.bytes = data.dup; // the value's own bytes go with it
+    }
+    return result;
 }

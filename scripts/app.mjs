@@ -1,8 +1,9 @@
-// Drives a running copy of DLT Explorer through its debug channel (ui/debug_channel, debug builds
-// only): starts a copy in a folder of its own (its own settings, its output in app.log) that
-// keeps running, runs JavaScript in its window, waits for a condition, renders the window into a
-// PNG, stops it. For agents and people checking what the app does without guessing from a
-// screenshot. `node scripts/app.mjs --help` for the commands.
+// Drives a running copy of DLT Explorer through its debug channel (ui/debug_channel, debug
+// builds only): starts a copy in a folder of its own (its own settings, its output in app.log)
+// that keeps running, runs JavaScript in its window, waits for a condition, renders the window
+// into a PNG, moves the mouse and presses keys (macOS), stops it. For agents and people
+// checking what the app does without guessing from a screenshot. `node scripts/app.mjs --help`
+// for the commands.
 import { spawn } from "node:child_process";
 import { closeSync, existsSync, openSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createConnection } from "node:net";
@@ -26,9 +27,22 @@ export const appUsage = `Drives a copy of DLT Explorer (a debug build) through i
   wait "<js>"           runs the code until its value is true (an error such as a missing
                         element is tried again; a syntax error or a promise fails at once)
       --timeout <s>     how long to wait (default 10)
-  shot [file.png]       renders the window into a PNG (default build/screenshot.png)
+  shot [file.png]       renders the window into a PNG (default build/screenshot.png); an open
+                        popup (menu, tooltip, list of a select) is a window of its own: its
+                        image goes beside, file.popup-1.png..., told with its element
+  hover "<x> <y>"       moves the mouse to a point of the window (dips from its top left)
+  hover "<selector>"    moves the mouse to the middle of the element (in the window)
+                        Both as an event of the system: :hover, mouseenter, a popup on hover
+                        follow; the cursor stays where it is. A press of a mouse button
+                        can't be made so: el.click() in eval. macOS only
+  key "<combination>"   presses and releases a key in the focused element: "Enter", "a",
+                        "Cmd+Shift+Z", "Shift+Tab". A shortcut of the menu bar doesn't reach
+                        the menu: call the command instead. macOS only
+  type "<text>"         types a text, a key a character. macOS only. A text starting
+                        with "--": type -- "--text"
   run <file>            the steps of a file, one a line, stopping at the first failure:
-                        eval <js> | wait [<seconds>s] <js> | shot <file.png>; # a comment.
+                        eval <js> | wait [<seconds>s] <js> | shot <file.png> | hover <point
+                        or selector> | key <combination> | type <text>; # a comment.
                         A shot's file is taken from the folder of the steps file
   log                   the output of the copy
   stop                  closes the copy (kills it only if it answers but doesn't close)
@@ -38,14 +52,23 @@ The code runs in the global scope of the window: what the modules put on globalT
 (the callbacks of the backend), document, Window.this; document.$(...) finds elements.
 `;
 
-const commands = { start: [0, 0], eval: [1, 1], wait: [1, 1], shot: [0, 1], run: [1, 1], log: [0, 0], stop: [0, 0] };
+const commands = {
+    start: [0, 0], eval: [1, 1], wait: [1, 1], shot: [0, 1], hover: [1, 1], key: [1, 1], type: [1, 1],
+    run: [1, 1], log: [0, 0], stop: [0, 0]
+};
+const stepCommands = ["eval", "wait", "shot", "hover", "key", "type"];
 
 /// The command line: { command, args, open, settings, env, build, timeout, help }
 export function parseAppArgs(argv) {
     const options = { command: null, args: [], open: [], settings: null, env: {}, build: true, timeout: 10, help: false };
+    let onlyArgs = false; // after "--": a text such as "--flag" for type is an argument
     for (let i = 0; i < argv.length; i++) {
         const arg = argv[i];
-        if (!arg.startsWith("--")) {
+        if (arg === "--" && !onlyArgs) {
+            onlyArgs = true;
+            continue;
+        }
+        if (onlyArgs || !arg.startsWith("--")) {
             if (options.command === null) {
                 if (!(arg in commands)) throw new BuildError(`unknown command ${arg} (--help)`);
                 options.command = arg;
@@ -92,10 +115,13 @@ export function parseSteps(text) {
         const line = index + 1;
         const source = raw.trim();
         if (source === "" || source.startsWith("#")) return;
-        const [, command, rest = ""] = source.match(/^(\S+)\s*(.*)$/s);
+        let [, command, rest = ""] = source.match(/^(\S+)\s*(.*)$/s);
+        // the text of type is all after one space, its spaces too
+        if (command === "type") rest = raw.replace(/\r$/, "").match(/^\s*type(?:\s(.*))?$/s)[1] ?? "";
         const fail = why => { throw new BuildError(`line ${line}: ${why}: ${source}`); };
-        if (!["eval", "wait", "shot"].includes(command)) fail(`unknown step ${command}`);
-        if (rest === "") fail(`${command} needs ${command === "shot" ? "a file" : "code"}`);
+        if (!stepCommands.includes(command)) fail(`unknown step ${command}`);
+        const needs = { shot: "a file", hover: "a point or a selector", key: "a key", type: "a text" };
+        if (rest === "") fail(`${command} needs ${needs[command] ?? "code"}`);
         if (command !== "wait") return steps.push({ line, command, text: rest });
         // "<n>s", not a bare number: code may start with one ("0 < ...")
         const timed = rest.match(/^(\d+(?:\.\d+)?)s\s+(.+)$/s);
@@ -130,6 +156,38 @@ export function parseResponse(line) {
 export function listeningPort(output) {
     const found = output.match(/^Debug channel: listening on 127\.0\.0\.1:(\d+)/m);
     return found ? Number(found[1]) : null;
+}
+
+/// What shot tells of the result of a shot request: its file, and with open popups (windows of
+/// their own, an image each) the file and the element of each
+export function shotOutcome(result) {
+    if (!result.popups?.length) return result.path;
+    return {
+        path: result.path,
+        popups: result.popups.map(({ path, closed, element }) => (closed ? { closed, element } : { path, element }))
+    };
+}
+
+/// Where hover goes: { point: "x y" } for two numbers (dips of the window from its top left),
+/// else { selector } of the element whose middle it goes to
+export function hoverTarget(text) {
+    const point = text.match(/^\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s*$/);
+    return point ? { point: `${point[1]} ${point[2]}` } : { selector: text };
+}
+
+/// The point hover goes to for the element `selector` whose border box in the window is `box`
+/// (null if there is none) in a window of `size` [w, h]: { point: "x y" } of its middle, or
+/// { error } of why not
+export function hoverPointOf(selector, box, size) {
+    if (!box) return { error: `No element ${selector}` };
+    const [x, y, w, h] = box;
+    if (w <= 0 || h <= 0) return { error: `${selector} is not shown: its box is ${box.join(" ")}` };
+    const [mx, my] = [Math.round(x + w / 2), Math.round(y + h / 2)];
+    const [width, height] = size;
+    if (mx < 0 || my < 0 || mx >= width || my >= height)
+        return { error: `${selector} is outside the window: its middle is at ${mx} ${my}, the window is ${width}x${height}; `
+            + "bring it in first (eval: el.scrollIntoView())" };
+    return { point: `${mx} ${my}` };
 }
 
 /// A request line of the debug channel (ui/debug_protocol)
@@ -220,7 +278,28 @@ async function waitStep(channel, code, timeout) {
 async function shotStep(channel, file) {
     const response = await channel.request("shot", resolve(file));
     if ("error" in response) throw new BuildError(response.error);
-    return response.result.path;
+    return shotOutcome(response.result);
+}
+
+async function hoverStep(channel, text) {
+    const target = hoverTarget(text);
+    let point = target.point;
+    if (!point) {
+        const [box, size] = await evalStep(channel, `[document.$(${JSON.stringify(target.selector)})`
+            + `?.state.box("xywh", "border", "window") ?? null, document.state.box("dimension")]`);
+        const found = hoverPointOf(target.selector, box, size);
+        if (found.error) throw new BuildError(found.error);
+        point = found.point;
+    }
+    const response = await channel.request("hover", point);
+    if ("error" in response) throw new BuildError(response.error);
+    return point;
+}
+
+async function inputStep(channel, kind, text) {
+    const response = await channel.request(kind, text);
+    if ("error" in response) throw new BuildError(response.error);
+    return response.result;
 }
 
 async function start(options) {
@@ -296,11 +375,16 @@ async function main(options) {
         if (options.command === "eval") print(await evalStep(channel, options.args[0]));
         else if (options.command === "wait") print(await waitStep(channel, options.args[0], options.timeout));
         else if (options.command === "shot") print(await shotStep(channel, options.args[0] ?? "build/screenshot.png"));
+        else if (options.command === "hover") print(await hoverStep(channel, options.args[0]));
+        else if (options.command === "key" || options.command === "type")
+            print(await inputStep(channel, options.command, options.args[0]));
         else {
             const file = options.args[0];
             for (const step of parseSteps(readFileSync(file, "utf8"))) {
                 const run = step.command === "eval" ? evalStep(channel, step.text)
                     : step.command === "wait" ? waitStep(channel, step.text, step.timeout)
+                    : step.command === "hover" ? hoverStep(channel, step.text)
+                    : step.command === "key" || step.command === "type" ? inputStep(channel, step.command, step.text)
                     : shotStep(channel, resolve(dirname(file), step.text)); // from the scenario's folder
                 try {
                     console.log(`${step.line} ${step.command}: ${JSON.stringify(await run)}`);

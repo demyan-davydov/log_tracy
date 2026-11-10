@@ -48,8 +48,10 @@ part of it; flag only what nothing there explains, and say what was checked.
 When the change alters what is shown and the code alone can't tell how it looks, take **one**
 screenshot (`node scripts/screenshot.mjs --open <log> --out <scratch>/review.png`, a local log
 of `test_data/` if any; `.ai/workflows/preview-ui.md`) and judge from it. Say what it showed;
-no rounds of retakes. What a screenshot can't show (hover, an open popup, a drag) is reported
-as **suspected**, to be looked at by the user.
+no rounds of retakes. Hover and an open popup are checked by driving the app (macOS:
+`app.mjs hover`, then `shot`, which writes each open popup beside the window; `/app`). What
+neither can show (a press of the mouse, a drag, the other systems) is reported as
+**suspected**, to be looked at by the user.
 
 ## Not This Lens
 
