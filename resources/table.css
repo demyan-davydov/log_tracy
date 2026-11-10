@@ -93,6 +93,10 @@
     cursor: pointer;
 }
 
+.log-table>tbody>tr[rule-color="true"]>td:nth-child(1) {
+    background: var(--rule-color);
+}
+
 /* The color of the filter rule a record matches (as dlt-viewer colors the
    rows): set on the row, shown on its Index cell only (the second one, after
    the anchor), fading out from the left edge to a third of the cell; the
@@ -100,6 +104,7 @@
    in `background`, not in `background-image`. */
 .log-table>tbody>tr[rule-color="true"]>td:nth-child(2) {
     background: linear-gradient(to right, var(--rule-color), transparent 33%);
+    background-position: 1dip 0;
 }
 
 /* Anchor column: the mark of an anchored message, an anchor in a grey circle,
