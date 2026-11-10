@@ -67,6 +67,11 @@ agent can't drive it. In scapp a plain
 
 ## Events
 
+- **Don't replace the element under the mouse in a mouse handler, and read what it needs of
+  `evt` first.** A press in a log table that dropped the text selected re-rendered the row
+  (`patch`), removing `evt.target`, then read `evt.clientX`: a segfault on a null pointer in
+  `qjs::event_client_x` went together with it (seen in a crash report, not reproduced). The
+  table now unpaints a dropped selection in place (`_unpaintTextSelection`).
 - Mouse capture (`state.capture`) on an element recreated in the same mousedown went together
   with a segfault on tab drag; capture isn't needed for dragging: document-level
   `mousemove` / `mouseup` work.

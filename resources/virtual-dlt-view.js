@@ -163,12 +163,22 @@ export class VirtualDltTBody extends VirtualSelect {
     // The text selected: _textSelection, { anchor, focus } (text-selection.js),
     // unset or null if none. Sets it and paints the rows on screen whose look
     // changes. The methods with "_" are for the drag of this module only.
+    // Dropped (null), it is unpainted in place: the elements stay, a press
+    // dropping it may still read its event (.ai/knowledge/sciter.md).
     _setTextSelection(selection) {
         const before = this._textSelection ?? null;
         if (sameSelection(before, selection)) return; // a move within a character
+        if (!selection) return this._unpaintTextSelection();
         const rows = repaintRows(before, selection);
         this._textSelection = selection;
         if (rows) this.refreshVisibleRows(rows);
+    }
+
+    // Drops the text selected keeping the elements of the rows: only the
+    // marks of its spans go
+    _unpaintTextSelection() {
+        this._textSelection = null;
+        for (const span of this.$$("span.text-selected")) span.classList.remove("text-selected");
     }
 
     // Nothing is selected or current any more: the view shows other rows now.
@@ -178,10 +188,7 @@ export class VirtualDltTBody extends VirtualSelect {
     resetSelection() {
         abandonDrag(this);
         this.selection.reset();
-        if (this._textSelection) {
-            this._textSelection = null;
-            for (const span of this.$$("span.text-selected")) span.classList.remove("text-selected");
-        }
+        if (this._textSelection) this._unpaintTextSelection();
         this.updateRowStates();
     }
 
@@ -253,20 +260,24 @@ export class VirtualDltTBody extends VirtualSelect {
     // across the cells and rows (text-selection.js), released where it was it
     // is a click, selecting its row (see the drag below, beginDrag). Any press
     // drops the text selected before.
+    // What it needs of `evt` is read before anything changes, the text
+    // position too (.ai/knowledge/sciter.md).
     ["on mousedown"](evt) {
         if (evt.buttons & 6) return; // right (2) or middle (4) button
         if (contextClickKey && evt[contextClickKey]) return; // the context menu, see contextmenu
         if (evt.target.closest("td.anchor")) return; // toggles the anchor only
         const viewIndex = this.viewIndexOf(evt.target);
         if (viewIndex === null) return;
-        this._setTextSelection(null);
+        const { clientX: x, clientY: y, shiftKey: shift } = evt;
         const toggle = evt[toggleKey];
-        if (evt.shiftKey || toggle) {
-            this._selectByPress(viewIndex, { shift: evt.shiftKey, toggle });
-            beginDrag(this, { kind: "rows", toggle, y: evt.clientY });
+        const rows = shift || toggle;
+        const at = rows ? null : this._textPositionAt(x, y);
+        this._setTextSelection(null);
+        if (rows) {
+            this._selectByPress(viewIndex, { shift, toggle });
+            beginDrag(this, { kind: "rows", toggle, y });
         } else {
-            const at = this._textPositionAt(evt.clientX, evt.clientY);
-            beginDrag(this, { kind: "text", row: viewIndex, at, x: evt.clientX, y: evt.clientY });
+            beginDrag(this, { kind: "text", row: viewIndex, at, x, y });
         }
     }
 
