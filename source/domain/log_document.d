@@ -1,3 +1,6 @@
+//! LogDocument: a log file opened in a format (chosen before or detected), its
+//! main and search views over its indexes, the filter and search requests
+//! queued for the background slot, and its anchors.
 module domain.log_document;
 
 import domain.document;
@@ -667,10 +670,14 @@ unittest
     assert(finished[2].result == OperationFinished.Result.Completed);
     assert(views.searchReady && doc.searchView.itemsCount == 0, "search result must be empty");
 
-    doc.applyViewFilter(null);
+    doc.applyViewFilter(ecuFilter("ECU2")); // hides every message
     dispatchUntil(doc, () => finished.length == 4);
-    assert(finished[3].operation == Document.Operation.BuildFilterIndex);
-    assert(finished[3].result == OperationFinished.Result.Completed);
+    assert(doc.mainView.itemsCount == 0);
+
+    doc.applyViewFilter(null);
+    dispatchUntil(doc, () => finished.length == 5);
+    assert(finished[4].operation == Document.Operation.BuildFilterIndex);
+    assert(finished[4].result == OperationFinished.Result.Completed);
     assert(views.mainReady);
     assert(doc.mainView.itemsCount == messageCount, "all messages are visible");
 }
@@ -694,18 +701,19 @@ unittest
 
     DocumentItem item;
 
-    doc.applyViewFilter(ecuFilter("ECU2"));
-    dispatchUntil(doc, () => finished == 2);
-    assert(views.mainReady, "a built filter is applied to the view");
-    assert(doc.mainView.itemsCount == 0, "no message has ECU2");
-    assert(!doc.mainView.fetchItem(0, item));
-
     doc.applyViewFilter(ecuFilter("ECU1"));
-    dispatchUntil(doc, () => finished == 3);
+    dispatchUntil(doc, () => finished == 2);
     assert(doc.mainView.itemsCount == messageCount, "every message has ECU1");
     assert(doc.mainView.fetchItem(messageCount - 1, item) && item.realIndex == messageCount - 1);
     assert(!doc.mainView.fetchItem(messageCount, item), "position past the filtered view");
 
+    doc.applyViewFilter(ecuFilter("ECU2"));
+    dispatchUntil(doc, () => finished == 3);
+    assert(views.mainReady, "a built filter is applied to the view");
+    assert(doc.mainView.itemsCount == 0, "no message has ECU2");
+    assert(!doc.mainView.fetchItem(0, item));
+
+    // From a view that shows nothing: the reset shows every message again
     doc.applyViewFilter(null);
     dispatchUntil(doc, () => finished == 4);
     assert(doc.mainView.itemsCount == messageCount, "the unfiltered view");

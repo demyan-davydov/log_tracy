@@ -27,7 +27,9 @@ agent can't drive it. In scapp a plain
   until the mouse moves, wake the loop on publish (`postToWindowThread`).
 - The script runs with no runtime features (`SCITER_SET_SCRIPT_RUNTIME_FEATURES` 0, `app.d`).
   Not gated by them (6.0.5.5, macOS): modules of `this://app`, `@env` (`language()`,
-  `PLATFORM`), `Clipboard`, `Window.this.modal` and `selectFile`, `SciterEval`. While a native
+  `PLATFORM`), `Clipboard`, `Window.screens` and `Window.screenBox`, `Window.this.modal` (the
+  dialogs of Settings and of a rule), `selectFile` opening its dialog, `SciterEval`. The path
+  `selectFile` gives once a file is chosen, Windows and Linux are not checked. While a native
   file dialog is open the window's thread runs its loop: a `postToWindowThread` task waits for
   the dialog to close (the debug channel times out).
 - `import()` doesn't work in code of `SciterEval` ("no function filename for import()").

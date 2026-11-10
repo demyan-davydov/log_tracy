@@ -10,7 +10,8 @@ export class SearchBar {
     // @param root - the element holding the bar (.search-page), its events bound here
     // @param docId - the id of the document in the backend
     // @param host - what the bar asks of the document panel:
-    //   setMatchColors(colors) - the colors of the chips the found fragments are shown in
+    //   setMatchColors(colors) - the colors of the chips the found fragments are shown in,
+    //     given at once and whenever the search they were found by changes
     constructor(root, docId, host) {
         this.root = root;
         this.docId = docId;
@@ -23,16 +24,12 @@ export class SearchBar {
             history: () => backend.searchHistory(this.docId),
             historyButton: root.$(".btn-chip-history"),
         });
+        this.host.setMatchColors(this.search.colors);
         this.updatePending();
         root.on("click", ".btn-chip-search", () => {
             this.editor.closeChip();
             this.run();
         });
-    }
-
-    // The colors of the chips of the search the results were found by
-    get colors() {
-        return this.search.colors;
     }
 
     // Runs the search for the chips of the editor (Enter, the Search button),
@@ -50,6 +47,7 @@ export class SearchBar {
     // The document was reopened (Retry): it has no search yet
     reset() {
         this.search = noSearch;
+        this.host.setMatchColors(this.search.colors);
         this.updatePending();
     }
 

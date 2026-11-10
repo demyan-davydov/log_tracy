@@ -323,10 +323,10 @@ export class DocumentPane {
 
     // Brings what is shown up to date with the document
     refresh() {
-        // The rules first: the rows the columns re-render refer to them
+        // The rules first: the rows the columns re-render refer to them. The colors
+        // of the rules and of the chips reach the tables only from the parts
+        // (setRuleColors, setMatchColors), when they change
         this.filterPanel.ensureRendered();
-        for (const list of this.lists) list.ruleColors = this.filterPanel.ruleColors;
-        for (const list of this.lists) list.matchColors = this.searchBar.colors;
         // The columns before the rows: a reload of a view renders them with these
         const changed = this.setColumns();
         this.updateMainView();

@@ -103,7 +103,9 @@ int main()
 	// does, through xcall), opens no sockets, evaluates no strings and loads no native modules,
 	// and the window shows the text of logs from anywhere. What it uses works without them
 	// (checked on macOS, 6.0.5.5): its modules, @env (the language of the system), the
-	// clipboard, the dialogs (Window.this.modal, selectFile), SciterEval of the debug channel.
+	// clipboard, the screens of Window (the saved frame), the dialogs of Settings and of a
+	// rule (Window.this.modal), the file dialog opening (selectFile), SciterEval of the debug
+	// channel. Not checked: the path selectFile gives once a file is chosen, Windows, Linux.
 	// A new need gets its flag here, with why.
 	sciterApi().SciterSetOption(null, SCITER_RT_OPTIONS.SCITER_SET_SCRIPT_RUNTIME_FEATURES, 0);
 

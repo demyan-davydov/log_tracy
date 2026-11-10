@@ -1,3 +1,6 @@
+//! The indexes of a log and their building in the background: the offset
+//! index of its records, the filter index of the main view and the search
+//! index, read by the UI thread while the indexing thread grows them.
 module domain.log_index;
 
 import utils.ui_text : uiText, uiTextOf, UiText, UiTextException;

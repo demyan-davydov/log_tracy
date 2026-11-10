@@ -27,6 +27,7 @@ export class FilterPanel {
     // @param host - what the panel asks of the document panel:
     //   theme() -> "light" | "dark" (of the rule editor),
     //   setRuleColors(colors) - the colors of the rules by rule id, for the tables,
+    //     given whenever the panel is rendered (the rules may have changed),
     //   refreshRows() - the rows on screen refer to the rules again
     constructor(root, docId, host) {
         this.root = root;
@@ -35,7 +36,6 @@ export class FilterPanel {
         this.filters = noFilters; // what render() got last
         this.message = ""; // of the last command
         this.rendered = false; // built on the first show, and again when its texts are stale
-        this.ruleColors = new Map(); // of the rules of the filters, by rule id
         this.bind();
     }
 
@@ -68,8 +68,7 @@ export class FilterPanel {
         const info = backend.filters(this.docId) ?? noFilters;
         this.filters = info;
         this.rendered = true;
-        this.ruleColors = ruleColors(info.sets); // the rows refer to the rules by id
-        this.host.setRuleColors(this.ruleColors);
+        this.host.setRuleColors(ruleColors(info.sets)); // the rows refer to the rules by id
         const panel = this.root.$(".filter-sets");
         // Built from scratch, as the quick filter was: reused inputs keep their state
         panel.clear();
