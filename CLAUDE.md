@@ -43,6 +43,7 @@ node scripts/build.mjs --release         # release; --arch x64|arm64 for another
 node scripts/run.mjs                     # builds as above (same options) and starts the app, its stdout here
 node scripts/build.mjs test              # D unittests ("N modules passed unittests"), JS tests, stale names of .ai/
 node scripts/build.mjs test --module source/log_core/text/text_format.d  # one Sciter-free module, no dub
+node scripts/build.mjs test --brief     # any build/test command: only what failed, the rest in build/brief.log
 node scripts/build.mjs dist              # release distribution in build/dist/<macos|linux|windows>/
 node scripts/build.mjs check-windows     # from macOS/Linux: compiles app + unittests for Windows x64, no link
 node scripts/build.mjs --help            # the commands and options (run.mjs --help too)

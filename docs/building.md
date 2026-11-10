@@ -92,6 +92,7 @@ node scripts/build.mjs dist               # a distribution
 node scripts/build.mjs check-windows      # compiles for Windows x64 from macOS or Linux
 node scripts/build.mjs gen-log <file> ... # a test log (see "A test log" below)
 node scripts/build.mjs bench [log] ...    # this tree against master (see "Measuring" below)
+node scripts/build.mjs test --brief       # only what failed (any command but gen-log and bench)
 node scripts/build.mjs --help             # the commands and options
 ```
 
@@ -123,6 +124,19 @@ name that is right though the code lacks it goes to the `allowed` list of the sc
 with `ldc2` alone (the flags of `dub.sdl`, as `dub describe` gives them), into `build/tools/`:
 a quick check of a module that doesn't depend on Sciter. The test runner of druntime has no
 filter and leaves a module at its first failing `unittest`: the ones after it did not run.
+
+### Brief output
+
+`--brief` (with `build`, `test`, `test --module`, `dist`, `check-windows`, and `run.mjs`)
+writes the whole output of every step to `build/brief.log`, rewritten on each run, and
+shows only what failed: the compile and link errors, the failed D unittests (the place, the
+exception, its message, the frames in the project's code), the failed JS tests (the place,
+the name, the diff) and the summary of each runner. When all goes well, only the last line
+is left, such as `D unittests: OK, JS tests: OK, context of .ai/: OK`. A failed step whose
+lines don't tell the cause (a crash, a linker message not known) shows its last lines too, so
+a failure never goes silent. It is meant for
+AI agents, whose context the whole output would fill, and for a quick look; the filter is
+`scripts/build-output-filter.mjs`.
 
 ### Distribution
 

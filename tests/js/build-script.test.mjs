@@ -151,6 +151,19 @@ test("one module is compiled with its unittests, a main and the flags of dub.sdl
     assert.ok(moduleTestArgs([], "source/utils/fsm.d", "win32").includes("-of=build/tools/test_fsm.exe"));
 });
 
+test("--brief: build, test, dist and check-windows tell only what failed", () => {
+    assert.deepEqual(parseCommand(["test", "--brief"]), { command: "test", release: false, arch: null, brief: true });
+    assert.deepEqual(parseCommand(["--brief", "--release"]), { command: "build", release: true, arch: null, brief: true });
+    assert.deepEqual(parseCommand(["dist", "--brief"]), { command: "dist", release: true, arch: null, brief: true });
+    assert.deepEqual(parseCommand(["check-windows", "--brief"]),
+        { command: "check-windows", release: false, arch: null, brief: true });
+    assert.deepEqual(parseCommand(["test", "--module", "source/utils/fsm.d", "--brief"]),
+        { command: "test", release: false, arch: null, module: "source/utils/fsm.d", brief: true });
+    // gen-log and bench take their own options: --brief is theirs to refuse
+    assert.deepEqual(parseCommand(["gen-log", "x.dlt", "--brief"]).toolArgs, ["x.dlt", "--brief"]);
+    for (const usage of [buildUsage, runUsage]) assert.match(usage, /--brief/);
+});
+
 test("bench passes everything after it to scripts/bench.mjs, its --help too", () => {
     assert.deepEqual(parseCommand(["bench", "big.dlt", "--runs", "5"]),
         { command: "bench", release: false, arch: null, toolArgs: ["big.dlt", "--runs", "5"] });

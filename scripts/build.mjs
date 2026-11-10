@@ -5,7 +5,7 @@
 // more: docs/building.md.
 // Builds and starts the program: scripts/run.mjs. Tests: tests/js/build-script.test.mjs.
 import { spawnSync } from "node:child_process";
-import { chmodSync, closeSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync,
+import { appendFileSync, chmodSync, closeSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync,
     readFileSync, readSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
@@ -13,8 +13,12 @@ import { fileURLToPath } from "node:url";
 
 import { BenchError, benchCompileArgs, benchUsage, compareRuns, defaultBenchArgs, formatComparison,
     parseBenchArgs, runOrder } from "./bench.mjs";
+import { filterBuildOutput } from "./build-output-filter.mjs";
 
 export const commands = ["build", "test", "dist", "check-windows", "gen-log", "bench"];
+
+/// Where `--brief` puts the whole output of the steps of the last run, relative to the root.
+export const briefLogPath = "build/brief.log";
 
 /// What `--help` prints. Every command and option is in it: tests/js/build-script.test.mjs.
 export const buildUsage = `Builds, tests and packs DLT Explorer. More: docs/building.md.
@@ -43,6 +47,9 @@ Options:
   --release       a release build instead of debug (build; dist always is)
   --arch x64|arm64
                   another architecture than this machine's (build, test, dist)
+  --brief         only what failed: compile errors, failed tests with their places and the
+                  summary; the whole output goes to ${briefLogPath} (build, test, dist,
+                  check-windows)
   -h, --help      this help
 
 Build and start the program: node scripts/run.mjs (see its --help).
@@ -58,6 +65,8 @@ Options:
   --release       a release build instead of debug
   --arch x64|arm64
                   another architecture than this machine's
+  --brief         the build tells only what failed, its whole output in ${briefLogPath};
+                  the program's output as always
   -h, --help      this help
 `;
 const arches = ["x64", "arm64"];
@@ -81,9 +90,11 @@ export function parseCommand(argv) {
     let release = false;
     let arch = null;
     let module = null;
+    let brief = false;
     for (let i = 0; i < argv.length; i++) {
         const arg = argv[i];
         if (arg === "--release") release = true;
+        else if (arg === "--brief") brief = true;
         else if (arg === "--arch" || arg.startsWith("--arch=")) {
             const value = arg === "--arch" ? argv[++i] : arg.slice("--arch=".length);
             if (value === undefined) throw new BuildError(`--arch needs one of: ${arches.join(", ")}`);
@@ -110,9 +121,9 @@ export function parseCommand(argv) {
     if (module !== null) {
         if (command !== "test") throw new BuildError("--module is an option of test: node scripts/build.mjs test --module <file.d>");
         if (arch) throw new BuildError("test --module builds for this machine only, it takes no --arch");
-        return { command, release: false, arch: null, module };
+        return { command, release: false, arch: null, module, ...(brief && { brief }) };
     }
-    return { command, release: release || command === "dist", arch };
+    return { command, release: release || command === "dist", arch, ...(brief && { brief }) };
 }
 
 /// The arguments of dub for `build` or `test` (whose build type is always unittest).
@@ -215,17 +226,53 @@ echo "${bundle} is ready."
 `;
 }
 
+/// The file the output of every step goes to with --brief (startBrief), null without it.
+let briefLog = null;
+
+/// From now on the steps tell only what failed (filterBuildOutput), their whole output appended
+/// to `file`, which starts empty. scripts/run.mjs calls it too.
+export function startBrief(file = briefLogPath) {
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, "");
+    briefLog = file;
+}
+
 /// Runs a program, its output shown, or kept with `capture` (up to `maxBuffer`, 1 MB). `echo`
-/// tells the command line first; `cwd` is the folder it runs in (the project root).
+/// tells the command line first; `cwd` is the folder it runs in (the project root). With
+/// --brief what is not captured goes to the log, and only its failures are shown.
 function run(program, args, { capture = false, echo = !capture, cwd, env } = {}) {
-    if (echo) console.log(`> ${program} ${args.join(" ")}`);
+    const brief = briefLog !== null && !capture;
+    if (echo && !brief) console.log(`> ${program} ${args.join(" ")}`);
     // dub on Windows may be a dub.cmd (a shim of scoop or chocolatey), which only a shell
     // starts; its arguments here are options without spaces, joined by the shell as they are
     const shell = process.platform === "win32" && program === "dub";
-    const result = spawnSync(program, args, { stdio: capture ? ["ignore", "pipe", "pipe"] : "inherit",
-        encoding: "utf8", shell, cwd, env: env && { ...process.env, ...env }, maxBuffer: 64 * 1024 * 1024 });
-    if (result.error) throw new BuildError(`can't run ${program}: ${result.error.message}`);
-    return result;
+    const options = { encoding: "utf8", shell, cwd, env: env && { ...process.env, ...env }, maxBuffer: 64 * 1024 * 1024 };
+    if (!brief) {
+        const result = spawnSync(program, args, { ...options, stdio: capture ? ["ignore", "pipe", "pipe"] : "inherit" });
+        if (result.error) throw new BuildError(`can't run ${program}: ${result.error.message}`);
+        return result;
+    }
+    // the step's own file, its stdout and stderr in it in the order they were written; then
+    // added to the log: another run with --brief may empty the log meanwhile
+    const dir = mkdtempSync(join(tmpdir(), "dlt-step-"));
+    try {
+        const file = join(dir, "output.log");
+        const handle = openSync(file, "w");
+        let result;
+        try {
+            result = spawnSync(program, args, { ...options, stdio: ["ignore", handle, handle] });
+        } finally {
+            closeSync(handle);
+        }
+        const output = readFileSync(file, "utf8");
+        appendFileSync(briefLog, (echo ? `> ${program} ${args.join(" ")}\n` : "") + output);
+        if (result.error) throw new BuildError(`can't run ${program}: ${result.error.message}`);
+        for (const line of filterBuildOutput(output, { failed: result.status !== 0, root: process.cwd(), log: briefLog }))
+            console.log(line);
+        return result;
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
 }
 
 function runOrFail(program, args, failure) {
@@ -273,7 +320,8 @@ export function targetPath(options) {
 function test(options) {
     checkSciterLibrary(options.arch ?? process.arch);
     const dub = run("dub", dubArgs("test", options)).status === 0;
-    const js = run(process.execPath, ["--test", "tests/js"]).status === 0;
+    // spec, not node's default: before node 23 that is TAP when the output is no terminal (--brief)
+    const js = run(process.execPath, ["--test", "--test-reporter=spec", "tests/js"]).status === 0;
     // the names of .ai/, CLAUDE.md and .claude/ the code no longer has
     const context = run(process.execPath, ["scripts/check-ai-context.mjs"]).status === 0;
     console.log(`D unittests: ${dub ? "OK" : "FAILED"}, JS tests: ${js ? "OK" : "FAILED"}, `
@@ -553,7 +601,8 @@ function benchAgainst(toolArgs, callerDir) {
 function main(argv) {
     const callerDir = process.cwd();
     process.chdir(fileURLToPath(new URL("..", import.meta.url))); // the project root
-    const { command, release, arch, toolArgs, module } = parseCommand(argv);
+    const { command, release, arch, toolArgs, module, brief } = parseCommand(argv);
+    if (brief) startBrief();
     if (command === "gen-log") genLog(toolArgs, callerDir);
     else if (command === "bench") benchAgainst(toolArgs, callerDir);
     else if (command === "help") process.stdout.write(buildUsage);
@@ -572,6 +621,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.a
     } catch (e) {
         if (!(e instanceof BuildError || e instanceof BenchError)) throw e;
         console.error(e.message);
+        if (briefLog !== null) console.error(`The whole output: ${briefLog}`);
         process.exit(1);
     }
 }

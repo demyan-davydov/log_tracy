@@ -4,18 +4,24 @@
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { BuildError, build, parseCommand, runUsage } from "./build.mjs";
+import { BuildError, briefLogPath, build, parseCommand, runUsage, startBrief } from "./build.mjs";
 
 process.chdir(fileURLToPath(new URL("..", import.meta.url))); // the project root
+let brief = false; // the build's output goes to briefLogPath: named when it fails
 try {
     const argv = process.argv.slice(2);
-    const { command, release, arch } = parseCommand(argv);
+    const options = parseCommand(argv);
+    const { command, release, arch } = options;
     if (command === "help") {
         process.stdout.write(runUsage);
         process.exit(0);
     }
     if (command !== "build" || argv.includes("build"))
-        throw new BuildError("run.mjs takes the options of a build only: --release, --arch x64|arm64 (--help)");
+        throw new BuildError("run.mjs takes the options of a build only: --release, --arch x64|arm64, --brief (--help)");
+    if (options.brief) {
+        startBrief();
+        brief = true;
+    }
     const program = join(build({ release, arch }),
         process.platform === "win32" ? "dlt_explorer.exe" : "dlt_explorer");
     console.log(`> ${program}`);
@@ -25,5 +31,6 @@ try {
 } catch (e) {
     if (!(e instanceof BuildError)) throw e;
     console.error(e.message);
+    if (brief) console.error(`The whole output: ${briefLogPath}`);
     process.exitCode = 1;
 }

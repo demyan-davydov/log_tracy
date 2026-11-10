@@ -20,6 +20,10 @@ Applies to every fix and feature, D and script alike.
 - The druntime test runner has no filter, and it stops a module's tests at the first failing
   `unittest` block: when one module gets several new tests, check each of them separately.
 - One module that doesn't depend on Sciter: `node scripts/build.mjs test --module <file.d>`.
+- An agent runs them with `--brief` (`build`, `test`, `test --module`, `dist`,
+  `check-windows`, `run.mjs`): one summary line when all pass, else the compile errors and
+  failed tests with their places. The whole output is in `build/brief.log`: read it when the
+  brief lines don't explain a failure.
 - `build.mjs test` also runs `scripts/check-ai-context.mjs`: a name of `.ai/` the code lost
   fails it. Fix the name, or add a right one to the `allowed` list of the script.
 

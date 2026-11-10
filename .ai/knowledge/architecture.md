@@ -53,14 +53,15 @@ utils  ←  sciter  ←  ui
 - `ui/`: the window and the logic behind it; the Sciter-free part of it is unit-tested.
 - `scripts/`: the build script (`build.mjs`: build, test (`--module` for one D module), dist,
   Windows check, `gen-log` that builds and runs the test log generator `gen_log.d`, `bench`
-  that measures the tree against a ref, its pure part in `bench.mjs`), `run.mjs`,
+  that measures the tree against a ref, its pure part in `bench.mjs`; `--brief` filters the
+  output of every step through `build-output-filter.mjs`), `run.mjs`,
   `check-ai-context.mjs` (the names of `.ai/` the code lost), `backtrace.mjs` (the stacks of
   a running app),
   `app.mjs` (drives a copy of the app through the debug channel), `screenshot.mjs`,
   i18n extraction, benchmarks (`bench_rows.d`, `bench_index.d`). They run from the project
   root wherever they are called from (`gen-log` runs the generator in the caller's folder:
   the path of a log is the user's). The pure part of `build.mjs` is tested by
-  `tests/js/build-script.test.mjs`; Linux and Windows `dist` were not tried on those systems
+  `tests/js/build-script.test.mjs`, the filter of `--brief` by `tests/js/build-output-filter.test.mjs`; Linux and Windows `dist` were not tried on those systems
   yet (`docs/backlog.md`).
 
 ## Script ↔ Backend
