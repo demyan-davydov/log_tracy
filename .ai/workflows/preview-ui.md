@@ -47,10 +47,29 @@ the named functions from a temporary copy of the page, then delete the copy.
 
 ## Driving the App
 
-The resources are built into the program, so driving it means a temporary change of
-`resources/script.js` (expose what is needed on `globalThis`, log with `console.log`), a
-build, `screenshot.mjs`, and reverting the change. Its output: the app's log, read unbuffered
-under `script -q -F log` when started by hand.
+`scripts/app.mjs` drives a running copy of a debug build through the debug channel
+(`docs/building.md`, "Driving the app"): no temporary changes of the script any more.
+
+```sh
+node scripts/app.mjs start --open <log> [--settings <settings.json>] [--env NAME=VALUE] [--no-build]
+node scripts/app.mjs wait "<js true when ready>" [--timeout 10]
+node scripts/app.mjs eval "<js>"          # the value of the last expression as JSON
+node scripts/app.mjs shot [build/x.png]   # then read the PNG
+node scripts/app.mjs run <steps file>     # eval <js> | wait [<n>s] <js> | shot <file>, a line each
+node scripts/app.mjs log | stop
+```
+
+- Wait for a condition (`wait`), never a fixed pause: indexing and search run in the background.
+- An element comes back as `{tag, id, class, text, box}` (`box`: x, y, w, h in the window), so
+  geometry is read, not guessed: `el.state.box(...)`, `getComputedStyle`-like checks by
+  `el.style[...]`.
+- The code runs in the global scope: the modules' own names (`$`, imports) are not there; use
+  `document.$(...)` and what the modules put on `globalThis`.
+- `shot` is Sciter's own render of the window: no Screen Recording permission, no title bar of
+  the system. For the window as the system shows it: `screenshot.mjs`.
+- Not possible yet: real mouse and keys (hover, `:focus` from the mouse); `el.click()` and
+  `el.dispatchEvent(...)` don't move the mouse (`docs/backlog.md`).
+- Stop the copy when done (`stop`): it keeps running otherwise.
 
 Refresh the binary of a copy with `rm` then `cp`, never `cp` over the old file: macOS kills an
 overwritten signed binary at start (exit 137, no output), which looks like a crash. Launching

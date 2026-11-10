@@ -12,6 +12,19 @@ agent can't drive it. In scapp a plain
 `<script>` with JSX doesn't run: use `<script type="module">`. Previewing a page or the app:
 `.ai/workflows/preview-ui.md`.
 
+## Native Side
+
+- `SciterPostCallback(hwnd, wparam, lparam, 0)` from any thread delivers
+  `SC_POSTED_NOTIFICATION` to the window's host callback on its thread and wakes the event
+  loop of `SCITER_APP_LOOP_ITERATION` (6.0.5.5): the answer comes at once, no idle tick needed.
+  `postToWindowThread` (`sciter/window`) is built on it.
+- `SciterEval` runs in the global scope of the window: the names of `<script type="module">`
+  are not there, only what the modules put on `globalThis`. An `ArrayBuffer` comes back as
+  bytes (`T_BYTES`).
+- `new Graphics.Image(w, h, document).toBytes("png")` with `document.state.box("dimension")`
+  renders the whole window in dips (1000x800 for a 2000x1600 Retina window), without the
+  system's title bar.
+
 ## DOM and Script
 
 - `element.content(a, b, c)` uses only the first argument; build lists with

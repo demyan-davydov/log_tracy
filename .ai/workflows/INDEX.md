@@ -17,5 +17,5 @@ workflow only when the task is that process. In Claude Code most of them are ski
 - Adding a call from the script to the backend, or a file to `resources/`:
   `.ai/workflows/add-backend-call.md` (`/add-backend-call`)
 - Updating the Sciter library: `.ai/workflows/update-sciter.md` (`/update-sciter`)
-- A screenshot of the app, a dialog in scapp, driving the app:
-  `.ai/workflows/preview-ui.md` (`/screenshot`)
+- A screenshot of the app, a dialog in scapp, driving the app through the debug channel:
+  `.ai/workflows/preview-ui.md` (`/screenshot`, `/app`)
