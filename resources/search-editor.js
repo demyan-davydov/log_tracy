@@ -9,7 +9,7 @@ import * as platform from "platform.js";
 import { tr } from "i18n/i18n.js";
 import { translateTree } from "i18n/dom.js";
 import {
-    moveCaret, moveTo, typeInGap, typeBarInChip, deleteInGap, searchChips,
+    moveCaret, moveTo, typeInGap, deleteInGap, searchChips,
     sameQuery, assignColors, historyIndex, selection, extendCaret, selectChipsFrom, selectTo, selectAll, selectedChips, deleteSelection, insertChips,
 } from "search-editing.js";
 import { formatQuery, parseQuery, makeChip, pastedText } from "search-query.js";
@@ -157,7 +157,7 @@ export class SearchEditor {
             root.lastElementChild.$(".chip-text").value = chip.text;
         }
         if (chips.length === 0)
-            root.append(<span class="placeholder" data-tr="Search in payload: | starts the next condition (Enter)" />);
+            root.append(<span class="placeholder" data-tr="Search in payload" />);
         translateTree(root); // marked: a language change translates them in place, the editor kept
         this.markState();
     }
@@ -593,16 +593,9 @@ export class SearchEditor {
         const char = evt.char ?? (evt.keyCode ? String.fromCharCode(evt.keyCode) : "");
         if (!char || char < " ") return false;
         if (evt.ctrlKey || evt.metaKey) return false;
-        const synced = this.syncedState();
-        if (synced.pos.gap !== undefined) {
-            const next = typeInGap(synced, char);
-            this.go(next, `type ${next.pos.chip}`); // the typing goes on in the new chip
-            return true;
-        }
-        if (char !== "|") return false; // typed into the chip by its edit
-        const edit = this.chipEdit(synced.pos.chip);
-        if (edit.edit.selectionStart !== edit.edit.selectionEnd) edit.edit.removeText();
-        this.go(typeBarInChip(this.syncedState()));
+        if (this.state.pos.gap === undefined) return false; // typed into the chip by its edit
+        const next = typeInGap(this.state, char);
+        this.go(next, `type ${next.pos.chip}`); // the typing goes on in the new chip
         return true;
     }
 

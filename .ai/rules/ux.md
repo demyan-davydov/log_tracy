@@ -42,6 +42,9 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
    control shows a "not possible" mark on hover instead of its usual one (a crossed circle).
    Trying anyway shows a short notice (rule 19) next to the element, sliding out from left to
    right: a few words read at a glance ("16 anchors at most").
+9a. **Hints don't explain the obvious.** A placeholder or hint names what the control is for
+   ("Search in payload") and nothing more: no keys that do the expected thing (Enter runs,
+   → moves on), no instructions for basic editing. Behaviour should be self-evident.
 
 ## Shapes and Drawing
 

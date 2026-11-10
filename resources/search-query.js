@@ -86,21 +86,6 @@ export function parseQuery(text) {
     return chips;
 }
 
-// The '|' typed at `caret` in `chip`. In a text chip it closes the chip and starts
-// the next one, unless it follows a '\', which it replaces; in a regex it is a '|'.
-// @returns {split: [left, right]} if it closes the chip and starts the next one,
-//          {chip, caret} if it goes into the chip
-export function typeBar(chip, caret) {
-    const before = chip.text.slice(0, caret), after = chip.text.slice(caret);
-    if (chip.isRegex)
-        return { chip: { ...chip, text: before + "|" + after }, caret: caret + 1 };
-    if (before.endsWith("\\"))
-        return { chip: { ...chip, text: before.slice(0, -1) + "|" + after }, caret };
-    // the rest of the text keeps the properties, an empty next chip is a new one
-    const right = after ? { ...chip, text: after } : makeChip("");
-    return { split: [{ ...chip, text: before }, right] };
-}
-
 // The most characters of plain text a paste puts into a chip: pasting a whole
 // log is a mistake, the cut text with an ellipsis shows it
 export const pasteLimit = 64;

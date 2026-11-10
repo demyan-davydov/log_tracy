@@ -118,7 +118,7 @@
     "Search error: {error}": "Ошибка поиска: {error}",
     "Search failed": "Ошибка поиска",
     "Search history (↓)": "История поиска (↓)",
-    "Search in payload: | starts the next condition (Enter)": "Поиск в тексте сообщения: | начинает следующее условие (Enter)",
+    "Search in payload": "Поиск в тексте сообщения",
     "Searching... {percent}%": "Поиск... {percent}%",
     "Search|noun": "Поиск",
     "Sep|month": "сен",
@@ -226,6 +226,7 @@
     "Details / Search Results": "Подробности / результаты поиска",
     "Load FIBEX": "Загрузить FIBEX",
     "Log table font size": "Размер шрифта таблицы журнала",
+    "Search in payload: | starts the next condition (Enter)": "Поиск в тексте сообщения: | начинает следующее условие (Enter)",
     "Settings...": "Настройки...",
     "XML Files": "Файлы XML"
   }

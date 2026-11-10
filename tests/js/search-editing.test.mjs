@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { makeChip } from "../../resources/search-query.js";
 import {
-    moveCaret, moveTo, typeInGap, typeBarInChip, deleteInGap, searchChips,
+    moveCaret, moveTo, typeInGap, deleteInGap, searchChips,
     sameQuery, assignColors, historyIndex, selection, extendCaret, selectChipsFrom, selectTo, selectAll, selectedChips, insertChips,
 } from "../../resources/search-editing.js";
 
@@ -82,28 +82,10 @@ test("typeInGap: a character typed in a gap starts a new chip there", () => {
     assert.deepEqual(typeInGap({ chips: [], pos: gap(0) }, " "), { chips: [text(" ")], pos: at(0, 1) });
 });
 
-test("typeInGap: '|' in a gap does nothing", () => {
-    assert.deepEqual(typeInGap({ chips: ab, pos: gap(1) }, "|"), { chips: ab, pos: gap(1) });
+test("typeInGap: '|' is a character like any other", () => {
+    assert.deepEqual(typeInGap({ chips: ab, pos: gap(1) }, "|"),
+        { chips: [text("ab"), text("|"), text("cd")], pos: at(1, 1) });
 });
-
-test("typeBarInChip: '|' closes a text chip and goes on in the next one", () => {
-    assert.deepEqual(typeBarInChip({ chips: ab, pos: at(0, 2) }),
-        { chips: [text("ab"), text(""), text("cd")], pos: at(1, 0) }, "at the end: a new chip");
-    assert.deepEqual(typeBarInChip({ chips: [text("abcd")], pos: at(0, 2) }),
-        { chips: [text("ab"), text("cd")], pos: at(1, 0) }, "in the middle: the chip is split");
-});
-
-test("typeBarInChip: no empty chip is left before the caret", () => {
-    assert.deepEqual(typeBarInChip({ chips: ab, pos: at(1, 0) }), { chips: ab, pos: at(1, 0) },
-        "at the start of a chip nothing changes");
-    assert.deepEqual(typeBarInChip({ chips: [text("")], pos: at(0, 0) }), { chips: [text("")], pos: at(0, 0) });
-});
-
-test("typeBarInChip: '|' after '\\' and in a regex goes into the chip", () => {
-    assert.deepEqual(typeBarInChip({ chips: [text("a\\")], pos: at(0, 2) }), { chips: [text("a|")], pos: at(0, 2) });
-    assert.deepEqual(typeBarInChip({ chips: [regex("ab")], pos: at(0, 1) }), { chips: [regex("a|b")], pos: at(0, 2) });
-});
-
 test("deleteInGap: Backspace removes the chip before the caret, Delete the one after it", () => {
     assert.deepEqual(deleteInGap({ chips: ab, pos: gap(1) }, "backspace"), { chips: [text("cd")], pos: gap(0) });
     assert.deepEqual(deleteInGap({ chips: ab, pos: gap(1) }, "delete"), { chips: [text("ab")], pos: gap(1) });
@@ -173,7 +155,7 @@ test("deleteInGap: Backspace and Delete remove the selected chips", () => {
 
 test("typeInGap: a character replaces the selected chips", () => {
     assert.deepEqual(typeInGap(sel(1, 3), "x"), { chips: [text("a"), text("x")], pos: at(1, 1) });
-    assert.deepEqual(typeInGap(sel(1, 3), "|"), sel(1, 3), "'|' does nothing");
+    assert.deepEqual(typeInGap(sel(1, 3), "|"), { chips: [text("a"), text("|")], pos: at(1, 1) });
 });
 
 test("insertChips: pasted chips go to the caret, after them the caret", () => {
@@ -218,12 +200,6 @@ test("assignColors: with every color taken, the one used least, the first of the
     const chips = [colored("a", 0), colored("b", 1), colored("c", 0), text("d")];
     assert.deepEqual(assignColors(chips, 2)[3], colored("d", 1));
     assert.deepEqual(assignColors([colored("a", 0), colored("b", 1), text("c")], 2)[2], colored("c", 0));
-});
-
-test("typeBarInChip: the chip split off is a new chip, without the color", () => {
-    const next = typeBarInChip({ chips: [colored("abcd", 4)], pos: at(0, 2) });
-    assert.equal(next.chips[0].color, 4);
-    assert.equal(next.chips[1].color, undefined);
 });
 
 test("sameQuery: the colors are no part of the query", () => {

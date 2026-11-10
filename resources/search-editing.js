@@ -6,7 +6,7 @@
 // before chip g, gap chips.length after the last one) or {chip: i, offset: o}
 // for the caret inside chip i. Functions return a new state, the old one stays.
 
-import { makeChip, typeBar } from "./search-query.js";
+import { makeChip } from "./search-query.js";
 
 const isGap = pos => pos.gap !== undefined;
 
@@ -52,27 +52,12 @@ export function moveCaret(state, key, selectionEmpty = true) {
 }
 
 // A character typed with the caret in a gap starts a new chip there, instead of
-// the selected chips; '|' does nothing.
+// the selected chips.
 export function typeInGap(state, char) {
-    if (char === "|") return state;
     state = deleteSelection(state);
     const g = state.pos.gap;
     const chips = [...state.chips.slice(0, g), makeChip(char), ...state.chips.slice(g)];
     return { chips, pos: { chip: g, offset: char.length } };
-}
-
-// '|' typed with the caret inside a chip (see typeBar). The caret goes on in the
-// next chip; no empty chip is left before it.
-export function typeBarInChip(state) {
-    const i = state.pos.chip;
-    const typed = typeBar(state.chips[i], state.pos.offset);
-    const replace = (...chips) => [...state.chips.slice(0, i), ...chips, ...state.chips.slice(i + 1)];
-    if (!typed.split)
-        return { chips: replace(typed.chip), pos: { chip: i, offset: typed.caret } };
-    const [left, split] = typed.split;
-    if (left.text === "") return state;
-    const { color, ...right } = split; // a new chip: it gets a color of its own
-    return { chips: replace(left, right), pos: { chip: i + 1, offset: 0 } };
 }
 
 // Backspace ("backspace") or Delete ("delete") with the caret in a gap removes

@@ -2,7 +2,7 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { queryPrefix, makeChip, formatQuery, parseQuery, typeBar, pastedText, pasteLimit } from "../../resources/search-query.js";
+import { queryPrefix, makeChip, formatQuery, parseQuery, pastedText, pasteLimit } from "../../resources/search-query.js";
 
 const text = (t, matchCase = true) => makeChip(t, { matchCase });
 const regex = (t, matchCase = true) => makeChip(t, { isRegex: true, matchCase });
@@ -65,24 +65,6 @@ test("parseQuery: a malformed query is not a query", () => {
     ];
     for (const rest of bad)
         assert.equal(parseQuery(`${queryPrefix} ${rest}`), null, rest);
-});
-
-test("typeBar: '|' in a text chip closes it and starts the next one", () => {
-    assert.deepEqual(typeBar(text("abc", false), 3), { split: [text("abc", false), makeChip("")] },
-        "at the end the next chip is a new one");
-    assert.deepEqual(typeBar(text("abcdef", false), 3), { split: [text("abc", false), text("def", false)] },
-        "in the middle the rest keeps the properties of the chip");
-    assert.deepEqual(typeBar(text("abc"), 0), { split: [text(""), text("abc")] });
-});
-
-test("typeBar: '|' right after '\\' replaces it with '|'", () => {
-    assert.deepEqual(typeBar(text("a\\b"), 2), { chip: text("a|b"), caret: 2 });
-    assert.deepEqual(typeBar(text("a\\"), 2), { chip: text("a|"), caret: 2 });
-});
-
-test("typeBar: '|' in a regex chip is a part of the regex", () => {
-    assert.deepEqual(typeBar(regex("ab", false), 1), { chip: regex("a|b", false), caret: 2 });
-    assert.deepEqual(typeBar(regex("a\\"), 2), { chip: regex("a\\|"), caret: 3 }, "an escaped '|' of the regex");
 });
 
 test("pastedText: a short line is pasted as it is", () => {
