@@ -231,9 +231,6 @@ class MainWindow : SciterWindow
         case "reorderTab":
             _session.reorderTab(param!int(0), param!int(1));
             return true;
-        case "onTabClicked":
-            writeln("Tab clicked: ", param!string(0));
-            return true;
         case "loadFibex":
             return true; // FIBEX isn't decoded yet (docs/fibex.md)
 

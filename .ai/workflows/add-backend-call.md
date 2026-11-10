@@ -12,6 +12,8 @@ Background: `.ai/knowledge/architecture.md` (Script ↔ Backend).
    calls the session and answers. No logic in the window.
 4. In `resources/backend.js` add one function for the xcall; JSON results come parsed. Add its
    case to `tests/js/backend.test.mjs`. The script calls the backend only through it.
+   `tests/js/backend-calls.test.mjs` fails while a name is on one side only (a `case` no
+   function of `backend.js` calls, or the reverse): a call removed goes from both.
 
 ## A Change the Backend Tells the Script
 
