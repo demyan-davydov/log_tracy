@@ -430,8 +430,8 @@ final class AppSession
     ///
     /// The chips are those of the search the document found the rows by, not of
     /// a search asked for that hasn't started yet. The same filter the indexing
-    /// thread searches with: its rules are only read, and std.regex keeps the
-    /// state of a search in the matcher of each call, not in the compiled regex.
+    /// thread searches with: its rules are only read, and a regex keeps the
+    /// state of a search out of the filter (utils/text_regex).
     /// @param buffer - where they are written, its length the most of them (a
     /// MatchBuffer for a table row, see maxMatchRanges)
     /// @return the start of `buffer`

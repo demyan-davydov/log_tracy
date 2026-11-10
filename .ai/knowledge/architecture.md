@@ -34,7 +34,9 @@ utils  ←  sciter  ←  ui
 
 - `utils/`: what knows nothing of logs and could move to another project as it is: chunked
   array, mapped file, lock guard, background slot, state machines (`utils/fsm`), event buses
-  (`utils/event_bus/`), parallel scan, single instance, `ui_text`, keys by name (`utils/keys`,
+  (`utils/event_bus/`), parallel scan, single instance, `ui_text`, substrings in any case
+  (`utils/text_search`), regular expressions (`utils/text_regex`, the only module that uses
+  `std.regex`), keys by name (`utils/keys`,
   whatever the system) and their codes of macOS (`utils/mac_keys`), Objective-C calls
   (`utils/objc`).
 - `log_core/`: what doesn't depend on a format (LogMessage, LogFormat, filters, ByteSource,
