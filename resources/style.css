@@ -572,7 +572,8 @@ frameset {
     margin-left: 20dip;
     flow: horizontal-wrap;
     border-spacing: 4dip;
-    overflow-x: hidden; /* Sciter: without it the row grows to its widest chip */
+    /* No overflow: hidden: it would clip the buttons over the first line
+       (.filter-chip-actions). The chips shrink to the row without it */
 }
 
 .filter-set-head {
@@ -590,13 +591,14 @@ frameset {
     vertical-align: middle;
     border-spacing: 3dip;
     width: max-content;
-    max-width: 100%; /* of the row's rest: a long name is cut, the buttons stay in */
+    max-width: 100%; /* of the row's rest: a long name is cut */
     box-sizing: border-box;
     height: 1.6em;
     padding: 0 3dip;
     border: 1dip solid var(--chip-border);
     border-radius: 3dip;
     background: var(--bg-main);
+    position: relative; /* for its .filter-chip-actions */
 }
 
 /* The page is tinted (--page-filters-bg): a hover of its own tint */
@@ -688,13 +690,31 @@ frameset {
     background: var(--tab-close-hover);
 }
 
-/* The buttons of a rule only where the mouse is: the chips stay calm. Hidden,
-   not removed: nothing moves */
-.filter-chip .filter-button {
+/* The buttons of a rule (✎, ×): a tab over the chip, of its width, in its
+   hover color and without a border: a part of the chip, not another one.
+   Only while the mouse is on the chip or the tab (a child of the chip: its
+   :hover holds). Out of the chip's width: the chips stay narrow */
+.filter-chip-actions {
+    position: absolute;
+    left: 0; /* the chip's width and right on it (measured) */
+    right: 0;
+    top: -16dip;
+    width: auto;
+    height: 16dip;
+    flow: horizontal;
+    vertical-align: middle;
+    border-spacing: 4dip;
+    border-radius: 3dip 3dip 0 0;
+    background: var(--page-filters-hover);
+    z-index: 1;
     visibility: hidden;
 }
 
-.filter-chip:hover .filter-button {
+/* Sciter: flexible margins center the buttons in the tab */
+.filter-chip-actions > :first-child { margin-left: *; }
+.filter-chip-actions > :last-child { margin-right: *; }
+
+.filter-chip:hover > .filter-chip-actions {
     visibility: visible;
 }
 

@@ -34,8 +34,9 @@ function setHead(set, s) {
     </div>;
 }
 
-// The chip of a rule: its switch, kind, color, name and buttons. Its set-index
-// and rule-index are read by the handlers. A rule not applied is marked, its
+// The chip of a rule: its switch, kind, color and name; its buttons in a box
+// shown beside it on hover, out of its width. Its set-index and rule-index are
+// read by the handlers. A rule not applied is marked, its
 // error in its tooltip.
 function ruleChip(rule, s, r) {
     const classes = ["filter-chip"];
@@ -46,8 +47,10 @@ function ruleChip(rule, s, r) {
         <input type="checkbox" class="filter-rule-switch" />
         <span class={"filter-swatch " + rule.kind + (rule.color ? "" : " no-color")} title={ruleKindTitles[rule.kind]?.() ?? ""} />
         <span class="filter-name">{rule.name || tr("(no name)")}</span>
-        <span class="filter-button filter-rule-edit" title={tr("Edit this rule (or double-click it)")}>✎</span>
-        <span class="filter-button filter-rule-remove" title={tr("Remove this rule")}>×</span>
+        <span class="filter-chip-actions">
+            <span class="filter-button filter-rule-edit" title={tr("Edit this rule (or double-click it)")}>✎</span>
+            <span class="filter-button filter-rule-remove" title={tr("Remove this rule")}>×</span>
+        </span>
     </div>;
 }
 
@@ -234,19 +237,19 @@ export class FilterPanel {
         });
 
         on("click", ".filter-rule-edit", (evt, button) => {
-            const row = button.parentElement;
+            const row = button.closest(".filter-chip");
             this.editRule(setOf(row), ruleOf(row));
             return true;
         });
 
         on("dblclick", ".filter-chip", (evt, row) => {
-            if (evt.target.tag === "input") return; // the switch
+            if (evt.target.tag === "input" || evt.target.closest(".filter-chip-actions")) return; // the switch, a button
             this.editRule(setOf(row), ruleOf(row));
             return true;
         });
 
         on("click", ".filter-rule-remove", (evt, button) => {
-            const row = button.parentElement;
+            const row = button.closest(".filter-chip");
             this.showResult(backend.removeFilterRule(docId, setOf(row), ruleOf(row)));
             return true;
         });

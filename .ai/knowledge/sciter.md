@@ -178,6 +178,8 @@ agent can't drive it. In scapp a plain
   shadows draws none; a glyph in a small box sits ~1px low. For a mark on any color draw a
   vector icon: `foreground-image: icon(viewbox;d-path)` with `fill` and `stroke` (the rule
   swatch, `.filter-swatch` in `style.css`).
+- `overflow: hidden` clips at the content box, not the padding box: a padding doesn't make
+  room for an absolute child sticking out (the buttons of a filter chip).
 - To diagnose a layout bug, compare `el.state.box("xywh","border","parent")` between a working
   and a broken element instead of guessing.
 

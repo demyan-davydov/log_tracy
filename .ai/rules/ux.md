@@ -213,7 +213,8 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     No Name row (the tab shows it). Every value that carries information is selectable.
 43. **Filters as chips.** The Filters page shows a block per filter set: its head (switch,
     name, buttons) on its own line, its rules as chips wrapping under it, indented (switch,
-    color with the kind in it (+, −, ◆), name; edit and remove on hover). A rule not applied has a red border, and a
-    red line under its set's chips says why (rule name: error). New Filter and Load Filter
+    color with the kind in it (+, −, ◆), name). Edit and remove of a rule are in a tab shown
+    over its chip on hover (its width, its hover color, no border), out of the chip's width. A rule not applied has a red border,
+    and a red line under its set's chips says why (rule name: error). New Filter and Load Filter
     are in the page's toolbar. In a narrow window the chips shrink to the row, a long name
     cut; a switch toggled keeps the focus.
