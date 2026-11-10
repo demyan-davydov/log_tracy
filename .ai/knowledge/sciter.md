@@ -197,6 +197,8 @@ agent can't drive it. In scapp a plain
 - 6.0.5.5: a far jump (scrollbar drag) asks `where=±1` with a far `start` and drops the old
   rows itself (6.0.3.12 asks `where=0`). Dragging the thumb to an end of a list of ~85M+ rows
   segfaults inside Sciter (`vlist_ctl::move_buffer_to`), reproduced with the SDK sample alone.
+- The `outline` of a row of a scrolled virtual-list is painted `scrollTop` lower than the row
+  (6.0.5.5), a frame over another row; frame a row with `box-shadow: inset ...` instead.
 - Text selection: `behavior: virtual-list` blocks drag selection of text whatever carries
   `selectable`; only `selectable` per cell works, inside one cell. Selection over a
   virtual-list is ours, in JS (`resources/text-selection.js`).

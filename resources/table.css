@@ -301,9 +301,10 @@
     color: color(highlight-text);
 }
 
+/* box-shadow, not outline: Sciter paints the outline of a row of a scrolled
+   virtual-list scrollTop lower (.ai/knowledge/sciter.md) */
 .log-table>tbody:focus>tr[row-current="true"] {
-    outline: 1dip solid color(highlight-focus);
-    outline-offset: -1dip;
+    box-shadow: inset 0 0 0 1dip color(highlight-focus);
 }
 
 /* A notice by an element (the clipboard limit over the table, a refused
