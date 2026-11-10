@@ -28,6 +28,7 @@ Applies to every fix and feature, D and script alike.
   `ui/filter_commands`, the state machines) and Sciter-free script modules under `tests/js`.
 - Keep tests deterministic: control clocks, randomness and external effects.
 - DLT records for tests: `formats/dlt/testing_utils`. Tests never depend on `test_data/`: its
-  logs are local, not in the repository.
+  logs are local, not in the repository. A whole log for a manual check or a benchmark:
+  `node scripts/build.mjs gen-log` (same file for the same options and seed).
 - Performance claims are measured, not guessed (`scripts/bench_rows.d`,
   `scripts/bench_index.d`, results in `docs/performance.md`).

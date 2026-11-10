@@ -89,6 +89,7 @@ node scripts/build.mjs --arch x64         # another architecture: x64 or arm64
 node scripts/build.mjs test               # the D unittests and the JS tests
 node scripts/build.mjs dist               # a distribution
 node scripts/build.mjs check-windows      # compiles for Windows x64 from macOS or Linux
+node scripts/build.mjs gen-log <file> ... # a test log (see "A test log" below)
 node scripts/build.mjs --help             # the commands and options
 ```
 
@@ -168,6 +169,28 @@ modules put on `globalThis`, `document`, `Window.this` (`$` of the modules is no
 `document.$(...)`). `shot` needs no permission of the system: Sciter renders the window
 itself, without the title bar of the system. `--help` lists the rest. The channel is a line of
 JSON per request on a TCP connection (`source/ui/debug_protocol.d`).
+
+### A test log
+
+The real logs are not in the repository. `gen-log` writes one of a format, size and content,
+the same file byte for byte for the same options and seed on every machine:
+
+```sh
+node scripts/build.mjs gen-log build/big.dlt --format dlt --size 1G
+node scripts/build.mjs gen-log build/v2.dlt --format dlt-v2 --count 100000 --non-verbose 10% --corrupt 0.1%
+node scripts/build.mjs gen-log build/text.log --format text --count 50000 --cyrillic 30% --invalid-utf8 1%
+node scripts/build.mjs gen-log --help
+```
+
+The formats are `dlt` (protocol and storage header of version 1), `dlt-v2` and `text` (plain
+text); the other text formats come later. The options set how many ECUs, apps and contexts there are,
+the weights of the levels, the length of the texts, the shares of multiline texts, Cyrillic
+words, bytes that are not UTF-8 and non-verbose messages, and records broken on purpose: junk
+between records, a broken header or length, a time going back, a line too long for a record,
+a cut last record. The generator (`source/formats/generator/`) is built into
+`build/tools/gen_log` by every run, optimized: about 13.5 seconds for a gigabyte of DLT on an M1 Pro.
+It is not in the program: its modules are compiled only for the unittests and with
+`-d-version=LogGenerator`.
 
 ### Checking Windows from macOS or Linux
 

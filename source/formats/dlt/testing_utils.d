@@ -1,9 +1,15 @@
 //! Builders of DLT records for the unittests of the DLT format and of the
-//! modules that need DLT data: a record of version 1 or 2 built field by
-//! field, and a test file of dlt-viewer.
+//! modules that need DLT data, and for the log generator (formats/generator):
+//! a record of version 1 or 2 built field by field, and a test file of
+//! dlt-viewer. Not in the program: only in unittests and with -d-version=LogGenerator.
 module formats.dlt.testing_utils;
 
-version (unittest):
+version (unittest)
+    version = DltBuilders;
+else version (LogGenerator)
+    version = DltBuilders;
+
+version (DltBuilders):
 
 import formats.dlt.protocol;
 import formats.dlt.header_v2 : ContentInfo, HeaderTypeV2, baseHeaderV2Size;
