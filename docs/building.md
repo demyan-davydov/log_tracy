@@ -249,8 +249,8 @@ that doesn't compile on Windows.
 ## Environment variables for development
 
 The program reads a few environment variables, for trying and checking things during
-development; users don't need them. They are read at start, in the constructor of
-`MainWindow` (`source/ui/main_window.d`); `SCITER_DEBUG_PORT` in `source/ui/debug_channel.d`.
+development; users don't need them. They are read at start, in `newSession` of
+`source/app.d`; `SCITER_DEBUG_PORT` in `source/ui/debug_channel.d`.
 
 | Variable | Values | What it does |
 |---|---|---|

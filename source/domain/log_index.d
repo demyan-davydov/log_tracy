@@ -1,3 +1,6 @@
+//! The indexes of a log and their building in the background: the offset
+//! index of its records, the filter index of the main view and the search
+//! index, read by the UI thread while the indexing thread grows them.
 module domain.log_index;
 
 import utils.ui_text : uiText, uiTextOf, UiText, UiTextException;
@@ -20,15 +23,10 @@ import utils.event_bus.event_bus_interface : SignalProducer;
 import utils.lock_guard;
 
 import std.typecons;
-import std.parallelism;
 
 import core.atomic : atomicLoad, atomicStore;
 import core.stdc.stdint : uint16_t, uint32_t;
 import core.sync.mutex : Mutex;
-
-//import std.parallelism : Task;
-
-// todo: better naming
 
 alias Filter = LogFilter!wchar;
 alias Message = LogMessage!wchar;
@@ -52,13 +50,6 @@ struct LogIndex
     private FilterIndex _filterIndex; // indecies of messages that match the filter
     private SearchIndex _searchIndex; // indecies of messages that match the search
     private bool _viewIsFiltered = false; // filtered view is enabled
-
-    //private Anchors _anchors; // anchors
-    //private Filter _filter; // filter for filtered view
-    //private Filter _searchFilter; // filter for search view
-
-    //private shared bool _cancelFlag = false; // cancel current operation
-    //private shared float _progress = 0.0f; // building index
 
     enum bunchSize = 32; // number of messages to process in one bunch
 
@@ -308,16 +299,8 @@ struct LogIndex
         return _format.decode(msg, _format.recordAt(data, offset));
     }
 
-    void enableFilter(bool enable)
-    {
-        synchronized (cast(Mutex)_mutex)
-        {
-            //if (_filterIndex.isReady)
-            _viewIsFiltered = enable;
-        }
-    }
-
-    //! @brief build file index, also rebuild filter and search indexes
+    //! @brief Builds the offset index; the filter and search indexes are
+    //! cleared, they are built over it afterwards
     //! @param progress - progress reporter, also gives access to the cancel flag
     //! @return true if the build process was completed successfully, false otherwise
     private bool buildOffsetIndex(ref ProgressReporter progress)
@@ -517,9 +500,7 @@ struct LogIndex
         return true;
     }
 
-    /// 
-    /// Views utils
-    ///
+    // ── The main view ──
 
     size_t mainViewItemsCount() nothrow @nogc
     {
@@ -591,15 +572,7 @@ struct LogIndex
         return true;
     }
 
-    bool isMainViewFilterEnabled() const
-    {
-        synchronized (cast(Mutex)_mutex)
-        {
-            return _viewIsFiltered;
-        }
-    }
-
-    // search view
+    // ── The search view ──
 
     size_t searchViewItemsCount() nothrow @nogc
     {
@@ -632,9 +605,6 @@ struct LogIndex
         return true;
     }
 
-    /// 
-    /// Views
-    ///
 }
 
 version (unittest)

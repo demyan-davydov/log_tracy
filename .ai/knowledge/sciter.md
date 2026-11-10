@@ -18,6 +18,21 @@ agent can't drive it. In scapp a plain
   `SC_POSTED_NOTIFICATION` to the window's host callback on its thread and wakes the event
   loop of `SCITER_APP_LOOP_ITERATION` (6.0.5.5): the answer comes at once, no idle tick needed.
   `postToWindowThread` (`sciter/window`) is built on it.
+- The document events of the indexing thread don't wake the loop (`EventBusAsync.publish`
+  only queues them): they reach the window because `runIteration()` returns by itself, with
+  no input, at least every 50-100 ms. Measured on macOS (6.0.5.5, 2026-11-10): a search of
+  a 1 GB log with nobody touching the window got its progress at the pace of the work (gaps
+  of 52-686 ms) and its end 80 ms after the last progress, window in the background.
+  Sciter doesn't promise it, and Windows and Linux are not checked: if events stall there
+  until the mouse moves, wake the loop on publish (`postToWindowThread`).
+- The script runs with no runtime features (`SCITER_SET_SCRIPT_RUNTIME_FEATURES` 0, `app.d`).
+  Not gated by them (6.0.5.5, macOS): modules of `this://app`, `@env` (`language()`,
+  `PLATFORM`), `Clipboard`, `Window.screens` and `Window.screenBox`, `Window.this.modal` (the
+  dialogs of Settings and of a rule), `selectFile` opening its dialog, `SciterEval`. The path
+  `selectFile` gives once a file is chosen, Windows and Linux are not checked. While a native
+  file dialog is open the window's thread runs its loop: a `postToWindowThread` task waits for
+  the dialog to close (the debug channel times out).
+- `import()` doesn't work in code of `SciterEval` ("no function filename for import()").
 - `SciterEval` runs in the global scope of the window: the names of `<script type="module">`
   are not there, only what the modules put on `globalThis`. An `ArrayBuffer` comes back as
   bytes (`T_BYTES`).

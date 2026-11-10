@@ -16,9 +16,17 @@ behaviour: `.ai/knowledge/sciter.md`.
 
 ## Document Panels
 
-- Every open document has its own panel, `DocumentPane` (`resources/document-pane.js`): the
-  filters of the sidebar, both tables, the search editor, the bottom panel's pages (Search,
-  File Info), and the state behind them. Only the panel of the active tab is shown, the others
+- Every open document has its own panel, `DocumentPane` (`resources/document-pane.js`): it
+  puts the parts together and keeps both tables (their views, columns, look, selection,
+  anchors), the bottom panel's pages (Search, File Info), the status views and the lost file.
+  Its parts: the filters of the sidebar, `FilterPanel` (`filter-panel.js`, on `.left-panel`),
+  and the search bar, `SearchBar` (`search-bar.js`, on `.search-bar`). A part binds the events
+  of its own element and asks the panel through a `host` of callbacks; the skeleton of the whole
+  panel, the elements of the parts too, is built by `renderPane` of `document-pane.js`. A new
+  piece of the panel is a part of its own, not more members of `DocumentPane`; its decisions
+  that can be tested go into a pure module (`pane-commands.js`, `pane-state.js`).
+  `status-view.js` is not a part: the texts of the statuses and the filling of a status view,
+  whose buttons the panel binds. Only the panel of the active tab is shown, the others
   are `display: none` and keep their rows, scroll, selection and draft as they are; a hidden
   panel renders what changed when it is shown.
 - The tab strip (rendering, pressing, dragging, tooltips) is `resources/tabs.js`; what a tab
@@ -87,8 +95,8 @@ behaviour: `.ai/knowledge/sciter.md`.
 
 - The window, its documents, the start screen: `script.js`, `window-state.js`, `new-tab.js`
 - Tabs: `tabs.js`, `drag-strip.js`, `drag-order.js`
-- One document's panel: `document-pane.js`, `pane-state.js`, `pane-commands.js`,
-  `panel-sizes.js`
+- One document's panel: `document-pane.js`, `filter-panel.js`, `search-bar.js`,
+  `status-view.js`, `pane-state.js`, `pane-commands.js`, `panel-sizes.js`
 - The log table: `virtual-dlt-view.js`, `cell-format.js`, `table.css`, `row-selection.js`,
   `text-selection.js`, `list-navigation.js`, `rule-colors.js`
 - Search: `search-editor.js`, `search-query.js`, `search-editing.js`, `edit-history.js`,

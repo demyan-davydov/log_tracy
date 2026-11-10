@@ -136,7 +136,6 @@
     "This log has no columns to filter by": "В этом журнале нет колонок для фильтрации",
     "Type": "Тип",
     "Waiting for the log view...": "Ожидание журнала...",
-    "XML Files": "Файлы XML",
     "Yesterday, {time}": "Вчера, {time}",
     "a condition is an object": "условие должно быть объектом",
     "a rule is an object": "правило должно быть объектом",
@@ -225,6 +224,7 @@
     "Details / Search Results": "Подробности / результаты поиска",
     "Load FIBEX": "Загрузить FIBEX",
     "Log table font size": "Размер шрифта таблицы журнала",
-    "Settings...": "Настройки..."
+    "Settings...": "Настройки...",
+    "XML Files": "Файлы XML"
   }
 }

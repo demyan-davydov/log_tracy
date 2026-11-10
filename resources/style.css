@@ -458,7 +458,7 @@ frameset {
     font-weight: 600;
 }
 
-/* ---- Filter sets of a document: DocumentPane.showFilters() in document-pane.js ---- */
+/* ---- Filter sets of a document: FilterPanel.render() in filter-panel.js ---- */
 
 .filter-sets {
     flow: vertical;

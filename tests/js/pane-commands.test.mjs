@@ -4,7 +4,8 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { noSearch, runSearch, searchPending, editRule, anchorRefusalText } from "../../resources/pane-commands.js";
+import { noSearch, runSearch, searchPending, editRule, anchorRefusalText, filterFilesToLoad, filterExportDialog }
+    from "../../resources/pane-commands.js";
 import { setCatalog } from "../../resources/i18n/i18n.js";
 
 const chips = [{ text: "error", isRegex: false, matchCase: false }];
@@ -80,4 +81,30 @@ test("an anchor refused at the limit says the limit, in the plural form of its n
 
 test("an anchor refused while an operation runs says so", () => {
     assert.equal(anchorRefusalText({ refused: "busy", max: 16 }), "Not while searching or filtering");
+});
+
+const native = ["DLT Explorer Filters", "*.logfilter"];
+const dlt = ["dlt-viewer Filters", "*.dlf"];
+const any = ["All Files", "*.*"];
+
+test("a filter is loaded from a file of DLT Explorer, or from a .dlf where the log takes one", () => {
+    assert.deepEqual(filterFilesToLoad(false), [native, any]);
+    assert.deepEqual(filterFilesToLoad(true), [["Filter Files", "*.logfilter;*.dlf"], native, dlt, any]);
+});
+
+test("a set is exported to a file of DLT Explorer, named after its last file without its extension", () => {
+    assert.deepEqual(filterExportDialog(false, ""),
+        { caption: "Export Filter", extension: "logfilter", types: [native, any] });
+    assert.deepEqual(filterExportDialog(false, "Errors.dlt.logfilter"),
+        { caption: "Export Filter", extension: "logfilter", types: [native, any], path: "Errors.dlt" });
+});
+
+test("a set from a .dlf is offered as a .dlf first, where the log takes one", () => {
+    assert.deepEqual(filterExportDialog(true, "errors.DLF"),
+        { caption: "Export Filter", extension: "dlf", types: [dlt, native, any], path: "errors" },
+        "the dialog adds the extension itself: errors.dlf.dlf otherwise");
+    assert.deepEqual(filterExportDialog(true, "errors.logfilter").types, [native, dlt, any]);
+    assert.deepEqual(filterExportDialog(false, "errors.dlf"),
+        { caption: "Export Filter", extension: "logfilter", types: [native, any], path: "errors" },
+        "a log that can't take a .dlf exports to a file of DLT Explorer");
 });

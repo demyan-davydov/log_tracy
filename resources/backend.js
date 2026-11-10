@@ -74,7 +74,6 @@ export const workspaceInfo = () => parsed(xcall("getWorkspaceInfo"), null);
 export const switchTab = docId => xcall("switchTab", docId);
 export const closeTab = docId => xcall("closeTab", docId);
 export const reorderTab = (docId, index) => xcall("reorderTab", docId, index);
-export const loadFibex = path => xcall("loadFibex", path);
 
 // ── The views ────────────────────────────────────────────────────────────────
 

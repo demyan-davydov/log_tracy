@@ -1,7 +1,8 @@
-// The flows of the commands of a document panel (document-pane.js), free of
+// The flows of the commands of a document panel (document-pane.js and its parts), free of
 // Sciter: what the backend and the dialogs are asked comes in as functions.
 // Tests: tests/js/pane-commands.test.mjs.
 import { tr, trn } from "./i18n/i18n.js";
+import { allFiles } from "./file-types.js";
 
 // ── Search ───────────────────────────────────────────────────────────────────
 // The query is committed only by Enter or the Search button; editing it doesn't
@@ -44,6 +45,32 @@ export function editRule(values, open, apply) {
         if (!error) return true;
         values = result;
     }
+}
+
+// ── Filter files ─────────────────────────────────────────────────────────────
+// A filter file of DLT Explorer (.logfilter) for any log, a .dlf of dlt-viewer
+// for a log that can take one (canDlf of the filters of the document).
+
+// The types of files the dialog to load a filter offers: [[name, patterns], ...]
+export function filterFilesToLoad(canDlf) {
+    const native = [tr("DLT Explorer Filters"), "*.logfilter"];
+    return canDlf
+        ? [[tr("Filter Files"), "*.logfilter;*.dlf"], native, [tr("dlt-viewer Filters"), "*.dlf"], allFiles()]
+        : [native, allFiles()];
+}
+
+// The dialog to export a set whose file (loaded from or exported to last) is
+// `fileName` ("" if none): { caption, extension, types, path (absent: none) }
+export function filterExportDialog(canDlf, fileName) {
+    // The kind of its file is offered first; a .dlf only where the log takes one
+    const dlf = canDlf && /\.dlf$/i.test(fileName);
+    const native = [tr("DLT Explorer Filters"), "*.logfilter"];
+    const dlt = [tr("dlt-viewer Filters"), "*.dlf"];
+    const kinds = !canDlf ? [native] : dlf ? [dlt, native] : [native, dlt];
+    const dialog = { caption: tr("Export Filter"), extension: dlf ? "dlf" : "logfilter", types: [...kinds, allFiles()] };
+    // Without its extension: the dialog adds it itself (name.dlf.dlf otherwise)
+    if (fileName) dialog.path = fileName.replace(/\.(dlf|logfilter)$/i, "");
+    return dialog;
 }
 
 // ── Anchors ──────────────────────────────────────────────────────────────────

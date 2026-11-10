@@ -1,3 +1,6 @@
+//! LogDocument: a log file opened in a format (chosen before or detected), its
+//! main and search views over its indexes, the filter and search requests
+//! queued for the background slot, and its anchors.
 module domain.log_document;
 
 import domain.document;
@@ -18,9 +21,6 @@ import utils.lock_guard;
 import utils.event_bus.event_bus_async : EventBusAsync;
 import utils.event_bus.event_bus_interface : SignalConsumer;
 
-import std.parallelism : Task, TaskPool;
-import std.typecons : scoped, Unique, Proxy;
-
 //! A log document: a log of any format with its main and search views
 class LogDocument : Document
 {
@@ -31,7 +31,6 @@ class LogDocument : Document
     private LogFilter!wchar _searchFilter;
     private Anchors _anchors;
 
-    private string _sourcePath;
     private FormatChoice _formatChoice;
 
     private EventBusAsync _events; // must outlive _index: its worker publishes here
@@ -74,7 +73,7 @@ class LogDocument : Document
         }
         if (format is null)
             format = detectFormat(path, source.data, choice);
-        this(path, source, format);
+        this(source, format);
         _formatChoice = choice;
     }
 
@@ -83,9 +82,8 @@ class LogDocument : Document
         return _formatChoice;
     }
 
-    //! @param path - shown to the user
     //! @param source - owned by the document from now on
-    this(string path, ByteSource source, LogFormat format)
+    this(ByteSource source, LogFormat format)
     {
         _events = new EventBusAsync();
         // Subscribed before anyone else: the document is up to date before
@@ -100,7 +98,6 @@ class LogDocument : Document
         });
         _index = LogIndex(source, format, _events); // starts BuildOffsetIndex
         _running = Operation.BuildOffsetIndex;
-        _sourcePath = path;
         _mainView = new MainDocumentView();
         _searchView = new SearchDocumentView();
     }
@@ -153,11 +150,6 @@ class LogDocument : Document
     {
         return _index.byteSize;
     }
-
-    /*override string sourcePath() const
-    {
-        return _sourcePath;
-    }*/
 
     //! @brief Rebuilds the main view with `filter`. If an operation is running,
     //! the request waits for it; a running filter or search is cancelled
@@ -307,26 +299,6 @@ class LogDocument : Document
         {
             return this.outer._index.mainViewPositionOf(realIndex, position);
         }
-
-        override void enableFilter(bool enable)
-        {
-            this.outer._index.enableFilter(enable);
-        }
-
-        override bool isFilterEnabled() const
-        {
-            return this.outer._index.isMainViewFilterEnabled();
-        }
-
-        override void applyFilter(LogFilter!wchar filter)
-        {
-            this.outer.applyViewFilter(filter);
-        }
-
-        override void resetFilter()
-        {
-            this.outer.applyViewFilter(null);
-        }
     }
 
     private class SearchDocumentView : DocumentView
@@ -348,26 +320,6 @@ class LogDocument : Document
         override bool positionOf(size_t realIndex, out size_t position)
         {
             return this.outer._index.searchViewPositionOf(realIndex, position);
-        }
-
-        override void enableFilter(bool enable)
-        {
-            this.outer._index.enableFilter(enable);
-        }
-
-        override bool isFilterEnabled() const
-        {
-            return true;
-        }
-
-        override void applyFilter(LogFilter!wchar filter)
-        {
-            this.outer.applySearchFilter(filter);
-        }
-
-        override void resetFilter()
-        {
-            this.outer.applySearchFilter(null);
         }
     }
 }
@@ -689,7 +641,7 @@ unittest
     assert(views.mainReady && doc.mainView.itemsCount == messageCount);
 }
 
-@("LogDocument: resetFilter (null filter) clears the result instead of crashing")
+@("LogDocument: a null filter clears the result instead of crashing")
 unittest
 {
     import std.file : remove;
@@ -711,18 +663,21 @@ unittest
     assert(doc.searchView.itemsCount == messageCount);
 
     // Before the fix the worker called matches() on a null filter and crashed
-    doc.searchView.resetFilter();
+    doc.applySearchFilter(null);
     dispatchUntil(doc, () => finished.length == 3);
     assert(finished[2].operation == Document.Operation.BuildSearchIndex);
     assert(finished[2].result == OperationFinished.Result.Completed);
     assert(views.searchReady && doc.searchView.itemsCount == 0, "search result must be empty");
 
-    doc.mainView.resetFilter();
+    doc.applyViewFilter(ecuFilter("ECU2")); // hides every message
     dispatchUntil(doc, () => finished.length == 4);
-    assert(finished[3].operation == Document.Operation.BuildFilterIndex);
-    assert(finished[3].result == OperationFinished.Result.Completed);
+    assert(doc.mainView.itemsCount == 0);
+
+    doc.applyViewFilter(null);
+    dispatchUntil(doc, () => finished.length == 5);
+    assert(finished[4].operation == Document.Operation.BuildFilterIndex);
+    assert(finished[4].result == OperationFinished.Result.Completed);
     assert(views.mainReady);
-    assert(!doc.mainView.isFilterEnabled, "reset filter shows the unfiltered view");
     assert(doc.mainView.itemsCount == messageCount, "all messages are visible");
 }
 
@@ -745,21 +700,22 @@ unittest
 
     DocumentItem item;
 
-    doc.applyViewFilter(ecuFilter("ECU2"));
-    dispatchUntil(doc, () => finished == 2);
-    assert(views.mainReady && doc.mainView.isFilterEnabled, "a built filter is applied to the view");
-    assert(doc.mainView.itemsCount == 0, "no message has ECU2");
-    assert(!doc.mainView.fetchItem(0, item));
-
     doc.applyViewFilter(ecuFilter("ECU1"));
-    dispatchUntil(doc, () => finished == 3);
+    dispatchUntil(doc, () => finished == 2);
     assert(doc.mainView.itemsCount == messageCount, "every message has ECU1");
     assert(doc.mainView.fetchItem(messageCount - 1, item) && item.realIndex == messageCount - 1);
     assert(!doc.mainView.fetchItem(messageCount, item), "position past the filtered view");
 
-    doc.mainView.resetFilter();
+    doc.applyViewFilter(ecuFilter("ECU2"));
+    dispatchUntil(doc, () => finished == 3);
+    assert(views.mainReady, "a built filter is applied to the view");
+    assert(doc.mainView.itemsCount == 0, "no message has ECU2");
+    assert(!doc.mainView.fetchItem(0, item));
+
+    // From a view that shows nothing: the reset shows every message again
+    doc.applyViewFilter(null);
     dispatchUntil(doc, () => finished == 4);
-    assert(!doc.mainView.isFilterEnabled && doc.mainView.itemsCount == messageCount);
+    assert(doc.mainView.itemsCount == messageCount, "the unfiltered view");
 }
 
 @("LogDocument: an ECU ID padded with spaces is found by its trimmed value")
@@ -894,7 +850,7 @@ unittest
     assert(doc.mainView.itemsCount == 0 && doc.searchView.itemsCount == 0);
 
     // A message that matches by itself stays when its anchor is removed
-    runAndWait(doc, () => doc.mainView.resetFilter());
+    runAndWait(doc, () => doc.applyViewFilter(null));
     runAndWait(doc, () => doc.applySearchFilter(new ConstFilter(true)));
     assert(doc.setAnchor(3, true) && doc.setAnchor(3, false));
     assert(doc.searchView.itemsCount == messageCount);
@@ -939,7 +895,7 @@ unittest
         "the search must be repeated after the filter");
     assert(views.searchReady && doc.searchView.itemsCount == 0, "the search runs over the filtered view");
 
-    runAndWait(doc, () => doc.mainView.resetFilter());
+    runAndWait(doc, () => doc.applyViewFilter(null));
     assert(views.searchReady && doc.searchView.itemsCount == messageCount,
         "the search follows the reset of the filter as well");
 }
@@ -959,7 +915,7 @@ unittest
 
     auto started = recordStarted(doc);
     doc.applySearchFilter(new ConstFilter(true)); // starts right away
-    runAndWait(doc, () => doc.mainView.resetFilter()); // cancels it
+    runAndWait(doc, () => doc.applyViewFilter(null)); // cancels it
 
     // Usually the first search is Cancelled; on a very fast run it completes
     // first. Either way it is repeated after the filter.
@@ -985,7 +941,7 @@ unittest
     assert(views.search == Views.State.NotReady, "the search must be cancelled");
 
     auto started = recordStarted(doc);
-    runAndWait(doc, () => doc.mainView.resetFilter());
+    runAndWait(doc, () => doc.applyViewFilter(null));
     assert(started.operations == [Document.Operation.BuildFilterIndex], "the user cancelled the search");
 }
 
@@ -1347,7 +1303,7 @@ unittest
     assert(realIndexes(doc.mainView) == [0, 2, 4, 5, 6, 8, 10, 12, 14, 16, 18]);
     assert(foundIn(doc.mainView) == [false, false, false, true, false, false, false, false, false, false, false]);
 
-    runAndWait(doc, () => doc.searchView.resetFilter());
+    runAndWait(doc, () => doc.applySearchFilter(null));
     assert(!foundIn(doc.mainView).any && !foundIn(doc.searchView).any, "the search is cleared");
 }
 
@@ -1395,7 +1351,7 @@ unittest
     assert(doc.mainView.fetchItem(9, item) && !item.found, "the cancelled search found nothing");
 
     // A new filter doesn't repeat the cancelled search: the results list the anchor only
-    runAndWait(doc, () => doc.mainView.resetFilter());
+    runAndWait(doc, () => doc.applyViewFilter(null));
     assert(realIndexes(doc.searchView) == [7]);
     assert(doc.searchView.fetchItem(0, item) && item.anchored && !item.found);
     assert(doc.mainView.fetchItem(7, item) && item.anchored && !item.found);
