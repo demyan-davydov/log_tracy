@@ -211,8 +211,8 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     open; the dot grows in and out, the tab keeps its width.
 42. **File Info.** Path, Size (physical size with the record count next to it), Format (last).
     No Name row (the tab shows it). Every value that carries information is selectable.
-43. **Filters as chips.** The Filters page shows a row per filter set: its head (switch,
-    name, buttons) in the first column, its rules as chips wrapping in the second (switch,
+43. **Filters as chips.** The Filters page shows a block per filter set: its head (switch,
+    name, buttons) on its own line, its rules as chips wrapping under it, indented (switch,
     kind, color, name; edit and remove on hover). A rule not applied has a red border, and a
     red line under its set's chips says why (rule name: error). New Filter and Load Filter
     are in the page's toolbar. In a narrow window the chips shrink to the row, a long name

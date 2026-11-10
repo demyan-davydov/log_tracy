@@ -547,19 +547,29 @@ frameset {
     font-size: 0.9em;
 }
 
-/* A row per set: its head, then its rules as chips wrapping in the rest */
+/* A block per set: its head, then its rules as chips wrapping under it,
+   indented */
 .filter-set {
-    flow: horizontal;
-    padding: 2pt 0;
+    flow: vertical;
+    border-spacing: 2pt;
+    padding: 3pt 0;
 }
 
+/* As wide as its name and buttons: they stay together; a name longer than
+   the page is cut */
 .filter-set > .filter-set-head {
-    width: 12em; /* one for all the sets: the chips line up */
-    margin: 0 8pt * 0; /* Sciter: the flexible bottom margin keeps it at the top of the row */
+    width: max-content;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.filter-set-head .filter-name {
+    max-width: max-content;
 }
 
 .filter-chips {
     width: *;
+    margin-left: 20dip;
     flow: horizontal-wrap;
     border-spacing: 4dip;
     overflow-x: hidden; /* Sciter: without it the row grows to its widest chip */
@@ -601,7 +611,7 @@ frameset {
 
 /* Why a rule isn't applied: under the chips of its set, across the row */
 .filter-note {
-    padding: 0 0 2pt 4dip;
+    padding: 0 0 2pt 20dip; /* under the chips */
     font-size: 0.85em;
     color: var(--log-error);
 }

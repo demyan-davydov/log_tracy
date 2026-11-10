@@ -52,10 +52,9 @@ function ruleChip(rule, s, r) {
     </div>;
 }
 
-// A row per set: its head (of one width for all, so they line up), then its
-// rules as chips wrapping in the rest of the row; under it a line per rule not
-// applied saying why. Not a grid: the column of a grid grows to its widest
-// chip, a row's rest shrinks with the page (no overflow in a narrow window).
+// A block per set: its head, then its rules as chips wrapping under it; after
+// it a line per rule not applied saying why. The chips shrink with the page
+// (no overflow in a narrow window).
 // The switches get their state here: the markup can't set it.
 function renderSets(panel, sets) {
     sets.forEach((set, s) => {
