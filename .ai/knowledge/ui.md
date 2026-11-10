@@ -18,11 +18,15 @@ behaviour: `.ai/knowledge/sciter.md`.
 
 - Every open document has its own panel, `DocumentPane` (`resources/document-pane.js`): it
   puts the parts together and keeps both tables (their views, columns, look, selection,
-  anchors), the bottom panel's pages (Search, File Info) and the lost file. Its parts: the
-  filters of the sidebar, `FilterPanel` (`filter-panel.js`), the search bar, `SearchBar`
-  (`search-bar.js`), the texts of the status views over the tables (`status-view.js`). Each
-  part binds the events of its own element and asks the panel through a `host` of callbacks;
-  a new piece of the panel is a part of its own, not more members of `DocumentPane`. Only the panel of the active tab is shown, the others
+  anchors), the bottom panel's pages (Search, File Info), the status views and the lost file.
+  Its parts: the filters of the sidebar, `FilterPanel` (`filter-panel.js`, on `.left-panel`),
+  and the search bar, `SearchBar` (`search-bar.js`, on `.search-bar`). A part binds the events
+  of its own element and asks the panel through a `host` of callbacks; the skeleton of the whole
+  panel, the elements of the parts too, is built by `renderPane` of `document-pane.js`. A new
+  piece of the panel is a part of its own, not more members of `DocumentPane`; its decisions
+  that can be tested go into a pure module (`pane-commands.js`, `pane-state.js`).
+  `status-view.js` is not a part: the texts of the statuses and the filling of a status view,
+  whose buttons the panel binds. Only the panel of the active tab is shown, the others
   are `display: none` and keep their rows, scroll, selection and draft as they are; a hidden
   panel renders what changed when it is shown.
 - The tab strip (rendering, pressing, dragging, tooltips) is `resources/tabs.js`; what a tab

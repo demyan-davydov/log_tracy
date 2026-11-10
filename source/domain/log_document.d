@@ -21,7 +21,6 @@ import utils.lock_guard;
 import utils.event_bus.event_bus_async : EventBusAsync;
 import utils.event_bus.event_bus_interface : SignalConsumer;
 
-
 //! A log document: a log of any format with its main and search views
 class LogDocument : Document
 {

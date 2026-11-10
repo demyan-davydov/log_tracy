@@ -7,10 +7,10 @@
 
 import * as backend from "backend.js";
 import * as platform from "platform.js";
-import { editRule } from "pane-commands.js";
+import { editRule, filterFilesToLoad, filterExportDialog } from "pane-commands.js";
 import { ruleColors } from "rule-colors.js";
 import { currentCatalog, tr } from "i18n/i18n.js";
-import { fileFilter, allFiles } from "file-types.js";
+import { fileFilter } from "file-types.js";
 
 const ruleKindMarks = { include: "+", exclude: "−", marker: "◆" };
 const ruleKindTitles = {
@@ -144,11 +144,7 @@ export class FilterPanel {
         // Filter sets are only appended; each one has its remove button. A filter
         // file of DLT Explorer for any log, a .dlf of dlt-viewer for a DLT one.
         on("click", ".btn-dlf", () => {
-            const native = [tr("DLT Explorer Filters"), "*.logfilter"];
-            const types = this.filters.canDlf
-                ? [[tr("Filter Files"), "*.logfilter;*.dlf"], native, [tr("dlt-viewer Filters"), "*.dlf"], allFiles()]
-                : [native, allFiles()];
-            const fn = platform.chooseFileToOpen(fileFilter(types));
+            const fn = platform.chooseFileToOpen(fileFilter(filterFilesToLoad(this.filters.canDlf)));
             if (fn) this.showResult(backend.loadFilterFile(docId, fn));
         });
 
@@ -171,22 +167,10 @@ export class FilterPanel {
         // of DLT Explorer or (DLT logs) to a .dlf for dlt-viewer
         on("click", ".filter-export", (evt, button) => {
             const set = setOf(button.parentElement);
-            const canDlf = this.filters.canDlf;
             // Offered the file the set was loaded from or exported to last, or
-            // <name>.<format>.logfilter; its kind is offered first
-            const fileName = this.filters.sets[set]?.fileName || "";
-            const dlf = canDlf && /\.dlf$/i.test(fileName);
-            const native = [tr("DLT Explorer Filters"), "*.logfilter"];
-            const dlt = [tr("dlt-viewer Filters"), "*.dlf"];
-            const kinds = !canDlf ? [native] : dlf ? [dlt, native] : [native, dlt];
-            const params = {
-                caption: tr("Export Filter"),
-                extension: dlf ? "dlf" : "logfilter",
-                filter: fileFilter([...kinds, allFiles()])
-            };
-            // Without its extension: the dialog adds it itself (name.dlf.dlf otherwise)
-            if (fileName) params.path = fileName.replace(/\.(dlf|logfilter)$/i, "");
-            const fn = platform.chooseFileToSave(params);
+            // <name>.<format>.logfilter, see filterExportDialog
+            const { types, ...dialog } = filterExportDialog(this.filters.canDlf, this.filters.sets[set]?.fileName || "");
+            const fn = platform.chooseFileToSave({ ...dialog, filter: fileFilter(types) });
             if (fn) this.showResult(backend.exportFilterSet(docId, set, fn));
             return true;
         });

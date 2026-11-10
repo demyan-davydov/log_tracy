@@ -7,7 +7,7 @@ import * as backend from "backend.js";
 import { noSearch, runSearch, searchPending } from "pane-commands.js";
 
 export class SearchBar {
-    // @param root - the element holding the bar (.search-page), its events bound here
+    // @param root - the element of the bar (.search-bar of the search page), its events bound here
     // @param docId - the id of the document in the backend
     // @param host - what the bar asks of the document panel:
     //   setMatchColors(colors) - the colors of the chips the found fragments are shown in,

@@ -85,12 +85,15 @@ function renderPane(splitters) {
                 One page is shown, the one of the active tab (data-page) */}
             <section class="bottom-panel">
                 <div class="bottom-page search-page" data-page="search">
-                    <div class="toolbar search-toolbar chip-search-toolbar">
-                        <div class="chip-search chip-editor" tabindex="0"></div>
-                        <button class="btn-chip-history" data-tr-title="Search history (↓)">▾</button>
-                        <button class="btn-chip-search" data-tr="Search" />
+                    {/* The search bar: search-bar.js */}
+                    <div class="search-bar">
+                        <div class="toolbar search-toolbar chip-search-toolbar">
+                            <div class="chip-search chip-editor" tabindex="0"></div>
+                            <button class="btn-chip-history" data-tr-title="Search history (↓)">▾</button>
+                            <button class="btn-chip-search" data-tr="Search" />
+                        </div>
+                        <div class="chip-search-message"></div>
                     </div>
-                    <div class="chip-search-message"></div>
 
                     <div class="search-body">
                         <div class="status-view overlay compact search-status" tabindex="0" style="display:none;">
@@ -199,7 +202,7 @@ export class DocumentPane {
             setRuleColors: colors => { for (const list of this.lists) list.ruleColors = colors; },
             refreshRows: () => this.refreshRuleColors(),
         });
-        this.searchBar = new SearchBar(this.root.$(".search-page"), docId, {
+        this.searchBar = new SearchBar(this.root.$(".search-bar"), docId, {
             setMatchColors: colors => { for (const list of this.lists) list.matchColors = colors; },
         });
         this.bind();
