@@ -13,7 +13,7 @@ import { ruleColors } from "rule-colors.js";
 import { currentCatalog, tr } from "i18n/i18n.js";
 import { fileFilter } from "file-types.js";
 
-const ruleKindMarks = { include: "+", exclude: "−", marker: "◆" };
+// What a rule does: its mark is drawn in its swatch by its class (style.css)
 const ruleKindTitles = {
     include: () => tr("Shows the records it matches"),
     exclude: () => tr("Hides the records it matches"),
@@ -44,8 +44,7 @@ function ruleChip(rule, s, r) {
     const title = rule.error ? tr("Not applied: {error}", { error: rule.error }) : "";
     return <div class={classes.join(" ")} set-index={s} rule-index={r} title={title}>
         <input type="checkbox" class="filter-rule-switch" />
-        <span class="filter-kind" title={ruleKindTitles[rule.kind]?.() ?? ""}>{ruleKindMarks[rule.kind]}</span>
-        <span class="filter-swatch" />
+        <span class={"filter-swatch " + rule.kind} title={ruleKindTitles[rule.kind]?.() ?? ""} />
         <span class="filter-name">{rule.name || tr("(no name)")}</span>
         <span class="filter-button filter-rule-edit" title={tr("Edit this rule (or double-click it)")}>✎</span>
         <span class="filter-button filter-rule-remove" title={tr("Remove this rule")}>×</span>

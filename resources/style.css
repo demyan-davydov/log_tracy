@@ -637,19 +637,33 @@ frameset {
     text-overflow: ellipsis;
 }
 
-/* What the rule does: + include, − exclude, ◆ marker */
-.filter-kind {
-    width: 1em;
-    text-align: center;
-    color: var(--text-label);
+/* The switch and the color of a rule are one size: that of Sciter's checkbox
+   (its master.css), set here for both */
+.filter-chip input,
+.filter-swatch {
+    width: 15dip;
+    height: 15dip;
 }
 
+/* The color of the rule with what it does in it: + include, − exclude,
+   ◆ marker, a vector icon of Sciter (its class, set by the script). White
+   outlined in black: seen on any color */
 .filter-swatch {
-    width: 10dip;
-    height: 10dip;
+    box-sizing: border-box;
     border-radius: 2dip;
     border: 1dip solid var(--border-color);
+    vertical-align: middle; /* Sciter: in line with the checkbox */
+    foreground-repeat: no-repeat;
+    foreground-position: 50% 50%;
+    foreground-size: 11dip;
+    fill: white;
+    stroke: black;
+    stroke-width: 1dip;
 }
+
+.filter-swatch.include { foreground-image: icon(0 0 12 12;M4.5 1.5h3v3h3v3h-3v3h-3v-3h-3v-3h3z); }
+.filter-swatch.exclude { foreground-image: icon(0 0 12 12;M1.5 4.5h9v3h-9z); }
+.filter-swatch.marker { foreground-image: icon(0 0 12 12;M6 1l5 5l-5 5l-5 -5z); }
 
 /* The buttons of a set (⤓ export, +, ×) and of a rule (✎, ×) */
 .filter-button {

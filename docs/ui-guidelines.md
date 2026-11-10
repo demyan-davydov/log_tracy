@@ -88,7 +88,7 @@
 - Строка набора (`.filter-set`): `flow: horizontal`; заголовок набора шириной `12em` у всех наборов, чипы правил в остатке строки (`.filter-chips`: `flow: horizontal-wrap`, `border-spacing: 4dip`).
 - Заголовок набора (`.filter-set-head`): высота `1.6em`, `padding: 0 4dip`, скругление `4dip`, `font-weight: 600`.
 - Чип правила (`.filter-chip`): высота `1.6em`, `padding: 0 3dip`, рамка `1dip solid var(--chip-border)` (ошибка: `var(--log-error)`), скругление `3dip`, не шире остатка строки набора (длинное имя обрезается).
-- Маркер цвета (`.filter-swatch`): `10x10dip`, скругление `2dip`, рамка `1dip solid var(--border-color)`.
+- Маркер цвета (`.filter-swatch`): `15x15dip`, как чекбокс Sciter рядом, скругление `2dip`, рамка `1dip solid var(--border-color)`; внутри знак вида правила (+, −, ◆): векторная иконка Sciter (`icon()`), белая с чёрным контуром, видна на любом цвете.
 - Кнопки правила (✎, ×): `visibility: visible` при hover чипа, место под них занято всегда.
 - Точка на вкладке (`.bottom-tab-dot`): `5dip`, цвет `var(--border-focus)`, появляется через `scale` и `opacity`.
 
