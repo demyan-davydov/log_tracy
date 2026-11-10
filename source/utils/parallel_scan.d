@@ -4,12 +4,35 @@ module utils.parallel_scan;
 
 import std.parallelism : TaskPool, taskPool;
 
+//! Tells a block whether the scan it belongs to has stopped: what the block
+//! finds from then on is never delivered, so it may give up at once
+struct ScanStop
+{
+    private const(shared(bool))* _stopped;
+
+    @disable this(); // only parallelScan makes one
+
+    private this(const(shared(bool))* stopped) pure nothrow @nogc
+    {
+        _stopped = stopped;
+    }
+
+    bool opCall() const nothrow @nogc
+    {
+        import core.atomic : atomicLoad;
+
+        return atomicLoad(*_stopped);
+    }
+}
+
 //! @brief Scans [0, length) in blocks of `blockLength` positions on `pool`.
-//! `scan(lo, hi, found)` runs concurrently for different blocks: it writes
-//! what it finds in [lo, hi), at most a result per position, to the start of
-//! `found` (room for `hi - lo` results), returns how many it wrote and must
-//! only read shared state. The room is taken once for the whole scan, so
-//! collecting a result costs a store, not an append. `deliver(done, found)` runs on the calling thread, one block
+//! `scan(lo, hi, found, stop)` runs concurrently for different blocks: it
+//! writes what it finds in [lo, hi), at most a result per position, to the
+//! start of `found` (room for `hi - lo` results), returns how many it wrote
+//! and must only read shared state. The room is taken once for the whole
+//! scan, so collecting a result costs a store, not an append. A long block
+//! checks `stop()` now and then: true once `deliver` stopped the scan or a
+//! block or `deliver` failed. `deliver(done, found)` runs on the calling thread, one block
 //! at a time in the order of the blocks, as soon as the block and the ones
 //! before it are scanned; `done` is the end of the block, and `found` is
 //! valid during the call only: its memory is reused for a later block. It
@@ -20,11 +43,14 @@ import std.parallelism : TaskPool, taskPool;
 //! waits for another while there are blocks left.
 //! @return false if `deliver` stopped the scan
 bool parallelScan(T)(size_t length, size_t blockLength,
-    scope size_t delegate(size_t lo, size_t hi, T[] found) scan,
+    scope size_t delegate(size_t lo, size_t hi, T[] found, ScanStop stop) scan,
     scope bool delegate(size_t done, const(T)[] found) deliver,
     TaskPool pool = null)
 {
+    import core.atomic : atomicStore;
+    import core.memory : GC;
     import std.algorithm.comparison : min;
+    import std.array : uninitializedArray;
     import std.parallelism : task;
 
     assert(blockLength > 0);
@@ -34,16 +60,19 @@ bool parallelScan(T)(size_t length, size_t blockLength,
     const blockCount = (length + blockLength - 1) / blockLength;
     // Several blocks per thread, so a slow block doesn't leave the others idle
     const inFlight = (pool.size + 1) * blocksPerThread; // the calling thread works too
-    // The room of a slot, reused by its blocks; what its last block wrote
-    auto room = new T[inFlight * blockLength];
+    // The room of a slot, reused by its blocks; what its last block wrote.
+    // Nothing reads what a block didn't write: no need to clear it
+    auto room = uninitializedArray!(T[])(inFlight * blockLength);
     auto foundCount = new size_t[inFlight];
     // What a block threw, rethrown on delivery. A task must not throw: an
     // Error of a task run by yieldForce on the waiting thread leaves the task
     // in progress for good (std.parallelism catches only Exception there)
     auto failure = new Throwable[inFlight];
 
-    // Set once the scan stops or fails: a block no thread has started yet is dropped
+    // Set once the scan stops or fails: a block no thread has started yet is
+    // dropped, a block being scanned may give up (ScanStop)
     shared bool stopped = false;
+    const stop = ScanStop(&stopped);
 
     void scanBlock(size_t block)
     {
@@ -58,7 +87,7 @@ bool parallelScan(T)(size_t length, size_t blockLength,
         auto slotRoom = room[slot * blockLength .. slot * blockLength + (hi - lo)];
         try
         {
-            const n = scan(lo, hi, slotRoom);
+            const n = scan(lo, hi, slotRoom, stop);
             assert(n <= slotRoom.length, "more results than positions");
             foundCount[slot] = n;
         }
@@ -83,11 +112,12 @@ bool parallelScan(T)(size_t length, size_t blockLength,
     // a stop or a failure. Blocks no thread has started are dropped then.
     scope (exit)
     {
-        import core.atomic : atomicStore;
-
-        atomicStore(stopped, true); // nothing is left to scan when the scan is complete
+        // First, so the blocks being scanned give up (ScanStop) after a stop or
+        // a failure; nothing is left to scan when the scan is complete
+        atomicStore(stopped, true);
         foreach (block; delivered .. submitted)
             tasks[block % inFlight].yieldForce(); // doesn't throw: scanBlock catches
+        GC.free(room.ptr); // no block uses it any more, and it may be megabytes
     }
 
     while (submitted < min(inFlight, blockCount))
@@ -128,7 +158,7 @@ unittest
         size_t[] all;
         size_t lastDone = 0;
         const completed = parallelScan!size_t(length, 100,
-            (size_t lo, size_t hi, size_t[] found) {
+            (size_t lo, size_t hi, size_t[] found, ScanStop stop) {
                 size_t n = 0;
                 foreach (i; lo .. hi)
                     if (i % 3 == 0)
@@ -153,7 +183,7 @@ unittest
 {
     size_t[] all;
     parallelScan!size_t(995, 10,
-        (size_t lo, size_t hi, size_t[] found) {
+        (size_t lo, size_t hi, size_t[] found, ScanStop stop) {
             assert(found.length == hi - lo);
             found[] = size_t.max; // left over: not delivered
             found[0] = lo;
@@ -171,7 +201,7 @@ unittest
     shared size_t scanned = 0;
     size_t delivered = 0;
     const completed = parallelScan!size_t(1_000_000, 10,
-        (size_t lo, size_t hi, size_t[] found) { atomicOp!"+="(scanned, 1); return 0; },
+        (size_t lo, size_t hi, size_t[] found, ScanStop stop) { atomicOp!"+="(scanned, 1); return 0; },
         (size_t done, const(size_t)[] found) { return ++delivered < 3; });
     assert(!completed);
     assert(delivered == 3, "nothing is delivered after a stop");
@@ -184,7 +214,7 @@ unittest
     import std.exception : assertThrown;
 
     assertThrown!Exception(parallelScan!size_t(1000, 10,
-        (size_t lo, size_t hi, size_t[] found) {
+        (size_t lo, size_t hi, size_t[] found, ScanStop stop) {
             if (lo == 500)
                 throw new Exception("unreadable");
             return 0;
@@ -206,7 +236,7 @@ unittest
     auto mutex = new Mutex();
     bool[Thread] threads;
     parallelScan!size_t(16, 1,
-        (size_t lo, size_t hi, size_t[] found) {
+        (size_t lo, size_t hi, size_t[] found, ScanStop stop) {
             synchronized (mutex)
                 threads[Thread.getThis()] = true;
             Thread.sleep(5.msecs);
@@ -216,12 +246,27 @@ unittest
     assert(threads.length > 1);
 }
 
+version (unittest)
+{
+    //! Waits until `done` is true; a deadline keeps a broken scan from hanging
+    //! the tests
+    //! @return false if it never was
+    private bool waitUntil(scope bool delegate() done)
+    {
+        import core.thread : Thread;
+        import core.time : msecs, MonoTime;
+
+        const deadline = MonoTime.currTime + 10_000.msecs;
+        while (!done() && MonoTime.currTime < deadline)
+            Thread.sleep(1.msecs);
+        return done();
+    }
+}
+
 @("parallelScan: a block is delivered once the blocks before it are, not after its window")
 unittest
 {
     import core.atomic : atomicLoad, atomicStore;
-    import core.thread : Thread;
-    import core.time : msecs, MonoTime;
 
     auto pool = new TaskPool(2);
     scope (exit)
@@ -230,14 +275,11 @@ unittest
     shared bool firstDelivered = false;
     bool waitedInVain = false;
     parallelScan!size_t(4, 1,
-        (size_t lo, size_t hi, size_t[] found) {
+        (size_t lo, size_t hi, size_t[] found, ScanStop stop) {
             if (lo != 1)
                 return 0;
             // The window of block 0 holds block 1 too: block 1 waits for block 0 to be delivered
-            const deadline = MonoTime.currTime + 2000.msecs;
-            while (!atomicLoad(firstDelivered) && MonoTime.currTime < deadline)
-                Thread.sleep(1.msecs);
-            waitedInVain = !atomicLoad(firstDelivered);
+            waitedInVain = !waitUntil(() => atomicLoad(firstDelivered));
             return 0;
         },
         (size_t done, const(size_t)[] found) {
@@ -251,25 +293,67 @@ unittest
 @("parallelScan: blocks waiting for a thread are dropped once the scan stops")
 unittest
 {
-    import core.atomic : atomicLoad, atomicOp;
-    import core.thread : Thread;
-    import core.time : msecs;
+    import core.atomic : atomicLoad, atomicOp, atomicStore;
 
     auto pool = new TaskPool(2);
     scope (exit)
         pool.finish(true);
 
     shared size_t scanned = 0;
+    shared bool missedStop = false, anotherStarted = false;
     const completed = parallelScan!size_t(1000, 1,
-        (size_t lo, size_t hi, size_t[] found) {
+        (size_t lo, size_t hi, size_t[] found, ScanStop stop) {
             atomicOp!"+="(scanned, 1);
-            Thread.sleep(2.msecs);
+            if (lo == 0)
+            {
+                waitUntil(() => atomicLoad(anotherStarted)); // the stop finds a block being scanned
+                return 0;
+            }
+            atomicStore(anotherStarted, true);
+            // Holds its thread until the stop: no thread can take a block
+            // after the one it started
+            if (!waitUntil(() => stop()))
+                atomicStore(missedStop, true);
             return 0;
         },
         (size_t done, const(size_t)[] found) => false, pool);
     assert(!completed);
-    // 3 threads, 12 blocks in flight: the ones started go on, the others are dropped
-    assert(atomicLoad(scanned) <= 6);
+    assert(atomicLoad(anotherStarted));
+    assert(!atomicLoad(missedStop), "a block being scanned isn't told of the stop");
+    // Block 0 and a block for each worker at most; 12 blocks were in flight
+    assert(atomicLoad(scanned) <= 1 + pool.size);
+}
+
+@("parallelScan: a failure of deliver stops the blocks being scanned")
+unittest
+{
+    import core.atomic : atomicLoad, atomicStore;
+    import std.exception : assertThrown;
+
+    auto pool = new TaskPool(3);
+    scope (exit)
+        pool.finish(true);
+
+    shared bool missedStop = false, anotherStarted = false;
+    assertThrown!Exception(parallelScan!size_t(1000, 1,
+        (size_t lo, size_t hi, size_t[] found, ScanStop stop) {
+            if (lo == 0)
+            {
+                waitUntil(() => atomicLoad(anotherStarted)); // the failure finds a block being scanned
+                return 0;
+            }
+            atomicStore(anotherStarted, true);
+            if (!waitUntil(() => stop()))
+                atomicStore(missedStop, true);
+            return 0;
+        },
+        (size_t done, const(size_t)[] found) {
+            if (done > 0)
+                throw new Exception("the index can't grow");
+            return true;
+        }, pool));
+    assert(atomicLoad(anotherStarted));
+    assert(!atomicLoad(missedStop), "a block goes on after deliver failed");
 }
 
 @("parallelScan: no block is left running when a block fails with an Error")
@@ -288,7 +372,7 @@ unittest
     bool failed = false;
     try
         parallelScan!size_t(100, 1,
-            (size_t lo, size_t hi, size_t[] found) {
+            (size_t lo, size_t hi, size_t[] found, ScanStop stop) {
                 if (lo == 0)
                 {
                     Thread.sleep(5.msecs); // the others have started

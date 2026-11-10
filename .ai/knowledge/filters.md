@@ -2,7 +2,13 @@
 
 ## Filters
 
-- Filters implement `LogFilter!wchar` (`log_core/log_filter`).
+- Filters implement `LogFilter!wchar` (`log_core/log_filter`). `matches` is called from many
+  threads at once (the blocks of `utils/parallel_scan` and the UI thread): a filter doesn't
+  change once built.
+- `std.regex` keeps one matcher per thread (the last expression): two expressions tried by
+  turns on each record rebuild it every time, under the GC lock, and the scan gets slower with
+  more threads (`docs/experiments/2026-11-10-regex-matcher-cache.md`, options in
+  `docs/backlog.md`).
 - The filters of the main view are rules, as in dlt-viewer, the same for every format
   (`log_core/rule_filter`):
   - a `FilterRule` (include / exclude / marker) is a set of `Condition`s on **column ids** of

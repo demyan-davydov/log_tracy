@@ -121,7 +121,10 @@ utils  ←  sciter  ←  ui
   `Document.dispatchEvents()` delivers them on the UI thread.
 - The filter and search indexes are built in parallel blocks on `std.parallelism`'s task pool
   (`utils/parallel_scan`), appended in order as the blocks before them are done; the offset
-  index is built sequentially. A format and a filter are called from several threads.
+  index is built sequentially. A format and a filter are called from several threads. A block
+  checks a cancel, a lost file and the stop of the scan (`ScanStop`: a failed delivery)
+  every `LogIndex.stopCheckRecords` records. The index grows block by block while the scan
+  runs: keep it so, the results are meant to be shown before the scan ends.
 - The indexes are `BaseIndex` over `utils/chunked_array` (`domain/index/`):
   - they grow by 64K-entry chunks (mmap / VirtualAlloc) up to 2^32 entries;
   - entries never move, which is what lets the indexing thread read the offset index without

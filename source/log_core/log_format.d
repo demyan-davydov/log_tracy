@@ -46,8 +46,10 @@ struct ScanResult
 //! A log format: splits bytes into records and decodes them.
 //!
 //! A format knows nothing about files: it gets the bytes of a ByteSource and
-//! works with offsets in them. Its methods are called from the indexing thread
-//! and the UI thread at once, so an instance must not change after creation.
+//! works with offsets in them. Its methods are called at once from the UI
+//! thread, the indexing thread (scanRecords for the offset index) and the many
+//! threads of a filter or a search (utils/parallel_scan), so an instance must
+//! not change after creation.
 interface LogFormat
 {
     //! Name shown to the user, e.g. "DLT"
