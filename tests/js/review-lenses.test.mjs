@@ -32,10 +32,28 @@ test("the log table in the script is both hot and seen", () => {
         assert.deepEqual(lensesFor([path]), ["rules", "performance", "ux"], path);
 });
 
+test("architecture: a change across packages, or of the composition root", () => {
+    assert.deepEqual(lensesFor(["source/log_core/log_format.d", "source/formats/logcat.d"]),
+        ["rules", "architecture", "performance"]);
+    assert.deepEqual(lensesFor(["source/ui/app_session.d", "resources/backend.js"]),
+        ["rules", "architecture", "performance"]);
+    assert.deepEqual(lensesFor(["source/app.d"]), ["rules", "architecture"]);
+    assert.deepEqual(lensesFor(["dub.sdl"]), ["rules", "architecture"]);
+});
+
+test("no architecture for a change inside one package, its tests or the docs", () => {
+    assert.deepEqual(lensesFor(["source/formats/logcat.d", "source/formats/registry.d"]),
+        ["rules", "performance"]);
+    assert.deepEqual(lensesFor(["resources/tabs.js", "resources/style.css", "tests/js/new-tab.test.mjs"]),
+        ["rules", "ux"]);
+    assert.deepEqual(lensesFor(["source/ui/app_menu.d", "docs/backlog.md", ".ai/knowledge/ui.md"]),
+        ["rules", "ux"]);
+});
+
 test("lenses come in a fixed order, each once", () => {
     assert.deepEqual(lensesFor(["resources/tabs.js", "source/domain/workspace.d", "resources/menu-bar.js"]),
-        ["rules", "performance", "ux"]);
-    assert.deepEqual(lenses, ["rules", "performance", "ux"]);
+        ["rules", "architecture", "performance", "ux"]);
+    assert.deepEqual(lenses, ["rules", "architecture", "performance", "ux"]);
 });
 
 test("the backend bridge and the build scripts need the rules only", () => {
