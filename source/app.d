@@ -99,14 +99,13 @@ int main()
 
 	sciterApplication().start();
 
-	sciterApi().SciterSetOption(null,
-		SCITER_RT_OPTIONS.SCITER_SET_SCRIPT_RUNTIME_FEATURES,
-		SCRIPT_RUNTIME_FEATURES.ALLOW_FILE_IO |
-			SCRIPT_RUNTIME_FEATURES.ALLOW_SOCKET_IO |
-			SCRIPT_RUNTIME_FEATURES.ALLOW_EVAL |
-			SCRIPT_RUNTIME_FEATURES.ALLOW_SYSINFO |
-			SCRIPT_RUNTIME_FEATURES.ALLOW_CMODULES
-	);
+	// The script gets none of the runtime features of Sciter: it reads no files (the backend
+	// does, through xcall), opens no sockets, evaluates no strings and loads no native modules,
+	// and the window shows the text of logs from anywhere. What it uses works without them
+	// (checked on macOS, 6.0.5.5): its modules, @env (the language of the system), the
+	// clipboard, the dialogs (Window.this.modal, selectFile), SciterEval of the debug channel.
+	// A new need gets its flag here, with why.
+	sciterApi().SciterSetOption(null, SCITER_RT_OPTIONS.SCITER_SET_SCRIPT_RUNTIME_FEATURES, 0);
 
     import sciter.capi.types;
     sciterApi().SciterSetOption(null, SCITER_RT_OPTIONS.SCITER_SET_GFX_LAYER, GFX_LAYER.GFX_LAYER_SKIA_ANGLE);

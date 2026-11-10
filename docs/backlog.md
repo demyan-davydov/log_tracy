@@ -423,13 +423,6 @@ druntime и phobos под x86_64: в ldc из Homebrew их нет, они ес�
 маску и собирает payload, только если он нужен. Сначала замерить выигрыш (`build.mjs bench`,
 фильтр по полю заголовка на логе `gen-log`), потом менять сигнатуру `decode` во всех форматах.
 
-## Права скрипта Sciter шире нужного (история `arch-review`)
-
-`main()` включает `ALLOW_FILE_IO`, `ALLOW_SOCKET_IO`, `ALLOW_EVAL`, `ALLOW_SYSINFO` и
-`ALLOW_CMODULES`, а модули окна импортируют только `@sciter` и `@env`. Окно показывает текст чужих
-логов: оставить только нужное. Перед тем как убрать `ALLOW_EVAL`, проверить отладочный канал
-(`SciterEval`) и `debug-eval.js`; диалоги файлов идут через `Window.this`, не через `sys`.
-
 ## DocumentPane: разделить (история `arch-review`)
 
 `resources/document-pane.js` — координатор панели на 25 полей и 38 методов, без тестов; рядом
