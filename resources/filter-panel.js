@@ -1,5 +1,7 @@
-// The filter panel of a document (the sidebar of its panel): its filter sets
-// as rows, the commands on them and the editor of a rule. The sets live in the
+// The filters of a document: its filter sets, the commands on them and the
+// editor of a rule. Shown in two views of the same sets: a list in the sidebar
+// and chips on the Filters page of the bottom panel (a row per set, a chip per
+// rule). The sets live in the
 // backend (DocumentFilters), per document: every command is done there and the
 // panel is rendered again from what the backend has then, with the message of
 // the command. The main view reloads when the filter operation reports
@@ -9,6 +11,7 @@ import * as backend from "backend.js";
 import * as platform from "platform.js";
 import { editRule, filterFilesToLoad, filterExportDialog } from "pane-commands.js";
 import { ruleColors } from "rule-colors.js";
+import { filtersActive } from "filter-sets.js";
 import { currentCatalog, tr } from "i18n/i18n.js";
 import { fileFilter } from "file-types.js";
 
@@ -21,16 +24,105 @@ const ruleKindTitles = {
 
 const noFilters = { canFilter: false, canDlf: false, sets: [] };
 
+// The head of a set: its switch, name and buttons. Its set-index is read by the
+// handlers of its switch and buttons (their parent).
+function setHead(set, s, classes) {
+    return <div class={classes} set-index={s}>
+        <input type="checkbox" class="filter-set-switch" />
+        <span class="filter-name" title={set.source ? tr("Loaded from {file}", { file: set.source }) : ""}>{set.name}</span>
+        <span class="filter-button filter-export" title={tr("Export to a filter file")}>⤓</span>
+        <span class="filter-button filter-add" title={tr("Add a rule")}>+</span>
+        <span class="filter-button filter-remove" title={tr("Remove this filter")}>×</span>
+    </div>;
+}
+
+// A rule: its switch, kind, color, name and buttons, as a row (sidebar) or a
+// chip (`classes`). Its set-index and rule-index are read by the handlers.
+// @param title - the tooltip of the whole rule ("" none)
+function ruleItem(rule, s, r, classes, title = "") {
+    if (!rule.enabled) classes.push("off");
+    if (rule.error) classes.push("error");
+    return <div class={classes.join(" ")} set-index={s} rule-index={r} title={title}>
+        <input type="checkbox" class="filter-rule-switch" />
+        <span class="filter-kind" title={ruleKindTitles[rule.kind]?.() ?? ""}>{ruleKindMarks[rule.kind]}</span>
+        <span class="filter-swatch" />
+        <span class="filter-name">{rule.name || tr("(no name)")}</span>
+        <span class="filter-button filter-rule-edit" title={tr("Edit this rule (or double-click it)")}>✎</span>
+        <span class="filter-button filter-rule-remove" title={tr("Remove this rule")}>×</span>
+    </div>;
+}
+
+// Sets the state the markup can't (the switches) on a rendered set head or rule
+function setSwitch(element, selector, on) {
+    element.$(selector).value = on;
+}
+
+function setSwatch(element, rule) {
+    if (rule.color) element.$(".filter-swatch").style.setProperty("background-color", rule.color);
+}
+
+// The sidebar: a set is a row with its switch, name and remove button,
+// followed by a row per rule and the note of a rule not applied
+function renderSetList(panel, sets) {
+    sets.forEach((set, s) => {
+        panel.append(<div class={set.enabled ? "filter-set" : "filter-set off"} />);
+        const block = panel.lastElementChild;
+        block.append(setHead(set, s, "filter-row filter-set-head"));
+        setSwitch(block.lastElementChild, ".filter-set-switch", set.enabled);
+        set.rules.forEach((rule, r) => {
+            block.append(ruleItem(rule, s, r, ["filter-row", "filter-rule"]));
+            const row = block.lastElementChild;
+            setSwitch(row, ".filter-rule-switch", rule.enabled);
+            setSwatch(row, rule);
+            if (rule.error)
+                block.append(<div class="filter-note">{tr("Not applied: {error}", { error: rule.error })}</div>);
+        });
+    });
+}
+
+// The Filters page: a row per set, its head in the first column and its rules
+// as chips wrapping in the second. A rule not applied is marked, its error in
+// its tooltip.
+function renderSetChips(panel, sets) {
+    if (sets.length === 0) return;
+    panel.append(<dl class="filter-grid" />);
+    const grid = panel.lastElementChild;
+    // The columns of the grid are by tags (Sciter's flow: row): the head is in a dt, the chips are a dd
+    sets.forEach((set, s) => {
+        const off = set.enabled ? "" : " off";
+        grid.append(<dt class={"filter-set-cell" + off} />);
+        const cell = grid.lastElementChild;
+        cell.append(setHead(set, s, "filter-set-head"));
+        setSwitch(cell.lastElementChild, ".filter-set-switch", set.enabled);
+        grid.append(<dd class={"filter-chips" + off} />);
+        const chips = grid.lastElementChild;
+        set.rules.forEach((rule, r) => {
+            const title = rule.error ? tr("Not applied: {error}", { error: rule.error }) : "";
+            chips.append(ruleItem(rule, s, r, ["filter-chip", "filter-rule"], title));
+            const chip = chips.lastElementChild;
+            setSwitch(chip, ".filter-rule-switch", rule.enabled);
+            setSwatch(chip, rule);
+        });
+    });
+}
+
+const layouts = { list: renderSetList, chips: renderSetChips };
+
 export class FilterPanel {
-    // @param root - the element of the panel (.left-panel), its events bound here
+    // @param views - where the sets are shown: [{ root, layout }], layout
+    //   "list" (the sidebar) or "chips" (the Filters page); a root has the
+    //   .filter-sets, .filter-message and the buttons of the commands, its
+    //   events are bound here
     // @param docId - the id of the document in the backend
     // @param host - what the panel asks of the document panel:
     //   theme() -> "light" | "dark" (of the rule editor),
     //   setRuleColors(colors) - the colors of the rules by rule id, for the tables,
     //     given whenever the panel is rendered (the rules may have changed),
-    //   refreshRows() - the rows on screen refer to the rules again
-    constructor(root, docId, host) {
-        this.root = root;
+    //   refreshRows() - the rows on screen refer to the rules again,
+    //   setActive(active) - whether any rule works on the log (filtersActive),
+    //     given whenever the panel is rendered
+    constructor(views, docId, host) {
+        this.views = views;
         this.docId = docId;
         this.host = host;
         this.filters = noFilters; // what render() got last
@@ -69,55 +161,27 @@ export class FilterPanel {
         this.host.refreshRows();
     }
 
-    // Shows the filter sets: a set is a row with its switch, name and remove
-    // button, followed by a row per rule
+    // Shows the filter sets in every view
     render() {
         const info = backend.filters(this.docId) ?? noFilters;
         this.filters = info;
         this.rendered = true;
-        this.host.setRuleColors(ruleColors(info.sets)); // the rows refer to the rules by id
-        const panel = this.root.$(".filter-sets");
-        // Built from scratch, as the quick filter was: reused inputs keep their state
-        panel.clear();
-        if (!info.sets || info.sets.length === 0)
-            panel.append(<div class="filters-empty">{info.canFilter
-                ? tr("No filters: load a filter file or create a new one")
-                : tr("This log has no columns to filter by")}</div>);
-        (info.sets || []).forEach((set, s) => {
-            const element = <div class={set.enabled ? "filter-set" : "filter-set off"}>
-                <div class="filter-row filter-set-head" set-index={s}>
-                    <input type="checkbox" class="filter-set-switch" />
-                    <span class="filter-name" title={set.source ? tr("Loaded from {file}", { file: set.source }) : ""}>{set.name}</span>
-                    <span class="filter-button filter-export" title={tr("Export to a filter file")}>⤓</span>
-                    <span class="filter-button filter-add" title={tr("Add a rule")}>+</span>
-                    <span class="filter-button filter-remove" title={tr("Remove this filter")}>×</span>
-                </div>
-            </div>;
-            panel.append(element);
-            const block = panel.lastElementChild;
-            block.$(".filter-set-switch").value = set.enabled;
-            set.rules.forEach((rule, r) => {
-                const classes = ["filter-row", "filter-rule"];
-                if (!rule.enabled) classes.push("off");
-                if (rule.error) classes.push("error");
-                block.append(<div class={classes.join(" ")} set-index={s} rule-index={r}>
-                    <input type="checkbox" class="filter-rule-switch" />
-                    <span class="filter-kind" title={ruleKindTitles[rule.kind]?.() ?? ""}>{ruleKindMarks[rule.kind]}</span>
-                    <span class="filter-swatch" />
-                    <span class="filter-name">{rule.name || tr("(no name)")}</span>
-                    <span class="filter-button filter-rule-edit" title={tr("Edit this rule (or double-click it)")}>✎</span>
-                    <span class="filter-button filter-rule-remove" title={tr("Remove this rule")}>×</span>
-                </div>);
-                const row = block.lastElementChild;
-                row.$(".filter-rule-switch").value = rule.enabled;
-                if (rule.color) row.$(".filter-swatch").style.setProperty("background-color", rule.color);
-                if (rule.error)
-                    block.append(<div class="filter-note">{tr("Not applied: {error}", { error: rule.error })}</div>);
-            });
-        });
-        this.root.$(".btn-dlf").style.display = info.canFilter ? "" : "none";
-        this.root.$(".btn-new-dlf").style.display = info.canFilter ? "" : "none";
-        this.root.$(".filter-message").innerText = this.message;
+        const sets = info.sets ?? [];
+        this.host.setRuleColors(ruleColors(sets)); // the rows refer to the rules by id
+        this.host.setActive(filtersActive(sets));
+        for (const { root, layout } of this.views) {
+            const panel = root.$(".filter-sets");
+            // Built from scratch, as the quick filter was: reused inputs keep their state
+            panel.clear();
+            if (sets.length === 0)
+                panel.append(<div class="filters-empty">{info.canFilter
+                    ? tr("No filters: load a filter file or create a new one")
+                    : tr("This log has no columns to filter by")}</div>);
+            layouts[layout](panel, sets);
+            root.$(".btn-dlf").style.display = info.canFilter ? "" : "none";
+            root.$(".btn-new-dlf").style.display = info.canFilter ? "" : "none";
+            root.$(".filter-message").innerText = this.message;
+        }
     }
 
     // Opens the editor of a rule of a set (rule -1: a new one) and applies
@@ -144,7 +208,9 @@ export class FilterPanel {
 
     bind() {
         const docId = this.docId;
-        const on = (event, selector, handler) => this.root.on(event, selector, handler);
+        const on = (event, selector, handler) => {
+            for (const { root } of this.views) root.on(event, selector, handler);
+        };
         const setOf = (element) => parseInt(element.getAttribute("set-index"));
         const ruleOf = (element) => parseInt(element.getAttribute("rule-index"));
 

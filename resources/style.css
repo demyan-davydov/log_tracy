@@ -643,6 +643,121 @@ frameset {
     font-size: 9pt;
 }
 
+/* The dot of the Filters tab: some rule works on the log (markFiltersTab).
+   Always there, grown from its centre when it appears and collapsed back, so
+   the tab keeps its width */
+.bottom-tab-dot {
+    width: 5dip;
+    height: 5dip;
+    margin: * 0 * 4pt; /* Sciter: flexible margins center it vertically */
+    border-radius: 50%;
+    background: var(--border-focus);
+    transform: scale(0);
+    opacity: 0;
+    transition: transform ease-out 150ms, opacity linear 150ms;
+}
+
+.bottom-tab.marked .bottom-tab-dot {
+    transform: scale(1);
+    opacity: 1;
+}
+
+/* ---- The Filters page: FilterPanel, layout "chips" (filter-panel.js) ---- */
+
+.filter-toolbar {
+    vertical-align: middle;
+    padding: 4dip;
+    margin-bottom: 0;
+}
+
+.filter-toolbar .filter-message {
+    width: *;
+    padding: 0 4dip;
+    white-space: nowrap;
+    overflow-x: hidden;
+    text-overflow: ellipsis;
+}
+
+.filter-page .filter-sets {
+    size: *;
+    overflow-y: auto;
+    padding: 0 9pt 6pt 4dip;
+}
+
+.filter-page .filters-empty {
+    margin: *; /* Sciter: flexible margins center it */
+}
+
+/* A row per set: its head, then its rules as chips that wrap */
+.filter-grid {
+    flow: row(dt, dd);
+    flow-columns: max-content *;
+    margin: 0;
+}
+
+.filter-grid dt {
+    max-width: 16em;
+    padding: 2pt 12pt 2pt 0;
+}
+
+.filter-grid dd {
+    flow: horizontal-wrap;
+    border-spacing: 4dip;
+    margin: 0;
+    padding: 2pt 0;
+}
+
+.filter-set-cell .filter-set-head {
+    flow: horizontal;
+    vertical-align: middle;
+    border-spacing: 4dip;
+    height: 1.6em;
+    padding: 0 4dip;
+    border-radius: 4dip;
+}
+
+.filter-set-cell .filter-set-head:hover {
+    background: var(--bg-tab-hover);
+}
+
+.filter-set-head input,
+.filter-chip input {
+    margin: 0;
+}
+
+.filter-chips .filter-chip {
+    flow: horizontal;
+    vertical-align: middle;
+    border-spacing: 3dip;
+    width: max-content;
+    height: 1.6em;
+    max-width: 24em;
+    padding: 0 3dip;
+    border: 1dip solid var(--chip-border);
+    border-radius: 3dip;
+    background: var(--bg-main);
+}
+
+.filter-chips .filter-chip:hover {
+    background: var(--bg-tab-hover);
+}
+
+/* As long as its name, cut at the end beyond the width of the chip or the column */
+.filter-set-cell .filter-name,
+.filter-chip .filter-name {
+    width: max-content;
+}
+
+.filter-chips .filter-chip.error {
+    border-color: var(--log-error);
+}
+
+/* Switched off, or in a set switched off: muted (a chip not applied: .filter-rule.error) */
+.filter-set-cell.off .filter-name,
+.filter-chips.off .filter-name {
+    color: var(--text-label);
+}
+
 /* The File Info page: a label and its value on each row */
 .file-info {
     flow: row(dt, dd);

@@ -18,9 +18,11 @@ behaviour: `.ai/knowledge/sciter.md`.
 
 - Every open document has its own panel, `DocumentPane` (`resources/document-pane.js`): it
   puts the parts together and keeps both tables (their views, columns, look, selection,
-  anchors), the bottom panel's pages (Search, File Info on the left; MCP Server, of the whole
-  application, on the right, empty for now), the status views and the lost file.
-  Its parts: the filters of the sidebar, `FilterPanel` (`filter-panel.js`, on `.left-panel`),
+  anchors), the bottom panel's pages (Search, Filters, File Info on the left; MCP Server, of
+  the whole application, on the right, empty for now), the status views and the lost file.
+  Its parts: the filters, `FilterPanel` (`filter-panel.js`), shown in two views of the same
+  sets: a list on `.left-panel` and chips on the Filters page (`.filter-page`; the tab's dot:
+  `filter-sets.js`),
   and the search bar, `SearchBar` (`search-bar.js`, on `.search-bar`). A part binds the events
   of its own element and asks the panel through a `host` of callbacks; the skeleton of the whole
   panel, the elements of the parts too, is built by `renderPane` of `document-pane.js`. A new
@@ -96,7 +98,7 @@ behaviour: `.ai/knowledge/sciter.md`.
 
 - The window, its documents, the start screen: `script.js`, `window-state.js`, `new-tab.js`
 - Tabs: `tabs.js`, `drag-strip.js`, `drag-order.js`
-- One document's panel: `document-pane.js`, `filter-panel.js`, `search-bar.js`,
+- One document's panel: `document-pane.js`, `filter-panel.js`, `filter-sets.js`, `search-bar.js`,
   `status-view.js`, `pane-state.js`, `pane-commands.js`, `panel-sizes.js`
 - The log table: `virtual-dlt-view.js`, `cell-format.js`, `table.css`, `row-selection.js`,
   `text-selection.js`, `list-navigation.js`, `rule-colors.js`

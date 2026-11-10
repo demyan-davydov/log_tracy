@@ -197,7 +197,14 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     at its bottom (IDE-like; the active tab merges with its page above). No title header inside
     a page when its tab already names it. The pages and the active tab are white (`--bg-main`),
     the strip under the tabs stays grey (`--bg-header`).
-    Tabs of the current document (data source) are on the left: "Search", "File Info"; tabs
-    of the whole application are on the right: "MCP Server".
+    Tabs of the current document (data source) are on the left, in this order: "Search",
+    "Filters", "File Info"; tabs of the whole application are on the right: "MCP Server".
+    The "Filters" tab has a dot after its name while some rule works on the log (an enabled,
+    applied rule of an enabled set, markers too), so a filtered log is seen with another page
+    open; the dot grows in and out, the tab keeps its width.
 42. **File Info.** Path, Size (physical size with the record count next to it), Format (last).
     No Name row (the tab shows it). Every value that carries information is selectable.
+43. **Filters as chips.** The Filters page shows a row per filter set: its head (switch,
+    name, buttons) in the first column, its rules as chips wrapping in the second (switch,
+    kind, color, name; edit and remove on hover). A rule not applied has a red border and its
+    error in the tooltip. New Filter and Load Filter are in the page's toolbar.

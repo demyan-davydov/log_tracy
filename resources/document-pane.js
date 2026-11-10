@@ -118,6 +118,15 @@ function renderPane(splitters) {
                         </table>
                     </div>
                 </div>
+                {/* The filters as chips: filter-panel.js */}
+                <div class="bottom-page filter-page" data-page="filters" style="display:none;">
+                    <div class="toolbar filter-toolbar">
+                        <button class="btn-new-dlf" data-tr="New Filter" />
+                        <button class="btn-dlf" data-tr="Load Filter" />
+                        <div class="filter-message"></div>
+                    </div>
+                    <div class="filter-sets"></div>
+                </div>
                 <div class="bottom-page file-info-page" data-page="file-info" style="display:none;">
                     <dl class="file-info"></dl>
                 </div>
@@ -126,6 +135,11 @@ function renderPane(splitters) {
                 <div class="bottom-tabs">
                     <div class="bottom-tab active" data-page="search">
                         <span class="bottom-tab-name" data-tr="Search" data-tr-context="noun" />
+                    </div>
+                    {/* Its dot: some rule works on the log (markFiltersTab) */}
+                    <div class="bottom-tab" data-page="filters">
+                        <span class="bottom-tab-name" data-tr="Filters" />
+                        <span class="bottom-tab-dot" />
                     </div>
                     <div class="bottom-tab" data-page="file-info">
                         <span class="bottom-tab-name" data-tr="File Info" />
@@ -204,10 +218,14 @@ export class DocumentPane {
         this.follower = new SelectionFollower(list => this.followSelection(list));
         this.applyRowLook();
 
-        this.filterPanel = new FilterPanel(this.root.$(".left-panel"), docId, {
+        this.filterPanel = new FilterPanel([
+            { root: this.root.$(".left-panel"), layout: "list" },
+            { root: this.root.$(".filter-page"), layout: "chips" },
+        ], docId, {
             theme: () => host.theme(),
             setRuleColors: colors => { for (const list of this.lists) list.ruleColors = colors; },
             refreshRows: () => this.refreshRuleColors(),
+            setActive: active => this.markFiltersTab(active),
         });
         this.searchBar = new SearchBar(this.root.$(".search-bar"), docId, {
             setMatchColors: colors => { for (const list of this.lists) list.matchColors = colors; },
@@ -356,6 +374,11 @@ export class DocumentPane {
     showBottomPage(name) {
         if (!this.selectBottomPage(name)) return;
         this.updateFileInfo();
+    }
+
+    // Marks the tab of the Filters page with its dot while some rule works on the log
+    markFiltersTab(active) {
+        this.root.$(".bottom-tab[data-page=filters]").classList.toggle("marked", active);
     }
 
     // Shows the page `name` of the bottom panel as it is and marks its tab.
