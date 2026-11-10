@@ -18,7 +18,8 @@ behaviour: `.ai/knowledge/sciter.md`.
 
 - Every open document has its own panel, `DocumentPane` (`resources/document-pane.js`): it
   puts the parts together and keeps both tables (their views, columns, look, selection,
-  anchors), the bottom panel's pages (Search, File Info), the status views and the lost file.
+  anchors), the bottom panel's pages (Search, File Info on the left; MCP Server, of the whole
+  application, on the right, empty for now), the status views and the lost file.
   Its parts: the filters of the sidebar, `FilterPanel` (`filter-panel.js`, on `.left-panel`),
   and the search bar, `SearchBar` (`search-bar.js`, on `.search-bar`). A part binds the events
   of its own element and asks the panel through a `host` of callbacks; the skeleton of the whole

@@ -195,6 +195,9 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
 
 41. **Tabs below the pages.** The panel under the main table is a set of pages with a tab strip
     at its bottom (IDE-like; the active tab merges with its page above). No title header inside
-    a page when its tab already names it. Pages: "Search" (the search panel), "File Info".
+    a page when its tab already names it. The pages and the active tab are white (`--bg-main`),
+    the strip under the tabs stays grey (`--bg-header`).
+    Tabs of the current document (data source) are on the left: "Search", "File Info"; tabs
+    of the whole application are on the right: "MCP Server".
 42. **File Info.** Path, Size (physical size with the record count next to it), Format (last).
     No Name row (the tab shows it). Every value that carries information is selectable.

@@ -593,7 +593,7 @@ frameset {
 .bottom-panel {
     flow: vertical;
     border-top: 1dip solid var(--border-color);
-    background: var(--bg-details);
+    background: var(--bg-main);
 }
 
 .bottom-page {
@@ -627,9 +627,14 @@ frameset {
     cursor: default;
 }
 
+/* Pushes the tabs of the application (MCP Server) to the right end */
+.bottom-tabs-gap {
+    width: *;
+}
+
 .bottom-tab.active {
     color: var(--text-main);
-    background: var(--bg-details);
+    background: var(--bg-main);
     border-color: var(--border-color);
 }
 
