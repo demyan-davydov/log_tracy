@@ -11,8 +11,9 @@ Use this file to choose the next context file. Do not load every file by default
 ## Repository Guardrails
 
 - Build and test with ldc2 through `node scripts/build.mjs` (commands in `CLAUDE.md`, for
-  people in `docs/building.md`). `node scripts/build.mjs test` runs the D unittests and the JS
-  tests: run it before saying a change is done.
+  people in `docs/building.md`). `node scripts/build.mjs test` runs the D unittests, the JS
+  tests and `scripts/check-ai-context.mjs` (names of `.ai/` the code lost): run it before
+  saying a change is done.
 - The packages and what each may import: `.ai/knowledge/architecture.md` (Packages).
 - The files of `resources/` are built into the executable: a JS/CSS/HTML change needs a rebuild.
 - `settings.json` sits next to the executable: every build folder has its own.

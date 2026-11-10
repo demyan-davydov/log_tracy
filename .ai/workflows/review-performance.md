@@ -67,7 +67,8 @@ a reused buffer will do.
    relayout per row); nothing re-rendered for every row on a change of one.
 6. **The cost is measured, not guessed,** when the change is on a hot path:
    `scripts/bench_rows.d` (per-row work against decode), `scripts/bench_index.d` (indexing),
-   against `docs/performance.md`. A finding without a measurement is **suspected**.
+   against `master` by `node scripts/build.mjs bench` (`--bench index`). A finding without a
+   measurement is **suspected**.
 
 ## Not This Lens
 

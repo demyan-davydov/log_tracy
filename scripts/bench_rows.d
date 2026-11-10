@@ -10,6 +10,11 @@
 //! Builds against older checkouts too: without DocumentItem.found (before the
 //! main view marked the rows the search found) the "rows + fragments" line of
 //! the main view is left out. Memory is read on macOS only.
+//!
+//! `node scripts/build.mjs bench` reads what this prints (scripts/bench.mjs, parseMetrics):
+//! a measure is a number with its unit (ms, ns/row, MB), named by its line up to the colon
+//! and its part between commas, semicolons and brackets; an indented line belongs to the
+//! unindented one above it. A number printed without its unit drops out of the comparison.
 module bench_rows;
 
 import core.thread : Thread;
@@ -48,7 +53,7 @@ void memory(string phase)
             return;
         }
         enum mb = 1024.0 * 1024.0;
-        writefln("  memory %-24s footprint %7.1f MB (peak %7.1f), resident %7.1f MB",
+        writefln("  memory %-24s footprint %7.1f MB (peak %7.1f MB), resident %7.1f MB",
             phase ~ ":", info[18] / mb, info[21] / mb, info[2] / mb);
     }
 }
@@ -125,7 +130,7 @@ void main(string[] args)
     doc.events.subscribe((const OperationFinished e) { ++finished; });
     waitFinished(doc, finished, 1);
     const rows = doc.mainView.itemsCount;
-    writefln("records: %s, loaded in %.0f ms", rows, ms(t0));
+    writefln("records: %s, loaded in %.1f ms", rows, ms(t0));
 
     memory("after loading");
     size_t found;
@@ -138,9 +143,10 @@ void main(string[] args)
         doc.applySearchFilter(search);
         waitFinished(doc, finished, finished + 1);
         const results = doc.searchView.itemsCount;
-        memory("after the search");
-        writefln("search \"%s\": %s results (%.1f%%), found in %.0f ms", word, results,
-            100.0 * results / rows, ms(t0));
+        const searchMs = ms(t0);
+        writefln("search \"%s\": %s results (%.1f%%), found in %.1f ms", word, results,
+            100.0 * results / rows, searchMs);
+        memory("after the search"); // under its search: bench of build.mjs names a number by it
         writefln("  main view, rows only:        %6.1f ns/row", fetchRows(doc.mainView, rows, search, false, found));
         static if (hasFound)
             writefln("  main view, rows + fragments: %6.1f ns/row (found %s)",

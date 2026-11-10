@@ -86,10 +86,12 @@ The commands can be run from any folder: the script goes to the project root its
 node scripts/build.mjs                    # debug build for this machine
 node scripts/build.mjs --release          # release build
 node scripts/build.mjs --arch x64         # another architecture: x64 or arm64
-node scripts/build.mjs test               # the D unittests and the JS tests
+node scripts/build.mjs test               # the D unittests, the JS tests, the names of .ai/
+node scripts/build.mjs test --module <file.d>  # the unittests of one D module (see "Tests")
 node scripts/build.mjs dist               # a distribution
 node scripts/build.mjs check-windows      # compiles for Windows x64 from macOS or Linux
 node scripts/build.mjs gen-log <file> ... # a test log (see "A test log" below)
+node scripts/build.mjs bench [log] ...    # this tree against master (see "Measuring" below)
 node scripts/build.mjs --help             # the commands and options
 ```
 
@@ -113,7 +115,14 @@ JS needs a rebuild.
 `test` runs the D unittests (`dub test`) and the JS tests (`node --test tests/js`), the second
 even when the first fail, and tells the result of both. The JS tests also check that the
 translation catalogs are up to date with the code (`node scripts/i18n-extract.mjs` updates
-them).
+them). Last, `scripts/check-ai-context.mjs` looks up what `.ai/`, `CLAUDE.md` and `.claude/`
+name in backquotes (paths, identifiers, options) and lists those the code no longer has; a
+name that is right though the code lacks it goes to the `allowed` list of the script.
+
+`test --module <file.d>` builds the unittests of one D module and of the modules it imports
+with `ldc2` alone (the flags of `dub.sdl`, as `dub describe` gives them), into `build/tools/`:
+a quick check of a module that doesn't depend on Sciter. The test runner of druntime has no
+filter and leaves a module at its first failing `unittest`: the ones after it did not run.
 
 ### Distribution
 
@@ -191,6 +200,31 @@ a cut last record. The generator (`source/formats/generator/`) is built into
 `build/tools/gen_log` by every run, optimized: about 13.5 seconds for a gigabyte of DLT on an M1 Pro.
 It is not in the program: its modules are compiled only for the unittests and with
 `-d-version=LogGenerator`.
+
+### Measuring
+
+`bench` measures this working tree against `master` (`--against` another ref) with
+`scripts/bench_rows.d` (scrolling, the default) or `--bench index` (`scripts/bench_index.d`,
+building the indexes). It checks the ref out into a temporary worktree, puts this tree's
+benchmark into it, builds both sides alike, reads the log once into the page cache, runs the
+sides by turns, each going first in every other run (`--runs`, 3), and prints the median and
+the spread of every number of both sides and their difference (`~ noise` when the spreads
+overlap);
+`--json <file>` keeps every run. Without a log it takes one the generator writes once
+(`build/tools/bench-dlt-256M-seed1.dlt`). How to read the numbers: `docs/performance.md`.
+
+```sh
+node scripts/build.mjs bench big.dlt failed value
+node scripts/build.mjs bench --bench index big.dlt error -- --rounds=5
+node scripts/build.mjs bench --help
+```
+
+### The stacks of a hung app
+
+`node scripts/backtrace.mjs [pid]` writes the stacks of every thread of a running DLT
+Explorer into `build/backtrace-<pid>.txt` (`--out` another file) with `lldb` on macOS or `gdb`
+on Linux, and leaves the process running. Without a pid it takes the copy of
+`scripts/app.mjs`, else the only running `dlt_explorer`.
 
 ### Checking Windows from macOS or Linux
 

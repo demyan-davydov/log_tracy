@@ -19,8 +19,9 @@ Applies to every fix and feature, D and script alike.
   the JS tests). JS only: `node --test tests/js`.
 - The druntime test runner has no filter, and it stops a module's tests at the first failing
   `unittest` block: when one module gets several new tests, check each of them separately.
-- One module that doesn't depend on Sciter can be compiled on its own: the command is in
-  `CLAUDE.md` (Commands).
+- One module that doesn't depend on Sciter: `node scripts/build.mjs test --module <file.d>`.
+- `build.mjs test` also runs `scripts/check-ai-context.mjs`: a name of `.ai/` the code lost
+  fails it. Fix the name, or add a right one to the `allowed` list of the script.
 
 ## What Gets Tested
 
@@ -31,4 +32,5 @@ Applies to every fix and feature, D and script alike.
   logs are local, not in the repository. A whole log for a manual check or a benchmark:
   `node scripts/build.mjs gen-log` (same file for the same options and seed).
 - Performance claims are measured, not guessed (`scripts/bench_rows.d`,
-  `scripts/bench_index.d`, results in `docs/performance.md`).
+  `scripts/bench_index.d`, results in `docs/performance.md`): a branch against `master` with
+  `node scripts/build.mjs bench`.
