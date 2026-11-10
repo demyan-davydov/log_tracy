@@ -1,6 +1,13 @@
+//! The entry point: starts Sciter, makes the application (the session and its window) and
+//! runs the event loop.
 import std.stdio;
 
 import ui.app_resources : appResource, appResourceUrl;
+import domain.document : Document;
+import domain.log_document : LogDocument;
+import log_core.log_format : FormatChoice;
+import ui.app_menu : hostMenuPlatform, windowMenu;
+import ui.app_session : AppSession;
 import ui.main_window;
 import ui.debug_channel : startDebugChannel;
 import ui.app_settings;
@@ -21,24 +28,26 @@ import std.stdio : writeln;
 static assert(size_t.sizeof == 8, "DLT Explorer is built for 64-bit systems only "
     ~ "(logs are mapped into memory whole). Build for x86_64 or arm64.");
 
-// macOS: Workaround for Sciter not calling setNeedsDisplay on NSView.
-version (OSX)
+/// The application behind the window: its documents are LogDocuments of the files, and the
+/// environment variables for development (docs/building.md, "Environment variables for
+/// development") are all read here
+/// @param sciterDebugMode - set when SCITER_DEBUG_MODE asks for the debug mode of Sciter
+private AppSession newSession(AppSettings settings, out bool sciterDebugMode)
 {
-	private extern (C)
-	{
-		alias objc_id = void*;
-		alias SEL = void*;
-		SEL sel_registerName(const(char)* name);
-		void* objc_msgSend(objc_id self, SEL op, ...);
-	}
+	import std.process : environment;
 
-	// Call [nsView setNeedsDisplay:YES] via objc_msgSend
-	private void nsViewSetNeedsDisplay(objc_id nsView, SEL sel)
-	{
-		alias Fn = extern (C) void function(objc_id, SEL, byte);
-		auto fn = cast(Fn)&objc_msgSend;
-		fn(nsView, sel, 1); // YES = 1
-	}
+	auto session = new AppSession(settings,
+		(string path, FormatChoice choice) => cast(Document) new LogDocument(path, choice));
+	// MENU_BAR_PLATFORM=windows|linux: that menu bar in the window, for a try on any platform
+	session.showMenu(windowMenu(hostMenuPlatform(), environment.get("MENU_BAR_PLATFORM", "")));
+	// PSEUDO_LOCALE=1: the pseudo translation among the languages of Settings
+	session.offerPseudoLocale(environment.get("PSEUDO_LOCALE", "") == "1");
+	// OPEN_AT_START=<path>[<new line><path>...]: files opened at start, to look at the app
+	// with a log (scripts/screenshot.mjs)
+	session.openAtStart(environment.get("OPEN_AT_START", ""));
+	// SCITER_DEBUG_MODE=1: the debug mode of Sciter, for its inspector (set on the window)
+	sciterDebugMode = environment.get("SCITER_DEBUG_MODE", "") == "1";
+	return session;
 }
 
 int main()
@@ -109,7 +118,9 @@ int main()
 	try
 	{
 		auto settings = loadSettings();
-		scope auto win = new MainWindow(settings); // scope ensures that d'tor is called on exit
+		bool sciterDebugMode;
+		auto session = newSession(settings, sciterDebugMode);
+		scope auto win = new MainWindow(session, sciterDebugMode); // scope ensures that d'tor is called on exit
 
 		// SCITER_DEBUG_PORT=<port>: the debug channel to the window, debug builds only
 		auto debugChannel = startDebugChannel(win.hwnd);
@@ -126,45 +137,9 @@ int main()
 		win.updateWindow();
 
 		writeln("Event loop starting...");
-		//sciterApplication().runEventLoop();
-
-		//version (OSX)
-		static if (false)
-		{
-			// Workaround: New Sciter versions don't call setNeedsDisplay on macOS.
-			// Use manual event loop iteration + direct NSView invalidation.
-			// HWINDOW on macOS is NSWindow*, so we get its contentView first.
-			auto selContentView = sel_registerName("contentView");
-			auto selSetNeedsDisplay = sel_registerName("setNeedsDisplay:");
-
-			auto nsWindow = cast(objc_id) win.hwnd();
-			alias ContentViewFn = extern (C) objc_id function(objc_id, SEL);
-			auto getContentView = cast(ContentViewFn)&objc_msgSend;
-			auto nsView = getContentView(nsWindow, selContentView);
-
-			import core.thread : Thread;
-			import core.time : dur;
-
-			enum FRAME_TIME = dur!"msecs"(16); // ~60fps cap
-
-			while (sciterApplication().runIteration())
-			{
-				win.onIdle();
-				// Invalidate + sleep to cap at ~60fps, prevent busy-waiting
-				nsViewSetNeedsDisplay(nsView, selSetNeedsDisplay);
-				Thread.sleep(FRAME_TIME);
-			}
-			result = 0;
-		}
-		else
-		{
-			while (sciterApplication().runIteration())
-			{
-				win.onIdle();
-			}
-			result = 0;
-		}
-
+		while (sciterApplication().runIteration())
+			win.onIdle();
+		result = 0;
 		writeln("Event loop stopped");
 
 		// Cancel and join indexing threads: they are not daemon threads, so the
@@ -173,8 +148,6 @@ int main()
 		forgetAppMenuWindow(); // `win` is destroyed at the end of this block
 		writeln("Documents closed");
 
-		//win.detachEventHandler();
-		//win.destroy(); // call d'tor
 	}
 	catch (Exception e)
 	{

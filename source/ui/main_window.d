@@ -8,11 +8,9 @@ import sciter.value;
 import sciter.capi.types;
 import sciter.capi.behavior;
 
-import domain.document : Document;
 import domain.document_id : DocumentId;
-import domain.log_document : LogDocument;
 import domain.document_item : DocumentItem;
-import log_core.log_format : ColumnInfo, FormatChoice;
+import log_core.log_format : ColumnInfo;
 import log_core.log_message : TimeKind;
 import ui.app_menu : MenuItem, MenuPlatform;
 import ui.main_menu_loader : retitleAppMenu;
@@ -21,7 +19,7 @@ import log_core.rule_filter : RuleId;
 import log_core.search_filter : checkRegex, MatchBuffer, MatchRange;
 import ui.app_resources : appResourceOfUrl, appResourceUrl, builtInCatalogs;
 import ui.app_session : AppSession;
-import ui.app_settings : AppSettings, toJSON;
+import ui.app_settings : toJSON;
 import ui.filter_commands : DocumentFilters;
 import ui.table_rows : columnsJson, rowLength, writeRow;
 
@@ -56,28 +54,13 @@ class MainWindow : SciterWindow
         return _session.menuBar(platform);
     }
 
-    this(AppSettings settings)
+    /// @param session - the application behind the window, made by main()
+    /// @param sciterDebugMode - the debug mode of Sciter, for its inspector (SCITER_DEBUG_MODE):
+    ///   Ctrl+Shift+I connects the window to inspector.app of the SDK, started first,
+    ///   Ctrl+Shift+click shows the element clicked
+    this(AppSession session, bool sciterDebugMode = false)
     {
-        bool sciterDebugMode;
-        _session = new AppSession(settings,
-            (string path, FormatChoice choice) => cast(Document) new LogDocument(path, choice));
-        // The environment variables for development (docs/building.md), all read here
-        {
-            import std.process : environment;
-            import ui.app_menu : hostMenuPlatform, windowMenu;
-
-            // MENU_BAR_PLATFORM=windows|linux: that menu bar in the window, for a try on any platform
-            _session.showMenu(windowMenu(hostMenuPlatform(), environment.get("MENU_BAR_PLATFORM", "")));
-            // PSEUDO_LOCALE=1: the pseudo translation among the languages of Settings
-            _session.offerPseudoLocale(environment.get("PSEUDO_LOCALE", "") == "1");
-            // OPEN_AT_START=<path>[<new line><path>...]: files opened at start, to look at the app
-            // with a log (scripts/screenshot.mjs)
-            _session.openAtStart(environment.get("OPEN_AT_START", ""));
-            // SCITER_DEBUG_MODE=1: the debug mode of Sciter, for its inspector (inspector.app of
-            // the SDK, started first): Ctrl+Shift+I connects the window to it, Ctrl+Shift+click
-            // shows the element clicked. Set on the window, once it is created (below).
-            sciterDebugMode = environment.get("SCITER_DEBUG_MODE", "") == "1";
-        }
+        _session = session;
         _session.useTranslations(builtInCatalogs());
 
         import sciter.capi.def;
