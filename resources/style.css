@@ -591,7 +591,7 @@ frameset {
     vertical-align: middle;
     border-spacing: 3dip;
     width: max-content;
-    max-width: 100%; /* of the row's rest: a long name is cut */
+    max-width: 100%; /* of its line: a long name is cut */
     box-sizing: border-box;
     height: 1.6em;
     padding: 0 3dip;
@@ -668,11 +668,13 @@ frameset {
 .filter-swatch.marker { foreground-image: icon(0 0 12 12;M6 1l5 5l-5 5l-5 -5z); }
 
 /* No color: a checkerboard, as transparency is shown in image editors: a
-   tile of 2x2 cells repeated */
+   tile of 2x2 cells repeated, its gray cells translucent over the background
+   of the theme */
 .filter-swatch.no-color {
+    background-color: var(--bg-main);
     background-image: url(checker.png);
     background-repeat: repeat;
-    background-size: 8dip 8dip;
+    background-size: 4dip 4dip; /* cells of 2dip */
 }
 
 /* The buttons of a set (⤓ export, +, ×) and of a rule (✎, ×) */

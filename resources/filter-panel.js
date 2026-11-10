@@ -34,8 +34,8 @@ function setHead(set, s) {
     </div>;
 }
 
-// The chip of a rule: its switch, kind, color and name; its buttons in a box
-// shown beside it on hover, out of its width. Its set-index and rule-index are
+// The chip of a rule: its switch, kind, color and name; its buttons in a tab
+// shown over it on hover, out of its width. Its set-index and rule-index are
 // read by the handlers. A rule not applied is marked, its
 // error in its tooltip.
 function ruleChip(rule, s, r) {
