@@ -46,6 +46,26 @@ test("an exception or a syntax error is what was thrown", () => {
     assert.equal(answer("throw new Error('boom')").value, undefined);
 });
 
+test("the stack of what was thrown has no frames of the wrapper", () => {
+    // as Sciter (QuickJS) gives it: the frames of the code, then eval, debugEval, the script
+    globalThis.sciterError = {
+        toString: () => "TypeError: cannot read property 'x' of null",
+        stack: "    at f (<input>)\n    at <eval> (<input>:1)\n    at eval (native)\n"
+            + "    at debugEval (<eval>:61)\n    at <script> (<eval>:68)\n",
+    };
+    try {
+        assert.equal(answer("throw sciterError").thrown,
+            "TypeError: cannot read property 'x' of null\n    at f (<input>)\n    at <eval> (<input>:1)");
+    } finally {
+        delete globalThis.sciterError;
+    }
+    // as Node (V8) gives it: the message is not repeated, the frame of the code stays
+    const lines = answer("throw new Error('boom')").thrown.split("\n");
+    assert.equal(lines[0], "Error: boom");
+    assert.match(lines[1], /^ {4}at eval \(eval at debugEval/);
+    assert.ok(!lines.some(line => /^\s*at debugEval /.test(line)), lines.join("\n"));
+});
+
 test("an element is a summary: tag, id, class, text cut, box in the window", () => {
     globalThis.Element = Element;
     try {

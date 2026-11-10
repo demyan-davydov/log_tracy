@@ -57,11 +57,25 @@
         }
     }
 
+    // The frames of the code that threw `e`, one a line: those of this wrapper (from debugEval
+    // on, and eval itself just before it in Sciter: "at eval (native)") cut, the message that
+    // V8 repeats on the first line too
+    function codeFrames(e, message) {
+        if (typeof e?.stack !== "string") return [];
+        const lines = e.stack.split("\n").map(line => line.trim()).filter(line => line);
+        let end = lines.findIndex(line => /^at debugEval\b/.test(line));
+        if (end < 0) end = lines.length;
+        if (end > 0 && lines[end - 1] === "at eval (native)") end--;
+        const start = lines[0] === message ? 1 : 0;
+        return lines.slice(start, end);
+    }
+
     try {
         const value = (0, eval)(code); // indirect: the global scope, not this function's
         return JSON.stringify({ value: plain(value, 0, []) });
     } catch (e) {
-        const stack = typeof e?.stack === "string" && e.stack.trim() ? `\n${e.stack.trim()}` : "";
-        return JSON.stringify({ thrown: String(e) + stack });
+        const message = String(e);
+        const frames = codeFrames(e, message).map(frame => `\n    ${frame}`).join("");
+        return JSON.stringify({ thrown: message + frames });
     }
 })

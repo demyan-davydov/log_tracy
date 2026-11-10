@@ -168,7 +168,10 @@ node scripts/app.mjs start --open ~/logs/trace.dlt     # builds, starts a copy i
 node scripts/app.mjs wait "document.$('table tbody tr') != null" --timeout 15
 node scripts/app.mjs eval "document.$('table tbody tr')" # {tag, class, text, box} of the element
 node scripts/app.mjs shot build/x.png                   # the window rendered by Sciter
-node scripts/app.mjs run steps.txt                      # eval/wait/shot steps, one a line
+node scripts/app.mjs hover ".btn-chip-history"          # the mouse over an element (or "x y"), macOS
+node scripts/app.mjs key "Cmd+A"                        # a key in the focused element, macOS
+node scripts/app.mjs type "error 42"                    # a text, a key a character, macOS
+node scripts/app.mjs run steps.txt                      # eval/wait/shot/hover/key/type steps, one a line
 node scripts/app.mjs stop
 ```
 
@@ -176,7 +179,18 @@ The copy has its own settings (`--settings` to start with a `settings.json`) and
 `build/app/app.log` (`app.mjs log`). The code runs in the global scope of the window: what the
 modules put on `globalThis`, `document`, `Window.this` (`$` of the modules is not global:
 `document.$(...)`). `shot` needs no permission of the system: Sciter renders the window
-itself, without the title bar of the system. `--help` lists the rest. The channel is a line of
+itself, without the title bar of the system. An open popup (a menu, a tooltip, the list of a
+`<select>`) is a window of its own: `shot` writes its image beside, `x.popup-1.png` and on, and
+tells its file and element (`{tag, id, class, text, box}`, `box` in the window); one that
+closed by itself before its image (a tooltip, a notice) is told as `closed`; the popup files
+of an earlier shot into the same path are removed. `hover`,
+`key` and `type` (macOS only) hand the window events of the system, as if the user moved the
+mouse or typed: `:hover`, `mouseenter`, `keydown`, text typed follow; the cursor stays where it
+is; over an open popup the move goes to the popup. "Cmd+A" is Cmd and a (Shift is written),
+a text starting with `--` goes after `--` (`type -- "--x"`). A press of a mouse button can't
+be handed so (`el.click()` in `eval`), Sciter's own
+tooltip of `title` doesn't show, and a shortcut of the menu bar doesn't reach the menu.
+`--help` lists the rest. The channel is a line of
 JSON per request on a TCP connection (`source/ui/debug_protocol.d`).
 
 ### A test log

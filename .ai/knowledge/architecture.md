@@ -34,7 +34,9 @@ utils  ←  sciter  ←  ui
 
 - `utils/`: what knows nothing of logs and could move to another project as it is: chunked
   array, mapped file, lock guard, background slot, state machines (`utils/fsm`), event buses
-  (`utils/event_bus/`), parallel scan, single instance, `ui_text`.
+  (`utils/event_bus/`), parallel scan, single instance, `ui_text`, keys by name (`utils/keys`,
+  whatever the system) and their codes of macOS (`utils/mac_keys`), Objective-C calls
+  (`utils/objc`).
 - `log_core/`: what doesn't depend on a format (LogMessage, LogFormat, filters, ByteSource,
   column layout); `log_core/text/` the base of the text formats.
 - `formats/`: every format, one module (`formats/logcat.d`) or a package when it has several
@@ -98,10 +100,14 @@ utils  ←  sciter  ←  ui
   development"; a new one goes there.
 - The debug channel (debug builds only, `SCITER_DEBUG_PORT`): `ui/debug_channel` is a TCP
   server on 127.0.0.1 that runs the requests of `ui/debug_protocol` (JavaScript to evaluate,
-  `resources/debug-eval.js` making its value plain JSON; a render of the window into a PNG) on
-  the window's thread through `postToWindowThread` and `evalInWindow` (`sciter/window`:
-  `SciterPostCallback`, `SciterEval`). The response lines are made by `ui/debug_protocol` only:
-  `debug-eval.js` gives the value or what was thrown, not a line of the protocol.
+  `resources/debug-eval.js` making its value plain JSON; a render of the window into a PNG,
+  and of each open popup into a PNG beside it; the mouse moved and keys pressed as events of
+  the system) on the window's thread through `postToWindowThread`, `evalInWindow`,
+  `sendMouseMove` and `sendKeyPress` (`sciter/window`: `SciterPostCallback`, `SciterEval`,
+  `NSEvent` on macOS with the codes of `utils/mac_keys`). The parsing of every request (a
+  key's name by `utils/keys`), the order of the events handed (`sendInput`) and the response
+  lines are in `ui/debug_protocol` only: `debug-eval.js` gives the value or what was thrown,
+  not a line of the protocol; the channel only runs things on the window's thread.
   Kept apart on purpose: `main()` starts and stops it, nothing else knows of it; a new command
   is a request kind of the protocol, not a hook in the window or the session: a member of
   `RequestKind` with its parsing, script and response in `ui/debug_protocol`, and its case of

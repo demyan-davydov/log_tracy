@@ -23,7 +23,27 @@ agent can't drive it. In scapp a plain
   bytes (`T_BYTES`).
 - `new Graphics.Image(w, h, document).toBytes("png")` with `document.state.box("dimension")`
   renders the whole window in dips (1000x800 for a 2000x1600 Retina window), without the
-  system's title bar.
+  system's title bar. Popups are not in it: an open `menu`, a tooltip, a notice, the list of
+  a `<select>` are windows of their own (checked 6.0.5.5: a menu open over the table is on
+  the screen, not in the image). An element renders by itself, a popup too while it is open:
+  `new Graphics.Image(w, h, element)` with `element.state.box("dimension", "border")` (the
+  border is in it; a closed popup gives an empty image). The debug channel's `shot` does so.
+
+## Events of the System
+
+- `SciterProcX` with `SXM_MOUSE`/`SXM_KEY` is for Sciter Lite (no window of its own): a real
+  window answers "not handled" to every message and nothing reaches the document (6.0.5.5).
+- macOS: the window's `contentView` is an `NSVisualEffectView`; Sciter's view (ContentView)
+  is inside it (`hitTest:`). An `NSEvent` made by `mouseEventWithType:...` handed to that
+  view's `mouseMoved:` gives `mouseenter`/`mousemove` and `:hover` as a real move (over an open
+  popup, a window of its own: the window of `windowNumberAtPoint:` and its view); one made
+  by `keyEventWithType:...` to its `keyDown:`/`keyUp:` types into the focused element (any
+  character: it goes through the text input). Through `[NSWindow sendEvent:]` neither
+  arrives. A press of a button reaches nothing whatever way: the view, the window,
+  `[NSApp sendEvent:]`, `[NSApp postEvent:]` (it lies in the queue till a real event comes),
+  `+[NSEvent pressedMouseButtons]` made to say "pressed", CGEventPostToPid to the own
+  process. Sciter's tooltip of `title` doesn't show after such a hover (it seems to look at
+  the real cursor). `sendMouseMove`, `sendKeyPress` (`sciter/window`).
 
 ## DOM and Script
 

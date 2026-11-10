@@ -11,6 +11,7 @@ Drive the app: $ARGUMENTS
    if none is given; a theme, a language or a window size goes into a `settings.json` written
    for it in the scratchpad (`--settings`).
 3. `wait` for the state, then `eval` what is asked; `shot` and read the PNG when the look
-   matters. Several steps: a steps file in the scratchpad and `run`.
-4. `node scripts/app.mjs stop` when done, and say what was checked and what couldn't be (real
-   hover, mouse focus).
+   matters; `hover`, `key`, `type` for the real mouse over an element and keys (macOS).
+   Several steps: a steps file in the scratchpad and `run`.
+4. `node scripts/app.mjs stop` when done, and say what was checked and what couldn't be (a
+   press of a mouse button, mouse focus, Sciter's `title` tooltip).
