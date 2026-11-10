@@ -145,7 +145,7 @@ const stateFile = join(copyDir, "state.json");
 const logFile = join(copyDir, "app.log");
 const sleep = s => new Promise(done => setTimeout(done, s * 1000));
 
-function readState() {
+export function readState() {
     try {
         return JSON.parse(readFileSync(stateFile, "utf8"));
     } catch {
@@ -153,7 +153,7 @@ function readState() {
     }
 }
 
-function alive(pid) {
+export function alive(pid) {
     try {
         process.kill(pid, 0);
         return true;

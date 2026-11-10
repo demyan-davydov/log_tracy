@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseCommand, dubArgs, distArch, infoPlist, desktopEntry, sciterLibrary, isLfsPointer,
-    compilerArgs, genLogArgs, commands, buildUsage, runUsage } from "../../scripts/build.mjs";
+    compilerArgs, genLogArgs, moduleTestArgs, commands, buildUsage, runUsage } from "../../scripts/build.mjs";
 
 test("build in debug for the machine by default", () => {
     assert.deepEqual(parseCommand([]), { command: "build", release: false, arch: null });
@@ -126,4 +126,34 @@ test("the generator is compiled optimized, with its version and the flags of dub
     assert.ok(args.includes("scripts/gen_log.d"));
     assert.ok(args.includes("-of=build/tools/gen_log"));
     assert.ok(genLogArgs([], "win32").includes("-of=build/tools/gen_log.exe"));
+});
+
+test("test --module tests one D module, its path kept as given", () => {
+    assert.deepEqual(parseCommand(["test", "--module", "source/utils/fsm.d"]),
+        { command: "test", release: false, arch: null, module: "source/utils/fsm.d" });
+    assert.deepEqual(parseCommand(["test", "--module=source/utils/fsm.d"]),
+        { command: "test", release: false, arch: null, module: "source/utils/fsm.d" });
+    assert.throws(() => parseCommand(["test", "--module"]), /--module/);
+    assert.throws(() => parseCommand(["test", "--module", "fsm.txt"]), /\.d/);
+    assert.throws(() => parseCommand(["build", "--module", "source/utils/fsm.d"]), /--module/);
+    assert.throws(() => parseCommand(["--module", "source/utils/fsm.d"]), /--module/);
+    assert.throws(() => parseCommand(["test", "--module", "source/utils/fsm.d", "--arch", "x64"]), /--arch/);
+    assert.match(buildUsage, /--module/);
+});
+
+test("one module is compiled with its unittests, a main and the flags of dub.sdl, into build/tools", () => {
+    const args = moduleTestArgs(["-preview=in", "-I/p/source/"], "source/utils/fsm.d", "darwin");
+    assert.ok(args.includes("-unittest") && args.includes("-main") && args.includes("-i"));
+    assert.ok(args.includes("-preview=in") && args.includes("-I/p/source/"));
+    assert.ok(args.includes("source/utils/fsm.d"));
+    assert.ok(args.includes("-of=build/tools/test_fsm"));
+    assert.ok(args.includes("-od=build/tools/obj/test_fsm"));
+    assert.ok(moduleTestArgs([], "source/utils/fsm.d", "win32").includes("-of=build/tools/test_fsm.exe"));
+});
+
+test("bench passes everything after it to scripts/bench.mjs, its --help too", () => {
+    assert.deepEqual(parseCommand(["bench", "big.dlt", "--runs", "5"]),
+        { command: "bench", release: false, arch: null, toolArgs: ["big.dlt", "--runs", "5"] });
+    assert.deepEqual(parseCommand(["bench", "--help"]), { command: "bench", release: false, arch: null, toolArgs: ["--help"] });
+    assert.throws(() => parseCommand(["--release", "bench"]), /bench comes first/);
 });

@@ -5,6 +5,9 @@ the same machine and log, one right after the other: the absolute numbers depend
 
 ## How to measure
 
+`node scripts/build.mjs bench <log> failed value` does all of the below for a branch against
+`master` in one command (`docs/building.md`, "Measuring"); by hand:
+
 `scripts/bench_rows.d` loads a log, then fetches every row of the main view the way the table does
 when it scrolls. It does this without a search and with each search given on the command line,
 and it also fetches the rows of the search view. After each step it prints the memory of the

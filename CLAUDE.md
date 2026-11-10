@@ -41,7 +41,8 @@ every system, `scripts/build.mjs` (for people: `docs/building.md`):
 node scripts/build.mjs                   # debug for this machine → build/osx-aarch64-debug/dlt_explorer
 node scripts/build.mjs --release         # release; --arch x64|arm64 for another architecture
 node scripts/run.mjs                     # builds as above (same options) and starts the app, its stdout here
-node scripts/build.mjs test              # D unittests ("N modules passed unittests") + JS tests
+node scripts/build.mjs test              # D unittests ("N modules passed unittests"), JS tests, stale names of .ai/
+node scripts/build.mjs test --module source/log_core/text/text_format.d  # one Sciter-free module, no dub
 node scripts/build.mjs dist              # release distribution in build/dist/<macos|linux|windows>/
 node scripts/build.mjs check-windows     # from macOS/Linux: compiles app + unittests for Windows x64, no link
 node scripts/build.mjs --help            # the commands and options (run.mjs --help too)
@@ -51,15 +52,17 @@ node scripts/i18n-extract.mjs            # brings the translation catalogs up to
 node scripts/screenshot.mjs --open <log> # the app's window with a log → build/screenshot.png (--help)
 node scripts/app.mjs start --open <log>  # a running debug copy to drive: eval, wait, shot, run, stop (--help)
 node scripts/build.mjs gen-log <file> --format dlt|dlt-v2|text --size 1G  # a test log, same bytes per seed (--help)
+node scripts/build.mjs bench [log] [words] --against master  # bench_rows.d (--bench index) of both sides, a table (--help)
+node scripts/check-ai-context.mjs         # names in backquotes of .ai/, CLAUDE.md, .claude/ the code no longer has
+node scripts/backtrace.mjs [pid]          # stacks of every thread of a running (hung) app → build/backtrace-<pid>.txt
 ```
 
 - `dub.sdl` puts every build in `build/<platform>-<arch>-<build type>/` (`osx-aarch64-unittest`
   for `dub test`) and copies the Sciter library of `libs/` next to it (`copyFiles`): a build
   runs from there, in a fresh worktree too. `libs/` is in Git LFS (`git lfs pull` after a
   clone), its Sciter version in `libs/VERSION`; the app's version is `VERSION`.
-- One module that doesn't depend on Sciter can be tested on its own (the druntime runner has no
-  filter and stops a module at its first failing `unittest`):
-  `ldc2 -unittest -main -i -preview=in -preview=dip1000 -preview=dtorfields -Isource source/log_core/text/text_format.d -of=/tmp/t && /tmp/t`
+- `test --module` compiles one module and what it imports with the flags of `dub.sdl`: the
+  druntime runner has no filter and stops a module at its first failing `unittest`.
 - Keep the `-preview=in/dip1000/dtorfields` flags of `dub.sdl` when compiling by hand.
 - The files of `resources/` are built into the executable: a JS/CSS/HTML change needs a
   rebuild, a new file is added to `ui/app_resources`.

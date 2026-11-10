@@ -5,13 +5,16 @@
 // more: docs/building.md.
 // Builds and starts the program: scripts/run.mjs. Tests: tests/js/build-script.test.mjs.
 import { spawnSync } from "node:child_process";
-import { chmodSync, closeSync, copyFileSync, cpSync, mkdirSync, mkdtempSync, openSync, readdirSync,
-    readFileSync, readSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync,
+    readFileSync, readSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const commands = ["build", "test", "dist", "check-windows", "gen-log"];
+import { BenchError, benchCompileArgs, benchUsage, compareRuns, defaultBenchArgs, formatComparison,
+    parseBenchArgs, runOrder } from "./bench.mjs";
+
+export const commands = ["build", "test", "dist", "check-windows", "gen-log", "bench"];
 
 /// What `--help` prints. Every command and option is in it: tests/js/build-script.test.mjs.
 export const buildUsage = `Builds, tests and packs DLT Explorer. More: docs/building.md.
@@ -21,13 +24,20 @@ Usage: node scripts/build.mjs [command] [options]
 Commands:
   build           build the program (the default) into build/<platform>-<arch>-<type>/,
                   the Sciter library next to it
-  test            the D unittests and the JS tests (tests/js)
+  test            the D unittests, the JS tests (tests/js) and the names of .ai/ the code
+                  no longer has (scripts/check-ai-context.mjs)
+  test --module <file.d>
+                  the unittests of one D module and of the modules it imports, without
+                  dub (one that doesn't depend on Sciter): built into build/tools/
   dist            a release distribution in build/dist/<macos|linux|windows>/
   check-windows   compile the program and its unittests for Windows x64 from macOS or
                   Linux, without linking
   gen-log <file> [options]
                   generate a test log (scripts/gen_log.d, built into build/tools/):
                   everything after gen-log is its own, see gen-log --help
+  bench [log] [options]
+                  measure this working tree against master with scripts/bench_rows.d
+                  or bench_index.d (scripts/bench.mjs), see bench --help
 
 Options:
   --release       a release build instead of debug (build; dist always is)
@@ -62,12 +72,15 @@ export class BuildError extends Error {}
 /// (command "help") whatever else is there.
 export function parseCommand(argv) {
     // the generator takes its own options, --help too
-    if (argv[0] === "gen-log") return { command: "gen-log", release: false, arch: null, toolArgs: argv.slice(1) };
+    if (argv[0] === "gen-log" || argv[0] === "bench")
+        return { command: argv[0], release: false, arch: null, toolArgs: argv.slice(1) };
     if (argv.includes("--help") || argv.includes("-h")) return { command: "help", release: false, arch: null };
-    if (argv.includes("gen-log")) throw new BuildError("gen-log comes first: node scripts/build.mjs gen-log <file> [options]");
+    for (const command of ["gen-log", "bench"])
+        if (argv.includes(command)) throw new BuildError(`${command} comes first: node scripts/build.mjs ${command} ...`);
     let command = null;
     let release = false;
     let arch = null;
+    let module = null;
     for (let i = 0; i < argv.length; i++) {
         const arg = argv[i];
         if (arg === "--release") release = true;
@@ -77,6 +90,11 @@ export function parseCommand(argv) {
             if (!arches.includes(value))
                 throw new BuildError(`unknown architecture "${value}", expected one of: ${arches.join(", ")}`);
             arch = value;
+        } else if (arg === "--module" || arg.startsWith("--module=")) {
+            const value = arg === "--module" ? argv[++i] : arg.slice("--module=".length);
+            if (value === undefined || value.startsWith("-")) throw new BuildError("--module needs a file: --module source/utils/fsm.d");
+            if (!value.endsWith(".d")) throw new BuildError(`--module takes a D file (.d), got "${value}"`);
+            module = value;
         } else if (arg.startsWith("-")) throw new BuildError(`unknown option ${arg}`);
         else if (command !== null) throw new BuildError(`one command only, got "${command}" and "${arg}"`);
         else if (!commands.includes(arg))
@@ -89,6 +107,11 @@ export function parseCommand(argv) {
         throw new BuildError(`${command} takes no --release`);
     if (arch && command === "check-windows")
         throw new BuildError("check-windows checks Windows x64 only, it takes no --arch");
+    if (module !== null) {
+        if (command !== "test") throw new BuildError("--module is an option of test: node scripts/build.mjs test --module <file.d>");
+        if (arch) throw new BuildError("test --module builds for this machine only, it takes no --arch");
+        return { command, release: false, arch: null, module };
+    }
     return { command, release: release || command === "dist", arch };
 }
 
@@ -194,13 +217,13 @@ echo "${bundle} is ready."
 
 /// Runs a program, its output shown, or kept with `capture` (up to `maxBuffer`, 1 MB). `echo`
 /// tells the command line first; `cwd` is the folder it runs in (the project root).
-function run(program, args, { capture = false, echo = !capture, cwd } = {}) {
+function run(program, args, { capture = false, echo = !capture, cwd, env } = {}) {
     if (echo) console.log(`> ${program} ${args.join(" ")}`);
     // dub on Windows may be a dub.cmd (a shim of scoop or chocolatey), which only a shell
     // starts; its arguments here are options without spaces, joined by the shell as they are
     const shell = process.platform === "win32" && program === "dub";
     const result = spawnSync(program, args, { stdio: capture ? ["ignore", "pipe", "pipe"] : "inherit",
-        encoding: "utf8", shell, cwd });
+        encoding: "utf8", shell, cwd, env: env && { ...process.env, ...env }, maxBuffer: 64 * 1024 * 1024 });
     if (result.error) throw new BuildError(`can't run ${program}: ${result.error.message}`);
     return result;
 }
@@ -251,8 +274,11 @@ function test(options) {
     checkSciterLibrary(options.arch ?? process.arch);
     const dub = run("dub", dubArgs("test", options)).status === 0;
     const js = run(process.execPath, ["--test", "tests/js"]).status === 0;
-    console.log(`D unittests: ${dub ? "OK" : "FAILED"}, JS tests: ${js ? "OK" : "FAILED"}`);
-    if (!dub || !js) throw new BuildError("Tests failed.");
+    // the names of .ai/, CLAUDE.md and .claude/ the code no longer has
+    const context = run(process.execPath, ["scripts/check-ai-context.mjs"]).status === 0;
+    console.log(`D unittests: ${dub ? "OK" : "FAILED"}, JS tests: ${js ? "OK" : "FAILED"}, `
+        + `context of .ai/: ${context ? "OK" : "STALE"}`);
+    if (!dub || !js || !context) throw new BuildError("Tests failed.");
 }
 
 function freshDir(dir) {
@@ -386,26 +412,153 @@ export function genLogArgs(dubFlags, platform) {
         "-od=build/tools/obj", "-oq"];
 }
 
+/// The arguments of ldc2 for the unittests of one module (`file`) and of the modules it
+/// imports (-i), `dubFlags` the flags and import paths of dub.sdl as dub describes them: a
+/// main of druntime's (-main), the program in build/tools/test_<name>.
+export function moduleTestArgs(dubFlags, file, platform) {
+    const name = `test_${basename(file, ".d")}`;
+    return ["-unittest", "-main", "-i", ...dubFlags, file, `-of=build/tools/${name}${platform === "win32" ? ".exe" : ""}`,
+        `-od=build/tools/obj/${name}`, "-oq"];
+}
+
+/// The flags and import paths of dub.sdl, as dub describes them for a build in `cwd`.
+function dubCompilerFlags(cwd) {
+    const described = run("dub", ["describe", "--compiler=ldc2", "--data=dflags,import-paths", "--data-0"],
+        { capture: true, cwd });
+    if (described.status !== 0) throw new BuildError(`dub describe failed:\n${described.stderr}`);
+    return compilerArgs(described.stdout);
+}
+
+/// Builds and runs the unittests of one module, `file` relative to `callerDir` (the folder the
+/// script was started from) or to the project root.
+function testModule(file, callerDir) {
+    const path = [resolve(callerDir, file), resolve(file)].find((candidate) => existsSync(candidate));
+    if (!path) throw new BuildError(`no file ${file}`);
+    const args = moduleTestArgs(dubCompilerFlags(), relative(process.cwd(), path), process.platform);
+    runOrFail("ldc2", args, "Building the unittests of the module failed.");
+    const program = resolve(args.find((arg) => arg.startsWith("-of=")).slice("-of=".length));
+    const status = run(program, [], { echo: false }).status;
+    // druntime's runner has no filter and leaves a module at its first failing unittest
+    if (status !== 0) throw new BuildError("Tests failed. A module's tests stop at its first failing "
+        + "unittest: the ones after it in that module didn't run.");
+}
+
 /// Builds the log generator and runs it with `toolArgs` in `callerDir`, the folder the script
 /// was started from: a relative path of a log is the user's. Its exit code is the script's.
 function genLog(toolArgs, callerDir) {
-    const described = run("dub", ["describe", "--compiler=ldc2", "--data=dflags,import-paths", "--data-0"],
-        { capture: true });
-    if (described.status !== 0) throw new BuildError(`dub describe failed:\n${described.stderr}`);
-    const args = genLogArgs(compilerArgs(described.stdout), process.platform);
+    const args = genLogArgs(dubCompilerFlags(), process.platform);
     runOrFail("ldc2", args, "Building the log generator failed.");
     const program = resolve(args.find((arg) => arg.startsWith("-of=")).slice("-of=".length));
     const status = run(program, toolArgs, { echo: false, cwd: callerDir }).status;
     if (status !== 0) process.exit(status ?? 1);
 }
 
+/// Reads a file through once, so that the first run of a side doesn't read it from the disk
+/// while the others find it in the page cache.
+function warmPageCache(file) {
+    const buffer = Buffer.alloc(8 * 1024 * 1024);
+    const handle = openSync(file, "r");
+    try {
+        while (readSync(handle, buffer, 0, buffer.length, null) > 0);
+    } finally {
+        closeSync(handle);
+    }
+}
+
+/// The log `bench` measures when none is given: written once by the generator.
+const benchLog = { path: "build/tools/bench-dlt-256M-seed1.dlt", args: ["--format", "dlt", "--size", "256M", "--seed", "1"] };
+
+/// Measures the working tree against a ref (scripts/bench.mjs): a temporary worktree of the
+/// ref gets the working tree's benchmark, both sides are built alike and run by turns on one
+/// log, then the table of their numbers. The worktree is removed whatever happens.
+function benchAgainst(toolArgs, callerDir) {
+    const options = parseBenchArgs(toolArgs, (path) => statSync(resolve(callerDir, path), { throwIfNoEntry: false })?.isFile() ?? false);
+    if (options.help) {
+        process.stdout.write(benchUsage);
+        return;
+    }
+    let log;
+    if (options.log !== null) {
+        log = resolve(callerDir, options.log);
+        if (!existsSync(log)) throw new BuildError(`no log ${log}`);
+    } else {
+        log = resolve(benchLog.path);
+        if (!existsSync(log)) genLog([log, ...benchLog.args], callerDir);
+    }
+    const benchArgs = options.benchArgs.length ? options.benchArgs : defaultBenchArgs[options.bench];
+    const commit = run("git", ["rev-parse", "--verify", "--quiet", `${options.against}^{commit}`], { capture: true });
+    if (commit.status !== 0) throw new BuildError(`no commit "${options.against}" in this repository`);
+    const ref = commit.stdout.trim();
+
+    const benchFile = `scripts/bench_${options.bench}.d`;
+    const sides = [{ name: options.against, tree: mkdtempSync(join(tmpdir(), "dlt-bench-")) },
+        { name: "this tree", tree: process.cwd() }];
+    const base = sides[0];
+    const removeWorktree = () => {
+        run("git", ["worktree", "remove", "--force", base.tree], { capture: true });
+        rmSync(base.tree, { recursive: true, force: true });
+    };
+    // Ctrl-C stops the run in progress (the benchmark gets it too), then the worktree goes
+    const interrupted = () => {
+        removeWorktree();
+        process.exit(130);
+    };
+    process.once("SIGINT", interrupted);
+    try {
+        // the files of Git LFS (the Sciter libraries) aren't needed: not fetched
+        if (run("git", ["worktree", "add", "--detach", "--quiet", base.tree, ref], { env: { GIT_LFS_SKIP_SMUDGE: "1" } }).status !== 0)
+            throw new BuildError(`git worktree add ${options.against} failed.`);
+        // the same benchmark on both sides: the working tree's (it builds against older code too)
+        copyFileSync(benchFile, join(base.tree, benchFile));
+        sides.forEach((side, i) => {
+            const id = `bench_${options.bench}_${i === 0 ? "base" : "change"}`;
+            side.program = resolve("build/tools", `${id}${process.platform === "win32" ? ".exe" : ""}`);
+            const args = benchCompileArgs(dubCompilerFlags(side.tree), options.bench, side.program,
+                resolve("build/tools/obj", id));
+            console.log(`Building ${benchFile} of ${side.name}`);
+            if (run("ldc2", args, { echo: false, cwd: side.tree }).status !== 0)
+                throw new BuildError(`Building ${benchFile} of ${side.name} failed.`);
+            side.outputs = [];
+        });
+        console.log(`Measuring ${log} ${benchArgs.join(" ")}: ${options.runs} runs a side, by turns`);
+        warmPageCache(log);
+        for (const [r, order] of runOrder(options.runs).entries()) {
+            for (const side of order.map((i) => sides[i])) {
+                const started = Date.now();
+                const result = run(side.program, [log, ...benchArgs], { capture: true });
+                if (result.signal) throw new BuildError(`The benchmark of ${side.name} was stopped (${result.signal}).`);
+                if (result.status !== 0)
+                    throw new BuildError(`The benchmark of ${side.name} failed:\n${result.stdout}${result.stderr}`);
+                side.outputs.push(result.stdout);
+                console.log(`  ${side.name}, run ${r + 1}: ${((Date.now() - started) / 1000).toFixed(1)} s`);
+            }
+        }
+    } finally {
+        process.off("SIGINT", interrupted);
+        removeWorktree();
+    }
+    const rows = compareRuns(base.outputs, sides[1].outputs);
+    console.log(`\n${options.against} (${ref.slice(0, 7)}) against this tree, median (spread) of ${options.runs}; `
+        + "less is better:\n");
+    process.stdout.write(formatComparison(rows, options.against));
+    if (options.json !== null) {
+        const file = resolve(callerDir, options.json);
+        writeFileSync(file, JSON.stringify({ against: options.against, commit: ref, bench: options.bench, log,
+            args: benchArgs, runs: options.runs, rows,
+            outputs: { base: base.outputs, change: sides[1].outputs } }, null, 2) + "\n");
+        console.log(`\nThe numbers: ${file}`);
+    }
+}
+
 function main(argv) {
     const callerDir = process.cwd();
     process.chdir(fileURLToPath(new URL("..", import.meta.url))); // the project root
-    const { command, release, arch, toolArgs } = parseCommand(argv);
+    const { command, release, arch, toolArgs, module } = parseCommand(argv);
     if (command === "gen-log") genLog(toolArgs, callerDir);
+    else if (command === "bench") benchAgainst(toolArgs, callerDir);
     else if (command === "help") process.stdout.write(buildUsage);
     else if (command === "build") console.log(`Built: ${build({ release, arch })}`);
+    else if (command === "test" && module) testModule(module, callerDir);
     else if (command === "test") test({ arch });
     else if (command === "dist") dist(arch);
     else checkWindows();
@@ -417,7 +570,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.a
     try {
         main(process.argv.slice(2));
     } catch (e) {
-        if (!(e instanceof BuildError)) throw e;
+        if (!(e instanceof BuildError || e instanceof BenchError)) throw e;
         console.error(e.message);
         process.exit(1);
     }

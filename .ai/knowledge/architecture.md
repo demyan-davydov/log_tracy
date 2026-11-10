@@ -46,8 +46,11 @@ utils  ←  sciter  ←  ui
 - `sciter/`: the D wrapper over Sciter (window, application, value, ...); `sciter/capi/` the C
   API it calls.
 - `ui/`: the window and the logic behind it; the Sciter-free part of it is unit-tested.
-- `scripts/`: the build script (`build.mjs`: build, test, dist, Windows check, `gen-log` that
-  builds and runs the test log generator `gen_log.d`), `run.mjs`,
+- `scripts/`: the build script (`build.mjs`: build, test (`--module` for one D module), dist,
+  Windows check, `gen-log` that builds and runs the test log generator `gen_log.d`, `bench`
+  that measures the tree against a ref, its pure part in `bench.mjs`), `run.mjs`,
+  `check-ai-context.mjs` (the names of `.ai/` the code lost), `backtrace.mjs` (the stacks of
+  a running app),
   `app.mjs` (drives a copy of the app through the debug channel), `screenshot.mjs`,
   i18n extraction, benchmarks (`bench_rows.d`, `bench_index.d`). They run from the project
   root wherever they are called from (`gen-log` runs the generator in the caller's folder:

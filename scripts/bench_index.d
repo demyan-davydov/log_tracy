@@ -1,7 +1,7 @@
 //! Measures how long the indexes of a log take to build: the offset index, then
 //! a filter and a search with the given query over it, each a few rounds.
 //!
-//! ldc2 -O3 -release -i -preview=in -preview=dip1000 -preview=dtorfields -Isource \
+//! ldc2 -O3 -release -enable-inlining -i -preview=in -preview=dip1000 -preview=dtorfields -Isource \
 //!     scripts/bench_index.d -of=/tmp/bench_index && /tmp/bench_index <log> [query] [text|regex] [ic|cs]
 //! (the query is a text that ignores case by default)
 //!
@@ -18,6 +18,11 @@
 //! on --generate lines, a query every record matches ("a") is slower than one
 //! nothing matches ("zzz"), gets slower round after round, or scales worse
 //! with --threads.
+//!
+//! `node scripts/build.mjs bench` reads what this prints (scripts/bench.mjs, parseMetrics):
+//! a measure is a number with its unit (ms, ns/row, MB), named by its line up to the colon
+//! and its part between commas, semicolons and brackets; an indented line belongs to the
+//! unindented one above it. A number printed without its unit drops out of the comparison.
 module bench_index;
 
 import core.memory : GC;
@@ -77,11 +82,10 @@ void main(string[] args)
     auto start = MonoTime.currTime;
     auto index = LogIndex(source, format, events);
     waitFor(Document.Operation.BuildOffsetIndex);
-    writefln("offsets: %s records in %s ms", index.messageCount,
-        (MonoTime.currTime - start).total!"msecs");
+    writefln("offsets: %s records in %.1f ms", index.messageCount, msSince(start));
 
     auto filter = SearchFilter.fromChips([SearchChip(text, isRegex, ignoreCase)]);
-    long[] times;
+    double[] times;
 
     if (!searchOnly)
     {
@@ -90,8 +94,8 @@ void main(string[] args)
             start = MonoTime.currTime;
             index.runBuildFilterIndex(filter, Anchors.init);
             waitFor(Document.Operation.BuildFilterIndex);
-            times ~= (MonoTime.currTime - start).total!"msecs";
-            writefln("filter: %s shown in %s ms", index.mainViewItemsCount, times[$ - 1]);
+            times ~= msSince(start);
+            writefln("filter: %s shown in %.1f ms", index.mainViewItemsCount, times[$ - 1]);
         }
         summarize("filter", times);
         index.runBuildFilterIndex(null, Anchors.init);
@@ -104,15 +108,15 @@ void main(string[] args)
         start = MonoTime.currTime;
         index.runBuildSearchIndex(filter, Anchors.init);
         waitFor(Document.Operation.BuildSearchIndex);
-        times ~= (MonoTime.currTime - start).total!"msecs";
-        writefln("search: %s found in %s ms", index.searchViewItemsCount, times[$ - 1]);
+        times ~= msSince(start);
+        writefln("search: %s found in %.1f ms", index.searchViewItemsCount, times[$ - 1]);
     }
     summarize("search", times);
 }
 
 //! Prints the spread of the times of the rounds, the later ones against the first
 //! ones, and what the GC did so far
-void summarize(string what, long[] times)
+void summarize(string what, double[] times)
 {
     if (times.length < 2)
         return;
@@ -122,10 +126,16 @@ void summarize(string what, long[] times)
     const first = cast(double) times[0 .. third].sum / third;
     const last = cast(double) times[$ - third .. $].sum / third;
     const stats = GC.stats;
-    writefln("%s summary: min %s, median %s, max %s ms; last third / first third: %.2f;"
+    writefln("%s summary: min %.1f ms, median %.1f ms, max %.1f ms; last third / first third: %.2f;"
         ~ " GC: %s collections, %s MB used",
         what, sorted[0], sorted[$ / 2], sorted[$ - 1], last / first,
         GC.profileStats.numCollections, stats.usedSize / (1024 * 1024));
+}
+
+//! Milliseconds since `start`, to a tenth: a step of 1 ms is a few percent of a search
+double msSince(MonoTime start)
+{
+    return (MonoTime.currTime - start).total!"usecs" / 1000.0;
 }
 
 //! Writes `lines` lines "a <number>"
