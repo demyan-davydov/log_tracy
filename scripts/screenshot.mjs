@@ -298,10 +298,10 @@ const sleep = seconds => new Promise(done => setTimeout(done, seconds * 1000));
 // A wait that doesn't keep Node alive once nothing else does
 const deadline = seconds => new Promise(done => setTimeout(done, seconds * 1000).unref());
 
-// A copy of the program in a folder of its own: its settings.json and settings.lock are its
-// own. New files only: macOS kills a signed program copied over an older one at start.
-function copyApp(buildDir, settings) {
-    const dir = join(tmpdir(), `dlt-explorer-shot-${process.pid}`);
+/// A copy of the program of `buildDir` in `dir`, emptied first, with `settings` (a settings.json,
+/// or null) as its settings: its settings.json and settings.lock are its own. New files only:
+/// macOS kills a signed program copied over an older one at start. Also used by app.mjs.
+export function copyProgram(buildDir, dir, settings) {
     rmSync(dir, { recursive: true, force: true });
     mkdirSync(dir, { recursive: true });
     for (const name of readdirSync(buildDir)) {
@@ -321,7 +321,7 @@ async function shoot(options) {
     const buildDir = options.build
         ? build({ release: options.release, arch: null })
         : targetPath({ release: options.release, arch: null });
-    const dir = copyApp(buildDir, options.settings);
+    const dir = copyProgram(buildDir, join(tmpdir(), `dlt-explorer-shot-${process.pid}`), options.settings);
     const logFile = join(dir, "app.log");
     const output = openSync(logFile, "w");
     const app = spawn(join(dir, programName(process.platform)), [], {

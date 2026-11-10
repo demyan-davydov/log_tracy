@@ -70,7 +70,8 @@ private enum string[] builtIn = [
 
 /// The files of resources/ the interface doesn't use: the icons, taken by the bundle scripts and
 /// the Windows resource script
-private enum string[] notBuiltIn = ["app.icns", "app.ico", "app.png", "app.rc"];
+// debug-eval.js: evaluated by the debug channel (ui/debug_protocol), never served to the window
+private enum string[] notBuiltIn = ["app.icns", "app.ico", "app.png", "app.rc", "debug-eval.js"];
 
 /// The file at `path` of resources/ ("main.htm", "i18n/i18n.js"), null if none is built in.
 immutable(ubyte)[] appResource(string path)

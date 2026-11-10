@@ -45,6 +45,7 @@ utils  ←  sciter  ←  ui
   API it calls.
 - `ui/`: the window and the logic behind it; the Sciter-free part of it is unit-tested.
 - `scripts/`: the build script (`build.mjs`: build, test, dist, Windows check), `run.mjs`,
+  `app.mjs` (drives a copy of the app through the debug channel), `screenshot.mjs`,
   i18n extraction, benchmarks (`bench_rows.d`, `bench_index.d`). They run from the project
   root wherever they are called from. The pure part of `build.mjs` is tested by
   `tests/js/build-script.test.mjs`; Linux and Windows `dist` were not tried on those systems
@@ -88,6 +89,13 @@ utils  ←  sciter  ←  ui
   the session: `OPEN_AT_START` (logs opened at start, `backend.startFiles()`), `MENU_BAR_PLATFORM`,
   `PSEUDO_LOCALE`, `SCITER_DEBUG_MODE` (the debug mode of Sciter, for its inspector). The table of them: `docs/building.md`, "Environment variables for
   development"; a new one goes there.
+- The debug channel (debug builds only, `SCITER_DEBUG_PORT`): `ui/debug_channel` is a TCP
+  server on 127.0.0.1 that runs the requests of `ui/debug_protocol` (JavaScript to evaluate,
+  `resources/debug-eval.js` making its value plain JSON; a render of the window into a PNG) on
+  the window's thread through `postToWindowThread` (`sciter/window`: `SciterPostCallback`).
+  Kept apart on purpose: `main()` starts and stops it, nothing else knows of it; a new command
+  is a request kind of the protocol, not a hook in the window or the session. Its client is
+  `scripts/app.mjs`.
 
 ## Indexing and Threads
 

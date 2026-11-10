@@ -2,6 +2,7 @@ import std.stdio;
 
 import ui.app_resources : appResource, appResourceUrl;
 import ui.main_window;
+import ui.debug_channel : startDebugChannel;
 import ui.app_settings;
 import ui.main_menu_loader : forgetAppMenuWindow, loadAppMenu;
 import utils.single_instance : SingleInstance;
@@ -109,6 +110,10 @@ int main()
 	{
 		auto settings = loadSettings();
 		scope auto win = new MainWindow(settings); // scope ensures that d'tor is called on exit
+
+		// SCITER_DEBUG_PORT=<port>: the debug channel to the window, debug builds only
+		auto debugChannel = startDebugChannel(win.hwnd);
+		scope (exit) debugChannel.stop(); // before the window is destroyed
 
         loadAppMenu(win);
 

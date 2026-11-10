@@ -16,6 +16,55 @@ import std.utf : toUTF16z, toUTFz;
 /// @brief Base class for application window
 /// 
 
+/// From any thread: has the thread of the window `hwnd` run `task` in its event loop, between
+/// events, and returns at once (SciterPostCallback, handled by SciterWindow). The task may run
+/// after the caller has given up waiting for it, or never if the window is gone: it must hold
+/// nothing of the caller's stack (a closure on the heap, not `scope`).
+void postToWindowThread(HWINDOW hwnd, void delegate() nothrow task)
+{
+    import core.memory : GC;
+
+    auto posted = new PostedTask(task);
+    GC.addRoot(cast(void*) posted); // only Sciter's queue refers to it till it runs
+    sciterApi().SciterPostCallback(hwnd, postedTaskTag, cast(UINT_PTR) cast(void*) posted, 0);
+}
+
+private final class PostedTask
+{
+    void delegate() nothrow run;
+
+    this(void delegate() nothrow run) nothrow
+    {
+        this.run = run;
+    }
+}
+
+// wparam of a posted notification carrying a PostedTask in lparam ("task")
+private enum UINT_PTR postedTaskTag = 0x7461736b;
+
+private void runPostedTask(SCN_POSTED_NOTIFICATION* notification) nothrow
+{
+    import core.memory : GC;
+
+    if (notification.wparam != postedTaskTag)
+        return;
+    auto posted = cast(PostedTask) cast(void*) notification.lparam;
+    GC.removeRoot(cast(void*) posted);
+    try
+        posted.run();
+    catch (Throwable e) // an Error: a bug; it must not unwind through the frames of Sciter
+    {
+        import core.stdc.stdlib : abort;
+
+        try
+            writeln("Error in a task posted to the window: ", e);
+        catch (Throwable)
+        {
+        }
+        abort();
+    }
+}
+
 version (OSX)
 {
     private extern (C) void* objc_getClass(const(char)* name);
@@ -50,6 +99,11 @@ class SciterWindow : SciterEventHandler
     // Nothing may unwind through the frames of Sciter: whatever is thrown is caught here
     private static extern (C) UINT hostCallback(SCITER_CALLBACK_NOTIFICATION* pns, void* param) nothrow
     {
+        if (pns.code == SC_POSTED_NOTIFICATION)
+        {
+            runPostedTask(cast(SCN_POSTED_NOTIFICATION*) pns);
+            return 0;
+        }
         if (pns.code != SC_LOAD_DATA)
             return 0;
         import std.string : fromStringz;

@@ -148,6 +148,27 @@ to start with (theme, language), environment variables for the program (see
 
 Windows and Linux were not tried on those systems yet.
 
+### Driving the app: the debug channel
+
+`node scripts/app.mjs` drives a running copy of a debug build through its debug channel
+(`SCITER_DEBUG_PORT`): it looks inside the window instead of guessing from a screenshot.
+
+```sh
+node scripts/app.mjs start --open ~/logs/trace.dlt     # builds, starts a copy in build/app, keeps it running
+node scripts/app.mjs wait "document.$('table tbody tr') != null" --timeout 15
+node scripts/app.mjs eval "document.$('table tbody tr')" # {tag, class, text, box} of the element
+node scripts/app.mjs shot build/x.png                   # the window rendered by Sciter
+node scripts/app.mjs run steps.txt                      # eval/wait/shot steps, one a line
+node scripts/app.mjs stop
+```
+
+The copy has its own settings (`--settings` to start with a `settings.json`) and its output in
+`build/app/app.log` (`app.mjs log`). The code runs in the global scope of the window: what the
+modules put on `globalThis`, `document`, `Window.this` (`$` of the modules is not global:
+`document.$(...)`). `shot` needs no permission of the system: Sciter renders the window
+itself, without the title bar of the system. `--help` lists the rest. The channel is a line of
+JSON per request on a TCP connection (`source/ui/debug_protocol.d`).
+
 ### Checking Windows from macOS or Linux
 
 A Windows program can only be linked on Windows. From macOS or Linux, `check-windows`
@@ -157,8 +178,8 @@ that doesn't compile on Windows.
 ## Environment variables for development
 
 The program reads a few environment variables, for trying and checking things during
-development; users don't need them. All of them are read at start, in the constructor of
-`MainWindow` (`source/ui/main_window.d`).
+development; users don't need them. They are read at start, in the constructor of
+`MainWindow` (`source/ui/main_window.d`); `SCITER_DEBUG_PORT` in `source/ui/debug_channel.d`.
 
 | Variable | Values | What it does |
 |---|---|---|
@@ -166,6 +187,7 @@ development; users don't need them. All of them are read at start, in the constr
 | `MENU_BAR_PLATFORM` | `windows`, `linux` | Draws the menu bar of that system in the window, also on macOS: to try the menu of another system. |
 | `PSEUDO_LOCALE` | `1` | Offers the pseudo translation in Settings: every text accented and lengthened, so what stays plain English is not translated. |
 | `SCITER_DEBUG_MODE` | `1` | Turns the debug mode of Sciter on, for its inspector: start `inspector.app` of the Sciter SDK first, then Ctrl+Shift+I in the window connects to it (the DOM, the styles, a script console), Ctrl+Shift+click shows the element clicked. |
+| `SCITER_DEBUG_PORT` | `<port>`, `0` for any free one | Debug builds only: opens the debug channel on `127.0.0.1:<port>` (the port is written to the output), through which `scripts/app.mjs` runs JavaScript in the window and renders it. A release build ignores it and says so. |
 
 For example:
 
