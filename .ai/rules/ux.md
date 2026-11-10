@@ -23,8 +23,9 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
    on the left of the tabs, though Chrome puts it on the right.
 3. **No duplicate controls.** An action available in the app menu doesn't get a toolbar button
    too (there is no top toolbar). Exception: "+" in the tab strip. Actions that belong to a
-   panel's content live in that panel (Load Filter next to the filters, Load FIBEX in the
-   sidebar's Decoding section).
+   panel's content live in that panel (Load Filter next to the filters on their page; Load
+   FIBEX moves to the bottom panel too, on the Filters page or a FIBEX page of its own: not
+   decided yet).
 4. **Settings, not quick toggles.** Rarely changed preferences (the theme) live in Settings; no
    separate toggle button or menu item.
 5. **Hide what can't be used.** Panels that only work with a document (filters, document view,
@@ -148,7 +149,7 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     settings of the log, not referenced by path: a `.dlf` shared by two logs must not tie them
     together. The design allows filters for every format.
 33. **The filter editor is a modal window.** A rule is edited in a modal window (like Settings,
-    like dlt-viewer), not inline in the narrow panel. Edits apply and are remembered at once (no
+    like dlt-viewer), not inline in the panel. Edits apply and are remembered at once (no
     Save, no unsaved prompts); a set can be exported to a `.dlf` in dlt-viewer's layout. "New
     Filter" creates an empty set without asking for a file and opens the editor of its first
     rule. The DLT rule editor offers exactly the conditions of dlt-viewer.
@@ -197,7 +198,16 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     at its bottom (IDE-like; the active tab merges with its page above). No title header inside
     a page when its tab already names it. The pages and the active tab are white (`--bg-main`),
     the strip under the tabs stays grey (`--bg-header`).
-    Tabs of the current document (data source) are on the left: "Search", "File Info"; tabs
-    of the whole application are on the right: "MCP Server".
+    Tabs of the current document (data source) are on the left, in this order: "Search",
+    "Filters", "File Info"; tabs of the whole application are on the right: "MCP Server".
+    The "Filters" tab has a dot after its name while some rule works on the log (an enabled,
+    applied rule of an enabled set, markers too), so a filtered log is seen with another page
+    open; the dot grows in and out, the tab keeps its width.
 42. **File Info.** Path, Size (physical size with the record count next to it), Format (last).
     No Name row (the tab shows it). Every value that carries information is selectable.
+43. **Filters as chips.** The Filters page shows a row per filter set: its head (switch,
+    name, buttons) in the first column, its rules as chips wrapping in the second (switch,
+    kind, color, name; edit and remove on hover). A rule not applied has a red border, and a
+    red line under its set's chips says why (rule name: error). New Filter and Load Filter
+    are in the page's toolbar. In a narrow window the chips shrink to the row, a long name
+    cut; a switch toggled keeps the focus.

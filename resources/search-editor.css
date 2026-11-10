@@ -166,10 +166,6 @@ popup.search-history .history-text.regex {
     font-family: monospace;
 }
 
-.chip-search-message:empty {
-    display: none;
-}
-
 .chip-search-message {
     color: red;
     padding: 2dip 4dip;

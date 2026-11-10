@@ -39,7 +39,10 @@ export class SearchBar {
         const run = runSearch(this.search, editor.searchChips(), () => editor.searchChipColors(),
             () => editor.firstError(), chips => backend.startChipSearch(this.docId, chips));
         this.search = run.search;
-        this.root.$(".chip-search-message").innerText = run.message;
+        const message = this.root.$(".chip-search-message");
+        message.innerText = run.message;
+        // Not by :empty, which Sciter doesn't re-evaluate when the text changes
+        message.style.display = run.message ? "" : "none";
         if (run.started) this.host.setMatchColors(this.search.colors); // before the results come
         this.updatePending();
     }

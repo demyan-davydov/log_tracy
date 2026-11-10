@@ -311,13 +311,14 @@ final class DocumentFilters
         return UiText.init;
     }
 
-    //! The state of the filter panel: {canFilter, canDlf, sets: [{name,
+    //! The state of the filter panel: {canFilter, canDlf, active, sets: [{name,
     //! source, fileName, enabled, rules: [{name, kind, enabled, color,
     //! error, id}]}]}. canFilter tells whether the log has columns to filter by,
     //! canDlf whether .dlf files apply to it; fileName is the file to offer
     //! on export: the source, or <name>.<format>.logfilter; kind is
     //! "include", "exclude" or "marker"; error says why a rule isn't
-    //! applied, "" if it is.
+    //! applied, "" if it is. active tells whether any rule works on the log:
+    //! filters the view or colors its rows (works()).
     JSONValue toJson(TextForUser text = null) const
     {
         JSONValue[] sets;
@@ -345,6 +346,7 @@ final class DocumentFilters
         return JSONValue([
             "canFilter": JSONValue(canFilter()),
             "canDlf": JSONValue(canLoadDlf(_format)),
+            "active": JSONValue(active()),
             "sets": JSONValue(sets),
         ]);
     }
@@ -440,6 +442,22 @@ final class DocumentFilters
     private bool filters(ref const(FilterRule) rule, bool anyState = false) const
     {
         return (anyState || rule.enabled) && rule.kind != RuleKind.Marker && problemOf(rule).empty;
+    }
+
+    //! @returns true if the rule works on the log: it filters the view, or it
+    //! is a marker the rows take the color of (RuleMatcher)
+    private bool works(ref const(FilterRule) rule) const
+    {
+        return filters(rule) || (rule.enabled && rule.kind == RuleKind.Marker
+            && isRuleColor(rule.color) && problemOf(rule).empty);
+    }
+
+    //! @returns true if any rule of a set switched on works on the log
+    private bool active() const
+    {
+        import std.algorithm.searching : any;
+
+        return _sets.any!(set => set.enabled && set.rules.any!(r => works(r)));
     }
 
     //! @returns true if the set filters the view (or would, when `anyState`,
@@ -715,6 +733,33 @@ unittest
 
     const json = fx.filters.toJson()["sets"][0]["rules"][1];
     assert(json["id"].integer == ids[1].toInt(), "the panel knows the ids");
+}
+
+@("DocumentFilters: the panel is told whether any rule works on the log, as the view and the rows take the rules")
+unittest
+{
+    auto fx = new Fixture();
+    bool active() => fx.filters.toJson()["active"].boolean;
+    assert(fx.filters.newSet().empty);
+    assert(!active(), "an empty set");
+
+    const marker = appRule("Marker", "APP1")[0 .. $ - 1] ~ `, "kind": "marker"}`;
+    assert(fx.filters.addRule(0, marker).empty);
+    assert(!active(), "a marker without a color neither filters nor colors");
+    assert(fx.filters.updateRule(0, 0, marker[0 .. $ - 1] ~ `, "color": "#00ff00"}`).empty);
+    assert(active(), "a marker with a color colors the rows");
+    assert(fx.filters.enableSet(0, false).empty);
+    assert(!active(), "in a set switched off");
+
+    auto other = new Fixture();
+    assert(other.filters.newSet().empty);
+    assert(other.filters.addRule(0, appRule("Include", "APP1")).empty);
+    assert(other.filters.toJson()["active"].boolean, "an include rule filters");
+    assert(other.filters.enableRule(0, 0, false).empty);
+    assert(!other.filters.toJson()["active"].boolean, "a rule switched off");
+    const missing = `{"name": "Missing", "conditions": [{"column": "nosuch", "check": "equals", "value": "x"}]}`;
+    assert(other.filters.addRule(0, missing).empty);
+    assert(!other.filters.toJson()["active"].boolean, "a rule not applied");
 }
 
 @("DocumentFilters: the panel gets the colors that color the rows, #rrggbb only")

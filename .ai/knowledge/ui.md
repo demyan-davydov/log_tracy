@@ -18,9 +18,11 @@ behaviour: `.ai/knowledge/sciter.md`.
 
 - Every open document has its own panel, `DocumentPane` (`resources/document-pane.js`): it
   puts the parts together and keeps both tables (their views, columns, look, selection,
-  anchors), the bottom panel's pages (Search, File Info on the left; MCP Server, of the whole
-  application, on the right, empty for now), the status views and the lost file.
-  Its parts: the filters of the sidebar, `FilterPanel` (`filter-panel.js`, on `.left-panel`),
+  anchors), the bottom panel's pages (Search, Filters, File Info on the left; MCP Server, of
+  the whole application, on the right, empty for now), the status views and the lost file.
+  Its parts: the filters, `FilterPanel` (`filter-panel.js`, chips on the Filters page,
+  `.filter-page`; the tab's dot: `active` of `DocumentFilters.toJson`, decided by the
+  backend with the predicates the view and the rows use),
   and the search bar, `SearchBar` (`search-bar.js`, on `.search-bar`). A part binds the events
   of its own element and asks the panel through a `host` of callbacks; the skeleton of the whole
   panel, the elements of the parts too, is built by `renderPane` of `document-pane.js`. A new
@@ -35,10 +37,11 @@ behaviour: `.ai/knowledge/sciter.md`.
 - The calls of a document's views, filters and search take its id first
   (`backend.mainViewItem(docId, index)`, ...); only the menu and Settings use the active
   document.
-- The sizes of the splitters follow from the panel shown before. They are written with the
-  rest of `getAppState()` (`AppSettings.sidePanelWidth`, `searchPanelHeight`; the mapping is
-  `resources/panel-sizes.js`), not on each move of a splitter, and the first panel starts with
-  them.
+- The panel has one splitter, between the main table and the bottom panel (no side panel
+  since the filters moved to the Filters page). Its size follows from the panel shown before
+  and is written with the rest of `getAppState()` (`AppSettings.searchPanelHeight`; the
+  mapping is `resources/panel-sizes.js`), not on each move of the splitter, and the first panel
+  starts with it.
 - What a table does on a change of its view is `resources/pane-state.js`; the flows of its
   search and rule commands are `resources/pane-commands.js`.
 

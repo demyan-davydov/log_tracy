@@ -173,8 +173,7 @@ struct AppSettings
     bool singleLineRows; /// every row of the log tables one line high, the payload cut
     ColumnLayouts columnLayouts; /// the columns of the log tables, by format
     string language; /// of the interface: a BCP 47 tag ("ru", "x-pseudo"); "": the language of the system
-    string sidePanelWidth; /// of the side panel of the documents, as on exit ("200dip"); "": the script's own
-    string searchPanelHeight; /// of the search (bottom) panel, likewise
+    string searchPanelHeight; /// of the search (bottom) panel of the documents, as on exit ("250dip"); "": the script's own
 
     this(ref return scope const AppSettings rhs)
     {
@@ -187,7 +186,6 @@ struct AppSettings
         this.singleLineRows = rhs.singleLineRows;
         this.columnLayouts = copyOf(rhs.columnLayouts);
         this.language = rhs.language;
-        this.sidePanelWidth = rhs.sidePanelWidth;
         this.searchPanelHeight = rhs.searchPanelHeight;
     }
 
@@ -202,7 +200,6 @@ struct AppSettings
         this.singleLineRows = rhs.singleLineRows;
         this.columnLayouts = copyOf(rhs.columnLayouts);
         this.language = rhs.language;
-        this.sidePanelWidth = rhs.sidePanelWidth;
         this.searchPanelHeight = rhs.searchPanelHeight;
     }
 
@@ -217,7 +214,6 @@ struct AppSettings
             singleLineRows == rhs.singleLineRows &&
             columnLayouts == rhs.columnLayouts &&
             language == rhs.language &&
-            sidePanelWidth == rhs.sidePanelWidth &&
             searchPanelHeight == rhs.searchPanelHeight;
     }
 
@@ -231,7 +227,6 @@ struct AppSettings
         hash = hashOf(tableFontSize, hash);
         hash = hashOf(singleLineRows, hash);
         hash = hashOf(language, hash);
-        hash = hashOf(sidePanelWidth, hash);
         hash = hashOf(searchPanelHeight, hash);
         foreach (id, layout; columnLayouts) // in no order: summed
             hash += hashOf(layout, hashOf(id));
@@ -292,7 +287,6 @@ static JSONValue toJSON(in AppSettings settings)
     j.object["tableFontSize"] = JSONValue(settings.tableFontSize);
     j.object["singleLineRows"] = JSONValue(settings.singleLineRows);
     j.object["language"] = JSONValue(settings.language);
-    j.object["sidePanelWidth"] = JSONValue(settings.sidePanelWidth);
     j.object["searchPanelHeight"] = JSONValue(settings.searchPanelHeight);
     if (settings.columnLayouts.length)
         j.object["columnLayouts"] = columnLayoutsToJson(settings.columnLayouts);
@@ -397,9 +391,9 @@ AppSettings mergeAppStateFromScript(const AppSettings base, const(char)[] appSta
 
 /// Reads what both the settings file and the state of the script hold: the
 /// window rect, the theme, the font size of the tables, whether their rows are
-/// single-line, the language, the width of the side panel and the height of the search
-/// panel. Keys
-/// `j` doesn't have leave their values in `settings`.
+/// single-line, the language and the height of the search panel. Keys `j`
+/// doesn't have leave their values in `settings` (a key it no longer knows, as
+/// the sidePanelWidth of the removed side panel, is ignored).
 private void readPreferences(in JSONValue j, ref AppSettings settings)
 {
     if (const r = "windowRect" in j) // taken whole or not at all
@@ -414,8 +408,6 @@ private void readPreferences(in JSONValue j, ref AppSettings settings)
             settings.singleLineRows = singleLine.boolean;
     if (const language = "language" in j)
         settings.language = language.type == JSONType.string ? language.str : "";
-    if (const width = "sidePanelWidth" in j)
-        settings.sidePanelWidth = width.str;
     if (const height = "searchPanelHeight" in j)
         settings.searchPanelHeight = height.str;
 }
@@ -752,31 +744,39 @@ unittest
     assert(settings.recentFiles.pathsOf == ["/a.dlt"]);
 }
 
-@("mergeAppStateFromScript: the width of the side panel and the height of the search panel come from the script")
+@("mergeAppStateFromScript: the height of the search panel comes from the script")
 unittest
 {
+    // A regression guard: it held before the side panel was removed too
     AppSettings base;
-    base.sidePanelWidth = "200dip";
     base.searchPanelHeight = "250dip";
 
-    auto merged = mergeAppStateFromScript(base, `{"sidePanelWidth": "320dip", "searchPanelHeight": "180dip"}`);
-    assert(merged.sidePanelWidth == "320dip" && merged.searchPanelHeight == "180dip");
-    merged = mergeAppStateFromScript(base, `{"sidePanelWidth": "320dip"}`);
-    assert(merged.sidePanelWidth == "320dip" && merged.searchPanelHeight == "250dip", "each on its own");
+    assert(mergeAppStateFromScript(base, `{"searchPanelHeight": "180dip"}`).searchPanelHeight == "180dip");
+    assert(mergeAppStateFromScript(base, `{"theme": "dark"}`).searchPanelHeight == "250dip", "kept when not sent");
 }
 
-@("the sizes of the panels survive a save and a load")
+@("the height of the search panel survives a save and a load")
 unittest
 {
     const path = buildPath(tempDir(), "dlt_explorer_settings_panels_test.json");
     scope (exit) if (exists(path)) remove(path);
 
     AppSettings settings;
-    settings.sidePanelWidth = "320dip";
     settings.searchPanelHeight = "180dip";
     saveSettings(settings, path);
+    assert(loadSettings(path).searchPanelHeight == "180dip");
+}
+
+@("the width of the removed side panel in an old settings file is ignored")
+unittest
+{
+    // A regression guard: it passed before the side panel was removed too
+    const path = buildPath(tempDir(), "dlt_explorer_settings_side_panel_test.json");
+    scope (exit) if (exists(path)) remove(path);
+
+    std.file.write(path, `{"sidePanelWidth": "320dip", "searchPanelHeight": "180dip", "theme": "dark"}`);
     const loaded = loadSettings(path);
-    assert(loaded.sidePanelWidth == "320dip" && loaded.searchPanelHeight == "180dip");
+    assert(loaded.searchPanelHeight == "180dip" && loaded.theme == "dark");
 }
 
 @("mergeAppStateFromScript: a window rect without all its keys is not taken in part")

@@ -17,10 +17,8 @@
     --tab-progress-bg: #d0d0d0;
     --tab-progress-done: #0078d7;
 
-    /* Sidebar */
+    /* The list of sections of Settings; the labels of values */
     --bg-sidebar: #f9f9f9;
-    --text-header-sidebar: #555;
-    --border-sidebar-header: #ddd;
     --text-label: #666;
 
     /* Inputs */

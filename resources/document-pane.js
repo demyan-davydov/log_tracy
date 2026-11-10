@@ -1,7 +1,8 @@
 // The panel of one open document: everything shown while its tab is active,
-// the filters of the sidebar (filter-panel.js), the main view, the search bar
-// (search-bar.js) and the search results. Each document has its own panel,
-// kept while the document is open and only hidden while another tab is shown
+// the main view and the pages of the bottom panel: the search bar
+// (search-bar.js) with the search results, the filters (filter-panel.js), the
+// file info. Each document has its own panel, kept while the document is open
+// and only hidden while another tab is shown
 // (display: none keeps the rows, the scroll, the selection and the editor as
 // they are). A hidden panel touches none of its elements but remembers what
 // changed: show() brings it up to date. This module puts the parts together
@@ -26,28 +27,66 @@ function isInside(element, root) {
     return false;
 }
 
-// The elements of a panel; the sizes of the splitters are those of the panel
+// The elements of a panel; the size of its splitter is that of the panel
 // shown last (see DocumentPane.show)
 function renderPane(splitters) {
-    return <frameset class="document-pane" cols={splitters.cols}>
-        <section class="left-panel sidebar">
-            <header data-tr="Filters" />
-            <div class="filter-sets"></div>
-            <div class="filter-message"></div>
-            <div class="filter-actions">
-                <button class="btn-new-dlf" data-tr="New Filter" />
-                <button class="btn-dlf" data-tr="Load Filter" />
+    return <frameset class="document-pane" rows={splitters.rows}>
+        <section class="main-content">
+            <div class="tab-content">
+                {/* Status views over the table, see .status-view.overlay in
+                    tab-content.css. The table itself is never hidden: one
+                    hidden before it was ever laid out keeps the cells of
+                    its rows 1px wide for good (Sciter). */}
+                <div class="status-view overlay main-status" tabindex="0" style="display:none;">
+                    <div class="status-body">
+                        <div class="status-title"></div>
+                        <progress value="0" max="100"></progress>
+                        <div class="status-detail"></div>
+                        <div class="status-actions">
+                            <button class="btn-cancel" data-tr="Cancel" />
+                        </div>
+                    </div>
+                </div>
+                <div class="status-view overlay source-lost" tabindex="0" style="display:none;">
+                    <div class="status-body">
+                        <div class="status-title" data-tr="The file is no longer available" />
+                        <div class="status-detail status-path source-lost-path"></div>
+                        <div class="status-detail status-error source-lost-error"></div>
+                        <div class="status-actions">
+                            <button class="btn-lost-retry" data-tr="Retry" />
+                            <button class="btn-lost-close" data-tr="Close" />
+                        </div>
+                    </div>
+                </div>
+                <table class="log-table main-view" fixed-layout="true">
+                    <thead>
+                        <tr>
+                            <th class="col-anchor">⚓</th>
+                            <th class="col-index">Index</th>
+                            <th class="payload">Payload</th>
+                        </tr>
+                    </thead>
+                    <tbody />
+                </table>
             </div>
         </section>
 
-        <frameset rows={splitters.rows}>
-            <section class="main-content">
-                <div class="tab-content">
-                    {/* Status views over the table, see .status-view.overlay in
-                        tab-content.css. The table itself is never hidden: one
-                        hidden before it was ever laid out keeps the cells of
-                        its rows 1px wide for good (Sciter). */}
-                    <div class="status-view overlay main-status" tabindex="0" style="display:none;">
+        {/* The bottom panel: pages over a strip of their tabs, below them.
+            One page is shown, the one of the active tab (data-page) */}
+        <section class="bottom-panel">
+            <div class="bottom-page search-page" data-page="search">
+                {/* The search bar: search-bar.js */}
+                <div class="search-bar">
+                    <div class="toolbar search-toolbar chip-search-toolbar">
+                        <div class="chip-search chip-editor" tabindex="0"></div>
+                        <button class="btn-chip-history" data-tr-title="Search history (↓)">▾</button>
+                        <button class="btn-chip-search" data-tr="Search" />
+                    </div>
+                    <div class="chip-search-message" style="display:none;"></div>
+                </div>
+
+                <div class="search-body">
+                    <div class="status-view overlay compact search-status" tabindex="0" style="display:none;">
                         <div class="status-body">
                             <div class="status-title"></div>
                             <progress value="0" max="100"></progress>
@@ -57,18 +96,7 @@ function renderPane(splitters) {
                             </div>
                         </div>
                     </div>
-                    <div class="status-view overlay source-lost" tabindex="0" style="display:none;">
-                        <div class="status-body">
-                            <div class="status-title" data-tr="The file is no longer available" />
-                            <div class="status-detail status-path source-lost-path"></div>
-                            <div class="status-detail status-error source-lost-error"></div>
-                            <div class="status-actions">
-                                <button class="btn-lost-retry" data-tr="Retry" />
-                                <button class="btn-lost-close" data-tr="Close" />
-                            </div>
-                        </div>
-                    </div>
-                    <table class="log-table main-view" fixed-layout="true">
+                    <table class="log-table search-view" fixed-layout="true">
                         <thead>
                             <tr>
                                 <th class="col-anchor">⚓</th>
@@ -79,65 +107,40 @@ function renderPane(splitters) {
                         <tbody />
                     </table>
                 </div>
-            </section>
-
-            {/* The bottom panel: pages over a strip of their tabs, below them.
-                One page is shown, the one of the active tab (data-page) */}
-            <section class="bottom-panel">
-                <div class="bottom-page search-page" data-page="search">
-                    {/* The search bar: search-bar.js */}
-                    <div class="search-bar">
-                        <div class="toolbar search-toolbar chip-search-toolbar">
-                            <div class="chip-search chip-editor" tabindex="0"></div>
-                            <button class="btn-chip-history" data-tr-title="Search history (↓)">▾</button>
-                            <button class="btn-chip-search" data-tr="Search" />
-                        </div>
-                        <div class="chip-search-message"></div>
-                    </div>
-
-                    <div class="search-body">
-                        <div class="status-view overlay compact search-status" tabindex="0" style="display:none;">
-                            <div class="status-body">
-                                <div class="status-title"></div>
-                                <progress value="0" max="100"></progress>
-                                <div class="status-detail"></div>
-                                <div class="status-actions">
-                                    <button class="btn-cancel" data-tr="Cancel" />
-                                </div>
-                            </div>
-                        </div>
-                        <table class="log-table search-view" fixed-layout="true">
-                            <thead>
-                                <tr>
-                                    <th class="col-anchor">⚓</th>
-                                    <th class="col-index">Index</th>
-                                    <th class="payload">Payload</th>
-                                </tr>
-                            </thead>
-                            <tbody />
-                        </table>
-                    </div>
+            </div>
+            {/* The filters as chips: filter-panel.js */}
+            <div class="bottom-page filter-page" data-page="filters" style="display:none;">
+                <div class="toolbar filter-toolbar">
+                    <button class="btn-new-dlf" data-tr="New Filter" />
+                    <button class="btn-dlf" data-tr="Load Filter" />
+                    <div class="filter-message" style="display:none;"></div>
                 </div>
-                <div class="bottom-page file-info-page" data-page="file-info" style="display:none;">
-                    <dl class="file-info"></dl>
+                <div class="filter-sets"></div>
+            </div>
+            <div class="bottom-page file-info-page" data-page="file-info" style="display:none;">
+                <dl class="file-info"></dl>
+            </div>
+            {/* Of the whole application, not of the document: empty for now */}
+            <div class="bottom-page mcp-page" data-page="mcp" style="display:none;"></div>
+            <div class="bottom-tabs">
+                <div class="bottom-tab active" data-page="search">
+                    <span class="bottom-tab-name" data-tr="Search" data-tr-context="noun" />
                 </div>
-                {/* Of the whole application, not of the document: empty for now */}
-                <div class="bottom-page mcp-page" data-page="mcp" style="display:none;"></div>
-                <div class="bottom-tabs">
-                    <div class="bottom-tab active" data-page="search">
-                        <span class="bottom-tab-name" data-tr="Search" data-tr-context="noun" />
-                    </div>
-                    <div class="bottom-tab" data-page="file-info">
-                        <span class="bottom-tab-name" data-tr="File Info" />
-                    </div>
-                    {/* The tabs of the document on the left, those of the application on the right */}
-                    <div class="bottom-tabs-gap" />
-                    <div class="bottom-tab" data-page="mcp">
-                        <span class="bottom-tab-name" data-tr="MCP Server" />
-                    </div>
+                {/* Its dot: some rule works on the log (markFiltersTab) */}
+                <div class="bottom-tab" data-page="filters">
+                    <span class="bottom-tab-name" data-tr="Filters" />
+                    <span class="bottom-tab-dot" />
                 </div>
-            </section>
-        </frameset>
+                <div class="bottom-tab" data-page="file-info">
+                    <span class="bottom-tab-name" data-tr="File Info" />
+                </div>
+                {/* The tabs of the document on the left, those of the application on the right */}
+                <div class="bottom-tabs-gap" />
+                <div class="bottom-tab" data-page="mcp">
+                    <span class="bottom-tab-name" data-tr="MCP Server" />
+                </div>
+            </div>
+        </section>
     </frameset>;
 }
 
@@ -154,7 +157,7 @@ export function reloadList(list, scrollTo = null) {
 export class DocumentPane {
     // @param docId - the id of the document in the backend
     // @param container - the element the panel is appended to
-    // @param splitters - { cols, rows } the splitters start with
+    // @param splitters - { rows } the splitter starts with
     // @param host - what the panel asks of the window:
     //   closeTab(docId), refreshTabs(), theme() -> "light" | "dark",
     //   tableFontSize() -> % of the normal font of the tables
@@ -204,10 +207,11 @@ export class DocumentPane {
         this.follower = new SelectionFollower(list => this.followSelection(list));
         this.applyRowLook();
 
-        this.filterPanel = new FilterPanel(this.root.$(".left-panel"), docId, {
+        this.filterPanel = new FilterPanel(this.root.$(".filter-page"), docId, {
             theme: () => host.theme(),
             setRuleColors: colors => { for (const list of this.lists) list.ruleColors = colors; },
             refreshRows: () => this.refreshRuleColors(),
+            setActive: active => this.markFiltersTab(active),
         });
         this.searchBar = new SearchBar(this.root.$(".search-bar"), docId, {
             setMatchColors: colors => { for (const list of this.lists) list.matchColors = colors; },
@@ -250,8 +254,8 @@ export class DocumentPane {
         this.updateFileInfo();
     }
 
-    // Shows the panel, up to date. `splitters` are the sizes of the panel
-    // shown before (colsState, rowsState: its frameset states, see hide())
+    // Shows the panel, up to date. `splitters` is the splitter of the panel
+    // shown before (rowsState: its frameset state, see hide())
     // and the page of its bottom panel (bottomPage), null to keep its own.
     show(splitters) {
         this.root.style.display = "";
@@ -259,8 +263,7 @@ export class DocumentPane {
         this.applyRowLook(); // changed in Settings while hidden
         this.scrollToKeptRows(); // of a hidden page or panel, see applyRowLook()
         if (splitters) {
-            this.root.frameset.state = splitters.colsState;
-            this.root.$("frameset").frameset.state = splitters.rowsState;
+            this.root.frameset.state = splitters.rowsState;
             if (splitters.bottomPage) this.selectBottomPage(splitters.bottomPage); // refresh() fills it
         }
         if (this.textsStale) { // the language changed while hidden: refresh() renders it all
@@ -290,27 +293,25 @@ export class DocumentPane {
         return this.root.$$(".bottom-page").some(page => page.style.display === "none" && isInside(element, page));
     }
 
-    // The sizes of its splitters now: { cols, rows } (strings, for a new
-    // panel) and their frameset states { colsState, rowsState }
+    // Its splitter now: { rows } (a string, for a new panel) and its frameset
+    // state { rowsState }
     splitterSizes() {
-        const inner = this.root.$("frameset");
         return {
-            colsState: this.root.frameset?.state, rowsState: inner.frameset?.state,
-            cols: this.root.frameset?.state?.join(",") ?? this.root.getAttribute("cols"),
-            rows: inner.frameset?.state?.join(",") ?? inner.getAttribute("rows"),
+            rowsState: this.root.frameset?.state,
+            rows: this.root.frameset?.state?.join(",") ?? this.root.getAttribute("rows"),
         };
     }
 
-    // The width of the side panel and the height of the search (bottom) panel
-    // as they are shown: { sidePanelWidth, searchPanelHeight } ("230dip").
-    // Only while the panel is shown: a hidden one has no sizes. Their content
-    // boxes: a frameset sizes those, without the padding and the borders.
+    // The height of the search (bottom) panel as it is shown:
+    // { searchPanelHeight } ("230dip"). Only while the panel is shown: a hidden
+    // one has no size. Its content box: a frameset sizes that, without the
+    // padding and the borders.
     panelSizes() {
-        const dip = (selector, side) => `${Math.round(this.root.$(selector).state.box(side, "inner"))}dip`;
-        return { sidePanelWidth: dip(".left-panel", "width"), searchPanelHeight: dip(".bottom-panel", "height") };
+        const height = Math.round(this.root.$(".bottom-panel").state.box("height", "inner"));
+        return { searchPanelHeight: `${height}dip` };
     }
 
-    // Hides the panel. @returns the sizes of its splitters for the next panel
+    // Hides the panel. @returns the size of its splitter for the next panel
     // shown (splitterSizes(), panelSizes()) and the page of the bottom panel
     hide() {
         const focused = document.$(":focus");
@@ -356,6 +357,11 @@ export class DocumentPane {
     showBottomPage(name) {
         if (!this.selectBottomPage(name)) return;
         this.updateFileInfo();
+    }
+
+    // Marks the tab of the Filters page with its dot while some rule works on the log
+    markFiltersTab(active) {
+        this.root.$(".bottom-tab[data-page=filters]").classList.toggle("marked", active);
     }
 
     // Shows the page `name` of the bottom panel as it is and marks its tab.

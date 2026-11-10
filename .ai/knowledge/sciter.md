@@ -160,6 +160,20 @@ agent can't drive it. In scapp a plain
   `width` attribute of a `th` has no effect at usual sizes; a CSS `width` is enforced.
   `box-sizing: border-box` on all headers shifted every column by 1dip: leave it off unless a
   width is set.
+- Sizing a chip by its text and cutting it at the room left (the Filters page, 6.0.5.5):
+  - a `width: max-content` element counts a child with a `max-width` as that max-width, not
+    its text: a cap on the name made every chip as wide as the cap. `max-width: max-content`
+    on the name (with `width: *`) makes the chip's max-content its text;
+  - a column of `flow: row()` grows to its widest item, whatever its `max-width`: use a
+    `flow: horizontal` row with a `width: *` part instead;
+  - a `width: *` part still grows to its content unless it has `overflow-x: hidden`;
+  - `max-width: 100%` of a padded child needs `box-sizing: border-box`, or the padding and
+    the border stick out; `min(…)` and `calc(100% - …)` against a max-content parent don't
+    work (unsupported, circular);
+  - a child's `min-width` is left out of the parent's max-content: two buttons with
+    `min-width: 16dip` around 11dip glyphs cut every name by 10dip. Give them a `width`.
+- In a `flow: horizontal` row a child's own `vertical-align` (meant for its content) also
+  places it in the row: `margin-bottom: *` keeps it at the top.
 - To diagnose a layout bug, compare `el.state.box("xywh","border","parent")` between a working
   and a broken element instead of guessing.
 
