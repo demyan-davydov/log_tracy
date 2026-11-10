@@ -13,6 +13,13 @@
     --tab-separator: #a8a8a8;
     --tab-close: #555;
     --tab-close-hover: #c4c4c4;
+    /* The pages of the bottom panel and their tabs, a pale color each, so the
+       page open is seen at a glance (Search is --bg-main) */
+    --page-filters-bg: #e6f4ea;
+    --page-file-info-bg: #e5eef9;
+    --page-mcp-bg: #eeeaf8;
+    /* a hovered element on the Filters page: --bg-tab-hover would be a grey patch on the mint */
+    --page-filters-hover: #d3e9da;
     /* the bar of the loading progress on a tab: the track, the loaded part */
     --tab-progress-bg: #d0d0d0;
     --tab-progress-done: #0078d7;

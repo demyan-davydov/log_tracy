@@ -435,6 +435,7 @@ frameset {
 /* The bottom panel: its pages over the strip of their tabs */
 .bottom-panel {
     flow: vertical;
+    min-height: 150dip; /* the splitter doesn't drag it lower */
     border-top: 1dip solid var(--border-color);
     background: var(--bg-main);
 }
@@ -485,6 +486,15 @@ frameset {
     margin: * 0; /* Sciter: flexible margins center it vertically */
     font-size: 9pt;
 }
+
+/* A page and its active tab share the page's color (--page-<page>-bg); an
+   inactive tab stays on the grey of the strip, as that of Search does */
+.bottom-page[data-page=filters],
+.bottom-tab.active[data-page=filters] { background: var(--page-filters-bg); }
+.bottom-page[data-page=file-info],
+.bottom-tab.active[data-page=file-info] { background: var(--page-file-info-bg); }
+.bottom-page[data-page=mcp],
+.bottom-tab.active[data-page=mcp] { background: var(--page-mcp-bg); }
 
 /* The dot of the Filters tab: some rule works on the log (markFiltersTab).
    Always there, grown from its centre when it appears and collapsed back, so
@@ -563,10 +573,6 @@ frameset {
     font-weight: 600;
 }
 
-.filter-set-head:hover {
-    background: var(--bg-tab-hover);
-}
-
 .filter-chip {
     flow: horizontal;
     vertical-align: middle;
@@ -581,8 +587,10 @@ frameset {
     background: var(--bg-main);
 }
 
+/* The page is tinted (--page-filters-bg): a hover of its own tint */
+.filter-set-head:hover,
 .filter-chip:hover {
-    background: var(--bg-tab-hover);
+    background: var(--page-filters-hover);
 }
 
 .filter-chip.error {

@@ -13,6 +13,13 @@
     --tab-separator: #555559;
     --tab-close: #9a9a9a;
     --tab-close-hover: #4a4a4e;
+    /* The pages of the bottom panel and their tabs, a dark tint each of the
+       colors of theme-light (Search is --bg-main) */
+    --page-filters-bg: #1c2620;
+    --page-file-info-bg: #1c222b;
+    --page-mcp-bg: #23202b;
+    /* a hovered element on the Filters page, of its tint */
+    --page-filters-hover: #2b3a30;
     /* the bar of the loading progress on a tab: the track, the loaded part */
     --tab-progress-bg: #4a4a4e;
     --tab-progress-done: #0078d7;
