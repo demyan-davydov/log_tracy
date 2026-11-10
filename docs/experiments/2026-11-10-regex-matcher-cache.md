@@ -9,8 +9,7 @@
 ## Условия
 
 - 2026-11-10, ветка `parallel-scan-review` от `master` `0a3bd5d`. «По очереди» — код `2c38e9f`;
-  «одним выражением» — коммит «try the regex chips of a search as one expression» (следующий,
-  добавил `utils/text_regex`).
+  «одним выражением» — `4d4a919` (добавил `utils/text_regex`).
 - Apple M1 Pro (8 производительных + 2 энергоэффективных ядра), macOS, LDC 1.43.0.
 - Лог: `node scripts/build.mjs gen-log build/bench/1g.dlt --format dlt --size 1G` (seed 1,
   8 942 422 записи).
