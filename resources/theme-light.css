@@ -14,7 +14,7 @@
     --tab-close: #555;
     --tab-close-hover: #c4c4c4;
     /* The pages of the bottom panel and their tabs, a pale color each, so the
-       page open is seen at a glance (Search is --bg-main) */
+       page open is seen at a glance (Search is that of its table, --bg-table) */
     --page-filters-bg: #e6f4ea;
     --page-file-info-bg: #e5eef9;
     --page-mcp-bg: #eeeaf8;

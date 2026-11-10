@@ -488,7 +488,9 @@ frameset {
 }
 
 /* A page and its active tab share the page's color (--page-<page>-bg); an
-   inactive tab stays on the grey of the strip, as that of Search does */
+   inactive tab stays on the grey of the strip, as that of Search does. The
+   Search page ends in its results table, so its tab takes the table's color */
+.bottom-tab.active[data-page=search] { background: var(--bg-table); }
 .bottom-page[data-page=filters],
 .bottom-tab.active[data-page=filters] { background: var(--page-filters-bg); }
 .bottom-page[data-page=file-info],

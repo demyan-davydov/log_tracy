@@ -14,7 +14,7 @@
     --tab-close: #9a9a9a;
     --tab-close-hover: #4a4a4e;
     /* The pages of the bottom panel and their tabs, a dark tint each of the
-       colors of theme-light (Search is --bg-main) */
+       colors of theme-light (Search is that of its table, --bg-table) */
     --page-filters-bg: #1c2620;
     --page-file-info-bg: #1c222b;
     --page-mcp-bg: #23202b;

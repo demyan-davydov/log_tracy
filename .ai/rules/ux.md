@@ -200,7 +200,7 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
 41. **Tabs below the pages.** The panel under the main table is a set of pages with a tab strip
     at its bottom (IDE-like; the active tab merges with its page above). No title header inside
     a page when its tab already names it. The strip under the tabs stays grey (`--bg-header`).
-    Each page has its own color, so the page open is seen at a glance: Search `--bg-main`,
+    Each page has its own color, so the page open is seen at a glance: Search that of its results table (`--bg-table`),
     Filters mint, File Info blue, MCP Server lavender (`--page-<page>-bg`; pale in the light
     theme, dark tints in the dark one). A page and its active tab share that color; inactive
     tabs stay on the grey of the strip.
