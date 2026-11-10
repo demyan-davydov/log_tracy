@@ -166,20 +166,25 @@ final class DltFormat : LogFormat
         const message = buffer[storage .. $];
         const version_ = protocolVersion(message);
         size_t length;
+        size_t baseHeader;
         if (version_ == 2)
         {
-            if (message.length < baseHeaderV2Size)
+            baseHeader = baseHeaderV2Size;
+            if (message.length < baseHeader)
                 return layout;
-            length = max(messageLengthV2(message), baseHeaderV2Size);
+            length = max(messageLengthV2(message), baseHeader);
         }
         else
         {
-            if (message.length < StandardHeader.sizeof)
+            baseHeader = StandardHeader.sizeof;
+            if (message.length < baseHeader)
                 return layout;
-            length = max((cast(const(StandardHeader)*) message.ptr).nativeLength, StandardHeader.sizeof);
+            length = max((cast(const(StandardHeader)*) message.ptr).nativeLength, baseHeader);
         }
         if (storage + length > buffer.length)
             return layout;
+        if (_hasStorageHeader)
+            length = cutAtNextHeader(buffer, storage + baseHeader, storage + length) - storage;
 
         const record = message[0 .. length];
         if (version_ == 2)
@@ -191,7 +196,9 @@ final class DltFormat : LogFormat
         else if (version_ <= 1)
         {
             auto standardHeader = cast(const(StandardHeader)*) record.ptr;
-            layout.coversHeaders = standardHeader.nativeLength >= standardHeader.fullHeaderAndExtendedHeaderSize();
+            // The length may have been cut short of the one in the header
+            layout.coversHeaders = min(standardHeader.nativeLength, length)
+                >= standardHeader.fullHeaderAndExtendedHeaderSize();
         }
         else
             layout.coversHeaders = true;
@@ -267,6 +274,27 @@ private const(ubyte)[] findNextStorageHeader(const(ubyte)[] buffer) pure @nogc n
     }
 
     return buffer[$ .. $];
+}
+
+//! @returns where the record at the start of `buffer`, `end` bytes long by its
+//! length, really ends. A corrupt length too long would cover the records
+//! after it: when no storage header follows the record (nor the end of the
+//! data, nor the start of a header still being written), the first storage
+//! header inside it ends it. The check is O(1) for a sound record, which
+//! every row pays (`recordAt`); only a broken record pays for the search.
+//! A length too short isn't fixed here: the scan skips to the next header.
+//! The search starts at `from`, after the record's own base header: the
+//! bytes of its own headers (ECU ID, counter) don't cut it.
+private size_t cutAtNextHeader(const(ubyte)[] buffer, size_t from, size_t end) pure @nogc nothrow
+{
+    const after = buffer[end .. $];
+    if (after.length >= DLT_PATTERN.length ? startsWithStoragePattern(after)
+        : after == DLT_PATTERN[0 .. after.length])
+        return end;
+    // A header starting inside the message, whole in the buffer
+    const area = buffer[from .. min(buffer.length, end + StorageHeader.sizeof - 1)];
+    const found = findNextStorageHeader(area);
+    return found.length == 0 ? end : found.ptr - buffer.ptr;
 }
 
 //! @returns true if `buffer` starts with a storage header pattern followed by
@@ -657,6 +685,80 @@ unittest
     size_t[4] offsets;
     const r = new DltFormat().scanRecords(data, 0, offsets[], false);
     assert(r.count == 0 && r.next == 0);
+}
+
+@("DltFormat.scanRecords: a length too long doesn't cover the records after it")
+unittest
+{
+    auto msg2 = buildDltMessage("ECU1", 2, 0, 0, 2, [4]);
+    auto msg3 = buildDltMessage("ECU1", 3, 0, 0, 3, [5]);
+    // Ends inside msg3: the data goes on after the broken record
+    const sound = buildDltMessage("ECU1", 1, 0, 0, 1, [1, 2, 3]);
+    const tooLong = cast(int)(sound.length - StorageHeader.sizeof + msg2.length + 5);
+    auto broken = buildDltMessage("ECU1", 1, 0, 0, 1, [1, 2, 3], tooLong);
+    auto data = broken ~ msg2 ~ msg3;
+    const expected = [0, broken.length, broken.length + msg2.length];
+
+    auto format = new DltFormat();
+    assert(scanAll(format, data) == expected);
+    size_t[4] offsets;
+    const r = format.scanRecords(data, 0, offsets[], false);
+    assert(offsets[0 .. r.count] == expected, "a growing file too");
+
+    // Cut where the next record starts, the same for the scan and for every row
+    assert(format.recordAt(data, 0) == broken);
+    LogMessage!wchar msg, soundMsg;
+    assert(format.decode(msg, format.recordAt(data, 0)));
+    assert(format.decode(soundMsg, sound));
+    assert(msg.payloadText == soundMsg.payloadText, "nothing of the next records in the payload");
+}
+
+@("DltFormat.scanRecords: a length too long cut shorter than its headers is skipped")
+unittest
+{
+    // The flags announce an extended header, the next record starts where it should be
+    auto msg2 = buildDltMessage("ECU1", 2, 0, 0, 2, [4]);
+    auto msg3 = buildDltMessage("ECU1", 3, 0, 0, 3, [5]);
+    const tooLong = cast(int)(StandardHeader.sizeof + msg2.length + 5);
+    auto broken = buildDltMessage("ECU1", 1, 0, StandardHeader.Type.UseExtendedHeader, 1, [], tooLong);
+    auto data = broken ~ msg2 ~ msg3;
+
+    auto format = new DltFormat();
+    assert(scanAll(format, data) == [broken.length, broken.length + msg2.length]);
+    assert(format.recordAt(data, 0).length == 0);
+}
+
+@("DltFormat.scanRecords: a length is trusted when the data ends or a header may follow")
+unittest
+{
+    // A regression guard: it passed before the cut too, it fails if the cut is too eager
+    auto msg = buildDltMessage("ECU1", 1, 0, 0, 1, [1, 2, 3]);
+    auto format = new DltFormat();
+
+    // Nothing after the record, or the start of a header still being written
+    foreach (tail; [cast(ubyte[]) [], cast(ubyte[]) "D", cast(ubyte[]) "DLT"])
+        assert(format.recordAt(msg ~ tail, 0) == msg);
+
+    // A length too short: the bytes after it hold no header, the record keeps its length
+    auto good = buildDltMessage("ECU1", 2, 0, 0, 2, [4]);
+    auto data = msg ~ cast(ubyte[]) "garbage" ~ good;
+    assert(format.recordAt(data, 0) == msg);
+    assert(scanAll(format, data) == [0, msg.length + "garbage".length]);
+}
+
+@("DltFormat.scanRecords: a length too long is cut at a storage header of version 2")
+unittest
+{
+    import formats.dlt.testing_utils : BuildV2, storageV2;
+
+    BuildV2 b;
+    auto v2 = storageV2("S", 1, 0) ~ b.bytes();
+    const sound = buildDltMessage("ECU1", 1, 0, 0, 1, [1, 2, 3]);
+    const tooLong = cast(int)(sound.length - StorageHeader.sizeof + v2.length);
+    auto broken = buildDltMessage("ECU1", 1, 0, 0, 1, [1, 2, 3], tooLong);
+    auto data = broken ~ v2 ~ cast(ubyte[]) "tail";
+
+    assert(scanAll(new DltFormat(), data) == [0, broken.length]);
 }
 
 @("DltFormat.scanRecords: a record of an unknown protocol version")

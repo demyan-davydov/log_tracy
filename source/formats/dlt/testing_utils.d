@@ -104,9 +104,9 @@ struct BuildV1
 
 /// A minimal record: storage header, standard header of type `headerType`
 /// as it is (its flags announce fields the record doesn't have: a broken
-/// record), then `payload`
+/// record), then `payload`; `length` of the standard header, -1: computed
 ubyte[] buildDltMessage(const(char)[4] ecuId = "ECU1", uint seconds = 1000, uint microseconds = 500,
-    ubyte headerType = 0, ubyte messageCounter = 0, const(ubyte)[] payload = [])
+    ubyte headerType = 0, ubyte messageCounter = 0, const(ubyte)[] payload = [], int length = -1)
 {
     BuildV1 r;
     r.storageEcu = ecuId;
@@ -117,6 +117,7 @@ ubyte[] buildDltMessage(const(char)[4] ecuId = "ECU1", uint seconds = 1000, uint
     r.extended = false;
     r.counter = messageCounter;
     r.payload = payload;
+    r.length = length;
     auto bytes = r.bytes();
     bytes[StorageHeader.sizeof] = headerType;
     return bytes;
