@@ -836,10 +836,6 @@ version (unittest)
         size_t itemsCount() nothrow @nogc { return 0; }
         bool fetchItem(size_t index, scope ref DocumentItem item) { return false; }
         bool positionOf(size_t realIndex, out size_t position) { return false; }
-        void enableFilter(bool enable) {}
-        bool isFilterEnabled() const { return false; }
-        void applyFilter(LogFilter!wchar filter) {}
-        void resetFilter() {}
     }
 
     /// A document whose events the test publishes; it records the searches asked

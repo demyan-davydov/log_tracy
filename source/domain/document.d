@@ -45,14 +45,6 @@ interface DocumentView
     //! @brief The position in the view of the message with index `realIndex`
     //! @return false if the view doesn't show that message
     bool positionOf(size_t realIndex, out size_t position);
-
-    void enableFilter(bool enable);
-
-    bool isFilterEnabled() const;
-
-    void applyFilter(LogFilter!wchar filter);
-
-    void resetFilter();
 }
 
 interface Document
@@ -95,12 +87,6 @@ interface Document
         const f = format();
         return f is null ? null : f.columns;
     }
-
-    //string sourcePath() const nothrow @nogc;
-
-    //string fibexPath() const nothrow @nogc;
-
-    //string filterPath() const nothrow @nogc;
 
     void applyViewFilter(LogFilter!wchar filter);
 

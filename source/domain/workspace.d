@@ -43,23 +43,6 @@ private class NullDocumentView : DocumentView
     {
         return false;
     }
-
-    override void enableFilter(bool enable)
-    {
-    }
-
-    override bool isFilterEnabled() const
-    {
-        return false;
-    }
-
-    override void applyFilter(LogFilter!wchar filter)
-    {
-    }
-
-    override void resetFilter()
-    {
-    }
 }
 
 private class NullDocument : Document
@@ -172,8 +155,6 @@ private struct DocumentRecord
     Document document;
     SubscriptionToken[] subscriptions; // forwarding subscriptions on document.events
     string sourcePath;
-    string filterPath;
-    string fibexPath;
 }
 
 final class Workspace
