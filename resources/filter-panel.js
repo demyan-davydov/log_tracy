@@ -13,7 +13,7 @@ import { ruleColors } from "rule-colors.js";
 import { currentCatalog, tr } from "i18n/i18n.js";
 import { fileFilter } from "file-types.js";
 
-const ruleKindMarks = { include: "+", exclude: "−", marker: "◆" };
+// What a rule does: its mark is drawn in its swatch by its class (style.css)
 const ruleKindTitles = {
     include: () => tr("Shows the records it matches"),
     exclude: () => tr("Hides the records it matches"),
@@ -34,8 +34,9 @@ function setHead(set, s) {
     </div>;
 }
 
-// The chip of a rule: its switch, kind, color, name and buttons. Its set-index
-// and rule-index are read by the handlers. A rule not applied is marked, its
+// The chip of a rule: its switch, kind, color and name; its buttons in a tab
+// shown over it on hover, out of its width. Its set-index and rule-index are
+// read by the handlers. A rule not applied is marked, its
 // error in its tooltip.
 function ruleChip(rule, s, r) {
     const classes = ["filter-chip"];
@@ -44,18 +45,18 @@ function ruleChip(rule, s, r) {
     const title = rule.error ? tr("Not applied: {error}", { error: rule.error }) : "";
     return <div class={classes.join(" ")} set-index={s} rule-index={r} title={title}>
         <input type="checkbox" class="filter-rule-switch" />
-        <span class="filter-kind" title={ruleKindTitles[rule.kind]?.() ?? ""}>{ruleKindMarks[rule.kind]}</span>
-        <span class="filter-swatch" />
+        <span class={"filter-swatch " + rule.kind + (rule.color ? "" : " no-color")} title={ruleKindTitles[rule.kind]?.() ?? ""} />
         <span class="filter-name">{rule.name || tr("(no name)")}</span>
-        <span class="filter-button filter-rule-edit" title={tr("Edit this rule (or double-click it)")}>✎</span>
-        <span class="filter-button filter-rule-remove" title={tr("Remove this rule")}>×</span>
+        <span class="filter-chip-actions">
+            <span class="filter-button filter-rule-edit" title={tr("Edit this rule (or double-click it)")}>✎</span>
+            <span class="filter-button filter-rule-remove" title={tr("Remove this rule")}>×</span>
+        </span>
     </div>;
 }
 
-// A row per set: its head (of one width for all, so they line up), then its
-// rules as chips wrapping in the rest of the row; under it a line per rule not
-// applied saying why. Not a grid: the column of a grid grows to its widest
-// chip, a row's rest shrinks with the page (no overflow in a narrow window).
+// A block per set: its head, then its rules as chips wrapping under it; after
+// it a line per rule not applied saying why. The chips shrink with the page
+// (no overflow in a narrow window).
 // The switches get their state here: the markup can't set it.
 function renderSets(panel, sets) {
     sets.forEach((set, s) => {
@@ -236,19 +237,19 @@ export class FilterPanel {
         });
 
         on("click", ".filter-rule-edit", (evt, button) => {
-            const row = button.parentElement;
+            const row = button.closest(".filter-chip");
             this.editRule(setOf(row), ruleOf(row));
             return true;
         });
 
         on("dblclick", ".filter-chip", (evt, row) => {
-            if (evt.target.tag === "input") return; // the switch
+            if (evt.target.tag === "input" || evt.target.closest(".filter-chip-actions")) return; // the switch, a button
             this.editRule(setOf(row), ruleOf(row));
             return true;
         });
 
         on("click", ".filter-rule-remove", (evt, button) => {
-            const row = button.parentElement;
+            const row = button.closest(".filter-chip");
             this.showResult(backend.removeFilterRule(docId, setOf(row), ruleOf(row)));
             return true;
         });

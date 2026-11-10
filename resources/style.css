@@ -547,22 +547,33 @@ frameset {
     font-size: 0.9em;
 }
 
-/* A row per set: its head, then its rules as chips wrapping in the rest */
+/* A block per set: its head, then its rules as chips wrapping under it,
+   indented */
 .filter-set {
-    flow: horizontal;
-    padding: 2pt 0;
+    flow: vertical;
+    border-spacing: 2pt;
+    padding: 3pt 0;
 }
 
+/* As wide as its name and buttons: they stay together; a name longer than
+   the page is cut */
 .filter-set > .filter-set-head {
-    width: 12em; /* one for all the sets: the chips line up */
-    margin: 0 8pt * 0; /* Sciter: the flexible bottom margin keeps it at the top of the row */
+    width: max-content;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.filter-set-head .filter-name {
+    max-width: max-content;
 }
 
 .filter-chips {
     width: *;
+    margin-left: 20dip;
     flow: horizontal-wrap;
     border-spacing: 4dip;
-    overflow-x: hidden; /* Sciter: without it the row grows to its widest chip */
+    /* No overflow: hidden: it would clip the buttons over the first line
+       (.filter-chip-actions). The chips shrink to the row without it */
 }
 
 .filter-set-head {
@@ -580,13 +591,14 @@ frameset {
     vertical-align: middle;
     border-spacing: 3dip;
     width: max-content;
-    max-width: 100%; /* of the row's rest: a long name is cut, the buttons stay in */
+    max-width: 100%; /* of its line: a long name is cut */
     box-sizing: border-box;
     height: 1.6em;
     padding: 0 3dip;
     border: 1dip solid var(--chip-border);
     border-radius: 3dip;
     background: var(--bg-main);
+    position: relative; /* for its .filter-chip-actions */
 }
 
 /* The page is tinted (--page-filters-bg): a hover of its own tint */
@@ -601,7 +613,7 @@ frameset {
 
 /* Why a rule isn't applied: under the chips of its set, across the row */
 .filter-note {
-    padding: 0 0 2pt 4dip;
+    padding: 0 0 2pt 20dip; /* under the chips */
     font-size: 0.85em;
     color: var(--log-error);
 }
@@ -627,18 +639,42 @@ frameset {
     text-overflow: ellipsis;
 }
 
-/* What the rule does: + include, − exclude, ◆ marker */
-.filter-kind {
-    width: 1em;
-    text-align: center;
-    color: var(--text-label);
+/* The switch and the color of a rule are one size: that of Sciter's checkbox
+   (its master.css), set here for both */
+.filter-chip input,
+.filter-swatch {
+    width: 15dip;
+    height: 15dip;
 }
 
+/* The color of the rule with what it does in it: + include, − exclude,
+   ◆ marker, a vector icon of Sciter (its class, set by the script). White
+   outlined in black: seen on any color */
 .filter-swatch {
-    width: 10dip;
-    height: 10dip;
+    box-sizing: border-box;
     border-radius: 2dip;
     border: 1dip solid var(--border-color);
+    vertical-align: middle; /* Sciter: in line with the checkbox */
+    foreground-repeat: no-repeat;
+    foreground-position: 50% 50%;
+    foreground-size: 11dip;
+    fill: white;
+    stroke: black;
+    stroke-width: 1dip;
+}
+
+.filter-swatch.include { foreground-image: icon(0 0 12 12;M4.5 1.5h3v3h3v3h-3v3h-3v-3h-3v-3h3z); }
+.filter-swatch.exclude { foreground-image: icon(0 0 12 12;M1.5 4.5h9v3h-9z); }
+.filter-swatch.marker { foreground-image: icon(0 0 12 12;M6 1l5 5l-5 5l-5 -5z); }
+
+/* No color: a checkerboard, as transparency is shown in image editors: a
+   tile of 2x2 cells repeated, its gray cells translucent over the background
+   of the theme */
+.filter-swatch.no-color {
+    background-color: var(--bg-main);
+    background-image: url(checker.png);
+    background-repeat: repeat;
+    background-size: 4dip 4dip; /* cells of 2dip */
 }
 
 /* The buttons of a set (⤓ export, +, ×) and of a rule (✎, ×) */
@@ -656,13 +692,31 @@ frameset {
     background: var(--tab-close-hover);
 }
 
-/* The buttons of a rule only where the mouse is: the chips stay calm. Hidden,
-   not removed: nothing moves */
-.filter-chip .filter-button {
+/* The buttons of a rule (✎, ×): a tab over the chip, of its width, in its
+   hover color and without a border: a part of the chip, not another one.
+   Only while the mouse is on the chip or the tab (a child of the chip: its
+   :hover holds). Out of the chip's width: the chips stay narrow */
+.filter-chip-actions {
+    position: absolute;
+    left: 0; /* the chip's width and right on it (measured) */
+    right: 0;
+    top: -16dip;
+    width: auto;
+    height: 16dip;
+    flow: horizontal;
+    vertical-align: middle;
+    border-spacing: 4dip;
+    border-radius: 3dip 3dip 0 0;
+    background: var(--page-filters-hover);
+    z-index: 1;
     visibility: hidden;
 }
 
-.filter-chip:hover .filter-button {
+/* Sciter: flexible margins center the buttons in the tab */
+.filter-chip-actions > :first-child { margin-left: *; }
+.filter-chip-actions > :last-child { margin-right: *; }
+
+.filter-chip:hover > .filter-chip-actions {
     visibility: visible;
 }
 

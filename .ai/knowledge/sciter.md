@@ -174,6 +174,12 @@ agent can't drive it. In scapp a plain
     `min-width: 16dip` around 11dip glyphs cut every name by 10dip. Give them a `width`.
 - In a `flow: horizontal` row a child's own `vertical-align` (meant for its content) also
   places it in the row: `margin-bottom: *` keeps it at the top.
+- `text-shadow` is faint (no halo that keeps a white glyph seen on white) and a list of
+  shadows draws none; a glyph in a small box sits ~1px low. For a mark on any color draw a
+  vector icon: `foreground-image: icon(viewbox;d-path)` with `fill` and `stroke` (the rule
+  swatch, `.filter-swatch` in `style.css`).
+- `overflow: hidden` clips at the content box, not the padding box: a padding doesn't make
+  room for an absolute child sticking out (the buttons of a filter chip).
 - To diagnose a layout bug, compare `el.state.box("xywh","border","parent")` between a working
   and a broken element instead of guessing.
 
