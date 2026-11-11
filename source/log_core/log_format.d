@@ -84,6 +84,44 @@ interface LogFormat
     bool decode(ref LogMessage!wchar msg, const(ubyte)[] record) const nothrow @nogc;
 }
 
+//! What a record is as a part of a message its writer cut into numbered parts
+//! ("1/2: ...", "2/2: ..."), as PartedFormat.partOf tells it
+struct RecordPart
+{
+    ubyte[16] sender; // who wrote it: the parts of a message come from one writer
+    uint number; // 1-based; 0: the record is not a part
+    uint count; // of the parts of the message
+    uint counter; // the writer's message counter of the record (0 without one)
+    uint nextCounter; // the counter the next part has: they follow one by one
+
+    //! @returns true if the record is a part of a message
+    bool isPart() const pure nothrow @nogc @safe
+    {
+        return number != 0;
+    }
+}
+
+//! A LogFormat whose writers may cut a long message into numbered parts, written as
+//! records of their own: the index joins them into one record (domain/index/part_joiner).
+//! Asked of a format by a cast; immutable like the LogFormat it is.
+interface PartedFormat
+{
+    //! @returns false if the record at `offset` of the data (as scanRecords found it) is
+    //! surely not a part, by a look at a few of its bytes; true for every part (partOf
+    //! tells). Asked of every record as the offset index grows: keep it cheap
+    bool mayBePart(const(ubyte)[] data, size_t offset) const nothrow @nogc;
+
+    //! @returns what the record at `offset` of the data (as scanRecords found it) is as
+    //! a part; not a part: RecordPart.init. Asked only of the records mayBePart lets
+    //! through
+    RecordPart partOf(const(ubyte)[] data, size_t offset) const nothrow @nogc;
+
+    //! @brief Decodes the parts of one message (as recordAt gives them, in order, the
+    //! first one first) into one record: the fields of the first, the texts of all
+    //! @returns false if the first part is not a valid record
+    bool decodeParts(ref LogMessage!wchar msg, const(ubyte[])[] parts) const nothrow @nogc;
+}
+
 //! How well some bytes fit a format
 struct Detection
 {

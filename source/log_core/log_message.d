@@ -110,7 +110,8 @@ struct LogMessage(Char) if (isSomeChar!Char)
         _fieldsSet |= 1 << field;
     }
 
-    //! The payload takes the rest of the buffer: no setText() after this
+    //! The payload takes the rest of the buffer: no setText() after this. A second call,
+    //! once the builder before is gone, starts the payload over; the fields stay
     PayloadBuilder!Char payloadBuilder() nothrow @nogc
     {
         debug _payloadStarted = true;
@@ -1411,4 +1412,21 @@ unittest
     wchar[1] smallBuffer; // Not enough space for surrogate pair
     remaining = copyUtf8to("\U0001F600", smallBuffer[]);
     assert(remaining.length == 1); // The buffer is still 1, but nothing was written
+}
+
+@("LogMessage: a second payloadBuilder starts the payload over, the fields stay")
+unittest
+{
+    LogMessage!wchar msg;
+    msg.beginRecord();
+    msg.setText(0, "field");
+    {
+        auto builder = msg.payloadBuilder();
+        builder.appendAscii("first, longer");
+    }
+    {
+        auto builder = msg.payloadBuilder();
+        builder.appendAscii("second");
+    }
+    assert(msg.payloadText == "second"w && msg.text(0) == "field"w);
 }

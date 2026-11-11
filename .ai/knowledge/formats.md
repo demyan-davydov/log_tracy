@@ -43,6 +43,10 @@ Adding a format, step by step: `.ai/workflows/add-format.md`.
   `recordAt` alike (the index keeps offsets only): with storage headers a length too long is
   cut at the first storage header inside the record when none follows it (`cutAtNextHeader`,
   O(1) for a sound record).
+- A message its writer cut into numbered parts (verbose, one string argument `k/n: `) is one
+  record: `formats/dlt/parts` tells a part (`dltPartOf`) and decodes the parts as one
+  (`parseDltParts`); `DltFormat` is a `PartedFormat` through them. The joining itself is the
+  index's (`.ai/knowledge/architecture.md`, Indexing and Threads).
 - DLT records for unittests are built by `formats/dlt/testing_utils` (`BuildV1`, `BuildV2`,
   `buildDltMessage`), also for the tests of other packages.
 - `.dlf` filter files of dlt-viewer: `formats/dlt/dlf`. FIBEX (non-verbose): `formats/dlt/fibex`,

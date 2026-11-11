@@ -98,6 +98,19 @@ LogItemHeaders findHeaders(const(ubyte)[] data) pure nothrow @nogc
     return headers;
 }
 
+//! The ECU of a message of version 1: of the message itself, it wins over the one of
+//! the storage header: a logger behind a gateway is stored with the ECU of the gateway
+const(char)[] ecuIdOf(ref const LogItemHeaders headers, ref const StorageInfo storage) pure nothrow @nogc
+{
+    return headers.standard.withEcuId || storage.size == 0 ? headers.extraEcuId[] : storage.ecuId;
+}
+
+//! The ECU of a message of version 2: of the message, else of the storage header
+const(char)[] ecuIdOf(ref const HeaderV2 header, ref const StorageInfo storage) pure nothrow @nogc
+{
+    return header.hasEcuId ? header.ecuId : storage.ecuId;
+}
+
 //! @brief Decodes a DLT message into `msg`, reusing its buffer
 //! @note `msg` is `ref`, not `out`: `out` resets it to .init without its
 //! destructor, which leaks the buffer and allocates a new one on every call.
@@ -145,11 +158,7 @@ bool parseDltItem(Char)(ref LogMessage!Char msg, const(ubyte)[] data, bool hasSt
         return true;
     }
 
-    // ── ECU ID ──────────────────────────────────────────────────────────────
-    // The ECU of the message itself wins over the one of the storage header:
-    // a logger behind a gateway is stored with the ECU of the gateway
-    const char[] ecuId = headers.standard.withEcuId || storage.size == 0
-        ? headers.extraEcuId[] : storage.ecuId;
+    const char[] ecuId = ecuIdOf(headers, storage);
 
     // ── AppId / CtxId / level / type ────────────────────────────────────────
     const(char)[] appId = "-";
@@ -208,7 +217,7 @@ private bool decodeV2(Char)(ref LogMessage!Char msg, ref const StorageInfo stora
         return true;
     }
 
-    auto builder = msg.beginDltRecord(h.hasEcuId ? h.ecuId : storage.ecuId,
+    auto builder = msg.beginDltRecord(ecuIdOf(h, storage),
         h.hasAppContextId ? h.appId : "-", h.hasAppContextId ? h.ctxId : "-");
 
     setStorageTime(msg, storage);
@@ -353,22 +362,45 @@ private void decodeArguments(Builder)(ref Builder builder, const(ubyte)[] payloa
     }
 }
 
-//! Appends the argument at the start of `payload` and moves `payload` past it.
-//! @returns false, leaving `payload` as it was, if the argument has a type that
-//! isn't supported or doesn't fit in the payload
-private bool decodeArgument(Builder)(ref Builder builder, ref const(ubyte)[] payload, bool msbf) nothrow @nogc
+//! What a verbose argument is, by the bits of its type info
+enum ArgumentKind : ubyte
+{
+    String,
+    Bool,
+    Signed,
+    Unsigned,
+    Float,
+    Raw,
+    Trace,
+}
+
+//! A verbose argument as the payload holds it
+struct VerboseArgument
+{
+    ArgumentKind kind;
+    uint typeInfo;
+    const(ubyte)[] value; // without its length, name, unit and fixed point
+
+    //! The text of a string or trace argument, without its trailing zeros
+    const(char)[] text() const pure nothrow @nogc return
+    {
+        return withoutTrailingZeros(cast(const(char)[]) value);
+    }
+
+    //! A string or trace argument in UTF-8, else in ASCII
+    bool utf8() const pure nothrow @nogc
+    {
+        return (typeInfo & TypeInfoFlags.StringCodingMask) == TypeInfoFlags.StringCodingUTF8;
+    }
+}
+
+//! @brief Reads the argument at the start of `payload` and moves `payload` past it
+//! @returns false, leaving `payload` as it was, if the argument has a type that isn't
+//! supported or doesn't fit in the payload
+bool readArgument(ref const(ubyte)[] payload, bool msbf, out VerboseArgument argument) pure nothrow @nogc
 {
     alias F = TypeInfoFlags;
-    enum Kind
-    {
-        String,
-        Bool,
-        Signed,
-        Unsigned,
-        Float,
-        Raw,
-        Trace
-    }
+    alias Kind = ArgumentKind;
 
     const(ubyte)[] p = payload;
 
@@ -451,18 +483,34 @@ private bool decodeArgument(Builder)(ref Builder builder, ref const(ubyte)[] pay
 
     if (p.length < valueSize)
         return false;
-    const(ubyte)[] value = p[0 .. valueSize];
-    p = p[valueSize .. $];
+    argument.kind = kind;
+    argument.typeInfo = typeInfo;
+    argument.value = p[0 .. valueSize];
+    payload = p[valueSize .. $];
+    return true;
+}
 
-    final switch (kind)
+//! Appends the argument at the start of `payload` and moves `payload` past it.
+//! @returns false, leaving `payload` as it was, if the argument has a type that
+//! isn't supported or doesn't fit in the payload
+private bool decodeArgument(Builder)(ref Builder builder, ref const(ubyte)[] payload, bool msbf) nothrow @nogc
+{
+    alias Kind = ArgumentKind;
+
+    VerboseArgument argument;
+    if (!readArgument(payload, msbf, argument))
+        return false;
+    const value = argument.value;
+    const typeInfo = argument.typeInfo;
+
+    final switch (argument.kind)
     {
     case Kind.String:
     case Kind.Trace:
-        const text = withoutTrailingZeros(cast(const(char)[]) value);
-        if ((typeInfo & F.StringCodingMask) == F.StringCodingUTF8)
-            builder.appendUtf8(text);
+        if (argument.utf8)
+            builder.appendUtf8(argument.text);
         else
-            builder.appendAscii(text);
+            builder.appendAscii(argument.text);
         break;
     case Kind.Raw:
         builder.appendHex(cast(const(char)[]) value);
@@ -472,21 +520,19 @@ private bool decodeArgument(Builder)(ref Builder builder, ref const(ubyte)[] pay
         break;
     case Kind.Signed:
     case Kind.Unsigned:
-        appendInteger(builder, value, typeInfo, kind == Kind.Signed, msbf);
+        appendInteger(builder, value, typeInfo, argument.kind == Kind.Signed, msbf);
         break;
     case Kind.Float:
-        if (valueSize == 2)
+        if (value.length == 2)
             builder.append(halfToFloat(readValue!ushort(value, msbf)));
-        else if (valueSize == 4)
+        else if (value.length == 4)
             builder.append(readValue!float(value, msbf));
-        else if (valueSize == 8)
+        else if (value.length == 8)
             builder.append(readValue!double(value, msbf));
         else
             builder.appendAscii("?"); // 8 or 128 bits: no such float to show
         break;
     }
-
-    payload = p;
     return true;
 }
 

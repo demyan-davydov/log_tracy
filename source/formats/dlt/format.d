@@ -4,6 +4,7 @@ module formats.dlt.format;
 
 import formats.dlt.protocol;
 import formats.dlt.parser : parseDltItem;
+import formats.dlt.parts : dltMayBePart, dltPartOf, parseDltParts;
 import formats.dlt.header_v2 : HeaderV2, HeaderV2Status, baseHeaderV2Size, messageLengthV2,
     protocolVersion, readHeaderV2;
 
@@ -20,7 +21,8 @@ enum FormatInfo dltFormatInfo = FormatInfo("dlt", "DLT", "DLT");
 //! Record layout: [ Storage Header ] Standard Header [ ... ] where the
 //! standard header holds the length of the message without the storage header.
 //! Both versions of the protocol and of the storage header, mixed in any way.
-final class DltFormat : LogFormat
+//! A message its writer cut into numbered parts is one record (formats/dlt/parts).
+final class DltFormat : LogFormat, PartedFormat
 {
     private immutable bool _hasStorageHeader;
 
@@ -146,6 +148,21 @@ final class DltFormat : LogFormat
     override bool decode(ref LogMessage!wchar msg, const(ubyte)[] record) const nothrow @nogc
     {
         return parseDltItem!wchar(msg, record, _hasStorageHeader);
+    }
+
+    override bool mayBePart(const(ubyte)[] data, size_t offset) const nothrow @nogc
+    {
+        return dltMayBePart(data[offset .. $], _hasStorageHeader);
+    }
+
+    override RecordPart partOf(const(ubyte)[] data, size_t offset) const nothrow @nogc
+    {
+        return dltPartOf(data[offset .. $], _hasStorageHeader);
+    }
+
+    override bool decodeParts(ref LogMessage!wchar msg, const(ubyte[])[] parts) const nothrow @nogc
+    {
+        return parseDltParts!wchar(msg, parts, _hasStorageHeader);
     }
 
     //! @returns the layout of the record at the start of `buffer`. Versions 0

@@ -34,6 +34,17 @@ As above, deriving from `LogFormat` directly (`log_core/log_format`): split the 
 records (`scanRecords`, resumable, leaving an incomplete last record for a later call) and
 decode one into a `LogMessage` without allocating. See `formats/dlt/` and `formats/can/`.
 
+## Messages Cut into Parts
+
+When the writers of a format cut a long message into records of their own, the format also
+implements `PartedFormat` (`log_core/log_format`): `mayBePart` rules out most records by a
+few of their bytes (asked of every record as the offset index grows: keep it cheap), `partOf`
+tells what a record it let through is as a part (the sender, its number and count, the
+counter that comes next), and `decodeParts` decodes the parts as one record: the parts it
+got, which may be fewer than the message has (a message closed before its last part came). The
+index joins them (`domain/index/part_joiner`); the format knows nothing of the waiting. See
+`formats/dlt/parts`.
+
 ## Checks
 
 - The format instance is immutable after creation (UI and indexing threads call it).
