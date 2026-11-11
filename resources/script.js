@@ -497,8 +497,10 @@ const tabStrip = new TabStrip({
         win = documentPressed(win);
         if (docId !== activeDocId(before)) switchTab(docId); // keeps the tab elements
         else if (before.newTab.active) refreshTabs(); // the document is shown again
+        else shownPane?.takeKeys(); // the press moved the keys to the strip: back when it ends
     },
     pressNewTab: () => {
+        pressFocus.press();
         if (win.newTab.active) return; // shown already
         win = newTabPressed(win);
         refreshTabs();
@@ -519,6 +521,11 @@ const tabStrip = new TabStrip({
     refresh: () => refreshTabs(),
     released: () => pressFocus.release(),
 });
+
+// A key while a press on a tab seems to last: its release was lost outside the
+// window. The focus it asked is given now, before what the key does (Cmd+O
+// opening a file must get the keys at once)
+document.on("^keydown", () => { if (pressFocus.pressing) pressFocus.release(); });
 
 // Shows the status of the document (its panel) on its tab
 function showTabStatus(docId, pane) {
@@ -610,7 +617,8 @@ function showDocument() {
     const mode = view.placeholder ?? "start"; // "start" too for a document without its panel yet
     if (renderedPlaceholder?.mode !== mode || renderedPlaceholder.version !== win.placeholderVersion) {
         renderPlaceholder();
-        empty.state.focus = true; // keys don't go to a hidden panel
+        // Keys don't go to a hidden panel; when the press on a tab that shows it ends
+        pressFocus.request(() => { if (!shownPane) empty.state.focus = true; });
     }
     renderedPlaceholder = { mode, version: win.placeholderVersion };
 }

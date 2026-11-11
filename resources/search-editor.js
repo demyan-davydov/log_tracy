@@ -272,6 +272,13 @@ export class SearchEditor {
         return false;
     }
 
+    // False while the editor or an ancestor is hidden by its display (the
+    // panel of a tab not shown)
+    displayed() {
+        for (let el = this.root; el; el = el.parentElement) if (el.style.display === "none") return false;
+        return true;
+    }
+
     chipIndexOf(el) {
         const chip = el?.closest?.(".chip");
         return chip ? parseInt(chip.getAttribute("data-chip")) : -1;
@@ -724,6 +731,12 @@ export class SearchEditor {
         if (this.root.state.focus || this.root.$(":focus")) return;
         // the list itself may have the focus (a click on it)
         if (this.historyPopup) this.closeHistory({ refocus: false }); // the focus stays where it went
+        // Its panel was hidden (another tab shown): the user hasn't left the
+        // chip, it goes on being edited when the panel is shown again
+        if (!this.displayed()) {
+            this.markState();
+            return;
+        }
         const pos = this.state.pos;
         if (pos.gap === undefined) {
             const next = moveTo(this.syncedState(), { gap: pos.chip + 1 });

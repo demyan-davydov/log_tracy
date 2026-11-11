@@ -1,5 +1,5 @@
-// Where the keyboard goes when a panel is shown by a press on a tab: to the
-// panel once the press ends, not while the mouse button is down. A focus moved
+// Where the keyboard goes when a panel (or the placeholder) is shown by a press
+// on a tab: to it once the press ends, not while the mouse button is down. A focus moved
 // inside the press costs Sciter a synchronous layout of the panel and makes it
 // lay out and restyle the window again after the handler (~200 ms on large
 // logs), and Sciter drops it at the end of the press anyway (the tab strip
@@ -24,8 +24,8 @@ export class PressFocus {
         else take();
     }
 
-    // The press ended (released, a drag dropped, or lost outside the window):
-    // the focus asked meanwhile is given now
+    // The press ended (released where it was or a drag dropped; a release lost
+    // outside the window is noticed by a key): the focus asked meanwhile is given now
     release() {
         const take = this.pending;
         this.pressing = false;

@@ -117,6 +117,9 @@ agent can't drive it. In scapp a plain
   cost the same. The tab strip has `tabindex="0"` so the press moves the focus to it, cheap, and
   the panel takes it when the press ends (`resources/press-focus.js`). Measured:
   `docs/experiments/2026-11-11-tab-switch-focus.md`.
+- A focus set by `state.focus = true` reaches an ancestor's `on("focus", ...)` (bubbling,
+  `evt.target` the focused element), not its `on("focusin", ...)` nor
+  `addEventListener("focusin")`. `DocumentPane` listens to both.
 - A `<button>` (`behavior: button`) takes the focus after its mousedown handler when the focus
   was outside the element the handler focused: an editor that closes its popup on `focusout`
   closes it at once. Use `behavior: clickable` (non-focusable, same look).

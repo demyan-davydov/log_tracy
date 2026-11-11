@@ -36,8 +36,11 @@ behaviour: `.ai/knowledge/sciter.md`.
   does is decided by `script.js`.
 - The focus a panel asks for when shown goes through its host (`host.focus(take)`): given at
   once, or, when a press on a tab showed it, when the press ends (`resources/press-focus.js`,
-  `TabStrip` host `released()`). The strip itself is focusable and holds the focus during the
-  press (`.ai/knowledge/sciter.md`, Events).
+  `TabStrip` host `released()`; a press lost outside the window is dropped by the next one
+  without it, or ended by a key). The placeholder asks the same way. A press on the active tab asks again (`DocumentPane.takeKeys()`). The strip
+  itself is focusable and holds the focus during the press (`.ai/knowledge/sciter.md`,
+  Events). A panel remembers its focus by `focus`/`focusin`, not in `hide()`: the press has moved it to
+  the strip by then.
 - The calls of a document's views, filters and search take its id first
   (`backend.mainViewItem(docId, index)`, ...); only the menu and Settings use the active
   document.
