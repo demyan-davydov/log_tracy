@@ -6,13 +6,13 @@
 // (display: none keeps the rows, the scroll, the selection and the editor as
 // they are). A hidden panel touches none of its elements but remembers what
 // changed: show() brings it up to date. This module puts the parts together
-// and keeps the tables: their views, columns, look, selection and anchors.
+// and keeps what the two tables (view-table.js) share: their columns, look
+// and anchors, and how each follows the other.
 
 import * as backend from "backend.js";
 import { anchorRefusalText } from "pane-commands.js";
-import { rowLayout } from "cell-format.js";
-import { followedRow, SelectionFollower } from "row-selection.js";
-import { noTable, tableStep, rowLookStep, keptRowStep, searchViewKey, jumpStep } from "pane-state.js";
+import { SelectionFollower } from "row-selection.js";
+import { rowLookStep, keptRowStep, searchViewKey } from "pane-state.js";
 import { tr } from "i18n/i18n.js";
 import { translateTree } from "i18n/dom.js";
 import { fileInfoRows } from "file-info.js";
@@ -20,7 +20,7 @@ import { rememberJump } from "go-to-message.js";
 import { showNotice } from "notice.js";
 import { FilterPanel } from "filter-panel.js";
 import { SearchBar } from "search-bar.js";
-import { mainViewStatus, searchViewStatus, showProgress, showStatus } from "status-view.js";
+import { MainViewTable, SearchViewTable } from "view-table.js";
 
 // True if `element` is `root` or inside it (and still in the document)
 function isInside(element, root) {
@@ -159,22 +159,6 @@ function renderPane(splitters) {
     </frameset>;
 }
 
-// Reloads the rows of `list` after its data changed. scrollTo: null keeps the
-// scroll position, "start" scrolls to the top, a number scrolls to that row
-export function reloadList(list, scrollTo = null) {
-    // From the top: other content, maybe still being filled. The rows of before
-    // go now, not with the render componentUpdate() posts: the table may be
-    // uncovered already, and would show them until then
-    if (scrollTo === "start") {
-        list.clear();
-        list.scrollTo(0, 0);
-    }
-    // Carried out by the render that componentUpdate() posts, see VirtualList.navigateTarget
-    if (scrollTo !== null) list.navigateTarget = scrollTo;
-    list.componentUpdate();
-    list.refreshVisibleRows(); // the rows may show other messages now
-}
-
 export class DocumentPane {
     // @param docId - the id of the document in the backend
     // @param container - the element the panel is appended to
@@ -187,32 +171,19 @@ export class DocumentPane {
     constructor(docId, container, splitters, host) {
         this.docId = docId;
         this.host = host;
-        // The views shown by the machines of the document (onMainViewChanged,
-        // onSearchViewChanged): { status, canCancel, <fields of the view> },
-        // see source/ui/main_view_fsm.d and source/ui/search_view_fsm.d
-        this.mainView = null;
-        this.searchView = null;
-        this.path = "";
         this.visible = false;
-        this.mainShown = noTable; // what the tables show, see pane-state.js
         this.jumps = []; // the history of Go to Message, the newest first: kept while the tab is open
-        this.searchShown = noTable;
         this.foundShownFor = null; // the search view (searchViewKey) the main rows show the found rows of
         this.appliedColumns = null; // JSON of the columns the tables show
         this.lastFocus = null; // focused in the panel last (focusin): it gets the keys again when shown
-        this.coveredFocus = new Set(); // the lists a status view took the focus from
         this.textsStale = false; // the language changed while hidden: rendered again on show
-        this.mainStatus = null; // the view a status over the table shows, null: none
-        this.searchStatus = null;
-        this.mainRunning = null; // the view the progress under the table shows, null: none
-        this.searchRunning = null;
         this.bottomPage = "search"; // the page of the bottom panel shown (data-page)
         // How the rows look (Settings): { fontSize (%), singleLine }, as asked
         // and as the tables have it (null: not yet), see applyRowLook()
         this.rowLook = { fontSize: host.tableFontSize(), singleLine: host.singleLineRows() };
         this.appliedRowLook = null;
         // The first rows on screen to scroll back to after the look changed, by
-        // list: { top } (see keptRowStep), see applyRowLook()
+        // table (ViewTable): { top } (see keptRowStep), see applyRowLook()
         this.keptRows = new Map();
         this.keptRowsFrame = false; // a frame is asked to scroll to them
         this.destroyed = false;
@@ -221,13 +192,13 @@ export class DocumentPane {
         this.root = container.lastElementChild;
         this.root.style.display = "none";
         translateTree(this.root); // the skeleton in the language now
-        this.mainTable = this.root.$("table.main-view");
-        this.searchTable = this.root.$("table.search-view");
-        // The rows they ask the backend for are those of this document
-        this.mainList = this.mainTable.$("tbody");
-        this.searchList = this.searchTable.$("tbody");
-        this.mainList.docId = docId;
-        this.searchList.docId = docId;
+        // The views shown by the machines of the document (onMainViewChanged,
+        // onSearchViewChanged) are theirs, see view-table.js
+        const $ = selector => this.root.$(selector);
+        this.main = new MainViewTable(docId, { table: $("table.main-view"), status: $(".main-status"),
+            progress: $(".main-progress"), lost: $(".source-lost") });
+        this.search = new SearchViewTable(docId, { table: $("table.search-view"), status: $(".search-status"),
+            progress: $(".search-progress") });
         // A row the user selects in one table is shown in the other (followSelection,
         // the "rowchosen" events of the tables)
         this.follower = new SelectionFollower(list => this.followSelection(list));
@@ -245,17 +216,21 @@ export class DocumentPane {
         this.bind();
     }
 
+    get tables() {
+        return [this.main, this.search];
+    }
+
     get lists() {
-        return [this.mainList, this.searchList];
+        return this.tables.map(table => table.list);
     }
 
     // The machines of the document show other views (a snapshot of the
     // workspace, or an event of a view); rendered now if the panel is shown,
     // unless `render` is false (the caller refreshes the panel itself)
     setViews({ mainView, searchView, path }, render = true) {
-        if (mainView !== undefined) this.mainView = mainView;
-        if (searchView !== undefined) this.searchView = searchView;
-        if (path !== undefined) this.path = path;
+        if (mainView !== undefined) this.main.view = mainView;
+        if (searchView !== undefined) this.search.view = searchView;
+        if (path !== undefined) this.main.path = path;
         if (!this.visible || !render) return;
         if (mainView !== undefined) {
             this.updateMainView();
@@ -275,10 +250,7 @@ export class DocumentPane {
             return;
         }
         this.filterPanel.languageChanged();
-        if (this.mainStatus) showStatus(this.root.$(".main-status"), this.mainStatus, mainViewStatus);
-        if (this.searchStatus) showStatus(this.root.$(".search-status"), this.searchStatus, searchViewStatus);
-        if (this.mainRunning) showProgress(this.root.$(".main-progress"), this.mainRunning, mainViewStatus);
-        if (this.searchRunning) showProgress(this.root.$(".search-progress"), this.searchRunning, searchViewStatus);
+        for (const table of this.tables) table.renderTexts();
         this.updateFileInfo();
     }
 
@@ -327,10 +299,9 @@ export class DocumentPane {
     // if it shows its rows, otherwise the search editor if its page is shown,
     // otherwise the status view covering the main table
     defaultFocus() {
-        if (this.shows(this.mainList)) return this.mainList;
+        if (this.shows(this.main)) return this.main.list;
         if (this.bottomPage === "search") return this.root.$(".chip-search");
-        return [this.root.$(".main-status"), this.root.$(".source-lost")]
-            .find(view => view.style.display === "block") ?? this.mainList;
+        return this.main.shownCover() ?? this.main.list;
     }
 
     // True if `element` is on a page of the bottom panel that isn't shown
@@ -432,7 +403,7 @@ export class DocumentPane {
     // rebuilt by the progress of a load, a value being selected stays selected.
     updateFileInfo() {
         if (!this.visible || this.bottomPage !== "file-info") return;
-        const rows = fileInfoRows(backend.documentInfo(this.docId), this.mainView?.status);
+        const rows = fileInfoRows(backend.documentInfo(this.docId), this.main.view?.status);
         const list = this.root.$(".file-info");
         const cells = rows.flatMap(({ label, value }) => [label, value]);
         if (list.children.length !== cells.length) {
@@ -475,10 +446,10 @@ export class DocumentPane {
         const step = rowLookStep(this.appliedRowLook, look, this.visible);
         if (!step.apply) return;
         if (step.keep)
-            for (const list of this.lists)
-                if (this.shows(list) && !this.keptRows.has(list))
-                    this.keptRows.set(list, { top: list.firstVisibleIndex() });
-        for (const table of [this.mainTable, this.searchTable]) {
+            for (const table of this.tables)
+                if (this.shows(table) && !this.keptRows.has(table))
+                    this.keptRows.set(table, { top: table.list.firstVisibleIndex() });
+        for (const { table } of this.tables) {
             table.style.fontSize = `${look.fontSize}%`;
             table.classList.toggle("single-line", look.singleLine);
         }
@@ -488,28 +459,24 @@ export class DocumentPane {
 
     // Scrolls the lists shown to the rows applyRowLook() kept, at the next
     // frame; a list of a hidden page or panel keeps its row until it is shown,
-    // a table under a status view until it shows rows again (reloadTable)
+    // a table under a status view until it shows rows again (updateMainView, updateSearchView)
     scrollToKeptRows() {
         if (this.keptRowsFrame || this.keptRows.size === 0) return;
         this.keptRowsFrame = true;
         requestAnimationFrame(() => {
             this.keptRowsFrame = false;
             if (this.destroyed || !this.visible) return; // show() asks again
-            for (const [list, kept] of this.keptRows) {
+            for (const [table, kept] of this.keptRows) {
+                const list = table.list;
                 if (this.inHiddenPage(list)) continue; // selectBottomPage() asks again
-                const step = keptRowStep(kept, this.shownOf(list), list.totalItems());
-                if (step.wait) continue; // reloadTable() asks again
-                this.keptRows.delete(list);
+                const step = keptRowStep(kept, table.shown, list.totalItems());
+                if (step.wait) continue; // updateMainView(), updateSearchView() ask again
+                this.keptRows.delete(table);
                 if (step.target === null) continue;
                 list.navigateTarget = step.target; // by the render componentUpdate() posts, see VirtualList
                 list.componentUpdate();
             }
         });
-    }
-
-    // What `list` shows, see tableStep
-    shownOf(list) {
-        return list === this.mainList ? this.mainShown : this.searchShown;
     }
 
     // The layouts of the columns changed (Settings): the tables show them
@@ -535,153 +502,61 @@ export class DocumentPane {
     // Renders the rows on screen again (e.g. with new columns). A table under
     // a status view renders its rows when the view shows them again.
     renderShownRows() {
-        for (const list of this.lists) {
-            if (!this.shows(list)) continue;
+        for (const { list } of this.tables.filter(table => this.shows(table))) {
             list.componentUpdate();
             list.refreshVisibleRows();
         }
     }
 
-    // True if the rows of `list` are on screen: the panel is shown and no
-    // status view covers its table
-    shows(list) {
-        return this.visible && this.shownOf(list).dataVersion !== null;
+    // True if the rows of `table` (a ViewTable) are on screen: the panel is
+    // shown and no status view covers it
+    shows(table) {
+        return this.visible && table.shown.dataVersion !== null;
     }
 
-    // ---- main view ----
+    // ---- the tables ----
 
-    // Shows the main view as its machine shows it: the table (with the
-    // progress of a filter filling it), the lost file or the status of what
-    // the document is doing
+    // Shows the main view as its machine shows it, see ViewTable.update()
     updateMainView() {
-        const vm = this.mainView;
-        if (!vm) return;
-        const loading = this.root.$(".main-status");
-        const lost = this.root.$(".source-lost");
-        if (vm.status !== "sourceLost") this.root.$(".source-lost-error").innerText = "";
-        const step = tableStep(this.mainShown, vm, () => this.mainList.totalItems());
-        this.mainShown = step.shown;
-        const cover = step.table ? null : vm.status === "sourceLost" ? lost : loading;
-        this.mainRunning = this.showRunning(".main-progress", step.running ? vm : null, mainViewStatus,
-            cover ?? this.mainList);
-        this.mainStatus = cover === loading ? vm : null;
-        for (const element of [loading, lost])
-            element.style.display = element === cover ? "block" : "none";
-        this.takeFocus(this.mainList, cover, [loading, lost]);
-        if (step.table) {
-            this.reloadTable(this.mainList, step);
-        } else if (vm.status === "sourceLost") {
-            this.root.$(".source-lost-path").innerText = this.path || "";
-        } else {
-            showStatus(loading, vm, mainViewStatus);
-        }
-    }
-
-    // A status view covering the table of `list` takes the focus from it: the
-    // keys must not scroll or copy rows of a view being rebuilt. The table
-    // gets it back when it is uncovered, if the focus didn't go elsewhere.
-    // The focus left in a view that covered it (`covers`: on the view or on
-    // its Cancel, tabbed to or pressed) goes to the table too: the view is
-    // hidden, the keys would go nowhere.
-    takeFocus(list, cover, covers) {
-        const focused = document.$(":focus");
-        if (cover) {
-            if (!isInside(focused, list)) return;
-            cover.state.focus = true;
-            this.coveredFocus.add(list);
-            return;
-        }
-        const taken = this.coveredFocus.delete(list);
-        if (covers.some(view => isInside(focused, view)) || (taken && !focused)) list.state.focus = true;
-    }
-
-    // The message index of the current row of the main table (followedRow),
-    // null if none: where Go to Message starts
-    currentMessageIndex() {
-        const row = followedRow(this.mainList.selection);
-        const index = row === null ? NaN : Number(this.mainList.itemAt(row)?.[rowLayout.messageIndex]);
-        return Number.isFinite(index) ? index : null;
-    }
-
-    // Go to Message: the row of message `index` in the main table, or of the
-    // first one after it the table shows (hidden by the filters), else its
-    // last row: selected, the keyboard in the table, near the top unless it is
-    // on screen (jumpStep); the search table follows it as a click. Nothing
-    // while the table shows no rows (a status view covers it).
-    goToMessage(index) {
-        if (!this.mainShown.loaded) return;
-        const list = this.mainList;
-        const step = jumpStep({ status: "ready" }, () => backend.mainViewNearestPosition(this.docId, index),
-            { visibleRange: list.wholeRowsRange(), visibleRows: list.visibleRowCount() });
-        if (!step) return;
-        this.jumps = rememberJump(this.jumps, index);
-        list.showRow(step);
-        list.state.focus = true;
-        list.rowChosen(false);
-    }
-
-    // Shows the row selected in the table `from` (followedRow) in the other
-    // one, if that one has its message: selected there, near the top unless it
-    // is on screen (jumpStep). The keyboard stays in `from`.
-    followSelection(from) {
-        const fromMain = from === this.mainList;
-        if ((fromMain ? this.mainView : this.searchView)?.status !== "ready") return; // its rows are being replaced
-        const row = followedRow(from.selection);
-        const msgIndex = row === null ? NaN : Number(from.itemAt(row)?.[rowLayout.messageIndex]);
-        if (!Number.isFinite(msgIndex)) return;
-        const [list, vm, positionOf] = fromMain
-            ? [this.searchList, this.searchView, backend.searchViewPosition]
-            : [this.mainList, this.mainView, backend.mainViewPosition];
-        const step = jumpStep(vm, () => positionOf(this.docId, msgIndex),
-            { visibleRange: list.wholeRowsRange(), visibleRows: list.visibleRowCount() });
-        if (step) list.showRow(step);
-    }
-
-    // Shows the progress `selector` under a table for the view `vm` of a filter
-    // or a search filling it, hides it for null: the focus its Cancel took
-    // when pressed goes to `next` (the table, or the status view shown instead)
-    // then, not left on a hidden button. @returns vm
-    showRunning(selector, vm, status, next) {
-        const strip = this.root.$(selector);
-        const focused = !vm && isInside(document.$(":focus"), strip);
-        strip.style.display = vm ? "" : "none";
-        if (focused) next.state.focus = true;
-        if (vm) showProgress(strip, vm, status);
-        return vm;
-    }
-
-    reloadTable(list, step) {
-        if (step.resetSelection) list.resetSelection(); // the rows are other messages now
-        if (step.reload) reloadList(list, step.reload === "start" ? "start" : null);
-        else if (step.grow) list.grow(); // more rows of the same content: the ones on screen stay
+        const step = this.main.update();
+        if (!step?.table) return;
         // reloaded main rows show what the search found now: not refreshed again for it
-        if (step.reload && list === this.mainList) this.foundShownFor = searchViewKey(this.searchView);
+        if (step.reload) this.foundShownFor = searchViewKey(this.search.view);
         this.scrollToKeptRows(); // kept while a status view covered the table, see applyRowLook()
     }
 
-    // ---- search ----
-
+    // Shows the search view likewise. The rows of the main view show what the
+    // search found: more of them while it runs, other ones after a new search
+    // or none after a reset. Only when the search view changed since they
+    // were shown, not on every show of the panel.
     updateSearchView() {
-        const vm = this.searchView ?? { status: "ready", canCancel: false, dataVersion: null };
-        const loading = this.root.$(".search-status");
-        const step = tableStep(this.searchShown, vm, () => this.searchList.totalItems());
-        this.searchShown = step.shown;
-        this.searchRunning = this.showRunning(".search-progress", step.running ? vm : null, searchViewStatus,
-            step.table ? this.searchList : loading);
-        loading.style.display = step.table ? "none" : "block"; // over the table
-        this.searchStatus = step.table ? null : vm;
-        this.takeFocus(this.searchList, step.table ? null : loading, [loading]);
-        if (step.table) this.reloadTable(this.searchList, step);
-        else showStatus(loading, vm, searchViewStatus);
-        // The rows of the main view show what the search found: more of them
-        // while it runs, other ones after a new search or none after a reset.
-        // Only when the search view changed since they were shown, not on
-        // every show of the panel.
-        const key = searchViewKey(this.searchView);
-        if (key !== this.foundShownFor && this.shows(this.mainList)) {
-            this.mainList.refreshVisibleRows();
+        const step = this.search.update();
+        if (step.table) this.scrollToKeptRows();
+        const key = searchViewKey(this.search.view);
+        if (key !== this.foundShownFor && this.shows(this.main)) {
+            this.main.list.refreshVisibleRows();
             this.foundShownFor = key;
         }
+    }
+
+    // The message index of the current row of the main table, null if none:
+    // where Go to Message starts
+    currentMessageIndex() {
+        return this.main.followedMessage();
+    }
+
+    // Go to Message, see MainViewTable.goToMessage()
+    goToMessage(index) {
+        if (this.main.goToMessage(index)) this.jumps = rememberJump(this.jumps, index);
+    }
+
+    // Shows the row selected in the table of `list` (followedRow) in the other
+    // one, if that one has its message. The keyboard stays in `list`.
+    followSelection(list) {
+        const [from, to] = list === this.main.list ? [this.main, this.search] : [this.search, this.main];
+        if (from.view?.status !== "ready") return; // its rows are being replaced
+        const index = from.followedMessage();
+        if (index !== null) to.showMessage(index);
     }
 
     // ---- the rows: rule colors and anchors ----
@@ -689,7 +564,7 @@ export class DocumentPane {
     // The rows on screen refer to the rules again: a change of a rule may change
     // the rule with a color a row matches without filtering the view again
     refreshRuleColors() {
-        for (const list of this.lists) if (this.shows(list)) list.refreshVisibleRows();
+        for (const table of this.tables) if (this.shows(table)) table.list.refreshVisibleRows();
     }
 
     // No room for another anchor (`full`): the empty anchor cells of both
@@ -754,15 +629,14 @@ export class DocumentPane {
             const retryTime = Date.now() - retryStart;
             if (error) {
                 console.log(`Retry failed after ${retryTime} ms: ${error}`);
-                root.$(".source-lost-error").innerText = tr("Still unavailable: {error}", { error });
+                this.main.lostError(tr("Still unavailable: {error}", { error }));
                 return;
             }
             // A new document with the same id: its first rows start at the top,
             // its filters are restored (no message of a command before), it has
             // no search and no anchors yet
             this.markAnchorsFull(false);
-            this.mainShown = noTable;
-            this.searchShown = noTable;
+            for (const table of this.tables) table.reset();
             this.appliedColumns = null;
             this.searchBar.reset();
             this.filterPanel.reopened();
@@ -770,11 +644,5 @@ export class DocumentPane {
             this.host.refreshTabs(); // the reopened document starts loading
             console.log(`Retry: xcall ${retryTime} ms, views refresh ${Date.now() - refreshStart} ms`);
         });
-
-        on("click", ".search-status .btn-cancel, .search-progress .btn-cancel", () => backend.cancelSearchView(this.docId));
-
-        // What Cancel means (stop the filter, close a loading document) is decided
-        // by the main view machine of the document
-        on("click", ".main-status .btn-cancel, .main-progress .btn-cancel", () => backend.cancelMainView(this.docId));
     }
 }

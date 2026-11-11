@@ -39,7 +39,7 @@
     /* by the four edges: Sciter gives height: 100% no height here */
 }
 
-/* It takes the focus from the table it covers (DocumentPane.takeFocus): no ring */
+/* It takes the focus from the table it covers (ViewTable.takeFocus, view-table.js): no ring */
 .status-view.overlay:focus {
     outline: none;
 }

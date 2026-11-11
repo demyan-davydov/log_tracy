@@ -17,19 +17,26 @@ behaviour: `.ai/knowledge/sciter.md`.
 ## Document Panels
 
 - Every open document has its own panel, `DocumentPane` (`resources/document-pane.js`): it
-  puts the parts together and keeps both tables (their views, columns, look, selection,
-  anchors), the bottom panel's pages (Search, Filters, File Info on the left; MCP Server, of
-  the whole application, on the right, empty for now), the status views and the lost file.
+  puts the parts together and keeps what both tables share (columns, look, anchors, how each
+  follows the other's selection), the bottom panel's pages (Search, Filters, File Info on the
+  left; MCP Server, of the whole application, on the right, empty for now) and the buttons of
+  the lost file (Retry reopens the whole document, Close its tab).
   Its parts: the filters, `FilterPanel` (`filter-panel.js`, chips on the Filters page,
   `.filter-page`; the tab's dot: `active` of `DocumentFilters.toJson`, decided by the
   backend with the predicates the view and the rows use),
-  and the search bar, `SearchBar` (`search-bar.js`, on `.search-bar`). A part binds the events
-  of its own element and asks the panel through a `host` of callbacks; the skeleton of the whole
-  panel, the elements of the parts too, is built by `renderPane` of `document-pane.js`. A new
-  piece of the panel is a part of its own, not more members of `DocumentPane`; its decisions
-  that can be tested go into a pure module (`pane-commands.js`, `pane-state.js`).
-  `status-view.js` is not a part: the texts of the statuses and the filling of a status view,
-  whose buttons the panel binds. Only the panel of the active tab is shown, the others
+  the search bar, `SearchBar` (`search-bar.js`, on `.search-bar`), and its two tables,
+  `MainViewTable` and `SearchViewTable` (`view-table.js`): each a `ViewTable`, a table with
+  the view of its machine, the status views covering it, the progress under it (their Cancel
+  too) and the focus the covers take (`update()` over `tableStep`). What only one of them has
+  stays in its subclass (the lost file and Go to Message of the main one, the empty view
+  before a search); what ties the two (the found rows of the main table, following a
+  selection) stays in the panel. A part binds the events of its own element and asks the
+  panel through a `host` of callbacks; the skeleton of the whole panel, the elements of the
+  parts too, is built by `renderPane` of `document-pane.js`. A new piece of the panel is a
+  part of its own, not more members of `DocumentPane`; its decisions that can be tested go
+  into a pure module (`pane-commands.js`, `pane-state.js`). `status-view.js` is not a part:
+  the texts of the statuses and the filling of a status view, whose buttons the tables
+  (Cancel) and the panel (Retry, Close) bind. Only the panel of the active tab is shown, the others
   are `display: none` and keep their rows, scroll, selection and draft as they are; a hidden
   panel renders what changed when it is shown.
 - The tab strip (rendering, pressing, dragging, tooltips) is `resources/tabs.js`; what a tab
@@ -123,8 +130,8 @@ behaviour: `.ai/knowledge/sciter.md`.
 
 - The window, its documents, the start screen: `script.js`, `window-state.js`, `new-tab.js`
 - Tabs: `tabs.js`, `drag-strip.js`, `drag-order.js`
-- One document's panel: `document-pane.js`, `filter-panel.js`, `search-bar.js`,
-  `status-view.js`, `pane-state.js`, `pane-commands.js`, `panel-sizes.js`
+- One document's panel: `document-pane.js`, `view-table.js`, `filter-panel.js`,
+  `search-bar.js`, `status-view.js`, `pane-state.js`, `pane-commands.js`, `panel-sizes.js`
 - The log table: `virtual-dlt-view.js`, `cell-format.js`, `table.css`, `row-selection.js`,
   `text-selection.js`, `list-navigation.js`, `rule-colors.js`
 - Search: `search-editor.js`, `search-query.js`, `search-editing.js`, `edit-history.js`,
@@ -133,7 +140,7 @@ behaviour: `.ai/knowledge/sciter.md`.
 - Settings: `settings.htm`, `settings-sections.js`, `column-settings.js`
 - Go to Message (Navigation menu, Cmd+G / Ctrl+G): `go-to-message.htm`, `go-to-message.js`;
   the row it lands on (the nearest shown when filtered out) is
-  `backend.mainViewNearestPosition`, `DocumentPane.goToMessage`
+  `backend.mainViewNearestPosition`, `MainViewTable.goToMessage`
 - Recent files: `recent-time.js`, `recent-file-menu.js`
 - File Info page: `file-info.js`
 - Notices: `notice.js`; dropdown lists: `virtual-select.js`

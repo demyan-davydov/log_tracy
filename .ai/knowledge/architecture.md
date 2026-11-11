@@ -19,8 +19,8 @@ AppSession (ui/app_session)                what the calls of the script do: file
                                            search, filters, settings (Sciter-free, tested)
 MainWindow (ui/main_window)                Sciter window: xcall bridge to the session, table rows
 resources/script.js, tabs.js               the window: tabs, placeholder, settings, backend callbacks
-resources/document-pane.js                 a panel per document: its tables and its parts (filter-panel,
-                                           search-bar, status-view)
+resources/document-pane.js                 a panel per document: its parts (view-table: the two tables,
+                                           filter-panel, search-bar) and status-view
 resources/virtual-dlt-view.js              virtual table built from the column schema
 ```
 
