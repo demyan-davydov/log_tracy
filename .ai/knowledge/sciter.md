@@ -108,6 +108,10 @@ agent can't drive it. In scapp a plain
 
 ## Popups, Tooltips, Menus
 
+- `Window.this.modal({url, alignment})`: `alignment` is a number of the numpad, 1..9 on the
+  screen, -1..-9 on the parent window (-5: its centre, `platform.showModal`). A string such
+  as `"center"` is ignored: the dialog lands at the top left of the screen.
+
 - Text cut with `text-overflow: ellipsis/path-ellipsis` gets an automatic tooltip
   `popup[role=overflow-tooltip]` (besides `title` → `popup[role=tooltip]`). Tooltip popups
   can't be found with `$$()`; give them a `prototype:` class (registered on `globalThis`) to

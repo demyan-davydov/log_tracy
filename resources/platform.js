@@ -23,9 +23,10 @@ export const chooseFileToOpen = filter => Window.this.selectFile({ mode: "open",
 // @param options - { caption, extension, filter, path (offered, without its extension) }
 export const chooseFileToSave = options => Window.this.selectFile({ ...options, mode: "save" }) || null;
 
-// Opens the page `url` as a modal dialog over the window: what it closes with
-// (closeDialog), null if cancelled
-export const showModal = (url, parameters) => Window.this.modal({ url, alignment: "center", parameters });
+// Opens the page `url` as a modal dialog in the middle of the window (alignment
+// -5: the centre of the parent; 1..9 would align it on the screen): what it
+// closes with (closeDialog), null if cancelled
+export const showModal = (url, parameters) => Window.this.modal({ url, alignment: -5, parameters });
 
 // In a dialog: the parameters it was opened with, undefined if opened on its own
 export const dialogParameters = () => Window.this.parameters;
