@@ -181,7 +181,9 @@ export class DocumentPane {
     // @param splitters - { rows } the splitter starts with
     // @param host - what the panel asks of the window:
     //   closeTab(docId), refreshTabs(), theme() -> "light" | "dark",
-    //   tableFontSize() -> % of the normal font of the tables
+    //   tableFontSize() -> % of the normal font of the tables,
+    //   focus(take) - take() gives the keys to the panel: now, or when the
+    //     press on a tab that shows it ends (press-focus.js)
     constructor(docId, container, splitters, host) {
         this.docId = docId;
         this.host = host;
@@ -197,7 +199,7 @@ export class DocumentPane {
         this.searchShown = noTable;
         this.foundShownFor = null; // the search view (searchViewKey) the main rows show the found rows of
         this.appliedColumns = null; // JSON of the columns the tables show
-        this.lastFocus = null; // focused in the panel when it was hidden
+        this.lastFocus = null; // focused in the panel last (focusin): it gets the keys again when shown
         this.coveredFocus = new Set(); // the lists a status view took the focus from
         this.textsStale = false; // the language changed while hidden: rendered again on show
         this.mainStatus = null; // the view a status over the table shows, null: none
@@ -297,11 +299,28 @@ export class DocumentPane {
             this.filterPanel.invalidate();
         }
         this.refresh();
-        // Keys go to this panel, not to the hidden one; not into a hidden table
-        // or a page of the bottom panel hidden since
-        const focus = isInside(this.lastFocus, this.root) && !this.inHiddenPage(this.lastFocus)
+        this.takeKeys();
+    }
+
+    // Gives the keys to this panel, through the host: now, or when the press
+    // on a tab that asked ends. To what had them in it last (lastFocus), unless
+    // it is hidden since (a page of the bottom panel, a status view gone),
+    // else to defaultFocus()
+    takeKeys() {
+        const focus = isInside(this.lastFocus, this.root) && this.isDisplayed(this.lastFocus)
             ? this.lastFocus : this.defaultFocus();
-        focus.state.focus = true;
+        // Still shown and inside when given: the press may end on another tab
+        this.host.focus(() => {
+            if (this.visible && !this.destroyed && isInside(focus, this.root)) focus.state.focus = true;
+        });
+    }
+
+    // True if no element from `element` up to the panel is hidden by its own
+    // display (pages of the bottom panel, status views)
+    isDisplayed(element) {
+        for (let el = element; el && el !== this.root; el = el.parentElement)
+            if (el.style.display === "none") return false;
+        return true;
     }
 
     // What takes the keys when nothing in the panel has them: the main table
@@ -340,8 +359,10 @@ export class DocumentPane {
     // Hides the panel. @returns the size of its splitter for the next panel
     // shown (splitterSizes(), panelSizes()) and the page of the bottom panel
     hide() {
+        // A press on a tab has moved the focus to the strip already: lastFocus
+        // keeps what focusin saw then
         const focused = document.$(":focus");
-        this.lastFocus = isInside(focused, this.root) ? focused : null;
+        if (isInside(focused, this.root)) this.lastFocus = focused;
         const splitters = { ...this.splitterSizes(), ...this.panelSizes(), bottomPage: this.bottomPage };
         this.visible = false;
         this.follower.cancel(); // not into a hidden panel
@@ -684,6 +705,13 @@ export class DocumentPane {
         const on = (event, selector, handler) => root.on(event, selector, handler);
 
         on("click", ".bottom-tab", (evt, tab) => this.showBottomPage(tab.getAttribute("data-page")));
+
+        // What has the keys in the panel, read when they come: by the time
+        // hide() runs a press on a tab has moved them to the strip. A focus set
+        // by the script bubbles here as "focus", not "focusin" (Sciter)
+        const keysCame = evt => { if (isInside(evt.target, root)) this.lastFocus = evt.target; };
+        root.on("focus", keysCame);
+        root.on("focusin", keysCame);
 
         // Anchor column: toggles the anchor of the message in both views. Refused
         // by the backend while an operation runs or at the anchor limit: a notice

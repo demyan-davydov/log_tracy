@@ -51,12 +51,16 @@ export class TabStrip {
     //   pressNewTab(), closeNewTab(), closeTab(docId), addTab() (the + button)
     //   moveTab(docId, index) - a tab was dropped at another place
     //   refresh() - render the tabs again (see holdWhileDragging)
+    //   released() - the press on a tab ended: dropped or released where it
+    //     was (one lost outside the window is dropped by the next press,
+    //     without released())
     // }
     constructor(host) {
         this.host = host;
         // The drag of drag-strip.js with { tab, sep }, null when no tab is held
         this.drag = null;
         this.refreshPending = false; // a refresh came while a tab was held
+        this.newTabPressed = false; // the New Tab is held (it isn't dragged)
         strip = this;
         this.bind();
     }
@@ -78,18 +82,28 @@ export class TabStrip {
             if (evt.buttons & 6) return;
             if (evt.target.classList.contains("tab-close")) return;
             if (this.drag?.settling) return; // the previous drop is still settling
-            if (this.drag) this.finishDrag(false); // released outside the window: the press is dropped
+            // released outside the window: the press is dropped, its focus too (PressFocus.press)
+            if (this.drag) this.finishDrag(false, false);
+            this.newTabPressed = false; // likewise
             if (tab.id === NEW_TAB_ID) { // stays the last one: not dragged
                 this.host.pressNewTab();
+                this.newTabPressed = true; // its release ends the press (released())
                 return true;
             }
             this.host.pressTab(parseInt(tab.id)); // keeps the tab elements
             this.beginDrag(tab, evt.clientX);
+            if (!this.drag) this.host.released(); // no press to end: the focus is given now
             return true; // no text selection
         });
 
         document.on("mousemove", evt => { if (this.drag) this.moveDrag(evt.clientX); });
-        document.on("mouseup", () => { if (this.drag) this.endDrag(); });
+        document.on("mouseup", () => {
+            if (this.drag) this.endDrag();
+            else if (this.newTabPressed) {
+                this.newTabPressed = false;
+                this.host.released();
+            }
+        });
     }
 
     // While a tab is held the tabs are not rendered again (it would take the
@@ -199,7 +213,8 @@ export class TabStrip {
             this.finishDrag(false); // a plain click
     }
 
-    finishDrag(moved) {
+    // released: false for a press lost outside the window, dropped by a new one
+    finishDrag(moved, released = true) {
         const d = this.drag;
         this.drag = null;
         const marker = $("#tab-drop-marker");
@@ -207,6 +222,7 @@ export class TabStrip {
         if (moved) {
             console.log("Tab", d.tab.id, "moved from", d.from, "to", d.to);
             this.host.moveTab(parseInt(d.tab.id), d.to); // renders the tabs in the new order
+            if (released) this.host.released();
             return;
         }
         for (const t of d.items) {
@@ -214,6 +230,7 @@ export class TabStrip {
             setShift(t, 0);
         }
         if (this.refreshPending) this.host.refresh();
+        if (released) this.host.released();
     }
 
     // The marker is on the edge of the place the tab will land on, between it

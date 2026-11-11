@@ -10,6 +10,7 @@ import { recentFileMenu } from "recent-file-menu.js";
 import { DocumentPane } from "document-pane.js";
 import { paneChanges, tabProgress } from "pane-state.js";
 import { TabStrip } from "tabs.js";
+import { PressFocus } from "press-focus.js";
 import * as backend from "backend.js";
 import * as platform from "platform.js";
 import { applyTheme } from "theme.js";
@@ -484,15 +485,22 @@ function setupMenuBar() {
 // onSearchViewChanged.
 const panes = new Map();
 
+// Where the keys go when a press on a tab shows a panel: to it once the press
+// ends (press-focus.js)
+const pressFocus = new PressFocus();
+
 // The tabs (tabs.js): what pressing, closing and moving them does
 const tabStrip = new TabStrip({
     pressTab: (docId) => {
+        pressFocus.press();
         const before = win;
         win = documentPressed(win);
         if (docId !== activeDocId(before)) switchTab(docId); // keeps the tab elements
         else if (before.newTab.active) refreshTabs(); // the document is shown again
+        else shownPane?.takeKeys(); // the press moved the keys to the strip: back when it ends
     },
     pressNewTab: () => {
+        pressFocus.press();
         if (win.newTab.active) return; // shown already
         win = newTabPressed(win);
         refreshTabs();
@@ -511,7 +519,13 @@ const tabStrip = new TabStrip({
         refreshTabs(); // renders the tabs in the new order, without shifts
     },
     refresh: () => refreshTabs(),
+    released: () => pressFocus.release(),
 });
+
+// A key while a press on a tab seems to last: its release was lost outside the
+// window. The focus it asked is given now, before what the key does (Cmd+O
+// opening a file must get the keys at once)
+document.on("^keydown", () => { if (pressFocus.pressing) pressFocus.release(); });
 
 // Shows the status of the document (its panel) on its tab
 function showTabStatus(docId, pane) {
@@ -521,6 +535,7 @@ function showTabStatus(docId, pane) {
 // What a panel asks of the window
 const paneHost = {
     closeTab: (docId) => closeTab(docId),
+    focus: (take) => pressFocus.request(take),
     refreshTabs: () => refreshTabs(),
     theme: () => currentTheme,
     tableFontSize: () => tableFontSize,
@@ -602,7 +617,8 @@ function showDocument() {
     const mode = view.placeholder ?? "start"; // "start" too for a document without its panel yet
     if (renderedPlaceholder?.mode !== mode || renderedPlaceholder.version !== win.placeholderVersion) {
         renderPlaceholder();
-        empty.state.focus = true; // keys don't go to a hidden panel
+        // Keys don't go to a hidden panel; when the press on a tab that shows it ends
+        pressFocus.request(() => { if (!shownPane) empty.state.focus = true; });
     }
     renderedPlaceholder = { mode, version: win.placeholderVersion };
 }

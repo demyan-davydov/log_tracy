@@ -266,6 +266,9 @@ final class Workspace
             auto document = _documents[idx].document;
             stopForwarding(_documents[idx]);
             _documents = _documents.remove(idx);
+            // _current is a position: a document closed before it shifts it
+            if (idx < _current)
+                _current--;
             if (_current >= _documents.length && _current > 0)
                 _current = _documents.length - 1;
             return document;
@@ -299,9 +302,13 @@ final class Workspace
         ptrdiff_t idx = findIndexById(docId);
         if (idx != -1 && index < _documents.length)
         {
+            // _current is a position: the current document keeps being current
+            const current = currentId;
             auto item = _documents[idx];
             _documents = _documents.remove(idx);
             _documents.insertInPlace(index, item);
+            if (current.isValid)
+                _current = findIndexById(current);
             return true;
         }
 
@@ -481,6 +488,42 @@ unittest
     assert(ws.length == 0);
     assert(ws.current is k_nullDocument);
     assert(!ws.currentId.isValid);
+}
+
+@("Workspace: moving a document keeps the current one current")
+unittest
+{
+    auto ws = new Workspace();
+    auto a = ws.addDocument(new NullDocument(), "a");
+    auto b = ws.addDocument(new NullDocument(), "b");
+    auto c = ws.addDocument(new NullDocument(), "c");
+
+    ws.setCurrent(b);
+    ws.moveDocumentBefore(b, 0); // the current one moved: a tab dragged to the front
+    assert(ws.currentId == b);
+    ws.moveDocumentBefore(c, 0); // another one moved across it
+    assert(ws.currentId == b);
+    ws.moveDocumentBefore(c, 2); // and back behind it
+    assert(ws.currentId == b);
+    ws.setCurrent(a);
+    ws.moveDocumentBefore(a, 2);
+    assert(ws.currentId == a);
+}
+
+@("Workspace: closing a document before the current one keeps the current one current")
+unittest
+{
+    auto ws = new Workspace();
+    auto a = ws.addDocument(new NullDocument(), "a");
+    auto b = ws.addDocument(new NullDocument(), "b");
+    auto c = ws.addDocument(new NullDocument(), "c");
+
+    ws.setCurrent(b);
+    ws.removeDocument(a);
+    assert(ws.currentId == b);
+    // closing the current one makes its right neighbour current, the last one the left
+    ws.removeDocument(b);
+    assert(ws.currentId == c);
 }
 
 @("Workspace forwards document events tagged with DocumentId")
