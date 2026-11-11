@@ -252,6 +252,10 @@ agent can't drive it. In scapp a plain
   while a view grows; an empty list navigated past it lands on its last known row. Navigate
   through `VirtualList.navigateTo` (counts the rows first, clamps by `safeTarget`), never
   `vlist.navigateTo`.
+- `vlist.navigateTo("end")` asks for a row per pixel of the list's height (483 rows for a
+  list 483px high), whatever `slidingWindowSize`, and keeps them: ~0.5 s on a tall list.
+  `navigateTo(last row)` puts the last row at the bottom just the same with a window of rows
+  (`safeTarget` does it). `navigateTo("start")` asks for a window.
 - `sizechange` reaches a virtual-list subscribed with `on("sizechange", ...)`; an
   `["on sizechange"]` method of its class is never called. Dragging the thumb to an end of a list of ~85M+ rows
   segfaults inside Sciter (`vlist_ctl::move_buffer_to`), reproduced with the SDK sample alone.

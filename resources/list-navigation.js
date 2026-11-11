@@ -41,22 +41,38 @@ export function growStep(list) {
 // about 1 ms a row of a log table, the bulk of the time of a jump.
 export const minWindowSize = 20;
 
-// How many rows a virtual list renders: twice the rows it can show at most, all
-// of them one line high (`lineHeight`, px; `height`: of the list), and no fewer
-// than minWindowSize. Fewer rows than the list shows crash Sciter
-// (vlist_ctl::move_buffer_to), hence the lowest row and the margin. Null while
-// either height is unknown (no layout yet, no row).
+// What each half of the window has over the rows the list shows: a quarter
+// more (windowExtra), at least windowMargin rows. The line measured may be
+// higher than the rows (the header, measured before any row: ~10 % higher),
+// an error that grows with the list, and Sciter fills a couple of rows less
+// than half the window.
+export const windowExtra = 0.25;
+export const windowMargin = 5;
+
+// How many rows a virtual list renders. Sciter fills a list (a new view, a
+// jump) with half its window and asks for no more until it scrolls: half the
+// window is the rows the list can show at most, all of them one line high
+// (`lineHeight`, px; `height`: of the list), and the margin above. Rows higher
+// than a line (a wrapped Payload) only leave more to spare. No fewer than
+// minWindowSize. A window of fewer rows than the list shows crashes Sciter
+// (vlist_ctl::move_buffer_to). Null while either height is unknown (no layout
+// yet).
 export function windowSize({ height, lineHeight }) {
     if (!(height > 0) || !(lineHeight > 0)) return null;
-    return Math.max(minWindowSize, 2 * Math.ceil(height / lineHeight));
+    const rows = Math.ceil(height / lineHeight);
+    const half = Math.max(Math.ceil(rows * (1 + windowExtra)), rows + windowMargin);
+    return Math.max(minWindowSize, 2 * half);
 }
 
 // Where a navigation of a virtual list may go: Sciter crashes navigating to a
 // row at or past vlist.itemsTotal (`count`) while it has rows rendered
-// (vlist_ctl::move_buffer_to). A row is clamped to 0..count - 1; "start",
-// "end" stay. Null if the list counts no row.
+// (vlist_ctl::move_buffer_to). A row is clamped to 0..count - 1. "end" is the
+// last row: Sciter navigating to "end" renders a row per pixel of the list's
+// height whatever its window (~0.5 s for a tall list), the last row lands at
+// the bottom just the same. "start" stays. Null if the list counts no row.
 export function safeTarget(target, count) {
     if (!(count > 0)) return null;
+    if (target === "end") return count - 1;
     if (typeof target !== "number") return target;
     return Math.max(0, Math.min(count - 1, target));
 }

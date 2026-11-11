@@ -63,7 +63,7 @@ export class VirtualList extends Element {
 
             if (lastVisibleIndex >= totalItems) {
                 this.post(() => {
-                    this.vlist?.navigate("end");
+                    this.navigateTo("end"); // the last row, see safeTarget
                 });
                 return this.renderList([]); // render empty list and request "from end" navigation
             }
