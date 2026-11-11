@@ -458,6 +458,11 @@ class LogDocument : Document
         {
             return this.outer._index.mainViewPositionOf(realIndex, position);
         }
+
+        override bool nearestPositionOf(size_t realIndex, out size_t position)
+        {
+            return this.outer._index.mainViewNearestPositionOf(realIndex, position);
+        }
     }
 
     private class SearchDocumentView : DocumentView
@@ -479,6 +484,11 @@ class LogDocument : Document
         override bool positionOf(size_t realIndex, out size_t position)
         {
             return this.outer._index.searchViewPositionOf(realIndex, position);
+        }
+
+        override bool nearestPositionOf(size_t realIndex, out size_t position)
+        {
+            return this.outer._index.searchViewNearestPositionOf(realIndex, position);
         }
     }
 }
@@ -1692,7 +1702,7 @@ unittest
     assertThrown(new LogDocument("/nonexistent/dlt_document_missing.dlt"));
 }
 
-@("LogDocument: positionOf finds a message in the filtered main view")
+@("LogDocument: positionOf and nearestPositionOf find a message in the filtered main view")
 unittest
 {
     import std.file : remove, tempDir, write;
@@ -1721,6 +1731,13 @@ unittest
     assert(doc.mainView.positionOf(43, position) && position == 21);
     assert(!doc.mainView.positionOf(42, position), "hidden by the filter");
     assert(!doc.mainView.positionOf(messageCount + 1, position), "past the end of the log");
+
+    // The nearest row: of the message, or of the first one shown after it, else the last
+    assert(doc.mainView.nearestPositionOf(43, position) && position == 21, "shown: its own row");
+    assert(doc.mainView.nearestPositionOf(42, position) && position == 21, "hidden: the next one shown");
+    assert(doc.mainView.nearestPositionOf(0, position) && position == 0);
+    assert(doc.mainView.nearestPositionOf(messageCount + 5, position) && position == messageCount / 2 - 1,
+        "past the end: the last row");
 
     runAndWait(doc, () => doc.applySearchFilter(ecuFilter("ECU2")));
     assert(doc.searchView.positionOf(43, position) && position == 21);

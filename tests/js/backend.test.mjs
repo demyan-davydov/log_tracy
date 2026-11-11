@@ -74,6 +74,8 @@ test("openFile: the id of the document, or why the file can't be opened", () => 
 test("results that are no JSON objects keep their shape", () => {
     assert.equal(callOf(() => backend.mainViewPosition(3, 9), null).value, null);
     assert.equal(callOf(() => backend.mainViewPosition(3, 9), 12).value, 12);
+    assert.equal(callOf(() => backend.mainViewNearestPosition(3, 9), 12).value, 12);
+    assert.equal(callOf(() => backend.mainViewNearestPosition(3, 9), null).value, null, "an empty view");
     assert.equal(callOf(() => backend.filterRule(3, 0, 1), "null").value, null, "no such rule");
     assert.equal(callOf(() => backend.checkFilterRuleJson(3, { name: "r" }), `{"error": ""}`).value,
         `{"error": ""}`, "as text: the rule editor window parses it");

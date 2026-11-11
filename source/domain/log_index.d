@@ -708,6 +708,40 @@ struct LogIndex
         return sortedPositionOf(_searchIndex, realIndex, position);
     }
 
+    //! @brief The row of the main view nearest to the message `realIndex`: its own, or of
+    //! the first message after it the view shows, else the last row
+    //! @return false if the view is empty
+    bool mainViewNearestPositionOf(size_t realIndex, out size_t position) nothrow @nogc
+    {
+        auto lock = LockGuard(cast(Mutex)_mutex);
+        if (!_viewIsFiltered)
+            return nearestOf(realIndex, _offsetIndex.length, position);
+        return sortedNearestOf(_filterIndex, realIndex, position);
+    }
+
+    //! The row of the search view nearest to the message `realIndex`, as of the main view
+    bool searchViewNearestPositionOf(size_t realIndex, out size_t position) nothrow @nogc
+    {
+        auto lock = LockGuard(cast(Mutex)_mutex);
+        return sortedNearestOf(_searchIndex, realIndex, position);
+    }
+
+    //! `position` (a row of `count`), or the last row past them; false if there are none
+    private static bool nearestOf(size_t position, size_t count, out size_t nearest) pure nothrow @nogc @safe
+    {
+        if (count == 0)
+            return false;
+        nearest = position < count ? position : count - 1;
+        return true;
+    }
+
+    //! The nearest position of `realIndex` in an index of message indexes sorted ascending
+    private static bool sortedNearestOf(Index)(ref const(Index) index, size_t realIndex, out size_t position)
+    {
+        const bound = realIndex > Index.Type.max ? index.length : index.lowerBound(cast(Index.Type) realIndex);
+        return nearestOf(bound, index.length, position);
+    }
+
     //! The position of `realIndex` in an index of message indexes sorted ascending
     private static bool sortedPositionOf(Index)(ref const(Index) index, size_t realIndex, out size_t position)
     {
