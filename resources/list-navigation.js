@@ -76,3 +76,37 @@ export function safeTarget(target, count) {
     if (typeof target !== "number") return target;
     return Math.max(0, Math.min(count - 1, target));
 }
+
+// A navigation of a virtual list to `target` (a row, "start", "end"), the
+// list counting `before` / `rendered` / `after` rows of a view of `total`.
+// The list's count lags behind a growing view (it learns of rows from grow()
+// and from the rows it asks for): its new rows are counted first (`after`:
+// the new count after the rendered rows, null if it stays). It may also still
+// count a larger view (a view changed, the list not rendered yet): the target
+// stays within the rows of both. Returns { after, target: safeTarget's, null
+// if there is nowhere to go }.
+export function navigationStep(target, { total, before, rendered, after }) {
+    const missing = total - before - rendered - after;
+    const counted = missing > 0 ? after + missing : after;
+    const rows = Math.min(before + rendered + counted, total);
+    return { after: missing > 0 ? counted : null, target: safeTarget(target, rows) };
+}
+
+// A list whose window grew (a higher list, a smaller font): Sciter fills a
+// list with half its window and asks for no more until it scrolls, so a list
+// that got higher shows a gap under its rows. Renders rows up to the window
+// (`windowSize`; the list counts `before` / `rendered` / `after` rows): after
+// the last one first; before the first one only once every row after it is
+// rendered (the end of the rows: the rows on screen are pushed down by them,
+// the list goes back to its last row; elsewhere they would just move). Returns { append, after,
+// prepend, before }: the rows to render after and before, and to count after
+// and before them; null if none (the window rendered, every row rendered, or
+// no row rendered: Sciter fills an empty list itself).
+export function fillStep({ before, rendered, after, windowSize }) {
+    if (rendered === 0) return null;
+    const room = Math.max(0, windowSize - rendered);
+    const append = Math.min(after, room);
+    const prepend = append === after ? Math.min(before, room - append) : 0;
+    if (append + prepend === 0) return null;
+    return { append, after: after - append, prepend, before: before - prepend };
+}

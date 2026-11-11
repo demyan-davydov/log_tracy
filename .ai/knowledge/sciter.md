@@ -246,19 +246,26 @@ agent can't drive it. In scapp a plain
   widths of the table): about 1 ms a row of a log table, nearly all of a jump; our script
   is ~6 %. So the window is sized to the list (`vlist.slidingWindowSize`, read-write, 160 by
   default; `windowSize` of `resources/list-navigation.js`, `VirtualDltTBody.fitWindow`).
+  Dragging the thumb to an end of a list of ~85M+ rows segfaults inside Sciter
+  (`vlist_ctl::move_buffer_to`), reproduced with the SDK sample alone.
+- Sciter fills a list (a new view, a jump) with half its window, a couple of rows less, and
+  asks for no more until it scrolls: a window grown after (a higher list, a smaller font)
+  leaves a gap under the rows. `VirtualList.fill` renders the rows itself (`fillStep`).
+  Rows prepended with `itemsBefore` lowered push the rows on screen down, the end of the
+  list too: navigate to the last row again.
 - A window smaller than the rows on screen segfaults on a jump (`vlist_ctl::move_buffer_to`),
   and so does `navigateTo(n)` with `n >= vlist.itemsTotal` while rows are rendered, whatever
   the window (`advanceTo` past it returns null). `itemsTotal` lags behind `totalItems()`
   while a view grows; an empty list navigated past it lands on its last known row. Navigate
-  through `VirtualList.navigateTo` (counts the rows first, clamps by `safeTarget`), never
-  `vlist.navigateTo`.
+  through `VirtualList.navigateTo` (`navigationStep`: counts the rows first, keeps the target
+  within them), never `vlist.navigateTo` or `vlist.navigate`.
 - `vlist.navigateTo("end")` asks for a row per pixel of the list's height (483 rows for a
   list 483px high), whatever `slidingWindowSize`, and keeps them: ~0.5 s on a tall list.
   `navigateTo(last row)` puts the last row at the bottom just the same with a window of rows
   (`safeTarget` does it). `navigateTo("start")` asks for a window.
 - `sizechange` reaches a virtual-list subscribed with `on("sizechange", ...)`; an
-  `["on sizechange"]` method of its class is never called. Dragging the thumb to an end of a list of ~85M+ rows
-  segfaults inside Sciter (`vlist_ctl::move_buffer_to`), reproduced with the SDK sample alone.
+  `["on sizechange"]` method of its class is never called. A `thead` gets it when the font
+  size of its table changes (its row follows the font), before the next frame.
 - The `outline` of a row of a scrolled virtual-list is painted `scrollTop` lower than the row
   (6.0.5.5), a frame over another row; frame a row with `box-shadow: inset ...` instead.
 - Text selection: `behavior: virtual-list` blocks drag selection of text whatever carries

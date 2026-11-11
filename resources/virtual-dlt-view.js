@@ -200,6 +200,7 @@ export class VirtualDltTBody extends VirtualSelect {
 
     // Fits the window first: the render may navigate (a jump, another view)
     render(props) {
+        this.watchSize();
         this.fitWindow();
         return super.render(props);
     }
@@ -407,14 +408,30 @@ export class VirtualDltTBody extends VirtualSelect {
     }
 
     // Sizes the sliding window of the list by its height (windowSize): when it
-    // renders, and as the panel asks: when it is resized (sizechange) and when
-    // its rows change height (the font size). A window fewer rows than the list shows would crash Sciter, so a
-    // list that gets higher is fitted before it scrolls.
+    // renders, is resized, or its rows change height (see watchSize). A window
+    // of fewer rows than the list shows would crash Sciter. A window that grew
+    // is filled (VirtualList.fill): Sciter doesn't fill a list that got higher.
+    // Only a log table sizes its window: the line is measured by its header.
     fitWindow() {
         const vlist = this.vlist;
         if (!vlist) return;
         const size = windowSize({ height: this.getBoundingClientRect().height, lineHeight: this.lineHeight() });
-        if (size !== null && size !== vlist.slidingWindowSize) vlist.slidingWindowSize = size;
+        if (size === null || size === vlist.slidingWindowSize) return;
+        const grew = size > vlist.slidingWindowSize;
+        vlist.slidingWindowSize = size;
+        if (grew) this.fill();
+    }
+
+    // Fits the window when the list is resized (a window, the splitter, a page
+    // shown) and when its rows change height (the font size: the header row's
+    // height follows it). Subscribed once, at the first render: neither this()
+    // nor an "on sizechange" method of the class runs for the tbody bound by
+    // CSS `prototype:`. On the thead: a change of columns replaces its row.
+    watchSize() {
+        if (this._sizeWatched) return;
+        this._sizeWatched = true;
+        this.on("sizechange", () => this.fitWindow());
+        this.parentElement?.$("thead")?.on("sizechange", () => this.fitWindow());
     }
 
     // The height of a row one line high, px: the lowest of the header row and
