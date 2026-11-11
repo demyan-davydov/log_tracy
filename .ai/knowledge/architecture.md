@@ -48,8 +48,8 @@ utils  ←  sciter  ←  ui
   (`formats/dlt/`, `formats/can/`, `formats/syslog/`). `formats/registry.d` lists them.
   `formats/generator/` is not a format: the test log generator, compiled only for the
   unittests and the `gen_log` tool (`.ai/knowledge/formats.md`, The Log Generator).
-- `domain/`: documents, indexes, anchors. Knows formats only through `LogFormat` and
-  `detectFormat`.
+- `domain/`: documents, indexes, anchors. Knows formats only through `LogFormat`,
+  `detectFormat` and the interfaces a format may add, asked by a cast (`PartedFormat`).
 - `sciter/`: the D wrapper over Sciter (window, application, value, ...); `sciter/capi/` the C
   API it calls.
 - `ui/`: the window and the logic behind it; the Sciter-free part of it is unit-tested.
@@ -170,9 +170,17 @@ utils  ←  sciter  ←  ui
 - `LogIndex` is the holder of its parts (`domain/index/`), which are not thread-safe: it owns
   the mutex, the worker and their lifetime. The parts:
   - `RecordStore` (`record_store`): the source, the format and the offset index, which only
-    grows. Its one promise across threads: the records below the length of a `Records` a
-    reader was given are read by any number of threads while one writer appends after them.
-    The holder gives a reader its `Records` (under the mutex, or by starting the thread or
+    grows. A format that is a `PartedFormat` (`log_core/log_format`: its records may be
+    numbered parts of one message) has its parts joined into one record as they are found
+    (`part_joiner`): `findRecords` asks the format, without the lock, what each record is
+    as a part; `append` holds the records from a first part on until its message is whole
+    or can't be (`RecordStore.holding`), and the end of the data lets them out (a source
+    may tell its end without more bytes: `LogIndex.behind` counts what is held then). A
+    joined record has the joined bit of its `OffsetIndexItem` and the offsets of its other
+    parts in a table of the store, which `Records.decode` reads. An `append` that fails
+    halfway leaves the store refusing every later one. Its one promise across threads: the
+    records below the length of a `Records` a reader was given are read by any number of
+    threads while one writer appends after them. The holder gives a reader its `Records` (under the mutex, or by starting the thread or
     task that reads) and closes the store only once no scan reads it: `LogIndex` joins its
     worker first, and a scan returns only when its blocks are done. `close()` frees the
     offset index too: it is a class, and the GC doesn't see that memory;

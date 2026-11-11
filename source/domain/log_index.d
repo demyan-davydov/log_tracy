@@ -192,13 +192,17 @@ struct LogIndex
     }
 
     //! @return true if a pass has something to do: the source has bytes not
-    //! split into records, or an index doesn't cover what it is built over
+    //! split into records, records held for the parts of a message that its
+    //! end lets out, or an index doesn't cover what it is built over
     bool behind()
     {
         assert(!busy, "a pass is running");
         if (_store.lost)
             return false;
         if (_store.data.length != _seenBytes)
+            return true;
+        // A source may tell its end without more bytes
+        if (_store.holding && _store.complete)
             return true;
         if (_view.behind(_store.length))
             return true;
@@ -395,8 +399,9 @@ struct LogIndex
             enforceSourceAvailable();
             bool worked = false;
 
-            // The offset index: over the bytes not split into records yet
-            if (_store.scannedBytes < bytes.data.length && !bytes.tailWaits)
+            // The offset index: over the bytes not split into records yet, and the
+            // records held for the parts of a message once no more bytes will come
+            if (offsetsBehind(bytes))
             {
                 const before = _store.length;
                 // All of them at once unless a stage follows
@@ -484,14 +489,14 @@ struct LogIndex
     private bool scanOffsets(BackgroundSlot.Ctx* ctx, ref PassBytes bytes, size_t part, scope void delegate() told)
     {
         size_t taken = 0;
-        while (_store.scannedBytes < bytes.data.length && taken < part)
+        while (offsetsBehind(bytes) && taken < part)
         {
             if (ctx.cancelled)
                 return false;
             enforceSourceAvailable();
 
             const bunch = _store.findRecords(bytes.data, bytes.final_);
-            if (bunch.found.next == _store.scannedBytes && bunch.found.count == 0)
+            if (bunch.found.next == _store.scannedBytes && bunch.found.count == 0 && !bunch.end)
             {
                 assert(!bytes.final_, "scanning must make progress");
                 bytes.tailWaits = true;
@@ -506,6 +511,16 @@ struct LogIndex
             told();
         }
         return true;
+    }
+
+    //! @returns true if the offset index has bytes to split into records, or records
+    //! held for the parts of a message (RecordStore.holding) that the end of the data
+    //! lets out
+    private bool offsetsBehind(ref const PassBytes bytes) const nothrow @nogc
+    {
+        if (bytes.tailWaits)
+            return false;
+        return _store.scannedBytes < bytes.data.length || bytes.final_ && _store.holding;
     }
 
     //! @brief Appends to the search index the anchored messages the main view
@@ -1049,6 +1064,43 @@ unittest
     index._seenBytes = 0; // a source tells its end as it tells more bytes: not modelled here
     waitForOperation(index, () => index.runPass());
     assert(index.messageCount == 7 && index.mainViewItemsCount == 5 && index.searchViewItemsCount == 3);
+}
+
+@("LogIndex: the numbered parts of a DLT message are one record, the end of the source lets the last one out")
+unittest
+{
+    import utils.event_bus.event_bus_async : EventBusAsync;
+    import formats.dlt.format : DltFormat;
+    import formats.dlt.testing_utils : BuildV1, argument, bytesOf;
+    import std.conv : to;
+
+    string record(string text, ubyte counter)
+    {
+        BuildV1 r;
+        r.counter = counter;
+        r.numberOfArguments = 1;
+        r.payload = argument(0x200, bytesOf(cast(ushort) text.length) ~ cast(const(ubyte)[]) text);
+        return cast(string) r.bytes();
+    }
+
+    auto source = new GrowingSource(1024);
+    source.write(record("one", 1) ~ record("1/2: he", 2));
+    auto index = LogIndex(source, new DltFormat(), new EventBusAsync());
+    waitForOperation(index, () => true);
+    assert(index.messageCount == 1, "the first part waits for the rest of its message");
+
+    source.write(record("2/2: llo", 3) ~ record("1/2: cut", 4));
+    waitForOperation(index, () => index.runPass());
+    assert(index.messageCount == 2);
+    Message msg;
+    assert(index.records.decode(1, msg) && msg.payloadText.to!string == "hello");
+
+    source.finish();
+    assert(index.behind, "no more bytes, but the records held wait for the end");
+    waitForOperation(index, () => index.runPass());
+    assert(index.messageCount == 3, "every byte was split before, the end lets the part out");
+    assert(!index.behind);
+    assert(index.records.decode(2, msg) && msg.payloadText.to!string == "1/2: cut");
 }
 
 @("LogIndex: the anchors listed after the end of a filter are told: a view shown by then counts them")
