@@ -1,4 +1,4 @@
-<html theme="light" window-width="920" window-height="440">
+<html theme="light" window-width="920" window-height="460">
 
 <!-- The Settings dialog, opened modal by openSettingsAction() in script.js.
      Its sections are listed on the left; Save applies all of them at once.
@@ -12,7 +12,8 @@
 
 <head>
     <title>Settings</title>
-    <style id="theme-style" src="theme-light.css" />
+    <style src="theme-light.css" />
+    <style src="theme-dark.css" />
     <style src="style.css" />
     <style src="table.css" />
     <style>
@@ -435,8 +436,8 @@
         </main>
     </div>
     <footer>
-        <button id="btn-cancel" data-tr="Cancel"></button>
-        <button id="btn-save" class="primary" data-tr="Save"></button>
+        <button id="btn-cancel" role="cancel-button" data-tr="Cancel"></button>
+        <button id="btn-save" class="primary" role="default-button" data-tr="Save"></button>
     </footer>
 </body>
 

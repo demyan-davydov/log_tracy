@@ -9,7 +9,8 @@
 
 <head>
     <title>Filter Rule</title>
-    <style id="theme-style" src="theme-light.css" />
+    <style src="theme-light.css" />
+    <style src="theme-dark.css" />
     <style src="style.css" />
     <style>
         html, body { background: var(--bg-main); color: var(--text-main); }
@@ -279,11 +280,6 @@
         }
         $("#btn-ok").on("click", accept);
         $("#btn-cancel").on("click", () => platform.closeDialog(null));
-
-        document.on("keydown", (evt) => {
-            if (evt.code === "Escape") { platform.closeDialog(null); return true; }
-            if (evt.code === "Enter" && evt.target.tag === "input") { accept(); return true; }
-        });
     </script>
 </head>
 
@@ -344,8 +340,8 @@
     </main>
     <footer>
         <span id="ok-hint"></span>
-        <button id="btn-cancel" data-tr="Cancel"></button>
-        <button id="btn-ok" class="primary" data-tr="OK"></button>
+        <button id="btn-cancel" role="cancel-button" data-tr="Cancel"></button>
+        <button id="btn-ok" class="primary" role="default-button" data-tr="OK"></button>
     </footer>
 </body>
 

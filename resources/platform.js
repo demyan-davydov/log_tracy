@@ -71,9 +71,6 @@ export const closeWindow = () => Window.this.close();
 // Minimizes the window
 export const minimizeWindow = () => { Window.this.state = Window.WINDOW_MINIMIZED; };
 
-// Renders the window again at once (e.g. after its stylesheet changed)
-export const repaintWindow = () => Window.this.update();
-
 // The window is about to close: the last moment the script and the DOM are
 // fully alive (not the BEHAVIOR_DETACH of the backend, see main_window.d)
 export const onWindowCloseRequest = handler => Window.this.on("closerequest", handler);

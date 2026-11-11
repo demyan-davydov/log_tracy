@@ -305,7 +305,6 @@ function setTheme(theme) {
     applyTheme(theme);
     currentTheme = theme;
     console.log("Theme set to:", theme);
-    platform.repaintWindow(); // a switch while the window is shown
 }
 
 // The language of the settings, apart from the rest of them: whatever fails

@@ -10,7 +10,8 @@
 
 <head>
     <title>Go to Message</title>
-    <style id="theme-style" src="theme-light.css" />
+    <style src="theme-light.css" />
+    <style src="theme-dark.css" />
     <style src="style.css" />
     <style>
         /* Sized for two lines of history: never a scrollbar */
@@ -113,10 +114,6 @@
         });
         $("#btn-ok").on("click", accept);
         $("#btn-cancel").on("click", () => platform.closeDialog(null));
-        document.on("keydown", evt => {
-            if (evt.code === "Escape") { platform.closeDialog(null); return true; }
-            if (evt.code === "Enter" && evt.target.tag !== "button") { accept(); return true; }
-        });
     </script>
 </head>
 
@@ -132,8 +129,8 @@
         <div id="history"></div>
     </main>
     <footer>
-        <button id="btn-cancel" data-tr="Cancel"></button>
-        <button id="btn-ok" class="primary" data-tr="Go"></button>
+        <button id="btn-cancel" role="cancel-button" data-tr="Cancel"></button>
+        <button id="btn-ok" class="primary" role="default-button" data-tr="Go"></button>
     </footer>
 </body>
 

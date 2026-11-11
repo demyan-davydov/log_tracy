@@ -76,9 +76,11 @@ agent can't drive it. In scapp a plain
 - An element needs `tabindex="0"` (not -1) to take the focus from `state.focus = true`;
   otherwise the focus lands on an ancestor.
 - `Clipboard.readText()` returns the text with a trailing NUL (`\u0000`): strip it.
-- Changing `src` of an existing `<style>` doesn't reload it: replace the element
-  (`resources/theme.js` `applyTheme`). A `<style>` created at run time with `innerHTML` or
-  `src` does apply.
+- Changing `src` of an existing `<style>` doesn't reload it. A `<style src>` created at run
+  time does apply, but asynchronously: what is styled meanwhile computes without it, and when
+  it arrives only `<html>` is restyled, its descendants keep the stale style until something
+  restyles them (a click). A theme swapped so left the text of a dialog black. Load every
+  stylesheet statically and switch by an attribute (`resources/theme.js` `applyTheme`).
 - No built-in input groups the digits of a number as it is typed (6.0.5.5): `input` of type
   `integer`, `number`, `decimal` and even `<output type="integer">` show `1234567`;
   `type="masked"` has a fixed number of groups (a card, an IP), wrong for a number of any
@@ -123,6 +125,11 @@ agent can't drive it. In scapp a plain
 - `Window.this.modal({url, alignment})`: `alignment` is a number of the numpad, 1..9 on the
   screen, -1..-9 on the parent window (-5: its centre, `platform.showModal`). A string such
   as `"center"` is ignored: the dialog lands at the top left of the screen.
+- A dialog's buttons take Enter and Escape by role, no `keydown` handler: `role="default-button"`
+  is clicked on Enter (a focused button takes Enter itself; its handler checks it is enabled),
+  `role="cancel-button"` on Escape (an open list of a select takes the first Escape). Their
+  `click` handlers close the dialog. Driving it: `app.mjs key` reaches only the main window,
+  a key of the system (`osascript ... key code 53`) reaches the dialog.
 
 - Text cut with `text-overflow: ellipsis/path-ellipsis` gets an automatic tooltip
   `popup[role=overflow-tooltip]` (besides `title` → `popup[role=tooltip]`). Tooltip popups
@@ -163,7 +170,8 @@ agent can't drive it. In scapp a plain
   (`linear-gradient(to right, var(--rule-color), transparent 33%)`); a whole gradient stored in
   a variable doesn't.
 - Dark theme: `document.attributes["theme"] = "dark"` switches Sciter's own widgets (select,
-  buttons, checkboxes, inputs) to dark; our `theme-dark.css` alone doesn't. The open list of a
+  buttons, checkboxes, inputs) to dark and, by `:root[theme="dark"]`, our `theme-dark.css`
+  (every page loads both theme files). The open list of a
   dark select is pure black: `select > popup { background-color: ... !important }`. The macOS
   title bar stays light.
 - `frameset` cols/rows size the **content** box of a frame: measure `state.box("width",
