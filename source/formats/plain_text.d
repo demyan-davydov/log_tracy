@@ -21,9 +21,9 @@ final class PlainTextFormat : TextFormat
         super(false);
     }
 
-    override string name() const pure nothrow @nogc
+    override FormatInfo info() const pure nothrow @nogc
     {
-        return plainTextFormatInfo.name;
+        return plainTextFormatInfo;
     }
 
     override const(ColumnInfo)[] columns() const pure nothrow @nogc

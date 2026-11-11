@@ -62,9 +62,9 @@ final class LogcatFormat : TextFormat
         return _variant;
     }
 
-    override string name() const pure nothrow @nogc
+    override FormatInfo info() const pure nothrow @nogc
     {
-        return logcatFormatInfo.name;
+        return logcatFormatInfo;
     }
 
     override const(ColumnInfo)[] columns() const pure nothrow @nogc

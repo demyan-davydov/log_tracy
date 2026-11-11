@@ -190,6 +190,18 @@ private const(FormatDetector)[] detectors()
     return all;
 }
 
+@("every format tells the info of its detector, in UTF-16 too")
+unittest
+{
+    foreach (detector; detectors())
+    {
+        auto format = detector.create(0, null);
+        assert(format.info == detector.info, detector.info.id);
+        if (cast(TextFormat) format)
+            assert(withEncoding(format, TextEncoding.utf16le).info == detector.info, detector.info.id);
+    }
+}
+
 @("detectFormat: a DLT file is detected as DLT")
 unittest
 {

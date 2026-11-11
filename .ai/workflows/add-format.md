@@ -16,7 +16,7 @@ Background: `.ai/knowledge/formats.md`.
    (`formats/syslog/`).
 4. Declare the format's `FormatInfo`: a stable `id` (never changed later: settings refer to
    it), `name`, a three-letter `shortName` for the badge of a recent file. Return it from the
-   detector's `info`.
+   detector's `info` and from the format's `info` (the same for every variant and encoding).
 5. Add a `FormatDetector` (a score on the first 64 KB; plain text is the low-score fallback)
    and register it in `detectors()` of `formats/registry`. Add a registry test that a sample
    is detected as the new format and not as another. For a UTF-16 log `detect` and `create`

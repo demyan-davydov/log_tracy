@@ -102,9 +102,9 @@ private final class Utf16TextFormat(TextEncoding encoding) : LogFormat
         _text = text;
     }
 
-    override string name() const pure nothrow @nogc
+    override FormatInfo info() const pure nothrow @nogc
     {
-        return _text.name;
+        return _text.info;
     }
 
     override const(ColumnInfo)[] columns() const pure nothrow @nogc
@@ -358,9 +358,9 @@ version (unittest)
             super(multiline);
         }
 
-        override string name() const pure nothrow @nogc
+        override FormatInfo info() const pure nothrow @nogc
         {
-            return "test";
+            return FormatInfo("test", "Test", "TST");
         }
 
         override const(ColumnInfo)[] columns() const pure nothrow @nogc

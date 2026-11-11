@@ -43,9 +43,9 @@ final class AccessLogFormat : TextFormat
         _variant = variant;
     }
 
-    override string name() const pure nothrow @nogc
+    override FormatInfo info() const pure nothrow @nogc
     {
-        return accessLogFormatInfo.name;
+        return accessLogFormatInfo;
     }
 
     override const(ColumnInfo)[] columns() const pure nothrow @nogc

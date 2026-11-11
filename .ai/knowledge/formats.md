@@ -13,6 +13,9 @@
   detection; a file with no saved format, one this build can't create (unknown id, invalid
   variant) or whose data is not in the saved encoding (a UTF-16 mark or look) is detected.
   Never change a format's `id`: settings refer to it.
+- A format tells its own `FormatInfo` (`LogFormat.info`, `Document.formatInfo`): what keys
+  the column layouts and the filter files of a document, also of one made from a `ByteSource`
+  with no `FormatChoice`. `FormatChoice` is only how to open a file the same way again.
 - A format instance is created per document (it may hold a variant) and must stay immutable:
   the UI thread, the indexing thread (`scanRecords`) and the threads of a filter or a search
   call it concurrently.

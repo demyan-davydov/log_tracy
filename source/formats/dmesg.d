@@ -75,9 +75,9 @@ final class DmesgFormat : TextFormat
         return _variant;
     }
 
-    override string name() const pure nothrow @nogc
+    override FormatInfo info() const pure nothrow @nogc
     {
-        return dmesgFormatInfo.name;
+        return dmesgFormatInfo;
     }
 
     //! The dictionary lines of /dev/kmsg start with a space

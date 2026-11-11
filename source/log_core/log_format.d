@@ -57,8 +57,9 @@ struct ScanResult
 //! not change after creation.
 interface LogFormat
 {
-    //! Name shown to the user, e.g. "DLT"
-    string name() const pure nothrow @nogc;
+    //! What the user and the settings know the format by (its id, name and badge): the
+    //! info of its detector, the same for every variant and encoding
+    FormatInfo info() const pure nothrow @nogc;
 
     //! Columns of the log table, in the order shown; Payload is the last one
     const(ColumnInfo)[] columns() const pure nothrow @nogc;

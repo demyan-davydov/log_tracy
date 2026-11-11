@@ -65,9 +65,9 @@ final class SyslogFormat : TextFormat
         return _hasPriority;
     }
 
-    override string name() const pure nothrow @nogc
+    override FormatInfo info() const pure nothrow @nogc
     {
-        return syslogFormatInfo.name;
+        return syslogFormatInfo;
     }
 
     override const(ColumnInfo)[] columns() const pure nothrow @nogc

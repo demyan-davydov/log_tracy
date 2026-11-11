@@ -8,7 +8,7 @@ import log_core.log_filter : LogFilter;
 import utils.ui_text : UiText;
 
 import domain.document_id;
-import log_core.log_format : ColumnInfo, FormatChoice, LogFormat;
+import log_core.log_format : ColumnInfo, FormatChoice, FormatInfo, LogFormat;
 import domain.document_item;
 import domain.anchors;
 
@@ -91,6 +91,14 @@ interface Document
     {
         const f = format();
         return f is null ? null : f.columns;
+    }
+
+    //! What the user and the settings know the format of the document by (its id keys the
+    //! column layouts and the filter files); empty without a format
+    final FormatInfo formatInfo()
+    {
+        const f = format();
+        return f is null ? FormatInfo.init : f.info;
     }
 
     void applyViewFilter(LogFilter!wchar filter);

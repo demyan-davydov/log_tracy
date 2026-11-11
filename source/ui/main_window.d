@@ -271,12 +271,12 @@ class MainWindow : SciterWindow
             // getColumns(docId): all the columns of the document (the rules may
             // test any of them), [] if there is none
             auto document = _session.doc(docParam());
-            answer(columnsJson(document.columns, document.formatChoice.id));
+            answer(columnsJson(document.columns, document.formatInfo.id));
             return true;
         case "getTableColumns":
             // getTableColumns(docId): the columns the tables of the document show
             auto document = _session.doc(docParam());
-            answer(columnsJson(_session.tableColumns(document), document.formatChoice.id));
+            answer(columnsJson(_session.tableColumns(document), document.formatInfo.id));
             return true;
         case "setAnchor":
             // setAnchor(docId, messageIndex, value) -> {"refused": null | "limit" | "busy", "max": int, "full": bool}

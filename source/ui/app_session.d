@@ -415,7 +415,7 @@ final class AppSession
     /// layout of the format arranges them
     const(ColumnInfo)[] tableColumns(Document document)
     {
-        return _tableColumns.of(document.columns, document.formatChoice.id, _settings.columnLayouts);
+        return _tableColumns.of(document.columns, document.formatInfo.id, _settings.columnLayouts);
     }
 
     /// The first filter rule with a color a row of the document matches
@@ -570,7 +570,7 @@ final class AppSession
         return JSONValue([
             "name": JSONValue(path.baseName),
             "path": JSONValue(path),
-            "format": JSONValue(format is null ? "" : format.name),
+            "format": JSONValue(format is null ? "" : format.info.name),
             "records": JSONValue(document.messageCount),
             "bytes": JSONValue(document.byteSize)
         ]).toString();
@@ -711,7 +711,7 @@ final class AppSession
     /// The Columns section of the Settings dialog, the format of the active document first
     string columnSettingsJson()
     {
-        return ui.app_settings.columnSettingsJson(_settings.columnLayouts, _documents.doc(_tabs.active).formatChoice.id);
+        return ui.app_settings.columnSettingsJson(_settings.columnLayouts, _documents.doc(_tabs.active).formatInfo.id);
     }
 
     /// Saved by the Settings dialog: {format id: [{"id", "visible"}]}

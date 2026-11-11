@@ -36,12 +36,12 @@ final class DocumentFilters
     // here (the JSON of the panel, the name of a new set or rule) is put by the TextForUser
     // given, english if none
 
-    //! @param formatId - FormatInfo.id of the format of the log
+    //! @param format - of the log; its id is written to the filter files
     //! @param apply - filters the main view of the document (null: no filter)
-    this(const(LogFormat) format, string formatId, void delegate(LogFilter!wchar) apply)
+    this(const(LogFormat) format, void delegate(LogFilter!wchar) apply)
     {
         _format = format;
-        _formatId = formatId;
+        _formatId = format is null ? "" : format.info.id;
         _apply = apply;
     }
 
@@ -505,9 +505,9 @@ version (unittest)
         int applyCount;
         DocumentFilters filters;
 
-        this(const(LogFormat) format = new DltFormat(), string formatId = "dlt")
+        this(const(LogFormat) format = new DltFormat())
         {
-            filters = new DocumentFilters(format, formatId, (f) { applied = f; ++applyCount; });
+            filters = new DocumentFilters(format, (f) { applied = f; ++applyCount; });
         }
 
         //! The first rule a record of the app matches
@@ -623,7 +623,7 @@ unittest
     assert(fx.filters.sets[0].name == "Apps" && fx.filters.sets[0].source == path);
     assert(fx.shows("APP1") && !fx.shows("APP2"));
 
-    auto logcat = new Fixture(new LogcatFormat(LogcatFormat.Variant.Threadtime), "logcat");
+    auto logcat = new Fixture(new LogcatFormat(LogcatFormat.Variant.Threadtime));
     const note = logcat.filters.loadFile(path);
     assert(english(note).canFind("made for dlt"), english(note));
     assert(logcat.filters.sets.length == 1 && !logcat.filters.problemOf(logcat.filters.sets[0].rules[0]).empty,
@@ -652,7 +652,7 @@ unittest
     assert(english(fx.filters.loadFile(broken)).canFind("Can't load"));
     assert(fx.filters.sets.length == 1);
 
-    auto logcat = new Fixture(new LogcatFormat(LogcatFormat.Variant.Threadtime), "logcat");
+    auto logcat = new Fixture(new LogcatFormat(LogcatFormat.Variant.Threadtime));
     assert(english(logcat.filters.loadFile(path)).canFind("DLT"));
     assert(logcat.filters.sets.length == 0 && logcat.applyCount == 0);
     assert(logcat.filters.toJson()["canFilter"].boolean && !logcat.filters.toJson()["canDlf"].boolean);
@@ -843,7 +843,7 @@ unittest
 {
     import formats.logcat : LogcatFormat;
 
-    auto fx = new Fixture(new LogcatFormat(LogcatFormat.Variant.Threadtime), "logcat");
+    auto fx = new Fixture(new LogcatFormat(LogcatFormat.Variant.Threadtime));
     assert(fx.filters.newSet().empty);
     assert(fx.filters.sets.length == 1 && fx.filters.sets[0].name == "New Filter");
     assert(fx.filters.sets[0].source == "" && fx.filters.sets[0].rules.length == 0);
@@ -1016,7 +1016,7 @@ unittest
         });
     }
 
-    auto filters = new DocumentFilters(new DltFormat(), "dlt", (f) {});
+    auto filters = new DocumentFilters(new DltFormat(), (f) {});
     const broken = buildPath(tempDir, "dlt_explorer_filters_broken.logfilter");
     scope (exit) if (exists(broken)) remove(broken);
     write(broken, "not json");

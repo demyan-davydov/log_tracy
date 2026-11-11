@@ -38,9 +38,9 @@ final class DltFormat : LogFormat
         return _hasStorageHeader;
     }
 
-    override string name() const pure nothrow @nogc
+    override FormatInfo info() const pure nothrow @nogc
     {
-        return dltFormatInfo.name;
+        return dltFormatInfo;
     }
 
     private static immutable ColumnInfo[] _columns = [

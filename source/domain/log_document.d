@@ -1692,6 +1692,18 @@ unittest
     }
 }
 
+@("LogDocument: a document of a source knows its format by the format, without a choice")
+unittest
+{
+    import formats.plain_text : PlainTextFormat, plainTextFormatInfo;
+
+    auto doc = new LogDocument(new GrowingText(16), new PlainTextFormat());
+    scope (exit)
+        doc.destroy();
+    assert(!doc.formatChoice.isSet, "not opened from a file");
+    assert(doc.formatInfo == plainTextFormatInfo, "its column layouts and filter files are those of text");
+}
+
 @("LogDocument: opening a missing file throws instead of crashing")
 unittest
 {

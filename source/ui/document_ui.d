@@ -51,7 +51,7 @@ final class DocumentUi : MainViewSink, MainViewCommands, SearchViewSink, SearchV
         if (_filters is null)
         {
             auto doc = _documents.doc(_docId);
-            _filters = new DocumentFilters(doc.format, doc.formatChoice.id, (filter) { doc.applyViewFilter(filter); });
+            _filters = new DocumentFilters(doc.format, (filter) { doc.applyViewFilter(filter); });
         }
         return _filters;
     }

@@ -25,9 +25,9 @@ final class CandumpFormat : TextFormat
         super(false);
     }
 
-    override string name() const pure nothrow @nogc
+    override FormatInfo info() const pure nothrow @nogc
     {
-        return candumpFormatInfo.name;
+        return candumpFormatInfo;
     }
 
     private static immutable ColumnInfo[] _columns = canColumns(TimeKind.Absolute, false);

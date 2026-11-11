@@ -45,9 +45,9 @@ final class AscFormat : TextFormat
         return _header;
     }
 
-    override string name() const pure nothrow @nogc
+    override FormatInfo info() const pure nothrow @nogc
     {
-        return ascFormatInfo.name;
+        return ascFormatInfo;
     }
 
     private static immutable ColumnInfo[] _localColumns = canColumns(TimeKind.Local, true);
