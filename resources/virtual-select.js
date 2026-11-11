@@ -1,6 +1,6 @@
 // A list that renders only the items on screen (behavior: virtual-list). The
 // selection lives in the subclasses (see VirtualDltTBody).
-import { navigationPast, growStep, navigationStep, fillStep } from "./list-navigation.js";
+import { navigationPast, growStep, navigationStep, fillStep, approachStep } from "./list-navigation.js";
 
 export class VirtualList extends Element {
     // Where the next render() scrolls to: a row number, "start" or "end"; null
@@ -8,6 +8,9 @@ export class VirtualList extends Element {
     // navigation posted next to componentUpdate() would come before the one
     // render() posts itself and be overridden by it: set this instead.
     navigateTarget = null;
+    // True: the next render() scrolls to navigateTarget with an animation at
+    // the end of the way (smoothAnimateTo); reset by the render
+    navigateSmoothly = false;
     styleSet;
     props;
 
@@ -40,7 +43,10 @@ export class VirtualList extends Element {
         const totalItems = this.totalItems();
         // ?? null: field initializers don't run for elements bound by CSS `prototype:`
         const target = this.navigateTarget ?? null;
+        const smooth = this.navigateSmoothly ?? false;
         this.navigateTarget = null;
+        this.navigateSmoothly = false;
+        this.cancelSmoothJump(); // the rows it would scroll are rendered anew
 
         if (this.vlist.itemsTotal != totalItems) { // number of items reduced, update scroll
             // The rendered rows belong to the old data set: drop them before the
@@ -81,7 +87,8 @@ export class VirtualList extends Element {
 
         if (target !== null)
             this.post(() => {
-                this.navigateToTop(target, totalItems);
+                if (smooth) this.smoothAnimateTo(target);
+                else this.navigateToTop(target, totalItems);
             });
         return this.renderList(list);
     }
@@ -104,11 +111,78 @@ export class VirtualList extends Element {
         this.navigateTo(target);
     }
 
+    // Scrolls so that the row `target` is the first on screen, like
+    // navigateToTop, but the eye sees where the rows went: the last rows of the
+    // way (about half a screen, see approachStep) scroll animated, the rest of
+    // it is jumped over at once. An animated scroll renders no rows, so the
+    // list first jumps to where the rows of the animation are rendered.
+    // "start", "end" and the rows of an empty list are jumped to.
+    smoothAnimateTo(target) {
+        const vlist = this.vlist;
+        if (!vlist) return;
+        const total = this.totalItems();
+        if (typeof target !== "number" || !(total > 0)) {
+            this.navigateToTop(target, total);
+            return;
+        }
+        target = Math.max(0, Math.min(total - 1, target));
+        if (!(this.getBoundingClientRect().height > 0)) { // hidden: nothing to see, no layout to measure
+            this.navigateToTop(target, total);
+            return;
+        }
+        const firstBuffer = vlist.firstBufferIndex;
+        const firstItem = vlist.firstVisibleItem;
+        const step = approachStep(target, {
+            firstVisible: firstItem ? firstBuffer + firstItem.elementIndex : null,
+            firstBuffer,
+            lastBuffer: vlist.lastBufferIndex,
+            total,
+            windowSize: vlist.slidingWindowSize,
+        });
+        if (step) this.navigateToTop(step.jumpTo, total);
+        // The rows jumped to are laid out at the next frame (.ai/knowledge/sciter.md).
+        // A smooth scroll in the frame of an instant one overshoots by the
+        // instant one (6.0.5.5): the row to start at is shown a frame before.
+        // Any other navigation or render meanwhile drops the steps (_smoothJump).
+        const jump = {};
+        this._smoothJump = jump;
+        const stepAt = (index, behavior, next) => requestAnimationFrame(() => {
+            if (this._smoothJump !== jump) return;
+            if (index !== null && !this.scrollRowToTop(index, behavior)) {
+                this.navigateToTop(target, this.totalItems()); // the rows changed meanwhile
+                return;
+            }
+            if (next) next();
+            else this._smoothJump = null;
+        });
+        stepAt(step?.startAt ?? null, "instant", () => stepAt(target, "smooth", null));
+    }
+
+    // Drops the steps of a smoothAnimateTo still to come: the list goes elsewhere
+    cancelSmoothJump() {
+        this._smoothJump = null;
+    }
+
+    // A step of smoothAnimateTo: scrolls the rendered row `index` to the top
+    // (`behavior` of scrollTo). Returns false if the row isn't rendered.
+    scrollRowToTop(index, behavior) {
+        const vlist = this.vlist;
+        if (!vlist) return false;
+        const row = this.children[index - vlist.firstBufferIndex];
+        if (!row) return false;
+        const offset = row.getBoundingClientRect().top - this.getBoundingClientRect().top;
+        // A smooth scroll goes past the last row (6.0.5.5), an instant one stops there
+        const bottom = Math.max(0, this.scrollHeight - this.clientHeight);
+        this.scrollTo({ top: Math.min(this.scrollTop + offset, bottom), behavior });
+        return true;
+    }
+
     // vlist.navigateTo(target) made safe, see navigationStep: the rows of a
     // view that grew are counted first, the target kept within the rows (a row
     // past the count crashes Sciter, "end" is the last row). Every navigation
     // of a list goes through here, never vlist.navigateTo or vlist.navigate.
     navigateTo(target) {
+        this.cancelSmoothJump();
         const vlist = this.vlist;
         if (!vlist) return;
         const step = navigationStep(target, {

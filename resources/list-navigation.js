@@ -112,3 +112,37 @@ export function fillStep({ before, rendered, after, windowSize, gap }) {
     if (append + prepend === 0) return null;
     return { append, after: after - append, prepend, before: before - prepend, toEnd: prepend > 0 };
 }
+
+// A jump of a list to a far row ends with a short animated scroll
+// (VirtualList.smoothAnimateTo): the eye sees where the rows went. It covers
+// this share of the sliding window: half of the half the list renders on each
+// side of a row jumped to (see windowSize), a bit more than half a screen of
+// rows one line high. Rows on screen don't tell it: one may be higher than
+// the list.
+export const approachShare = 0.25;
+
+// Where a list starts the animated scroll that brings the row `target` to its
+// top. An animated scroll renders no rows: it stops at the last rendered one
+// (Sciter 6.0.5.5), so the rows of its way must be rendered when it starts.
+// A row nearer than the approach (approachShare of `windowSize`, at least
+// one) whose way is rendered (the row and half a window under it: the most
+// rows a screen shows) is scrolled to from where the list is: null. Else the
+// list first jumps (VirtualList.navigateToTop) to `jumpTo` and shows `startAt`
+// at its top at once: a row below is jumped to itself, which renders half a
+// window above it, and the scroll starts the approach above it; a row above
+// is scrolled to from the approach below it.
+// `list`: { firstVisible (the first row on screen, null if none), firstBuffer
+// / lastBuffer (the first and the last rendered row), total (rows),
+// windowSize (vlist.slidingWindowSize) }.
+export function approachStep(target, { firstVisible, firstBuffer, lastBuffer, total, windowSize }) {
+    const approach = Math.max(1, Math.floor(windowSize * approachShare));
+    if (firstVisible !== null) {
+        const near = Math.abs(target - firstVisible) <= approach;
+        const rendered = target >= firstBuffer && Math.min(total - 1, target + Math.ceil(windowSize / 2)) <= lastBuffer;
+        if (near && rendered) return null;
+    }
+    if (firstVisible === null || target > firstVisible)
+        return { jumpTo: target, startAt: Math.max(0, target - approach) };
+    const below = Math.min(total - 1, target + approach);
+    return { jumpTo: below, startAt: below };
+}

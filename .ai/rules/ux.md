@@ -129,7 +129,10 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     out at about a third of the cell; the row's own background (stripes, selection) stays.
 28. **The other table follows the selected row.** A row selected in the main or the search
     table is shown in the other one if it has that message: selected there, scrolled only if
-    not already on screen (near the top then). Multiple selection: the last
+    not already on screen (near the top then; the far part of the way is jumped over, the last
+    half screen or so scrolls animated, so the eye sees which way the rows went; Go to Message
+    scrolls the same way). Multiple
+    selection: the last
     clicked/dragged-to/arrowed row. A click follows at once; a drag and the arrow keys only
     after the row rests 500 ms. The keyboard focus stays in the table where the user selects.
 29. **Text is selected across cells and rows.** A plain drag in any cell (not the anchor)
