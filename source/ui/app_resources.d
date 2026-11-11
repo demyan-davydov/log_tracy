@@ -67,6 +67,7 @@ private enum string[] builtIn = [
     "theme-dark.css",
     "theme-light.css",
     "theme.js",
+    "view-table.js",
     "virtual-dlt-view.js",
     "virtual-select.css",
     "virtual-select.js",

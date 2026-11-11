@@ -529,7 +529,7 @@ document.on("^keydown", () => { if (pressFocus.pressing) pressFocus.release(); }
 
 // Shows the status of the document (its panel) on its tab
 function showTabStatus(docId, pane) {
-    tabStrip.setStatus(docId, pane.mainView?.status, pane.searchView?.status, tabProgress(pane.mainView));
+    tabStrip.setStatus(docId, pane.main.view?.status, pane.search.view?.status, tabProgress(pane.main.view));
 }
 
 // What a panel asks of the window
@@ -670,7 +670,7 @@ globalThis.onDocumentClosed = function (docId) {
 globalThis.getAppState = function () {
     // Left out (the saved one kept) while the window isn't shown normally
     const windowRect = platform.windowFrame() ?? undefined;
-    const list = panes.get(activeDocId(win))?.mainList; // shown or under the New Tab
+    const list = panes.get(activeDocId(win))?.main.list; // shown or under the New Tab
     // Of the panel shown, or as the last one shown left them: written with the
     // rest, not on each move of a splitter
     // Not measured on a minimized window: its panels have no size then
