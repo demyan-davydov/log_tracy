@@ -1,3 +1,5 @@
+//! The anchors of a document: the messages the user pinned, listed in both views
+//! whatever the filters and the search, at most MaxAnchors.
 module domain.anchors;
 
 import std.conv : to;

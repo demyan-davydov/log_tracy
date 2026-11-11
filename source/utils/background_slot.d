@@ -1,3 +1,4 @@
+//! BackgroundSlot: runs one operation at a time on a background thread.
 module utils.background_slot;
 
 import core.thread : Thread;

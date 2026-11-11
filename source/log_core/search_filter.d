@@ -1,3 +1,5 @@
+//! The search of a log: the chips of a query, the filter of the search view compiled
+//! from them, and the ranges they found in a payload.
 module log_core.search_filter;
 
 import log_core.log_filter;

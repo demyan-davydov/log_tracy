@@ -1,5 +1,3 @@
-module formats.dmesg;
-
 //! Kernel messages as printed by `dmesg` or read from /dev/kmsg, a record per line:
 //!   "[    3.141592] usb 1-1: new device"          time since boot
 //!   "<30>[    3.141592] ..."                        with the priority (dmesg -r, /proc/kmsg)
@@ -8,6 +6,7 @@ module formats.dmesg;
 //!   "kern  :err   : [    3.141592] ..."            dmesg -x: facility and level
 //!   "[Tue Nov  3 14:22:01 2026] ..."               dmesg -T: wall-clock time
 //! Lines that don't fit keep their text as the payload.
+module formats.dmesg;
 
 import log_core.log_format;
 import log_core.log_level : LogLevel;

@@ -1,7 +1,6 @@
-module formats.syslog.priority;
-
 //! The syslog priority shared by the formats that carry it (syslog, the
 //! kernel log): "<priority>" = facility * 8 + severity, RFC 5424.
+module formats.syslog.priority;
 
 import log_core.log_level : LogLevel;
 

@@ -1,5 +1,3 @@
-module formats.dlt.header_v2;
-
 //! The header of a DLT message of protocol version 2 (AUTOSAR R20-11), read
 //! the way dlt-viewer reads it (QDltMsg::setMsg). Every field but the base
 //! header is optional, the flags of HTYP2 say which are present:
@@ -16,6 +14,7 @@ module formats.dlt.header_v2;
 //! [privacy level (1)]                      WPVL
 //! [segmentation: length (1), frame type (1), frame data] WSGM
 //! The payload follows, little-endian.
+module formats.dlt.header_v2;
 
 import formats.dlt.protocol : MessageInfo;
 

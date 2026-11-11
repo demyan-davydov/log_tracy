@@ -1,3 +1,5 @@
+//! SciterValue: the D wrapper over SCITER_VALUE (numbers, strings, arrays, maps,
+//! functions).
 module sciter.value;
 
 import sciter.capi.types;

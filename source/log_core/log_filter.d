@@ -1,3 +1,4 @@
+//! LogFilter: the interface of a condition on a record, for the filters and the search.
 module log_core.log_filter;
 
 import log_core.log_message;

@@ -1,14 +1,15 @@
-module formats.dlt.protocol;
-
-public import log_core.log_level : LogLevel;
-import std.bitmanip;
-
-//! @brief DLT Message structure:
+//! The structures of the DLT protocol: the storage, standard, extra and extended headers.
+//!
+//! DLT Message structure:
 //! [ Storage Header ]        (16 bytes, always in file)
 //! [ Standard Header ]       (minimum 4 bytes)
 //! [ Extra Header Fields ]   (up to 12 bytes, depends on 'StandardHeader.headerType', byte order depends on 'StandardHeader.isBigEndian()')
 //! [ Extended Header ]       (if 'StandardHeader.headerType' has 'UseExtendedHeader' flag)
 //! [ Payload ]
+module formats.dlt.protocol;
+
+public import log_core.log_level : LogLevel;
+import std.bitmanip;
 
 //! @brief The storage header used in DLT files (16 bytes)
 //! @note Byte order is always little-endian

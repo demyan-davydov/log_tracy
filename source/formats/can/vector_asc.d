@@ -1,5 +1,3 @@
-module formats.can.vector_asc;
-
 //! Vector ASC traces (CANoe, CANalyzer). The header says how to read the lines:
 //!   date Tue Nov 3 02:22:01.123 pm 2026        the start: time = start + offset
 //!   base hex  timestamps absolute               ID and data in hex or dec
@@ -11,6 +9,7 @@ module formats.can.vector_asc;
 //! Other records with a time (start of measurement, statistics, LIN...) are
 //! events, their text the payload. Without a date the time is the offset from
 //! the start. With "timestamps relative" the offsets are shown as written.
+module formats.can.vector_asc;
 
 import formats.can.frame;
 import log_core.log_format;

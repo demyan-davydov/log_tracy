@@ -1,3 +1,4 @@
+//! The C API of Sciter: the DOM handles and their types, as in sciter-x-dom.h.
 module sciter.capi.dom;
 
 import sciter.capi.types;

@@ -1,7 +1,6 @@
-module formats.dlt.fields;
-
 //! The format fields of a DLT record in a LogMessage, and the DLT view of a
 //! LogMessage: accessors called like members (msg.ecuId) through UFCS.
+module formats.dlt.fields;
 
 import log_core.log_message;
 import formats.dlt.protocol : MessageType;

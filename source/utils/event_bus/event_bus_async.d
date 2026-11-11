@@ -1,3 +1,5 @@
+//! EventBusAsync: an event bus whose events are queued and dispatched on the thread
+//! that asks for them.
 /**
  * Asynchronous Event Bus implementation in D.
  *

@@ -1,3 +1,4 @@
+//! TextFormat: the base of the line-oriented text formats.
 module log_core.text.text_format;
 
 import log_core.log_format;

@@ -1,5 +1,3 @@
-module log_core.filter_file;
-
 //! The filter files of DLT Explorer: a filter set (log_core/rule_filter) as
 //! JSON, the same for every log format, since the rules refer to the columns
 //! of the format by id. The settings keep the sets of a log the same way.
@@ -24,6 +22,7 @@ module log_core.filter_file;
 //! is applied. The bounds of a range are numbers, levels by name.
 //! A file is named <name>.<logFormat>.logfilter: the middle part only tells a
 //! person which format it is for, the file says it itself.
+module log_core.filter_file;
 
 import log_core.log_format : ColumnInfo, ColumnKind;
 import log_core.rule_filter;

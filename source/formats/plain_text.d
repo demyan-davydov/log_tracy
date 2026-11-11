@@ -1,3 +1,4 @@
+//! PlainTextFormat: any text, a record per line; the fallback format.
 module formats.plain_text;
 
 import log_core.log_format;

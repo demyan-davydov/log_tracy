@@ -1,9 +1,8 @@
-module ui.search_chips;
-
 //! The chips of a search query as the search editor of the script sends them:
 //! a JSON array of {"text", "isRegex", "matchCase"} (resources/search-query.js).
 //! The same form keeps the queries of a file in the settings (its search history).
 //! Apart from the window so it can be tested.
+module ui.search_chips;
 
 import log_core.search_filter : SearchChip;
 import std.json : JSONException, JSONType, JSONValue;

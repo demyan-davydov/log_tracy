@@ -1,3 +1,5 @@
+//! A port of Sciter's C++ behavior factory, commented out whole: nothing here is
+//! compiled or used.
 module sciter.behavior_factory;
 
 /*

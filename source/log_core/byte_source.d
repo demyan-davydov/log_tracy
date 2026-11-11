@@ -1,3 +1,4 @@
+//! ByteSource: where the bytes of a log come from.
 module log_core.byte_source;
 
 import utils.mapped_file : MappedFile;

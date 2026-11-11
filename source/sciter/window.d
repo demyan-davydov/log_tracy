@@ -1,3 +1,5 @@
+//! SciterWindow: the base of an application window: its creation, its events, the calls
+//! of its script and the tasks posted to its thread.
 module sciter.window;
 
 import sciter.api;

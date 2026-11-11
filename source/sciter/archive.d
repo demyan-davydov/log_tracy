@@ -1,3 +1,4 @@
+//! A Sciter archive of resources (packfolder), read from memory.
 module sciter.archive;
 
 import sciter.capi.def;

@@ -1,3 +1,5 @@
+//! The C API of Sciter: the definitions of sciter-x-def.h (callbacks, notifications,
+//! options), for 64-bit systems only.
 module sciter.capi.def;
 
 import core.stdc.stdint;

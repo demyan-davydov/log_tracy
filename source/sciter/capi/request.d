@@ -1,3 +1,4 @@
+//! The C API of Sciter: the requests for resources, as in sciter-x-request.h.
 module sciter.capi.request;
 
 alias HREQUEST = void*;

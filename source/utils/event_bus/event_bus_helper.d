@@ -1,3 +1,4 @@
+//! The list of subscribers the event buses share (copy on write).
 /**
  * EventBusHelper — shared COW subscriber list management.
  *

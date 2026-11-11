@@ -1,3 +1,4 @@
+//! EventBusSync: an event bus that calls its subscribers on the publishing thread.
 /**
  * Synchronous Event Bus implementation in D.
  *

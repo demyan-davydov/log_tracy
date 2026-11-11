@@ -1,3 +1,4 @@
+//! The C API of Sciter: the table of its functions (SciterAPI_T), as in sciter-x-api.h.
 module sciter.capi.api;
 
 import std.string;

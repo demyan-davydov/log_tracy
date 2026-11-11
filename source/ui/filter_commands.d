@@ -1,5 +1,3 @@
-module ui.filter_commands;
-
 //! The filters of the main view of a document, apart from the window so they
 //! can be tested: the filter sets of the log, the commands that change them
 //! and their state for the filter panel. A set is a copy: a loaded file (a
@@ -9,6 +7,7 @@ module ui.filter_commands;
 //! for two logs doesn't tie them together.
 //! Each command returns a message for the user: an error, or what was lost or
 //! may not fit when it was done; "" when there is nothing to say.
+module ui.filter_commands;
 
 import utils.ui_text : english, say, TextForUser, uiText, uiTextOf, UiText;
 import std.algorithm.iteration : map;

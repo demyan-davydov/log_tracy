@@ -1,3 +1,4 @@
+//! LogcatFormat: the output of Android `adb logcat` (threadtime, brief) as a LogFormat.
 module formats.logcat;
 
 import log_core.log_format;

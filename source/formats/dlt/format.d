@@ -1,3 +1,5 @@
+//! DltFormat: DLT logs, files and streams of protocol versions 1 and 2, as a LogFormat:
+//! their columns, the split of the bytes into records and their decoding.
 module formats.dlt.format;
 
 import formats.dlt.protocol;

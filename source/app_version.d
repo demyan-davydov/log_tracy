@@ -1,3 +1,4 @@
+//! The version of the application: major, minor, patch and its text.
 module app_version;
 
 public enum APP_VERSION_MAJOR = 0;

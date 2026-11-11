@@ -1,3 +1,4 @@
+//! LockGuard: holds a mutex for its scope.
 module utils.lock_guard;
 
 import core.sync.mutex : Mutex;

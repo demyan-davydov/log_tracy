@@ -1,3 +1,5 @@
+//! The C API of Sciter: the event groups and the parameters of DOM events, as in
+//! sciter-x-behavior.h.
 module sciter.capi.behavior;
 
 import sciter.capi.types;

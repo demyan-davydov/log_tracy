@@ -1,5 +1,3 @@
-module formats.syslog.syslog;
-
 //! Syslog files, a record per line:
 //!   BSD (RFC 3164), journalctl short: "Nov  3 14:22:01 host sshd[812]: message"
 //!   ISO (rsyslog, journalctl short-iso): "2026-11-03T14:22:01.123456+01:00 host app[1]: message"
@@ -8,6 +6,7 @@ module formats.syslog.syslog;
 //! moment (shown in the user's zone), one without is shown as written: each
 //! record has its own kind of time. Lines that don't fit keep their text as
 //! the payload.
+module formats.syslog.syslog;
 
 import log_core.log_format;
 import log_core.log_level : LogLevel;

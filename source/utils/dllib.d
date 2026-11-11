@@ -1,3 +1,4 @@
+//! Loads a dynamic library and its symbols, on each platform.
 module utils.dllib;
 
 ///

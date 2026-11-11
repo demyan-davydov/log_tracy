@@ -1,3 +1,4 @@
+//! The C API of Sciter: the definitions of its object model (SOM), as in sciter-om-def.h.
 module sciter.capi.om_def;
 
 import sciter.capi.types;

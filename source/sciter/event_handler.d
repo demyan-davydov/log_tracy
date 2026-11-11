@@ -1,3 +1,4 @@
+//! SciterEventHandler: the base of the D handlers of Sciter's DOM and window events.
 module sciter.event_handler;
 
 import sciter.api;

@@ -1,3 +1,4 @@
+//! The C API of Sciter: its basic types, as in sciter-x-types.h.
 module sciter.capi.types;
 
 // Sciter Types

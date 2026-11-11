@@ -1,3 +1,4 @@
+//! Loads the Sciter library and gives its API (sciterApi), once per process.
 module sciter.api;
 
 import sciter.capi.api;

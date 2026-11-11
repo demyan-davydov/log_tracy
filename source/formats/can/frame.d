@@ -1,7 +1,6 @@
-module formats.can.frame;
-
 //! What the CAN trace formats (candump, Vector ASC) share: the fields of a
 //! frame in LogMessage, its columns, and the data bytes as text.
+module formats.can.frame;
 
 import log_core.log_format : ColumnInfo, ColumnKind;
 import log_core.log_message : TimeKind;

@@ -1,3 +1,4 @@
+//! The C API of Sciter: the key codes, as in sciter-x-key-codes.h.
 module sciter.capi.key_codes;
 
 enum SC_KB_CODES

@@ -1,3 +1,5 @@
+//! The interfaces of the event buses: subscribing, publishing, tokens, events that
+//! override the queued ones.
 module utils.event_bus.event_bus_interface;
 
 import std.traits : Unqual;

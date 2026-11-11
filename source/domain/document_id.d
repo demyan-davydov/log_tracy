@@ -1,3 +1,4 @@
+//! The id of an open document, and the generator of new ones.
 module domain.document_id;
 
 private alias Id = uint;

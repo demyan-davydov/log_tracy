@@ -1,3 +1,5 @@
+//! The Sciter application: its start and shutdown, its arguments, the iterations of its
+//! event loop.
 module sciter.application;
 
 import sciter.api;

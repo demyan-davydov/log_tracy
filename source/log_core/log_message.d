@@ -1,3 +1,5 @@
+//! LogMessage: one decoded record (its fields, time, level and payload) in one reused
+//! buffer, and the limits of a record.
 module log_core.log_message;
 
 import std.traits;

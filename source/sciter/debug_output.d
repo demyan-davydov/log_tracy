@@ -1,3 +1,4 @@
+//! Sciter's debug output (its console, its errors) written to stdout.
 module sciter.debug_output;
 
 import sciter.capi.types;

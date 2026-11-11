@@ -1,3 +1,4 @@
+//! LogLevel: the severity of a record, common to all formats.
 module log_core.log_level;
 
 //! Severity of a log record, common to all formats.

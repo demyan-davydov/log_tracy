@@ -1,3 +1,4 @@
+//! The C API of Sciter: the assets of its object model (SOM), as in sciter-om.h.
 module sciter.capi.om;
 
 struct som_passport_t;

@@ -1,3 +1,5 @@
+//! The base of the indexes of a log (offsets, filter, search): entries that grow by
+//! chunks and never move.
 module domain.index.base_index;
 
 import utils.chunked_array;

@@ -1,5 +1,3 @@
-module log_core.rule_filter;
-
 //! Filter rules of a log of any format, as in dlt-viewer: rules made of
 //! conditions on the columns of the format, grouped in sets (a set is what one
 //! filter file holds), and the filter of the main view compiled from them.
@@ -8,6 +6,7 @@ module log_core.rule_filter;
 //! there is none) and no enabled exclude rule. Marker rules don't change what
 //! is shown: they are for highlighting. A rule matches when all its conditions
 //! do; a rule without conditions matches every record.
+module log_core.rule_filter;
 
 import log_core.log_filter;
 import log_core.log_format : ColumnInfo, ColumnKind;

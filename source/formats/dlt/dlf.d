@@ -1,5 +1,3 @@
-module formats.dlt.dlf;
-
 //! The filter files of dlt-viewer (.dlf): read as DlfFilters with all the
 //! fields of dlt-viewer, written in the layout of dlt-viewer, and turned into
 //! filter rules on the columns of DltFormat and back (fromDlf, toDlf). A filter becomes a rule with the same meaning as in
@@ -18,6 +16,7 @@ module formats.dlt.dlf;
 //! The regex search/replace changes how the payload is shown, not what is
 //! shown: it isn't kept (fromDlf says so). toDlf writes rules back, dropping
 //! and naming the conditions a .dlf can't hold.
+module formats.dlt.dlf;
 
 import log_core.log_format : LogFormat;
 import log_core.rule_filter;

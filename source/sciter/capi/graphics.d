@@ -1,3 +1,4 @@
+//! The C API of Sciter: the graphics handles and types, as in sciter-x-graphics.h.
 module sciter.capi.graphics;
 
 import sciter.capi.types;

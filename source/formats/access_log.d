@@ -1,11 +1,10 @@
-module formats.access_log;
-
 //! Access logs of web servers, a record per line:
 //!   Common Log Format (Apache):  client ident user [time] "request" status bytes
 //!   Combined (nginx by default): the same, then "referer" "user agent"
 //! The status is shown as it is; it also gives the level of the record
 //! (5xx Error, 4xx Warn, other Info) that colors its cell. "-" is an empty
 //! value. Fields after the combined ones (nginx $request_time...) are not read.
+module formats.access_log;
 
 import log_core.log_format;
 import log_core.log_level : LogLevel;

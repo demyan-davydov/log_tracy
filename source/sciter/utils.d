@@ -1,3 +1,5 @@
+//! A port of Sciter's value helpers (value.hpp), commented out whole: nothing here is
+//! compiled or used.
 module sciter.utils;
 
 import sciter.capi.types;

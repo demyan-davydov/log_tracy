@@ -1,3 +1,4 @@
+//! ChunkedArray: an array that grows by chunks; its elements never move.
 module utils.chunked_array;
 
 //! An array that grows by chunks of memory: elements never move once written,

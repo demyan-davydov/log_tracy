@@ -1,8 +1,7 @@
-module formats.dlt.parser;
-
 //! Decodes a DLT record (protocol version 1 or 2) into a LogMessage: the
 //! headers, the arguments of a verbose message, the services of a control
 //! message and the message ID and data of a non-verbose one.
+module formats.dlt.parser;
 
 import formats.dlt.protocol;
 import formats.dlt.header_v2;

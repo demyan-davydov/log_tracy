@@ -1,3 +1,4 @@
+//! The C API of Sciter: VALUE and the results of its functions, as in value.h.
 module sciter.capi.value;
 
 import sciter.capi.types;

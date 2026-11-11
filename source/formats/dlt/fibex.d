@@ -1,3 +1,5 @@
+//! Reads a FIBEX file: the descriptions of non-verbose DLT messages by message ID.
+//! Nothing imports it yet.
 module formats.dlt.fibex;
 
 import std.file;
