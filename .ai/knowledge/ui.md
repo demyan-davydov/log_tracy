@@ -97,6 +97,10 @@ behaviour: `.ai/knowledge/sciter.md`.
   `docs/stories/selectable-cells.md`). Row selection: `resources/row-selection.js` (the keys: `onkeydown` of `VirtualDltTBody`,
   Shift+arrows/Home/End extend from the anchor).
 - Rendering a row is hot: see `.ai/rules/ui.md`.
+- A log table renders twice the rows it can show (`VirtualDltTBody.fitWindow`, by its
+  height and its lowest row or header): refitted when it renders, when it is resized
+  (`sizechange`, subscribed by `DocumentPane`) and when the font size changes (the frame of
+  `scrollToKeptRows`). Sciter's own window of 160 rows made a jump ~3× slower.
 
 ## Menu
 

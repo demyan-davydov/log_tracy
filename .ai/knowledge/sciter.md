@@ -241,7 +241,19 @@ agent can't drive it. In scapp a plain
   call; inside `requestAnimationFrame(...)` the geometry is new and `navigateTo` works.
   `vlist.firstVisibleItem` is kept while hidden.
 - 6.0.5.5: a far jump (scrollbar drag) asks `where=±1` with a far `start` and drops the old
-  rows itself (6.0.3.12 asks `where=0`). Dragging the thumb to an end of a list of ~85M+ rows
+  rows itself (6.0.3.12 asks `where=0`). It first renders ~half a window of rows around the
+  old place, then a whole window at the new one, and lays every new row out (styles, the
+  widths of the table): about 1 ms a row of a log table, nearly all of a jump; our script
+  is ~6 %. So the window is sized to the list (`vlist.slidingWindowSize`, read-write, 160 by
+  default; `windowSize` of `resources/list-navigation.js`, `VirtualDltTBody.fitWindow`).
+- A window smaller than the rows on screen segfaults on a jump (`vlist_ctl::move_buffer_to`),
+  and so does `navigateTo(n)` with `n >= vlist.itemsTotal` while rows are rendered, whatever
+  the window (`advanceTo` past it returns null). `itemsTotal` lags behind `totalItems()`
+  while a view grows; an empty list navigated past it lands on its last known row. Navigate
+  through `VirtualList.navigateTo` (counts the rows first, clamps by `safeTarget`), never
+  `vlist.navigateTo`.
+- `sizechange` reaches a virtual-list subscribed with `on("sizechange", ...)`; an
+  `["on sizechange"]` method of its class is never called. Dragging the thumb to an end of a list of ~85M+ rows
   segfaults inside Sciter (`vlist_ctl::move_buffer_to`), reproduced with the SDK sample alone.
 - The `outline` of a row of a scrolled virtual-list is painted `scrollTop` lower than the row
   (6.0.5.5), a frame over another row; frame a row with `box-shadow: inset ...` instead.

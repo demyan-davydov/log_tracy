@@ -8,6 +8,7 @@ import { RowSelection, selectedText, autoScrollSpeed } from "row-selection.js";
 import { textRange, cellPart, rangeText, repaintRows, splitSelected, wordAt, sameSelection, isDrag, cellHit }
     from "text-selection.js";
 import { anchorEdit } from "pane-state.js";
+import { windowSize } from "list-navigation.js";
 
 // The header row of a log table for `columns`: table.css gives the columns
 // their look by the classes (see columnClass)
@@ -195,6 +196,12 @@ export class VirtualDltTBody extends VirtualSelect {
     renderList(items) // overridable
     {
         return items;
+    }
+
+    // Fits the window first: the render may navigate (a jump, another view)
+    render(props) {
+        this.fitWindow();
+        return super.render(props);
     }
 
     renderItem(item) {
@@ -399,6 +406,29 @@ export class VirtualDltTBody extends VirtualSelect {
         return true;
     }
 
+    // Sizes the sliding window of the list by its height (windowSize): when it
+    // renders, and as the panel asks: when it is resized (sizechange) and when
+    // its rows change height (the font size). A window fewer rows than the list shows would crash Sciter, so a
+    // list that gets higher is fitted before it scrolls.
+    fitWindow() {
+        const vlist = this.vlist;
+        if (!vlist) return;
+        const size = windowSize({ height: this.getBoundingClientRect().height, lineHeight: this.lineHeight() });
+        if (size !== null && size !== vlist.slidingWindowSize) vlist.slidingWindowSize = size;
+    }
+
+    // The height of a row one line high, px: the lowest of the header row and
+    // the rows rendered (the header has the font of the rows); 0 if none
+    lineHeight() {
+        const heights = [];
+        const header = this.parentElement?.$("thead>tr");
+        if (header) heights.push(header.getBoundingClientRect().height);
+        for (const row of this.children)
+            if (this.viewIndexOf(row) !== null) heights.push(row.getBoundingClientRect().height); // not an empty row
+        const positive = heights.filter(h => h > 0);
+        return positive.length ? Math.min(...positive) : 0;
+    }
+
     // The number of rows the list has room for, by the height of a row on screen
     visibleRowCount() {
         const row = this.vlist?.firstVisibleItem;
@@ -417,7 +447,7 @@ export class VirtualDltTBody extends VirtualSelect {
         index = Math.max(0, Math.min(total - 1, index));
         const changed = extend ? this.selection.extendTo(index) : this.selection.moveTo(index);
         if (changed) this._setTextSelection(null); // Cmd+C copies the rows chosen now
-        if (navigation) this.vlist.navigateTo(navigation);
+        if (navigation) this.navigateTo(navigation);
         else this.vlist.advanceTo(index);
         this.updateRowStates();
         if (changed) this.rowChosen(true);

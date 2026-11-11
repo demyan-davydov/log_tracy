@@ -2,7 +2,7 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { navigationPast, growStep } from "../../resources/list-navigation.js";
+import { navigationPast, growStep, windowSize, minWindowSize, safeTarget } from "../../resources/list-navigation.js";
 
 // Rows 100..179 rendered, 100..129 on screen, 1000 rows in all
 const list = { firstVisible: 100, lastBuffer: 179, total: 1000, windowSize: 80 };
@@ -57,4 +57,37 @@ test("a list with room in its window renders the first rows added", () => {
 test("a list without rows, or with fewer rows than it renders, is rebuilt", () => {
     assert.deepEqual(growStep({ before: 0, rendered: 0, after: 0, windowSize: 80, total: 10 }), { rebuild: true });
     assert.deepEqual(grown({ total: 150 }), { rebuild: true });
+});
+
+test("the window renders twice the rows the list can show, one line high each", () => {
+    assert.equal(windowSize({ height: 480, lineHeight: 20 }), 48);
+    assert.equal(windowSize({ height: 490, lineHeight: 20 }), 50, "a row cut by the bottom edge counts");
+});
+
+test("a low list renders a window of the minimum size", () => {
+    assert.equal(windowSize({ height: 60, lineHeight: 20 }), minWindowSize);
+});
+
+test("the window size is unknown while the list or its rows have no height", () => {
+    assert.equal(windowSize({ height: 0, lineHeight: 20 }), null);
+    assert.equal(windowSize({ height: 480, lineHeight: 0 }), null);
+    assert.equal(windowSize({ height: 480, lineHeight: NaN }), null);
+});
+
+test("a navigation goes no further than the last row the list counts", () => {
+    assert.equal(safeTarget(500, 1000), 500);
+    assert.equal(safeTarget(999, 1000), 999);
+    assert.equal(safeTarget(1000, 1000), 999, "one past the end");
+    assert.equal(safeTarget(5000, 1000), 999);
+});
+
+test("a list without rows has nowhere to navigate", () => {
+    assert.equal(safeTarget(0, 0), null);
+    assert.equal(safeTarget("end", 0), null);
+});
+
+test("the named navigations and rows before the first stay as Sciter takes them", () => {
+    assert.equal(safeTarget("start", 1000), "start");
+    assert.equal(safeTarget("end", 1000), "end");
+    assert.equal(safeTarget(-5, 1000), 0);
 });

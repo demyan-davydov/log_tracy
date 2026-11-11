@@ -228,6 +228,9 @@ export class DocumentPane {
         this.searchList = this.searchTable.$("tbody");
         this.mainList.docId = docId;
         this.searchList.docId = docId;
+        // A table resized renders as many rows as it can show (fitWindow).
+        // Subscribed with on(): an "on sizechange" method of the class isn't called
+        for (const list of this.lists) list.on("sizechange", () => list.fitWindow());
         // A row the user selects in one table is shown in the other (followSelection,
         // the "rowchosen" events of the tables)
         this.follower = new SelectionFollower(list => this.followSelection(list));
@@ -497,6 +500,7 @@ export class DocumentPane {
             if (this.destroyed || !this.visible) return; // show() asks again
             for (const [list, kept] of this.keptRows) {
                 if (this.inHiddenPage(list)) continue; // selectBottomPage() asks again
+                list.fitWindow(); // rows of a smaller font: more of them on screen
                 const step = keptRowStep(kept, this.shownOf(list), list.totalItems());
                 if (step.wait) continue; // reloadTable() asks again
                 this.keptRows.delete(list);

@@ -1,6 +1,6 @@
 // A list that renders only the items on screen (behavior: virtual-list). The
 // selection lives in the subclasses (see VirtualDltTBody).
-import { navigationPast, growStep } from "./list-navigation.js";
+import { navigationPast, growStep, safeTarget } from "./list-navigation.js";
 
 export class VirtualList extends Element {
     // Where the next render() scrolls to: a row number, "start" or "end"; null
@@ -49,7 +49,7 @@ export class VirtualList extends Element {
             if (target !== null) {
                 // No rows rendered: the target comes from outside the window
                 this.post(() => {
-                    this.vlist?.navigateTo(target);
+                    this.navigateTo(target);
                 });
                 return this.renderList([]); // render empty list and request the asked navigation
             }
@@ -101,8 +101,23 @@ export class VirtualList extends Element {
             total,
             windowSize: vlist.slidingWindowSize,
         });
-        if (past !== null) vlist.navigateTo(past);
-        vlist.navigateTo(target);
+        if (past !== null) this.navigateTo(past);
+        this.navigateTo(target);
+    }
+
+    // vlist.navigateTo(target) made safe. The list counts the rows totalItems()
+    // has first: while a view grows its count lags behind (it learns of rows
+    // from grow() and the rows it asks for), and a row past it would crash
+    // Sciter or land on the last row it knows. The target is then kept within
+    // the count (safeTarget).
+    navigateTo(target) {
+        const vlist = this.vlist;
+        if (!vlist) return;
+        const rendered = this.children.length;
+        const missing = this.totalItems() - vlist.itemsBefore - rendered - vlist.itemsAfter;
+        if (missing > 0) vlist.itemsAfter += missing;
+        const safe = safeTarget(target, vlist.itemsTotal);
+        if (safe !== null) vlist.navigateTo(safe);
     }
 
     // The list has more items after the ones it had (totalItems() grew, the
