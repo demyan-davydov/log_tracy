@@ -408,13 +408,14 @@ export class VirtualDltTBody extends VirtualSelect {
     }
 
     // A key moves the current row (and the selection with it) to `index`,
-    // scrolling it into view; the panel is told unless nothing changed (a key
-    // at the edge of the log)
-    moveCurrentTo(index, navigation) {
+    // scrolling it into view; with Shift (`extend`) the rows from the anchor to
+    // it are selected. The panel is told unless nothing changed (a key at the
+    // edge of the log)
+    moveCurrentTo(index, navigation, extend = false) {
         const total = this.totalItems();
         if (total === 0) return true;
         index = Math.max(0, Math.min(total - 1, index));
-        const changed = this.selection.moveTo(index);
+        const changed = extend ? this.selection.extendTo(index) : this.selection.moveTo(index);
         if (changed) this._setTextSelection(null); // Cmd+C copies the rows chosen now
         if (navigation) this.vlist.navigateTo(navigation);
         else this.vlist.advanceTo(index);
@@ -455,11 +456,12 @@ export class VirtualDltTBody extends VirtualSelect {
         // Without a current row the arrows start from the rows on screen, not
         // from the top of the log
         const range = current === null ? this.visibleRange() : null;
+        const extend = evt.shiftKey; // Shift extends the selection from the anchor
         switch (evt.code) {
-            case "ArrowDown": return this.moveCurrentTo(current === null ? (range?.[0] ?? 0) : current + 1);
-            case "ArrowUp": return this.moveCurrentTo(current === null ? (range?.[1] ?? 0) : current - 1);
-            case "Home": return this.moveCurrentTo(0, "start");
-            case "End": return this.moveCurrentTo(this.totalItems() - 1, "end");
+            case "ArrowDown": return this.moveCurrentTo(current === null ? (range?.[0] ?? 0) : current + 1, undefined, extend);
+            case "ArrowUp": return this.moveCurrentTo(current === null ? (range?.[1] ?? 0) : current - 1, undefined, extend);
+            case "Home": return this.moveCurrentTo(0, "start", extend);
+            case "End": return this.moveCurrentTo(this.totalItems() - 1, "end", extend);
             case "Escape": // the text selected first, then the rows
                 if (this._textSelection) this._setTextSelection(null);
                 else if (this.selection.count > 0) {

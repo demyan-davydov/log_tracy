@@ -94,7 +94,8 @@ behaviour: `.ai/knowledge/sciter.md`.
   click selects the row, Shift/Cmd work on rows. The selection is positions (row, cell,
   character, from the cell's `rangeFromPoint`), painted when a row renders and copied from the
   backend's rows; its logic is `resources/text-selection.js` (story:
-  `docs/stories/selectable-cells.md`). Row selection: `resources/row-selection.js`.
+  `docs/stories/selectable-cells.md`). Row selection: `resources/row-selection.js` (the keys: `onkeydown` of `VirtualDltTBody`,
+  Shift+arrows/Home/End extend from the anchor).
 - Rendering a row is hot: see `.ai/rules/ui.md`.
 
 ## Menu

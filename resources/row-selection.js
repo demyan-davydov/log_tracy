@@ -66,6 +66,21 @@ export class RowSelection {
         return !unchanged;
     }
 
+    // Shift and a key move to the row `index`: the rows from the anchor to it
+    // are selected, the anchor stays (none yet: the range starts at `index`)
+    // @returns whether the selection changed (see moveTo)
+    extendTo(index) {
+        const from = this.anchor ?? index;
+        const first = Math.min(from, index), last = Math.max(from, index);
+        const [only, ...more] = this.ranges;
+        const unchanged = this.current === index && more.length === 0
+            && only?.[0] === first && only?.[1] === last;
+        this.ranges = [[first, last]];
+        this.anchor = from;
+        this.current = index;
+        return !unchanged;
+    }
+
     // The mouse is pressed on a row (after click()) and may drag: dragTo()
     // selects from the anchor to the row under the mouse. toggle (Cmd/Ctrl)
     // keeps the rows selected before, otherwise only the dragged range is.

@@ -288,3 +288,46 @@ test("moveTo tells whether the selection changed", () => {
     selection.clear(); // Escape: the current row stays, nothing selected
     assert.equal(selection.moveTo(7), true, "the current row selected again");
 });
+
+test("Shift+arrows extend the selection from the anchor, in either direction", () => {
+    const selection = new RowSelection();
+    click(selection, 10);
+    selection.extendTo(11);
+    selection.extendTo(12);
+    assert.deepEqual(selection.ranges, [[10, 12]]);
+    assert.equal(selection.current, 12);
+    assert.equal(selection.anchor, 10, "the anchor stays");
+    selection.extendTo(11);
+    selection.extendTo(10);
+    selection.extendTo(9);
+    assert.deepEqual(selection.ranges, [[9, 10]], "back past the anchor: the range turns over");
+    selection.moveTo(20);
+    assert.deepEqual(selection.ranges, [[20, 20]], "an arrow without Shift: one row again");
+    selection.extendTo(19);
+    assert.deepEqual(selection.ranges, [[19, 20]], "from the row the keys moved to");
+});
+
+test("Shift+arrows replace rows added by Cmd+click with the range from the anchor", () => {
+    const selection = new RowSelection();
+    click(selection, 2);
+    click(selection, 6, { toggle: true });
+    selection.extendTo(7);
+    assert.deepEqual(selection.ranges, [[6, 7]]);
+});
+
+test("Shift+arrows without a current row start the range at the row moved to", () => {
+    const selection = new RowSelection();
+    selection.extendTo(5);
+    assert.deepEqual(selection.ranges, [[5, 5]]);
+    assert.equal(selection.anchor, 5);
+    assert.equal(selection.current, 5);
+});
+
+test("extendTo tells whether the selection changed", () => {
+    const selection = new RowSelection();
+    click(selection, 3);
+    assert.equal(selection.extendTo(4), true, "a row added");
+    assert.equal(selection.extendTo(4), false, "Shift+Down at the end of the log");
+    selection.clear(); // Escape
+    assert.equal(selection.extendTo(4), true, "the range selected again");
+});
