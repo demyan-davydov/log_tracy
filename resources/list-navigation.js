@@ -95,18 +95,20 @@ export function navigationStep(target, { total, before, rendered, after }) {
 // A list whose window grew (a higher list, a smaller font): Sciter fills a
 // list with half its window and asks for no more until it scrolls, so a list
 // that got higher shows a gap under its rows. Renders rows up to the window
-// (`windowSize`; the list counts `before` / `rendered` / `after` rows): after
-// the last one first; before the first one only once every row after it is
-// rendered (the end of the rows: the rows on screen are pushed down by them,
-// the list goes back to its last row; elsewhere they would just move). Returns { append, after,
-// prepend, before }: the rows to render after and before, and to count after
-// and before them; null if none (the window rendered, every row rendered, or
-// no row rendered: Sciter fills an empty list itself).
-export function fillStep({ before, rendered, after, windowSize }) {
+// (`windowSize`; the list counts `before` / `rendered` / `after` rows) after
+// the last one. Rows before the first one only when the list shows its last
+// row with room under it (`gap`) and every row after is rendered: they push
+// the rows on screen down, so the list goes to its end then (`toEnd`). A list
+// whose last row is below the screen keeps its rows where they are. Returns
+// { append, after, prepend, before, toEnd }: the rows to render after and
+// before, to count after and before them, and whether to go to the last row;
+// null if none (the window rendered, every row rendered, or no row rendered:
+// Sciter fills an empty list itself).
+export function fillStep({ before, rendered, after, windowSize, gap }) {
     if (rendered === 0) return null;
     const room = Math.max(0, windowSize - rendered);
     const append = Math.min(after, room);
-    const prepend = append === after ? Math.min(before, room - append) : 0;
+    const prepend = gap && append === after ? Math.min(before, room - append) : 0;
     if (append + prepend === 0) return null;
-    return { append, after: after - append, prepend, before: before - prepend };
+    return { append, after: after - append, prepend, before: before - prepend, toEnd: prepend > 0 };
 }

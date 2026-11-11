@@ -102,8 +102,9 @@ behaviour: `.ai/knowledge/sciter.md`.
   rows it can show and a quarter more (5 rows more at least), no fewer than 20 rows in all.
   Sciter fills a list with half its window: a smaller half leaves a gap under the rows. It
   is refitted when it renders, and by the table itself (`watchSize`) when it is resized or
-  its font size changes (`sizechange` of the tbody and the thead); a window that grew is
-  filled (`VirtualList.fill`). Sciter's own window of 160 rows made a jump ~3× slower.
+  its font size changes (`sizechange` of the tbody and the thead, only when a height
+  changed); a window that grew is filled (`VirtualList.fill`): rows after the last one, rows
+  before the first one only at the end of the rows with room under it. Sciter's own window of 160 rows made a jump ~3× slower.
 - Every navigation of a list goes through `VirtualList.navigateTo` (`navigationStep`): a
   row past the rows the list counts crashes Sciter, "end" is the last row by number.
 

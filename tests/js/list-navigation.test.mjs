@@ -134,20 +134,27 @@ test("a navigation in an empty view goes nowhere", () => {
 });
 
 test("a list whose window grew renders rows after its last one, up to its window", () => {
-    assert.deepEqual(fillStep({ before: 100, rendered: 20, after: 500, windowSize: 100 }),
-        { append: 80, after: 420, prepend: 0, before: 100 });
+    assert.deepEqual(fillStep({ before: 100, rendered: 20, after: 500, windowSize: 100, gap: true }),
+        { append: 80, after: 420, prepend: 0, before: 100, toEnd: false });
 });
 
-test("a list at the end of its rows renders rows before its first one: the last row stays at the bottom", () => {
-    assert.deepEqual(fillStep({ before: 100, rendered: 20, after: 10, windowSize: 100 }),
-        { append: 10, after: 0, prepend: 70, before: 30 }, "the rows after it first");
-    assert.deepEqual(fillStep({ before: 30, rendered: 20, after: 0, windowSize: 100 }),
-        { append: 0, after: 0, prepend: 30, before: 0 }, "as many as there are");
+test("a list showing its last row with room under it renders rows before its first one, then goes to its end", () => {
+    assert.deepEqual(fillStep({ before: 100, rendered: 20, after: 10, windowSize: 100, gap: true }),
+        { append: 10, after: 0, prepend: 70, before: 30, toEnd: true }, "the rows after it first");
+    assert.deepEqual(fillStep({ before: 30, rendered: 20, after: 0, windowSize: 100, gap: true }),
+        { append: 0, after: 0, prepend: 30, before: 0, toEnd: true }, "as many as there are");
+});
+
+test("a list near its end with no room under its rows keeps the rows on screen: nothing before, no navigation", () => {
+    // The last row is below the screen, within the window: going to the end would move the view
+    assert.deepEqual(fillStep({ before: 100, rendered: 20, after: 10, windowSize: 100, gap: false }),
+        { append: 10, after: 0, prepend: 0, before: 100, toEnd: false });
+    assert.equal(fillStep({ before: 100, rendered: 20, after: 0, windowSize: 100, gap: false }), null);
 });
 
 test("a list with its window rendered, all its rows, or no row has nothing to fill", () => {
-    assert.equal(fillStep({ before: 100, rendered: 100, after: 500, windowSize: 100 }), null);
-    assert.equal(fillStep({ before: 100, rendered: 120, after: 500, windowSize: 100 }), null);
-    assert.equal(fillStep({ before: 0, rendered: 20, after: 0, windowSize: 100 }), null);
-    assert.equal(fillStep({ before: 100, rendered: 0, after: 500, windowSize: 100 }), null, "Sciter fills an empty list");
+    assert.equal(fillStep({ before: 100, rendered: 100, after: 500, windowSize: 100, gap: true }), null);
+    assert.equal(fillStep({ before: 100, rendered: 120, after: 500, windowSize: 100, gap: true }), null);
+    assert.equal(fillStep({ before: 0, rendered: 20, after: 0, windowSize: 100, gap: true }), null);
+    assert.equal(fillStep({ before: 100, rendered: 0, after: 500, windowSize: 100, gap: true }), null, "Sciter fills an empty list");
 });

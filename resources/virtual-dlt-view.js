@@ -198,10 +198,11 @@ export class VirtualDltTBody extends VirtualSelect {
         return items;
     }
 
-    // Fits the window first: the render may navigate (a jump, another view)
+    // Fits the window first: the render may navigate (a jump, another view).
+    // Not filled here: the render renders the rows itself, or clears them.
     render(props) {
         this.watchSize();
-        this.fitWindow();
+        this.fitWindow({ fill: false });
         return super.render(props);
     }
 
@@ -410,16 +411,23 @@ export class VirtualDltTBody extends VirtualSelect {
     // Sizes the sliding window of the list by its height (windowSize): when it
     // renders, is resized, or its rows change height (see watchSize). A window
     // of fewer rows than the list shows would crash Sciter. A window that grew
-    // is filled (VirtualList.fill): Sciter doesn't fill a list that got higher.
-    // Only a log table sizes its window: the line is measured by its header.
-    fitWindow() {
+    // is filled (`fill`, VirtualList.fill): Sciter doesn't fill a list that got
+    // higher. Only a log table sizes its window: the line is measured by its
+    // header. `changed`: only if the height of the list or of its header row
+    // changed since the last fit (a sizechange of a width only reads no row).
+    fitWindow({ fill = true, changed = false } = {}) {
         const vlist = this.vlist;
         if (!vlist) return;
-        const size = windowSize({ height: this.getBoundingClientRect().height, lineHeight: this.lineHeight() });
+        const height = this.getBoundingClientRect().height;
+        const header = this.parentElement?.$("thead>tr")?.getBoundingClientRect().height ?? 0;
+        const key = `${height}/${header}`;
+        if (changed && key === this._fitKey) return;
+        this._fitKey = key;
+        const size = windowSize({ height, lineHeight: this.lineHeight() });
         if (size === null || size === vlist.slidingWindowSize) return;
         const grew = size > vlist.slidingWindowSize;
         vlist.slidingWindowSize = size;
-        if (grew) this.fill();
+        if (grew && fill) this.fill();
     }
 
     // Fits the window when the list is resized (a window, the splitter, a page
@@ -430,8 +438,9 @@ export class VirtualDltTBody extends VirtualSelect {
     watchSize() {
         if (this._sizeWatched) return;
         this._sizeWatched = true;
-        this.on("sizechange", () => this.fitWindow());
-        this.parentElement?.$("thead")?.on("sizechange", () => this.fitWindow());
+        const fit = () => this.fitWindow({ changed: true });
+        this.on("sizechange", fit);
+        this.parentElement?.$("thead")?.on("sizechange", fit);
     }
 
     // The height of a row one line high, px: the lowest of the header row and

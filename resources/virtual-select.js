@@ -119,33 +119,47 @@ export class VirtualList extends Element {
     }
 
     // Renders rows up to the window, see fillStep: a list whose window grew
-    // shows a gap under its rows otherwise. The rows on screen stay as they are.
+    // shows a gap under its rows otherwise. The rows after the last one
+    // first; the room under the rows is measured once they are laid out, so
+    // rows before the first one come only at the end of the rows. The rows on
+    // screen stay where they are, but there.
     fill() {
+        if (!this.fillOnce(false)) return;
+        const last = this.lastElementChild;
+        const gap = !!last && last.getBoundingClientRect().bottom < this.getBoundingClientRect().bottom;
+        if (gap) this.fillOnce(true);
+    }
+
+    // A step of fill(), `gap`: the list shows its last row with room under it.
+    // @returns false if the list can't be filled (no list, a row gone)
+    fillOnce(gap) {
         const vlist = this.vlist;
-        if (!vlist) return;
+        if (!vlist) return false;
         const before = vlist.itemsBefore;
         const rendered = this.children.length;
-        const step = fillStep({ before, rendered, after: vlist.itemsAfter, windowSize: vlist.slidingWindowSize });
-        if (step === null) return;
-        const rows = (from, to) => {
-            const elements = [];
-            for (let index = from; index < to; ++index) {
-                const item = this.itemAt(index);
-                if (!item) return null; // gone meanwhile: the list asks for what there is when scrolled
-                elements.push(this.renderItem(item));
-            }
-            return elements;
-        };
-        const after = rows(before + rendered, before + rendered + step.append);
-        const prepended = after && rows(step.before, before);
-        if (!after || !prepended) return;
+        const step = fillStep({ before, rendered, after: vlist.itemsAfter, windowSize: vlist.slidingWindowSize, gap });
+        if (step === null) return true;
+        const after = this.rowsOf(before + rendered, before + rendered + step.append);
+        const prepended = after && this.rowsOf(step.before, before);
+        if (!after || !prepended) return false; // the list asks for what there is when scrolled
         if (after.length) this.append(after);
         if (prepended.length) this.prepend(prepended);
         vlist.itemsAfter = step.after;
         vlist.itemsBefore = step.before;
-        // Rows before are rendered at the end of the rows only: the rows on screen
-        // were pushed down by them, the last row goes back to the bottom
-        if (prepended.length) this.navigateTo("end");
+        if (step.toEnd) this.navigateTo("end"); // the rows before pushed the last one down
+        return true;
+    }
+
+    // The rendered rows of the items from..to - 1, null if one is gone (the
+    // view changed meanwhile)
+    rowsOf(from, to) {
+        const rows = [];
+        for (let index = from; index < to; ++index) {
+            const item = this.itemAt(index);
+            if (!item) return null;
+            rows.push(this.renderItem(item));
+        }
+        return rows;
     }
 
     // The list has more items after the ones it had (totalItems() grew, the
@@ -164,14 +178,12 @@ export class VirtualList extends Element {
             this.componentUpdate();
             return;
         }
-        for (let index = before + rendered; index < before + rendered + step.append; ++index) {
-            const item = this.itemAt(index);
-            if (!item) { // gone meanwhile: the list is rebuilt from what there is
-                this.componentUpdate();
-                return;
-            }
-            this.append(this.renderItem(item));
+        const rows = this.rowsOf(before + rendered, before + rendered + step.append);
+        if (!rows) { // gone meanwhile: the list is rebuilt from what there is
+            this.componentUpdate();
+            return;
         }
+        if (rows.length) this.append(rows);
         vlist.itemsAfter = step.after;
     }
 
