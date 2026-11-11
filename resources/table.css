@@ -71,6 +71,10 @@
     border-right: 1dip solid var(--border-color);
 }
 
+.log-table>tbody>tr {
+    background-color: var(--bg-row);
+}
+
 .log-table>tbody>tr:nth-child(even) {
     background-color: var(--bg-row-stripe);
 }
@@ -103,7 +107,7 @@
    background of the row shows through. Sciter takes var() in a gradient only
    in `background`, not in `background-image`. */
 .log-table>tbody>tr[rule-color="true"]>td:nth-child(2) {
-    background: linear-gradient(to right, var(--rule-color), transparent 33%);
+    background: linear-gradient(to right, var(--rule-color), transparent 25%);
     background-position: 1dip 0;
 }
 
@@ -216,7 +220,7 @@
 .log-table th.col-dlt-ctx,
 .log-table th.col-dlt-type,
 .log-table th.col-dlt-level { min-width: 50dip; }
-.log-table th.col-dlt-session,
+.log-table th.col-dlt-session { min-width: 70dip; }
 .log-table th.col-dlt-msgid { min-width: 50dip; }
 
 /* Android logcat */
@@ -294,22 +298,22 @@
     color: var(--log-debug);
 }
 
-/* Selection: the selected rows have the highlight (dimmed while the table
-   isn't focused), the current row (keyboard focus) a frame while it is */
+/* Selection: the selected rows have the theme's blue (paler while the table
+   isn't focused), the current row (keyboard focus) a frame while it is. The
+   theme's colors, not the system's: they don't change with the OS settings */
 .log-table>tbody>tr[row-selected="true"] {
-    background-color: color(highlight-nf);
-    color: color(highlight-text);
+    background-color: var(--bg-row-selected-inactive);
+    color: var(--text-row-selected);
 }
 
 .log-table>tbody:focus>tr[row-selected="true"] {
-    background-color: color(highlight-focus);
-    color: color(highlight-text);
+    background-color: var(--bg-row-selected);
 }
 
 /* box-shadow, not outline: Sciter paints the outline of a row of a scrolled
    virtual-list scrollTop lower (.ai/knowledge/sciter.md) */
 .log-table>tbody:focus>tr[row-current="true"] {
-    box-shadow: inset 0 0 0 1dip color(highlight-focus);
+    box-shadow: inset 0 0 0 1dip var(--border-row-current);
 }
 
 /* A notice by an element (the clipboard limit over the table, a refused

@@ -50,12 +50,19 @@
     /* Log table: the rows, the header, every second row */
     --bg-table: #fff;
     --bg-table-header: bisque;
-    --bg-row-stripe: lightgoldenrodyellow;
+    --bg-row: #ffffff;
+    --bg-row-stripe: #f0f0f0;
     /* The rows the search found, in both tables: the row and the stripe a bit darker */
     --bg-row-found: #ebebeb;
     --bg-row-found-stripe: #ebebc4;
     /* Text selected in the cells of a log table (text-selection.js), on any row */
     --bg-text-selected: #b4d5fe;
+    /* Selected rows of a log table: while the table is focused, while it isn't
+       (a paler blue), their text; the frame of the current row */
+    --bg-row-selected: #cae2fb;
+    --bg-row-selected-inactive: #c7daee;
+    --text-row-selected: #000;
+    --border-row-current: #cfe5fd;
     /* The anchor mark (table.css): its circle, the faint one on hover, the one
        of an anchor that can't be set (the limit) */
     --bg-anchor: #d6d6d6;
