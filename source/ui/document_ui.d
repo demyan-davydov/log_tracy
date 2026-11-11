@@ -3,7 +3,7 @@
 //! filter sets.
 module ui.document_ui;
 
-import domain.workspace : Workspace;
+import domain.document_store : DocumentStore;
 import domain.document : Document;
 import domain.document_id : DocumentId;
 import log_core.log_message : LogMessage;
@@ -16,7 +16,7 @@ import ui.search_view_fsm;
 /// views they show. Lives as long as its document; a reopened document gets a new one.
 final class DocumentUi : MainViewSink, MainViewCommands, SearchViewSink, SearchViewCommands
 {
-    private Workspace _workspace;
+    private DocumentStore _documents;
     private DocumentId _docId;
     private MainViewFsm _mainView;
     private SearchViewFsm _searchView;
@@ -28,9 +28,9 @@ final class DocumentUi : MainViewSink, MainViewCommands, SearchViewSink, SearchV
     bool searchViewChanged;
     bool closeRequested; // the machine asked to close the document
 
-    this(Workspace workspace, DocumentId docId)
+    this(DocumentStore documents, DocumentId docId)
     {
-        _workspace = workspace;
+        _documents = documents;
         _docId = docId;
         _mainView = makeMainViewFsm(this, this);
         _searchView = makeSearchViewFsm(this, this);
@@ -50,7 +50,7 @@ final class DocumentUi : MainViewSink, MainViewCommands, SearchViewSink, SearchV
     {
         if (_filters is null)
         {
-            auto doc = _workspace.doc(_docId);
+            auto doc = _documents.doc(_docId);
             _filters = new DocumentFilters(doc.format, doc.formatChoice.id, (filter) { doc.applyViewFilter(filter); });
         }
         return _filters;
@@ -89,12 +89,12 @@ final class DocumentUi : MainViewSink, MainViewCommands, SearchViewSink, SearchV
     // filter is stopped with it, the search alone
     bool cancelOperation()
     {
-        return _workspace.doc(_docId).requestCancel(Document.Operation.BuildFilterIndex);
+        return _documents.doc(_docId).requestCancel(Document.Operation.BuildFilterIndex);
     }
 
     bool cancelSearch()
     {
-        return _workspace.doc(_docId).requestCancel(Document.Operation.BuildSearchIndex);
+        return _documents.doc(_docId).requestCancel(Document.Operation.BuildSearchIndex);
     }
 
     void closeDocument()

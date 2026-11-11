@@ -1,5 +1,6 @@
-//! The application behind the window, free of Sciter: the open documents and
-//! their UI side, the settings, and what each call of the script does.
+//! The application behind the window, free of Sciter: the tabs of the documents and
+//! their UI side, the settings, and what each call of the script does. The documents
+//! are in a DocumentStore given by main(), each held by its tab.
 //!
 //! The session never calls the script: what the script is to be told
 //! (a document opened or closed, a view changed) is queued and taken by the
@@ -14,12 +15,13 @@ module ui.app_session;
 import domain.document;
 import domain.document_id;
 import domain.document_item : DocumentItem;
-import domain.workspace;
+import domain.document_store;
 import log_core.log_format : ColumnInfo, FormatChoice;
 import log_core.rule_filter : RuleId;
 import log_core.search_filter : MatchBuffer, MatchRange, SearchFilter;
 import ui.app_menu : hostMenuPlatform, MenuItem, MenuPlatform, WindowMenu, windowMenu;
 import ui.app_settings;
+import ui.document_tabs : DocumentTabs;
 import ui.document_ui : DocumentUi;
 import ui.filter_commands : DocumentFilters;
 import ui.table_columns : TableColumns;
@@ -60,7 +62,8 @@ alias FileShower = void delegate(string path);
 final class AppSession
 {
     private AppSettings _settings;
-    private Workspace _workspace;
+    private DocumentStore _documents; // given: others may hold its documents too
+    private DocumentTabs _tabs; // the documents of the window, each held by its tab
     private DocumentUi[DocumentId] _documentUis;
     private TableColumns _tableColumns; // the columns the tables show for each format
     private DocumentFactory _open;
@@ -75,14 +78,16 @@ final class AppSession
     private bool _offerPseudo; // the pseudo locale among the languages (PSEUDO_LOCALE=1)
     private string[] _startFiles; // to open once the window is up (OPEN_AT_START)
 
+    /// @param documents - where the documents of the tabs are kept
     /// @param open - opens a document (a LogDocument in the app)
     /// @param write - writes the settings, to their file if not given
     /// @param showInFolder - shows a file in the file manager, of the system if not given
-    this(AppSettings settings, DocumentFactory open, SettingsWriter write = null, FileShower showInFolder = null)
+    this(AppSettings settings, DocumentStore documents, DocumentFactory open, SettingsWriter write = null,
+        FileShower showInFolder = null)
     {
-        assert(open !is null);
+        assert(documents !is null && open !is null);
         _settings = settings;
-        _workspace = new Workspace();
+        _documents = documents;
         _tableColumns = new TableColumns();
         _open = open;
         _write = write !is null ? write : (in AppSettings s) { ui.app_settings.saveSettings(s); };
@@ -99,7 +104,7 @@ final class AppSession
         import std.stdio : writeln;
 
         try
-            _workspace.dispatchEvents();
+            _documents.dispatchEvents();
         catch (Exception e)
         {
             for (Throwable t = e; t !is null; t = t.next)
@@ -148,7 +153,7 @@ final class AppSession
 
     /// The event loop stopped: writes what changed since the settings were
     /// last written (without the state of the script, it can't be asked any
-    /// more) and closes all documents
+    /// more) and closes all tabs (closeAll)
     void finish()
     {
         if (_settingsChanged)
@@ -165,13 +170,14 @@ final class AppSession
 
     /// The application terminates (macOS: Quit, the Dock, logging out), the event
     /// loop won't return: writes the settings with `appStateJson` unless the
-    /// window already did (then the script isn't asked for it), and closes all
-    /// documents
+    /// window already did (then the script isn't asked for it), and closes every
+    /// document, those held by others too: main() doesn't get to close the store
     void terminate(lazy const(char)[] appStateJson)
     {
         if (!_closing)
             saveOnClose(appStateJson);
         finish();
+        _documents.closeAll();
     }
 
     /// Writes the settings with `appStateJson` (the script's getAppState())
@@ -201,11 +207,16 @@ final class AppSession
         _closing = true;
     }
 
-    /// Closes all documents, stopping their background operations
+    /// Closes all tabs: a document no one else holds is closed, its background
+    /// operations stopped
     void closeAll()
     {
         _documentUis = null;
-        _workspace.closeAll();
+        foreach (docId; _tabs.ids.dup)
+        {
+            _tabs.remove(docId);
+            _documents.release(docId);
+        }
     }
 
     // ── The documents ────────────────────────────────────────────────────────
@@ -216,19 +227,19 @@ final class AppSession
         return _settings;
     }
 
-    /// Returns: the id of the open document `id`, invalid if there is none
+    /// Returns: the id of the document of the tab `id`, invalid if there is none
     DocumentId findDocument(int id)
     {
-        foreach (item; _workspace.documents)
-            if (item.docId.toInt() == id)
-                return item.docId;
+        foreach (docId; _tabs.ids)
+            if (docId.toInt() == id)
+                return docId;
         return DocumentId.init;
     }
 
     /// The document `docId`, the null document (no rows) if it isn't open
     Document doc(DocumentId docId)
     {
-        return _workspace.doc(docId);
+        return _documents.doc(docId);
     }
 
     /// Opens `path` in a new tab, or shows its tab if it is open already
@@ -237,11 +248,16 @@ final class AppSession
         import std.stdio : writeln;
 
         writeln("Opening file: ", path);
-        const existing = _workspace.findBySourcePath(path);
+        const existing = _documents.findBySourcePath(path);
         if (existing.isValid)
         {
-            _workspace.setCurrent(existing);
-            rememberRecentFile(RecentFile(path, _workspace.doc(existing).formatChoice, nowMs()));
+            // Only the window opens files yet. A document another holder (an AI session)
+            // opened has no tab; giving it one needs its view machines started from the
+            // state of the document, not from a load: decided with the holders of branch mcp
+            // (docs/backlog.md, "Вкладка для документа другого держателя")
+            assert(_tabs.has(existing), "a document open without a tab");
+            _tabs.activate(existing);
+            rememberRecentFile(RecentFile(path, _documents.doc(existing).formatChoice, nowMs()));
             _scriptCalls ~= ScriptCall("onDocumentOpened", idOf(existing));
             return OpenResult(existing);
         }
@@ -250,11 +266,9 @@ final class AppSession
         {
             // Opened the way it was last time: the format may have been chosen by hand
             auto document = _open(path, savedFormat(_settings.recentFiles, path));
-            auto docId = _workspace.addDocument(document, path);
-            addDocumentUi(docId);
-            // The filters loaded for the file last time, before the list moves it
-            _documentUis[docId].filters.restore(savedFilters(_settings.recentFiles, path));
-            _workspace.setCurrent(docId);
+            auto docId = _documents.add(document, path); // held by its tab
+            addTab(docId, path);
+            _tabs.activate(docId);
             rememberRecentFile(RecentFile(path, document.formatChoice, nowMs()));
             _scriptCalls ~= ScriptCall("onDocumentOpened", idOf(docId));
             return OpenResult(docId);
@@ -286,7 +300,7 @@ final class AppSession
             return _catalog.translate(uiText("the document is not open"));
         const path = sourcePathOf(docId);
         // reopened in the format it had, not detected again
-        const choice = _workspace.doc(docId).formatChoice;
+        const choice = _documents.doc(docId).formatChoice;
         try
         {
             // Timings: both steps run on the UI thread and may block on a disk
@@ -299,7 +313,7 @@ final class AppSession
             // The filters the old document had, for the new one
             auto oldUi = _documentUis.get(docId, null);
             const filters = oldUi is null ? null : oldUi.filters.saved();
-            auto old = _workspace.replaceDocument(docId, fresh);
+            auto old = _documents.replace(docId, fresh);
             addDocumentUi(docId); // the new document starts with a new machine
             _documentUis[docId].filters.restore(filters);
             if (old !is null)
@@ -329,14 +343,14 @@ final class AppSession
     {
         const docId = findDocument(id);
         if (docId.isValid)
-            _workspace.setCurrent(docId);
+            _tabs.activate(docId);
     }
 
     void reorderTab(int id, int targetIndex)
     {
         const docId = findDocument(id);
         if (docId.isValid)
-            _workspace.moveDocumentBefore(docId, targetIndex);
+            _tabs.move(docId, targetIndex);
     }
 
     /// The open documents for the tabs: id, name, path, active, the views shown
@@ -345,14 +359,15 @@ final class AppSession
         import std.path : baseName;
 
         JSONValue[] docs;
-        foreach (item; _workspace.documents)
+        foreach (docId; _tabs.ids)
         {
-            auto ui = _documentUis.get(item.docId, null);
+            auto ui = _documentUis.get(docId, null);
+            const path = _documents.sourcePath(docId);
             docs ~= JSONValue([
-                "id": JSONValue(item.docId.toInt()),
-                "name": JSONValue(item.sourcePath.baseName),
-                "path": JSONValue(item.sourcePath),
-                "active": JSONValue(item.docId == _workspace.currentId),
+                "id": JSONValue(docId.toInt()),
+                "name": JSONValue(path.baseName),
+                "path": JSONValue(path),
+                "active": JSONValue(docId == _tabs.active),
                 "mainView": ui is null ? JSONValue(null) : toJson(ui.mainViewShown, &textForUser),
                 "searchView": ui is null ? JSONValue(null) : toJson(ui.searchViewShown, &textForUser)
             ]);
@@ -419,7 +434,7 @@ final class AppSession
         // a double: a message index above 2^31 doesn't fit an int
         if (!(messageIndex >= 0) || messageIndex >= size_t.max)
             return false;
-        auto doc = _workspace.doc(docId);
+        auto doc = _documents.doc(docId);
         auto view = searchView ? doc.searchView : doc.mainView;
         return view.positionOf(cast(size_t) messageIndex, position);
     }
@@ -432,7 +447,7 @@ final class AppSession
         if (!(messageIndex >= 0))
             return false;
         const index = messageIndex >= size_t.max ? size_t.max : cast(size_t) messageIndex;
-        return _workspace.doc(docId).mainView.nearestPositionOf(index, position);
+        return _documents.doc(docId).mainView.nearestPositionOf(index, position);
     }
 
     /// What the chips of the search found in the payload of a row of either
@@ -451,7 +466,7 @@ final class AppSession
         if (!item.found)
             return null;
         // null for another filter (none of the chips' searches)
-        auto search = cast(const(SearchFilter)) _workspace.doc(docId).searchFilter;
+        auto search = cast(const(SearchFilter)) _documents.doc(docId).searchFilter;
         return search is null ? null : search.matchRanges(item.message(), buffer);
     }
 
@@ -464,7 +479,7 @@ final class AppSession
     {
         import domain.anchors : Anchors;
 
-        auto doc = _workspace.doc(docId);
+        auto doc = _documents.doc(docId);
         const change = messageIndex < 0 ? AnchorChange(AnchorRefusal.busy)
             : doc.setAnchor(cast(size_t) messageIndex, value);
         JSONValue json = ["full": doc.anchorsFull];
@@ -510,7 +525,7 @@ final class AppSession
             auto filter = SearchFilter.fromChips(chips);
             if (!docId.isValid)
                 return _catalog.translate(uiText("the document is not open"));
-            _workspace.doc(docId).applySearchFilter(filter); // null clears the search
+            _documents.doc(docId).applySearchFilter(filter); // null clears the search
             // the history of the file, remembered as its filters are (the
             // latest query again changes nothing)
             if (filter !is null)
@@ -550,7 +565,7 @@ final class AppSession
         const path = sourcePathOf(docId);
         if (!path.length)
             return "null";
-        auto document = _workspace.doc(docId);
+        auto document = _documents.doc(docId);
         const format = document.format;
         return JSONValue([
             "name": JSONValue(path.baseName),
@@ -696,7 +711,7 @@ final class AppSession
     /// The Columns section of the Settings dialog, the format of the active document first
     string columnSettingsJson()
     {
-        return ui.app_settings.columnSettingsJson(_settings.columnLayouts, _workspace.current.formatChoice.id);
+        return ui.app_settings.columnSettingsJson(_settings.columnLayouts, _documents.doc(_tabs.active).formatChoice.id);
     }
 
     /// Saved by the Settings dialog: {format id: [{"id", "visible"}]}
@@ -714,7 +729,7 @@ final class AppSession
     {
         import std.stdio : writeln;
 
-        auto events = _workspace.events;
+        auto events = _documents.events;
         events.subscribe((const DocumentEvent!OperationStarted e) {
             writeln("Operation ", e.event.operation, " started, doc ", e.docId.toInt());
             processDocumentEvent(e.docId, e.event);
@@ -726,7 +741,7 @@ final class AppSession
             processDocumentEvent(e.docId, e.event);
         });
         events.subscribe((const DocumentEvent!SourceLost e) {
-            writeln("Source lost, doc ", e.docId.toInt(), ": ", _workspace.displayName(e.docId));
+            writeln("Source lost, doc ", e.docId.toInt(), ": ", _documents.sourcePath(e.docId));
             processDocumentEvent(e.docId, e.event);
         });
         events.subscribe((const DocumentEvent!OperationFinished e) {
@@ -763,18 +778,28 @@ final class AppSession
 
     private void addDocumentUi(DocumentId docId)
     {
-        _documentUis[docId] = new DocumentUi(_workspace, docId);
+        _documentUis[docId] = new DocumentUi(_documents, docId);
         // its machines start showing at once: their first views are queued
     }
 
-    /// Closes the document; its file is marked used now in the recent list
+    /// A tab for the document `docId` just opened from the file `path` (held by the tab),
+    /// after the others, with its UI side and the filters the file had last time (before
+    /// the recent list moves it)
+    private void addTab(DocumentId docId, string path)
+    {
+        _tabs.add(docId);
+        addDocumentUi(docId);
+        _documentUis[docId].filters.restore(savedFilters(_settings.recentFiles, path));
+    }
+
+    /// Closes the tab of the document, which lets it go: closed unless another holds
+    /// it. Its file is marked used now in the recent list.
     private void closeDocument(DocumentId docId)
     {
         const path = sourcePathOf(docId);
         _documentUis.remove(docId);
-        auto doc = _workspace.removeDocument(docId);
-        if (doc !is null)
-            doc.destroy();
+        if (_tabs.remove(docId))
+            _documents.release(docId);
         if (path.length)
         {
             _settings.recentFiles = withFilesUsed(_settings.recentFiles, [path], nowMs());
@@ -794,22 +819,19 @@ final class AppSession
         _settingsChanged = true;
     }
 
-    /// Files of the open documents, in the order of the tabs
+    /// Files of the documents of the tabs, in their order
     private const(string)[] openPaths()
     {
         string[] paths;
-        foreach (item; _workspace.documents)
-            paths ~= item.sourcePath;
+        foreach (docId; _tabs.ids)
+            paths ~= _documents.sourcePath(docId);
         return paths;
     }
 
     /// Returns: the path of the document, null if it isn't open
     private string sourcePathOf(DocumentId docId)
     {
-        foreach (item; _workspace.documents)
-            if (item.docId == docId)
-                return item.sourcePath;
-        return null;
+        return _documents.sourcePath(docId);
     }
 
     private static int idOf(DocumentId docId)
@@ -912,6 +934,7 @@ version (unittest)
         }
 
         AppSession session;
+        DocumentStore store; // the session's documents: others may hold them too
         Records records;
 
         static Fixture make(AppSettings settings = AppSettings.init)
@@ -919,7 +942,8 @@ version (unittest)
             Fixture f;
             auto records = new Records();
             f.records = records;
-            f.session = new AppSession(settings, (string path, FormatChoice choice) {
+            f.store = new DocumentStore();
+            f.session = new AppSession(settings, f.store, (string path, FormatChoice choice) {
                 records.lastChoice = choice;
                 if (path.canFind("missing"))
                     throw new Exception("no such file");
@@ -1050,6 +1074,22 @@ unittest
     assert(f.session.takeScriptCalls().length, "the views of b are still told");
 }
 
+@("AppSession: a tab closed keeps its document open while another holder holds it")
+unittest
+{
+    auto f = Fixture.make();
+    const id = f.session.openFile("/logs/a.log").docId;
+    assert(f.store.hold(id)); // an AI session, say
+
+    f.session.closeTab(cast(int) id.toInt());
+    assert(!f.session.findDocument(cast(int) id.toInt()).isValid, "no tab");
+    assert(parseJSON(f.session.workspaceInfoJson()).array.length == 0);
+    assert(f.store.doc(id) is f.docOf("/logs/a.log"), "still open for its holder");
+
+    f.store.release(id);
+    assert(!f.store.isOpen(id), "closed by its last holder");
+}
+
 @("AppSession: the settings are written from the idle loop, once for the changes before it")
 unittest
 {
@@ -1125,6 +1165,16 @@ unittest
     assert(pathsOf(f.writes[0].recentFiles) == ["/logs/a.log"]);
     assert(f.session.closing);
     assert(f.session.findDocument(cast(int) id.toInt()) == DocumentId.init, "documents closed");
+}
+
+@("AppSession: the application terminates: documents held by others are closed too")
+unittest
+{
+    auto f = Fixture.make();
+    const id = f.session.openFile("/logs/a.log").docId;
+    f.store.hold(id); // an AI session, say: main() never closes the store on this path
+    f.session.terminate(`{}`);
+    assert(!f.store.isOpen(id), "no document is left with its threads running");
 }
 
 @("AppSession: terminating after the window closed keeps what the window wrote")
@@ -1269,7 +1319,7 @@ unittest
     import domain.log_document : LogDocument;
 
     AppSettings[] written;
-    auto session = new AppSession(AppSettings.init,
+    auto session = new AppSession(AppSettings.init, new DocumentStore(),
         (string path, FormatChoice choice) => cast(Document) new LogDocument(path, choice),
         (in AppSettings s) { written ~= AppSettings(s); });
     scope (exit) session.closeAll();
@@ -1296,7 +1346,7 @@ unittest
     write(path, "a timeout here\nnothing\nanother timeout\n" ~ "filler\n".replicate(500_000));
     scope (exit) remove(path);
 
-    auto session = new AppSession(AppSettings.init,
+    auto session = new AppSession(AppSettings.init, new DocumentStore(),
         (string path, FormatChoice choice) => cast(Document) new LogDocument(path, choice),
         (in AppSettings s) {});
     scope (exit) session.closeAll();

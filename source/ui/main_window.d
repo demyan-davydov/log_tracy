@@ -384,8 +384,8 @@ class MainWindow : SciterWindow
         return path;
     }
 
-    /// Writes what is left of the settings and closes all documents,
-    /// stopping their background operations. Call after the event loop has stopped.
+    /// Writes what is left of the settings and closes all tabs: their documents no one
+    /// else holds stop their background operations. Call after the event loop has stopped.
     void closeAllDocuments()
     {
         _session.finish();
@@ -393,7 +393,7 @@ class MainWindow : SciterWindow
 
     /// The application terminates and the event loop won't return (macOS: Quit, the Dock,
     /// logging out): writes the settings with the state of the script, unless the window
-    /// already closed, and closes all documents
+    /// already closed, and closes all documents, those held by others too
     void terminate()
     {
         _session.terminate(appStateOfScript());
