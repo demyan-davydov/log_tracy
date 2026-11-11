@@ -1,6 +1,7 @@
 module log_core.log_format;
 
 import log_core.log_message : LogMessage, TimeKind;
+import log_core.text_encoding : TextEncoding;
 
 //! What a column of the log table shows and how
 enum ColumnKind : ubyte
@@ -94,11 +95,13 @@ struct FormatInfo
 }
 
 //! The format a file was opened with, to open it the same way again:
-//! the detector (FormatInfo.id) and the variant it created
+//! the detector (FormatInfo.id), the variant it created and the encoding of
+//! the text it read
 struct FormatChoice
 {
     string id; // empty: none, the format is to be detected
     int variant;
+    TextEncoding encoding; // of a text format; utf8 for a binary one
 
     bool isSet() const pure nothrow @nogc @safe
     {

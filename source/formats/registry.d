@@ -3,6 +3,8 @@ module formats.registry;
 import utils.ui_text : uiText, UiTextException;
 
 import log_core.log_format;
+import log_core.text_encoding : guessUtf16, TextEncoding, utf16ByBom, utf8Head;
+import log_core.text.text_format : TextFormat;
 import formats.dlt.format : DltDetector;
 import formats.access_log : AccessLogDetector;
 import formats.can.candump : CandumpDetector;
@@ -14,6 +16,8 @@ import formats.can.vector_asc : AscDetector;
 
 import std.algorithm : canFind, countUntil, filter, map, min;
 import std.array : array;
+
+version (unittest) import log_core.log_message : LogMessage;
 
 //! Bytes from the start of the data the detectors look at
 enum size_t detectionHeadSize = 64 * 1024;
@@ -28,41 +32,98 @@ LogFormat detectFormat(string path, const(ubyte)[] data)
 }
 
 //! @brief Picks the format that fits the data best.
-//! @param choice - set to the detector and variant picked, to open the data
-//! the same way later with createFormat()
+//! @param choice - set to the detector, variant and encoding picked, to open
+//! the data the same way later with createFormat()
 //! @throws Exception if no format fits
 LogFormat detectFormat(string path, const(ubyte)[] data, out FormatChoice choice)
 {
     const head = data[0 .. min(data.length, detectionHeadSize)];
-
     auto all = detectors();
-    size_t best = all.length;
-    Detection bestDetection;
-    foreach (i, detector; all)
+
+    auto best = bestDetector(all, path, head);
+    const(ubyte)[] text = head;
+    auto encoding = utf16ByBom(head);
+    const bool bom = encoding != TextEncoding.utf8;
+    if (!bom)
+        encoding = guessUtf16(head);
+    if (encoding != TextEncoding.utf8)
     {
-        const detection = detector.detect(path, head);
-        if (detection.score > bestDetection.score)
+        // With a byte order mark UTF-16 is taken when a format reads it; a guess
+        // only over a weaker reading of the data as it is (a mere extension):
+        // a binary format may have zero bytes, or bytes like a byte order mark
+        const utf8Text = utf8Head(head, encoding);
+        const utf16 = bestDetector(all, path, utf8Text);
+        if (!utf16.isNone && (bom || utf16.detection.score > best.detection.score))
         {
-            best = i;
-            bestDetection = detection;
+            best = utf16;
+            text = utf8Text;
         }
+        else
+            encoding = TextEncoding.utf8;
     }
 
-    if (best == all.length)
+    if (best.isNone)
         throw new UiTextException(uiText("not a log of a format DLT Explorer can read"));
-    choice = FormatChoice(all[best].info.id, bestDetection.variant);
-    return all[best].create(bestDetection.variant, head);
+    choice = FormatChoice(all[best.index].info.id, best.detection.variant, encoding);
+    return withEncoding(all[best.index].create(best.detection.variant, text), encoding);
 }
 
 //! @brief Creates the format chosen before (by detection or by the user),
 //! without detecting it again
-//! @throws Exception if no format has the id of `choice`
+//! @throws Exception if no format has the id of `choice`, or the data is
+//! not in its encoding: the format is to be detected again
 LogFormat createFormat(FormatChoice choice, const(ubyte)[] data)
 {
+    const raw = data[0 .. min(data.length, detectionHeadSize)];
+    // The file may have been written again in another encoding since (a log
+    // rotated over the same path): every line would come out broken
+    auto looks = utf16ByBom(raw);
+    if (looks == TextEncoding.utf8)
+        looks = guessUtf16(raw);
+    if (looks != choice.encoding)
+        throw new UiTextException(uiText("not a log of a format DLT Explorer can read"));
+    const head = utf8Head(raw, choice.encoding);
     foreach (detector; detectors())
         if (detector.info.id == choice.id)
-            return detector.create(choice.variant, data[0 .. min(data.length, detectionHeadSize)]);
+            return withEncoding(detector.create(choice.variant, head), choice.encoding);
     throw new UiTextException(uiText("unknown log format \"{format}\"", "format", choice.id));
+}
+
+private struct Best
+{
+    size_t index = size_t.max; // in the detectors
+    Detection detection;
+
+    bool isNone() const pure nothrow @nogc @safe
+    {
+        return index == size_t.max;
+    }
+}
+
+private Best bestDetector(const(FormatDetector)[] all, string path, const(ubyte)[] head)
+{
+    Best best;
+    foreach (i, detector; all)
+    {
+        const detection = detector.detect(path, head);
+        if (detection.score > best.detection.score)
+            best = Best(i, detection);
+    }
+    return best;
+}
+
+//! @returns `format` reading text in `encoding`
+//! @throws Exception if the format is not a text one but the encoding is UTF-16
+private LogFormat withEncoding(LogFormat format, TextEncoding encoding)
+{
+    static import log_core.text.text_format;
+
+    if (encoding == TextEncoding.utf8)
+        return format;
+    auto text = cast(TextFormat) format;
+    if (text is null)
+        throw new UiTextException(uiText("not a log of a format DLT Explorer can read"));
+    return log_core.text.text_format.inEncoding(text, encoding);
 }
 
 //! @returns the format with the id, or FormatInfo.init if there is none
@@ -246,6 +307,121 @@ unittest
     assert(cast(LogcatFormat) createFormat(choice, logcat) !is null);
     assert(createFormat(choice, logcat).columns == detectFormat("x.txt", logcat).columns,
         "the same variant");
+}
+
+@("detectFormat: a log in UTF-16 with or without a byte order mark")
+unittest
+{
+    import log_core.text_encoding : TextEncoding, utf16Bytes;
+    import formats.plain_text : plainTextFormatInfo;
+
+    const text = "notes: Привет \u0A0A\r\nmore, 世界\r\n";
+    foreach (encoding; [TextEncoding.utf16le, TextEncoding.utf16be])
+        foreach (bom; [true, false])
+        {
+            const data = utf16Bytes(text, encoding, bom);
+            FormatChoice choice;
+            auto format = detectFormat("x.txt", data, choice);
+            assert(choice == FormatChoice(plainTextFormatInfo.id, 0, encoding));
+
+            size_t[4] offsets;
+            const r = format.scanRecords(data, 0, offsets[], true);
+            assert(r.count == 2, "a record per line");
+            LogMessage!wchar msg;
+            assert(format.decode(msg, format.recordAt(data, offsets[0])));
+            assert(msg.payloadText == "notes: Привет \u0A0A"w);
+        }
+}
+
+@("detectFormat: a syslog in UTF-16 is syslog, read from UTF-16")
+unittest
+{
+    import log_core.text_encoding : TextEncoding, utf16Bytes;
+    import formats.syslog.syslog : syslogFormatInfo;
+
+    const text = "Nov  3 14:22:01 host sshd[812]: a\nNov  3 14:22:02 host cron[9]: b\n";
+    const data = utf16Bytes(text, TextEncoding.utf16le, true);
+    FormatChoice choice;
+    auto format = detectFormat("syslog", data, choice);
+    assert(choice.id == syslogFormatInfo.id && choice.encoding == TextEncoding.utf16le);
+
+    LogMessage!wchar msg;
+    assert(format.decode(msg, format.recordAt(data, 2)) && msg.payloadText == "a"w);
+}
+
+@("createFormat: the saved encoding is read again")
+unittest
+{
+    import log_core.text_encoding : TextEncoding, utf16Bytes;
+    import formats.plain_text : plainTextFormatInfo;
+
+    const data = utf16Bytes("one\ntwo\n", TextEncoding.utf16be);
+    auto format = createFormat(FormatChoice(plainTextFormatInfo.id, 0, TextEncoding.utf16be), data);
+    LogMessage!wchar msg;
+    assert(format.decode(msg, format.recordAt(data, 8)) && msg.payloadText == "two"w);
+}
+
+@("detectFormat: text and binary data without a UTF-16 look stay as they are (a guard, not of the order of the passes)")
+unittest
+{
+    import log_core.text_encoding : TextEncoding;
+    import std.exception : assertThrown;
+
+    FormatChoice choice;
+    detectFormat("x.txt", cast(const(ubyte)[]) "plain\n", choice);
+    assert(choice.encoding == TextEncoding.utf8);
+    assertThrown(detectFormat("x.bin", cast(const(ubyte)[])[0x01, 0x00, 0x00, 0x00, 0x02, 0x00]),
+        "binary data is no UTF-16");
+}
+
+@("detectFormat: binary data after a UTF-16 byte order mark is still read as it is")
+unittest
+{
+    import formats.dlt.format : DltFormat;
+    import formats.dlt.testing_utils : buildDltMessage;
+    import log_core.text_encoding : TextEncoding;
+
+    FormatChoice choice;
+    auto format = detectFormat("x.log", cast(const(ubyte)[])[0xFF, 0xFE] ~ buildDltMessage(), choice);
+    assert(cast(DltFormat) format !is null);
+    assert(choice.encoding == TextEncoding.utf8);
+}
+
+@("detectFormat: UTF-16 text without a byte order mark wins over a mere .dlt extension")
+unittest
+{
+    import log_core.text_encoding : TextEncoding, utf16Bytes;
+    import formats.plain_text : plainTextFormatInfo;
+
+    FormatChoice choice;
+    detectFormat("trace.dlt", utf16Bytes("notes\nmore notes\n", TextEncoding.utf16le), choice);
+    assert(choice == FormatChoice(plainTextFormatInfo.id, 0, TextEncoding.utf16le));
+}
+
+@("createFormat: data in another encoding than the saved one is an error, to detect it again")
+unittest
+{
+    import log_core.text_encoding : TextEncoding, utf16Bytes;
+    import formats.plain_text : plainTextFormatInfo;
+    import std.exception : assertNotThrown, assertThrown;
+
+    const id = plainTextFormatInfo.id;
+    assertThrown(createFormat(FormatChoice(id, 0, TextEncoding.utf16le), cast(const(ubyte)[]) "one\n"));
+    assertThrown(createFormat(FormatChoice(id), utf16Bytes("one\n", TextEncoding.utf16le, true)));
+    assertThrown(createFormat(FormatChoice(id, 0, TextEncoding.utf16le), utf16Bytes("one\n", TextEncoding.utf16be)));
+    assertNotThrown(createFormat(FormatChoice(id, 0, TextEncoding.utf16le), utf16Bytes("one\n", TextEncoding.utf16le)));
+    assertNotThrown(createFormat(FormatChoice(id), null), "nothing to contradict the choice");
+}
+
+@("createFormat: UTF-16 for a format that is not a text one is an error")
+unittest
+{
+    import log_core.text_encoding : TextEncoding, utf16Bytes;
+    import formats.dlt.format : dltFormatInfo;
+    import std.exception : assertThrown;
+
+    assertThrown(createFormat(FormatChoice(dltFormatInfo.id, 0, TextEncoding.utf16le),
+        utf16Bytes("text\n", TextEncoding.utf16le, true)));
 }
 
 @("createFormat: an unknown format id is an error")
