@@ -79,6 +79,18 @@ agent can't drive it. In scapp a plain
 - Changing `src` of an existing `<style>` doesn't reload it: replace the element
   (`resources/theme.js` `applyTheme`). A `<style>` created at run time with `innerHTML` or
   `src` does apply.
+- No built-in input groups the digits of a number as it is typed (6.0.5.5): `input` of type
+  `integer`, `number`, `decimal` and even `<output type="integer">` show `1234567`;
+  `type="masked"` has a fixed number of groups (a card, an IP), wrong for a number of any
+  length. Formatting while typing is done by script, as the SDK's
+  <sciter-js-sdk>/widgets/input-ex/inputex.js does (a port of Cleave.js): a class extending `Element`,
+  bound by CSS (`numeral { style-set: edit-plus; prototype: NumeralInput url(inputex.js); }`,
+  `@set edit-plus < std-edit` gives the element the behaviour of an edit box), handlers as
+  methods (`["on change"]`, `["on keydown"]` to tell Backspace, `["on exec:edit:copy"]` to
+  copy without the delimiters); on each change it formats `this.value` anew and puts the
+  caret back (`this.edit.selectionEnd`, then `this.edit.selectRange(pos, pos)`): at the end
+  it stays at the end, elsewhere it moves by one for a delimiter added or removed before it
+  (getNextCursorPosition of its utils/Util.js). Counting the digits before the caret is more exact.
 
 ## Events
 
