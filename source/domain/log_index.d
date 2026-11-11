@@ -1,6 +1,8 @@
-//! The indexes of a log and their building in the background: the offset
-//! index of its records, the filter index of the main view and the search
-//! index, read by the UI thread while the indexing thread grows them.
+//! The indexes of a log and their building in the background: the holder of its records
+//! (domain/index/record_store) and of the rows of its views (domain/index/views), which
+//! brings them up to date a pass at a time on a worker thread and its task pool while the
+//! UI thread reads them. It is what synchronizes its parts and decides their lifetime: the
+//! parts themselves are not thread-safe.
 module domain.log_index;
 
 import utils.ui_text : uiText, uiTextOf, UiText, UiTextException;
@@ -10,9 +12,12 @@ import log_core.log_filter;
 import log_core.log_format;
 import log_core.byte_source;
 
-import domain.index.offset_index;
-import domain.index.filter_index;
-import domain.index.search_index;
+import domain.index.match_scan : scanMatches;
+static import match_scan = domain.index.match_scan;
+import domain.index.match_stage : MatchStage;
+import domain.index.progress : ProgressReporter;
+import domain.index.record_store : Records, RecordStore;
+import domain.index.views : ViewIndexes;
 import domain.anchors;
 import utils.background_slot;
 import domain.document_item;
@@ -24,8 +29,6 @@ import utils.lock_guard;
 
 import std.typecons;
 
-import core.atomic : atomicLoad, atomicStore;
-import core.stdc.stdint : uint16_t, uint32_t;
 import core.sync.mutex : Mutex;
 
 alias Filter = LogFilter!wchar;
@@ -50,35 +53,27 @@ struct PassFinished
     Document.Operation failed;
 }
 
-//! @brief Holds the data of a log and its indexes.
-//! Responsible for:
-//!   * Creating and maintaining indexes,
-//!   * Bringing them up to date in the background, a pass at a time (runPass):
-//!     each index over the range it doesn't cover yet, and
-//!     providing safe concurrent access to them from the GUI thread and the indexing thread.
-//!
-//! @brief This struct is not thread-safe. It is assumed that all access occurs
-//! from the GUI thread only. It does, however, provide safe background index updates
-//! and concurrent read access to the log content.
+//! @brief The indexes of a log and the passes that bring them up to date.
+//! Its own methods are called from the UI thread only. A pass runs on the worker thread
+//! of its BackgroundSlot and scans on the task pool; the mutex makes what it appends
+//! (records, rows) safe to read from the UI thread meanwhile. What the parts are told
+//! between passes (setViewFilter, ...) is told while no pass runs.
+//! It closes the records only once no pass reads them: the destructor stops and joins the
+//! worker first, and a scan returns only once its blocks are done (utils/parallel_scan).
 struct LogIndex
 {
     private alias ScopedMutex = typeof(scoped!Mutex());
 
-    private ByteSource _source; // log data, owned: closed by the destructor
-    private LogFormat _format; // splits the data into records and decodes them
-    private OffsetIndex _offsetIndex; // indecies of messages in the source file
-    private FilterIndex _filterIndex; // indecies of messages that match the filter
-    private SearchIndex _searchIndex; // indecies of messages that match the search
-    private bool _viewIsFiltered = false; // filtered view is enabled
+    private RecordStore _store; // the bytes, the format and the offsets of the records: closed by the destructor
+    private ViewIndexes _views; // the rows of the main and the search view
+    private MatchStage _view = MatchStage(false); // the filter of the main view
+    private MatchStage _search = MatchStage(true); // the search: with no filter, it lists the anchors
 
-    enum bunchSize = 32; // number of messages to process in one bunch
-
-    //! Records a thread filters or searches at a time: a block's matches are
-    //! at most 64 KB, and a few blocks per thread are held (utils/parallel_scan)
-    enum scanBlockLength = 16 * 1024;
+    //! Records a thread filters or searches at a time (domain/index/match_scan)
+    enum scanBlockLength = match_scan.scanBlockLength;
 
     //! Records a block scans between its checks of a cancel and of a lost file
-    enum stopCheckRecords = 256;
+    enum stopCheckRecords = match_scan.stopCheckRecords;
 
     //! Records a stage of a pass takes at a time while another stage follows
     //! it: the views of the stages after it get their rows that often
@@ -86,68 +81,24 @@ struct LogIndex
 
     alias Operation = Document.Operation;
 
-    enum progressStep = 0.01f; // minimal progress change worth an event
+    // ── What a pass brings up to date (see runPass), besides the parts. Written by the UI
+    // thread while no pass runs, and by the worker of a pass; read by both likewise ──
 
-    // ── What a pass brings up to date (see runPass). Written by the UI thread
-    // while no pass runs, and by the worker of a pass; read by both likewise ──
-
-    private size_t _scannedBytes; // the bytes of the source split into records
     private size_t _seenBytes; // the bytes the source had when a pass last caught up with it
     private bool _loaded; // a pass reached the end of the source once: the load is over
-    private Filter _viewFilter; // of the main view, null: none
-    private size_t _filterScanned; // the records the filter index covers
-    private bool _filterStopped; // the filter was cancelled or failed: its index is left as it is
-    private Filter _searchFilter; // null: the search view lists the anchors only
-    private size_t _searchScanned; // the positions of the main view the search index covers
-    private bool _searchStopped; // the search was cancelled or failed: nothing is listed
     private Anchors _anchors; // as they were when last told: the worker reads them
-    private bool _reportFilter, _reportSearch; // the stage was asked for and didn't complete yet
     private bool _grownUntold; // rows no operation tells of were added, ContentGrown is to be published
 
     private BackgroundSlot _backgroundSlot;
-    private ScopedMutex _mutex; // mutex for building indexes
+    private ScopedMutex _mutex; // guards what a pass appends to the parts, against the UI thread
     private SignalProducer _events; // operation events, published from the worker thread
-
-    //! @brief Publishes the throttled progress of the stages of a pass in one
-    //! event (events of one type override each other in the queue)
-    private struct ProgressReporter
-    {
-        SignalProducer events;
-        BackgroundSlot.Ctx* ctx;
-        float[Operation.max + 1] published = -1;
-
-        void report(float load, float filter, float search)
-        {
-            float[Operation.max + 1] values;
-            values[Operation.BuildOffsetIndex] = load;
-            values[Operation.BuildFilterIndex] = filter;
-            values[Operation.BuildSearchIndex] = search;
-            bool worth = false;
-            foreach (i, value; values)
-            {
-                if (value != value) // not running
-                    continue;
-                ctx.progress = value;
-                if ((value >= 1.0f && published[i] < 1.0f) || value - published[i] >= progressStep
-                    || value < published[i])
-                    worth = true;
-            }
-            if (!worth)
-                return;
-            foreach (i, value; values)
-                if (value == value)
-                    published[i] = value;
-            events.publish(OperationProgress(values));
-        }
-    }
 
     @disable this(this); // copy constructor is disabled
 
     this(ByteSource source, LogFormat format, SignalProducer events)
     {
         _events = events;
-        _source = source;
-        _format = format;
+        _store = new RecordStore(source, format);
 
         _backgroundSlot = BackgroundSlot(null);
 
@@ -158,18 +109,23 @@ struct LogIndex
 
     ~this()
     {
-        // Fields are destroyed in reverse declaration order, so _mutex and
-        // _source would go before _backgroundSlot joins the worker that uses
-        // them. Stop the worker explicitly first.
+        // Fields are destroyed in reverse declaration order, so _mutex would go
+        // before _backgroundSlot joins the worker that uses it, and the records
+        // must not be closed while it reads them. Stop the worker explicitly first.
         _backgroundSlot.shutdown();
-        if (_source !is null) // null if the owner failed before constructing it
-            _source.close();
+        if (_store !is null) // null if the owner failed before constructing it
+            _store.close();
+    }
+
+    private Mutex mutex() pure nothrow @nogc
+    {
+        return cast(Mutex) _mutex;
     }
 
     //! The format of the log
     const(LogFormat) format() const pure nothrow @nogc
     {
-        return _format;
+        return _store.format;
     }
 
     //! Asks the running pass to stop: it ends as cancelled, and what it brought
@@ -195,20 +151,10 @@ struct LogIndex
     void setViewFilter(Filter filter, Anchors anchors)
     {
         assert(!busy, "a pass is running");
-        synchronized (cast(Mutex)_mutex)
-        {
-            _viewIsFiltered = filter !is null;
-            _filterIndex.clear();
-            _searchIndex.clear();
-        }
-        _viewFilter = filter;
-        _filterScanned = 0;
-        _filterStopped = false;
-        _reportFilter = true;
-        _searchFilter = null;
-        _searchScanned = 0;
-        _searchStopped = false;
-        _reportSearch = false; // the search asked for went with the view it ran over
+        synchronized (mutex)
+            _views.filterMain(filter !is null);
+        _view.restart(filter);
+        _search.restart(null, false); // the search asked for went with the view it ran over
         _anchors = anchors;
     }
 
@@ -217,12 +163,9 @@ struct LogIndex
     void setSearchFilter(Filter filter, Anchors anchors)
     {
         assert(!busy, "a pass is running");
-        synchronized (cast(Mutex)_mutex)
-            _searchIndex.clear();
-        _searchFilter = filter;
-        _searchScanned = 0;
-        _searchStopped = false;
-        _reportSearch = true;
+        synchronized (mutex)
+            _views.clearSearch();
+        _search.restart(filter);
         _anchors = anchors;
     }
 
@@ -231,20 +174,20 @@ struct LogIndex
     void stopSearch()
     {
         assert(!busy, "a pass is running");
-        synchronized (cast(Mutex)_mutex)
-            _searchIndex.clear();
-        _searchFilter = null;
-        _searchStopped = true;
-        _reportSearch = false;
+        synchronized (mutex)
+            _views.clearSearch();
+        _search.filter = null;
+        _search.stop();
     }
 
     //! The filter was cancelled or failed: the main view is left with what
-    //! was found, and no pass fills it until a filter is asked for
+    //! was found, and no pass fills it until a filter is asked for. A filter
+    //! that was stopped stops the search with it; a search asked for after
+    //! that runs over what the main view has
     void stopViewFilter()
     {
         assert(!busy, "a pass is running");
-        _filterStopped = true;
-        _reportFilter = false;
+        _view.stop();
         stopSearch();
     }
 
@@ -253,26 +196,19 @@ struct LogIndex
     bool behind()
     {
         assert(!busy, "a pass is running");
-        if (_source.lost)
+        if (_store.lost)
             return false;
-        if (_source.data.length != _seenBytes)
+        if (_store.data.length != _seenBytes)
             return true;
-        if (filterBehind(_offsetIndex.length))
+        if (_view.behind(_store.length))
             return true;
-        return searchBehind(viewLength());
+        return _search.behind(viewLength());
     }
-
-    private bool filterLive() const pure nothrow @nogc => _viewFilter !is null && !_filterStopped;
-    // A filter that was stopped stops the search with it (stopViewFilter); a
-    // search asked for after that runs over what the main view has
-    private bool searchLive() const pure nothrow @nogc => !_searchStopped;
-    private bool filterBehind(size_t records) const pure nothrow @nogc => filterLive && _filterScanned < records;
-    private bool searchBehind(size_t positions) const pure nothrow @nogc => searchLive && _searchScanned < positions;
 
     //! The rows of the main view. For the worker, or while no pass runs
     private size_t viewLength() const pure nothrow @nogc
     {
-        return _viewIsFiltered ? _filterIndex.length : _offsetIndex.length;
+        return _views.mainLength(_store.length);
     }
 
     //! @brief Starts a pass in the background: it brings the indexes up to
@@ -316,7 +252,7 @@ struct LogIndex
                 finished.result = OperationFinished.Result.Failed;
                 finished.error = uiTextOf(e); // its template: translated where it is shown
                 // A lost source fails whatever stage reads it
-                finished.failed = _source.lost ? Operation.None : stage;
+                finished.failed = _store.lost ? Operation.None : stage;
             }
         }, () { events.publish(finished); });
 
@@ -332,13 +268,13 @@ struct LogIndex
     //! removed). Nothing read from it can be trusted from then on.
     bool sourceLost() nothrow @nogc
     {
-        return _source.lost;
+        return _store.lost;
     }
 
     //! @throws Exception if the file is lost: fails the running operation
     private void enforceSourceAvailable()
     {
-        if (_source.lost)
+        if (_store.lost)
             throw new UiTextException(sourceLostText());
     }
 
@@ -349,14 +285,21 @@ struct LogIndex
     //! once its file is lost
     ulong byteSize() const nothrow @nogc
     {
-        return _source.data.length;
+        return _store.data.length;
     }
 
     //! @return the number of messages in the file (the offset index)
     size_t messageCount() nothrow @nogc
     {
-        auto lock = LockGuard(cast(Mutex)_mutex);
-        return _offsetIndex.length;
+        auto lock = LockGuard(mutex);
+        return _store.length;
+    }
+
+    //! The records found so far, to read on the calling thread or give to another one
+    private Records records() nothrow @nogc
+    {
+        auto lock = LockGuard(mutex);
+        return _store.records;
     }
 
     //! @brief Updates the filter and search indexes in place after an anchor
@@ -369,56 +312,61 @@ struct LogIndex
         assert(!_backgroundSlot.busy(), "indexes are being built");
 
         _anchors = anchors;
-        const value = cast(SearchIndex.Type) msgIndex;
         if (anchored)
         {
-            synchronized (cast(Mutex)_mutex)
-            {
-                if (_viewIsFiltered)
-                    _filterIndex.insertSorted(value);
-                if (!_searchStopped)
-                    _searchIndex.insertSorted(value);
-            }
+            synchronized (mutex)
+                _views.listAnchor(msgIndex, !_search.stopped);
             return;
         }
 
         // The search runs over the main view: a message hidden by the view filter
         // is not a search result either
-        const bool inView = !_viewIsFiltered
-            || (_viewFilter !is null && messageMatches(_viewFilter, msgIndex));
-        const bool inSearch = inView && _searchFilter !is null && messageMatches(_searchFilter, msgIndex);
+        const bool inView = !_views.mainFiltered
+            || (_view.filter !is null && messageMatches(_view.filter, msgIndex));
+        const bool inSearch = inView && _search.filter !is null && messageMatches(_search.filter, msgIndex);
 
-        synchronized (cast(Mutex)_mutex)
-        {
-            if (!inView)
-                _filterIndex.removeSorted(value);
-            if (!inSearch)
-                _searchIndex.removeSorted(value);
-        }
+        synchronized (mutex)
+            _views.unlistAnchor(msgIndex, inView, inSearch);
     }
 
     private bool messageMatches(const(Filter) filter, size_t msgIndex)
     {
-        OffsetIndexItem fileOffset;
-        {
-            auto lock = LockGuard(cast(Mutex)_mutex);
-            fileOffset = _offsetIndex[msgIndex];
-        }
         Message msg;
-        if (!decodeAt(msg, fileOffset.offset))
+        if (!records.decode(msgIndex, msg))
             return false;
         return filter.matches(msg);
     }
 
-    //! @brief Decodes the record at `offset` of the data
-    //! @return false if there is no valid record there
-    private bool decodeAt(ref Message msg, size_t offset) nothrow @nogc
+    // ── A pass, on the worker thread ──
+
+    //! The bytes a pass splits into records and how far their load is
+    private struct PassBytes
     {
-        const data = _source.data;
-        return _format.decode(msg, _format.recordAt(data, offset));
+        const(ubyte)[] data; // the bytes of this pass: a source that grows meanwhile is taken by the next one
+        bool final_; // no more bytes will come
+        bool loading; // the load is reported until it is over
+        bool grows; // a source that was loaded got more
+        bool tailWaits; // the last bytes are the start of a record still to come
     }
 
-    // ── A pass, on the worker thread ──
+    //! Reports the progress of the stages of a pass: a stage is as far as the one it
+    //! follows, while that one has more to give
+    private void report(ref ProgressReporter progress, ref const PassBytes bytes)
+    {
+        const records = _store.length;
+        const float load = bytes.data.length ? cast(float) _store.scannedBytes / bytes.data.length : 1.0f;
+        const bool loadBehind = _store.scannedBytes < bytes.data.length && !bytes.tailWaits;
+        float filter = float.nan, search = float.nan;
+        if (_view.report)
+            filter = loadBehind ? load : _view.live && records ? cast(float) _view.scanned / records : 1.0f;
+        if (_search.report)
+        {
+            const positions = viewLength();
+            search = loadBehind ? load : _view.behind(records) ? filter
+                : positions ? cast(float) _search.scanned / positions : 1.0f;
+        }
+        progress.report(bytes.loading ? load : float.nan, filter, search);
+    }
 
     //! @brief Brings the indexes up to date, see runPass: a stage after
     //! another, each over what the one before it has added, until none has
@@ -429,33 +377,15 @@ struct LogIndex
     private bool pass(ref ProgressReporter progress, ref Operation stage)
     {
         auto ctx = progress.ctx;
-        // The bytes of this pass: a source that grows meanwhile is taken by the
-        // next one. Its end is asked first: asked after the bytes, a source
-        // that got its last ones in between would have the record cut by the
-        // end of `data` taken for a whole one
-        const bool final_ = _source.complete;
-        const data = _source.data;
-        bool loading = !_loaded; // the load is reported until it is over
-        const bool grows = _loaded; // a source that was loaded got more
-        bool tailWaits = false; // the last bytes are the start of a record still to come
-
-        void report()
-        {
-            const records = _offsetIndex.length;
-            const float load = data.length ? cast(float) _scannedBytes / data.length : 1.0f;
-            const bool loadBehind = _scannedBytes < data.length && !tailWaits;
-            float filter = float.nan, search = float.nan;
-            // A stage is as far as the one it follows, while that one has more to give
-            if (_reportFilter)
-                filter = loadBehind ? load : filterLive && records ? cast(float) _filterScanned / records : 1.0f;
-            if (_reportSearch)
-            {
-                const positions = viewLength();
-                search = loadBehind ? load : filterBehind(records) ? filter
-                    : positions ? cast(float) _searchScanned / positions : 1.0f;
-            }
-            progress.report(loading ? load : float.nan, filter, search);
-        }
+        // Its end is asked first: asked after the bytes, a source that got its
+        // last ones in between would have the record cut by the end of `data`
+        // taken for a whole one
+        PassBytes bytes;
+        bytes.final_ = _store.complete;
+        bytes.data = _store.data;
+        bytes.loading = !_loaded;
+        bytes.grows = _loaded;
+        scope void delegate() told = () { report(progress, bytes); };
 
         for (;;)
         {
@@ -466,66 +396,61 @@ struct LogIndex
             bool worked = false;
 
             // The offset index: over the bytes not split into records yet
-            if (_scannedBytes < data.length && !tailWaits)
+            if (_store.scannedBytes < bytes.data.length && !bytes.tailWaits)
             {
-                const before = _offsetIndex.length;
+                const before = _store.length;
                 // All of them at once unless a stage follows
-                const part = filterLive || (searchLive && _searchFilter !is null) ? followRecords : size_t.max;
-                if (!scanOffsets(ctx, data, final_, part, tailWaits, &report))
+                const part = _view.wantsRows || _search.wantsRows ? followRecords : size_t.max;
+                if (!scanOffsets(ctx, bytes, part, told))
                     return false;
                 worked = true;
-                _grownUntold |= grows && _offsetIndex.length != before;
+                _grownUntold |= bytes.grows && _store.length != before;
             }
             // The load is over, whatever follows it: told at once
-            if (loading && (_scannedBytes == data.length || tailWaits))
+            if (bytes.loading && (_store.scannedBytes == bytes.data.length || bytes.tailWaits))
             {
-                report();
-                loading = false;
+                told();
+                bytes.loading = false;
                 _loaded = true;
                 _events.publish(StageFinished(Operation.BuildOffsetIndex));
             }
 
             // The filter index: over the records it doesn't cover
-            const records = _offsetIndex.length;
-            if (filterBehind(records))
+            const records = _store.length;
+            if (_view.behind(records))
             {
                 stage = Operation.BuildFilterIndex;
-                const part = searchLive && _searchFilter !is null ? followRecords : size_t.max;
-                const from = _filterScanned;
+                const part = _search.wantsRows ? followRecords : size_t.max;
+                const from = _view.scanned;
                 const to = records - from > part ? from + part : records;
-                if (!collectMatches(ctx, _filterIndex, from, to, (size_t position) => position, _viewFilter,
-                        (size_t done) { _filterScanned = done; report(); },
+                if (!collectMatches(ctx, false, from, to, (size_t position) => position, _view.filter,
+                        (size_t done) { _view.scanned = done; told(); },
                         uiText("the filter index can't grow: too many records or not enough memory")))
                     return false;
                 worked = true;
                 stage = Operation.None;
             }
             // The filter covers the file, while a search may go on over its view
-            if (_reportFilter && !loading && !filterBehind(records))
+            if (_view.report && !bytes.loading && !_view.behind(records))
             {
-                report();
-                _reportFilter = false;
+                told();
+                _view.report = false;
                 _events.publish(StageFinished(Operation.BuildFilterIndex));
             }
 
             // The search index: over the rows of the main view it doesn't cover
             const positions = viewLength();
-            if (searchBehind(positions))
+            if (_search.behind(positions))
             {
                 stage = Operation.BuildSearchIndex;
-                const from = _searchScanned;
+                const from = _search.scanned;
                 const full = uiText("the search index can't grow: too many records or not enough memory");
-                if (_searchFilter is null)
+                if (_search.filter is null)
                     // With no search to tell its progress, the view may be shown as ready by now
-                    _grownUntold |= listAnchors(from, positions, full) && !_reportSearch;
-                else
-                {
-                    const bool viewIsFiltered = _viewIsFiltered;
-                    if (!collectMatches(ctx, _searchIndex, from, positions,
-                            (size_t position) => viewIsFiltered ? cast(size_t) _filterIndex[position] : position,
-                            _searchFilter, (size_t done) { _searchScanned = done; report(); }, full))
-                        return false;
-                }
+                    _grownUntold |= listAnchors(from, positions, full) && !_search.report;
+                else if (!collectMatches(ctx, true, from, positions, (size_t position) => _views.mainRecordAt(position),
+                        _search.filter, (size_t done) { _search.scanned = done; told(); }, full))
+                    return false;
                 worked = true;
                 stage = Operation.None;
             }
@@ -543,50 +468,42 @@ struct LogIndex
         }
 
         enforceSourceAvailable(); // the last step may have read zeros
-        _seenBytes = data.length;
+        _seenBytes = bytes.data.length;
         // The search is complete: the stages before it told their end above
-        assert(!loading && !_reportFilter);
-        progress.report(float.nan, float.nan, _reportSearch ? 1.0f : float.nan);
-        _reportSearch = false;
+        assert(!bytes.loading && !_view.report);
+        progress.report(float.nan, float.nan, _search.report ? 1.0f : float.nan);
+        _search.report = false;
         return true;
     }
 
-    //! @brief Appends to the offset index the records of the bytes after
-    //! _scannedBytes, `part` of them at most
-    //! @param tailWaits - set if the bytes left are the start of a record that
-    //!   isn't whole yet (a source that isn't complete): a later pass takes it
+    //! @brief Appends to the offset index the records of the bytes not split
+    //! yet, `part` of them at most
+    //! @param bytes - its tailWaits is set if the bytes left are the start of a
+    //!   record that isn't whole yet (a source that isn't complete): a later pass takes it
     //! @return false if the pass was cancelled
-    private bool scanOffsets(BackgroundSlot.Ctx* ctx, const(ubyte)[] data, bool final_, size_t part,
-        ref bool tailWaits, scope void delegate() report)
+    private bool scanOffsets(BackgroundSlot.Ctx* ctx, ref PassBytes bytes, size_t part, scope void delegate() told)
     {
         size_t taken = 0;
-        while (_scannedBytes < data.length && taken < part)
+        while (_store.scannedBytes < bytes.data.length && taken < part)
         {
             if (ctx.cancelled)
                 return false;
             enforceSourceAvailable();
 
-            size_t[bunchSize] offsets;
-            const found = _format.scanRecords(data, _scannedBytes, offsets[], final_);
-            if (found.next == _scannedBytes && found.count == 0)
+            const bunch = _store.findRecords(bytes.data, bytes.final_);
+            if (bunch.found.next == _store.scannedBytes && bunch.found.count == 0)
             {
-                assert(!final_, "scanning must make progress");
-                tailWaits = true;
+                assert(!bytes.final_, "scanning must make progress");
+                bytes.tailWaits = true;
                 break;
             }
-
-            OffsetIndex.Type[bunchSize] tempIndex;
-            foreach (i; 0 .. found.count)
-                tempIndex[i].offset = offsets[i];
-
-            synchronized (cast(Mutex)_mutex)
+            synchronized (mutex)
             {
-                if (!_offsetIndex.append(tempIndex[0 .. found.count]))
+                if (!_store.append(bunch))
                     throw new UiTextException(uiText("the offset index can't grow: too many records or not enough memory"));
             }
-            _scannedBytes = found.next;
-            taken += found.count;
-            report();
+            taken += bunch.found.count;
+            told();
         }
         return true;
     }
@@ -601,69 +518,42 @@ struct LogIndex
         bool listed = false;
         auto anchored = _anchors.exportAnchors;
         sort(anchored);
-        synchronized (cast(Mutex)_mutex)
+        synchronized (mutex)
         {
-            foreach (message; anchored)
-            {
-                size_t position;
-                const bool shown = _viewIsFiltered ? sortedPositionOf(_filterIndex, message, position)
-                    : (position = message) < _offsetIndex.length;
-                if (!shown || position < from || position >= to)
-                    continue;
-                if (!_searchIndex.append(cast(SearchIndex.Type) message))
-                    throw new UiTextException(full);
-                listed = true;
-            }
+            if (!_views.listAnchors(anchored, from, to, _store.length, listed))
+                throw new UiTextException(full);
         }
-        _searchScanned = to;
+        _search.scanned = to;
         return listed;
     }
 
-    //! @brief Appends to `index`, in order, the messages of the positions
-    //! [from, to) that are anchored or match `filter`. The positions are
-    //! scanned in parallel blocks (utils/parallel_scan); what a block found is
-    //! appended under the mutex as soon as it and the blocks before it are
-    //! scanned.
+    //! @brief Appends to the rows of the main view (`search` false) or of the search view,
+    //! in order, the messages of the positions [from, to) that are anchored or match
+    //! `filter` (domain/index/match_scan): what a block found is appended under the mutex
+    //! as soon as it and the blocks before it are scanned.
     //! @param messageAt - the message index of a position; called concurrently,
     //!   so it may only read what doesn't change while the stage runs
     //! @param covered - told the position the index covers now, after every
     //!   block appended: a pass cancelled goes on from there
     //! @param full - the error for the user when the index can't grow
     //! @return false if the pass was cancelled
-    private bool collectMatches(Index)(BackgroundSlot.Ctx* ctx, ref Index index, size_t from, size_t to,
+    private bool collectMatches(BackgroundSlot.Ctx* ctx, bool search, size_t from, size_t to,
         scope size_t delegate(size_t position) messageAt, Filter filter,
         scope void delegate(size_t done) covered, UiText full)
     {
-        import utils.parallel_scan : parallelScan, ScanStop;
-
-        const completed = parallelScan!(Index.Type)(to - from, scanBlockLength,
-            (size_t lo, size_t hi, Index.Type[] found, ScanStop stop) {
-                Message msg; // a buffer per block: blocks run on several threads
-                size_t n = 0;
-                foreach (position; from + lo .. from + hi)
-                {
-                    // A cancel or a lost file: the delivery of this block stops
-                    // the scan, or fails it. A stop: it is never delivered
-                    if ((position - from - lo) % stopCheckRecords == 0 && (ctx.cancelled || _source.lost || stop()))
-                        break;
-                    const message = messageAt(position);
-                    if (!decodeAt(msg, _offsetIndex[message].offset))
-                        continue;
-                    if (_anchors.has(message) || filter.matches(msg))
-                        found[n++] = cast(Index.Type) message;
-                }
-                return n;
-            },
-            (size_t done, const(Index.Type)[] found) {
+        // The worker appends the records itself: they are all there for the blocks it starts
+        const completed = scanMatches!uint(_store.records, from, to, messageAt, filter, _anchors,
+            () => ctx.cancelled,
+            (size_t done, const(uint)[] found) {
                 if (ctx.cancelled)
                     return false;
                 enforceSourceAvailable();
-                synchronized (cast(Mutex)_mutex)
+                synchronized (mutex)
                 {
-                    if (!index.append(found))
+                    if (!(search ? _views.appendSearch(found) : _views.appendMain(found)))
                         throw new UiTextException(full);
                 }
-                covered(from + done);
+                covered(done);
                 return true;
             });
 
@@ -677,29 +567,24 @@ struct LogIndex
 
     size_t mainViewItemsCount() nothrow @nogc
     {
-        auto lock = LockGuard(cast(Mutex)_mutex);
-        return _viewIsFiltered ? _filterIndex.length : _offsetIndex.length;
+        auto lock = LockGuard(mutex);
+        return _views.mainLength(_store.length);
     }
 
     //! @brief The position in the main view of the message `realIndex`
     //! @return false if the view doesn't show it
     bool mainViewPositionOf(size_t realIndex, out size_t position) nothrow @nogc
     {
-        auto lock = LockGuard(cast(Mutex)_mutex);
-        if (!_viewIsFiltered)
-        {
-            position = realIndex;
-            return realIndex < _offsetIndex.length;
-        }
-        return sortedPositionOf(_filterIndex, realIndex, position);
+        auto lock = LockGuard(mutex);
+        return _views.mainPositionOf(realIndex, _store.length, position);
     }
 
     //! @brief The position in the search view of the message `realIndex`
     //! @return false if the view doesn't show it
     bool searchViewPositionOf(size_t realIndex, out size_t position) nothrow @nogc
     {
-        auto lock = LockGuard(cast(Mutex)_mutex);
-        return sortedPositionOf(_searchIndex, realIndex, position);
+        auto lock = LockGuard(mutex);
+        return _views.searchPositionOf(realIndex, position);
     }
 
     //! @brief The row of the main view nearest to the message `realIndex`: its own, or of
@@ -707,107 +592,63 @@ struct LogIndex
     //! @return false if the view is empty
     bool mainViewNearestPositionOf(size_t realIndex, out size_t position) nothrow @nogc
     {
-        auto lock = LockGuard(cast(Mutex)_mutex);
-        if (!_viewIsFiltered)
-            return nearestOf(realIndex, _offsetIndex.length, position);
-        return sortedNearestOf(_filterIndex, realIndex, position);
+        auto lock = LockGuard(mutex);
+        return _views.mainNearestOf(realIndex, _store.length, position);
     }
 
     //! The row of the search view nearest to the message `realIndex`, as of the main view
     bool searchViewNearestPositionOf(size_t realIndex, out size_t position) nothrow @nogc
     {
-        auto lock = LockGuard(cast(Mutex)_mutex);
-        return sortedNearestOf(_searchIndex, realIndex, position);
-    }
-
-    //! `position` (a row of `count`), or the last row past them; false if there are none
-    private static bool nearestOf(size_t position, size_t count, out size_t nearest) pure nothrow @nogc @safe
-    {
-        if (count == 0)
-            return false;
-        nearest = position < count ? position : count - 1;
-        return true;
-    }
-
-    //! The nearest position of `realIndex` in an index of message indexes sorted ascending
-    private static bool sortedNearestOf(Index)(ref const(Index) index, size_t realIndex, out size_t position)
-    {
-        const bound = realIndex > Index.Type.max ? index.length : index.lowerBound(cast(Index.Type) realIndex);
-        return nearestOf(bound, index.length, position);
-    }
-
-    //! The position of `realIndex` in an index of message indexes sorted ascending
-    private static bool sortedPositionOf(Index)(ref const(Index) index, size_t realIndex, out size_t position)
-    {
-        if (realIndex > Index.Type.max)
-            return false;
-        position = index.lowerBound(cast(Index.Type) realIndex);
-        return position < index.length && index[position] == realIndex;
+        auto lock = LockGuard(mutex);
+        return _views.searchNearestOf(realIndex, position);
     }
 
     bool fetchMainViewItem(size_t index, scope ref DocumentItem item)
     {
-        OffsetIndexItem fileOffset;
-
+        Records records;
+        size_t message;
         {
-            auto lock = LockGuard(cast(Mutex)_mutex);
-
-            if (_viewIsFiltered)
-            {
-                if (index >= _filterIndex.length)
-                    return false;
-
-                index = cast(size_t) _filterIndex[index]; // position in the view -> message index
-            }
-            else
-            {
-                if (index >= _offsetIndex.length)
-                    return false;
-            }
-
-            fileOffset = _offsetIndex[index];
+            auto lock = LockGuard(mutex);
+            if (index >= _views.mainLength(_store.length))
+                return false;
+            message = _views.mainRecordAt(index); // position in the view -> message index
+            records = _store.records;
         }
-
-        const bool decoded = decodeAt(item._message, fileOffset.offset);
-        if (!decoded || _source.lost)
-            return false; // no record there: e.g. the file was read as zeros
-        item.realIndex = index;
-        item.anchored = false;
-        item.found = false;
-        return true;
+        return fetched(records, message, item);
     }
 
     // ── The search view ──
 
     size_t searchViewItemsCount() nothrow @nogc
     {
-        auto lock = LockGuard(cast(Mutex)_mutex);
-        return _searchIndex.length;
+        auto lock = LockGuard(mutex);
+        return _views.searchLength;
     }
 
     bool fetchSearchViewItem(size_t index, scope ref DocumentItem item)
     {
-        OffsetIndexItem fileOffset;
-        uint32_t globalIndex;
-
+        Records records;
+        size_t message;
         {
-            auto lock = LockGuard(cast(Mutex)_mutex);
-            if (index >= _searchIndex.length)
+            auto lock = LockGuard(mutex);
+            if (index >= _views.searchLength)
                 return false;
-
-            globalIndex = _searchIndex[index];
-            fileOffset = _offsetIndex[globalIndex];
+            message = _views.searchRecordAt(index);
+            records = _store.records;
         }
+        return fetched(records, message, item);
+    }
 
-        const bool decoded = decodeAt(item._message, fileOffset.offset);
-        if (!decoded || _source.lost)
+    //! Decodes the message `message` of `records` into `item`, outside the lock
+    private static bool fetched(Records records, size_t message, scope ref DocumentItem item)
+    {
+        if (!records.decode(message, item._message) || records.lost)
             return false; // no record there: e.g. the file was read as zeros
-        item.realIndex = globalIndex;
+        item.realIndex = message;
         item.anchored = false;
         item.found = false;
         return true;
     }
-
 }
 
 version (unittest)
@@ -1081,8 +922,7 @@ unittest
     waitForOperation(index, () => true); // the offset index is being built
     assert(index.messageCount == 1600);
 
-    const used = index._offsetIndex.reservedBytes + index._filterIndex.reservedBytes
-        + index._searchIndex.reservedBytes;
+    const used = index._store.reservedBytes + index._views.reservedBytes;
     assert(used < 4 * 1024 * 1024, "indexes reserve memory for the whole file");
 }
 
@@ -1113,14 +953,14 @@ unittest
     waitForOperation(index, () => index.runBuildFilterIndex(sevens, anchors));
     const expectedView = iota(lines).filter!(i => i % 7 == 0 || i == 3).array;
     assert(index.mainViewItemsCount == expectedView.length);
-    assert(iota(expectedView.length).map!(p => index._filterIndex[p]).array == expectedView);
+    assert(iota(expectedView.length).map!(p => index._views.mainRecordAt(p)).array == expectedView);
 
     // The search runs over the filtered view
     auto fives = SearchFilter.fromChips([SearchChip("five")]);
     waitForOperation(index, () => index.runBuildSearchIndex(fives, anchors));
     const expectedFound = expectedView.filter!(i => i % 5 == 0 || i == 3).array;
     assert(index.searchViewItemsCount == expectedFound.length);
-    assert(iota(expectedFound.length).map!(p => index._searchIndex[p]).array == expectedFound);
+    assert(iota(expectedFound.length).map!(p => index._views.searchRecordAt(p)).array == expectedFound);
 }
 
 @("LogIndex: a filter or a search asked for leaves no row of the content before, at once")
@@ -1195,8 +1035,8 @@ unittest
     assert(index.behind);
     waitForOperation(index, () => index.runPass());
     assert(index.messageCount == 6);
-    assert(iota(index.mainViewItemsCount).map!(p => index._filterIndex[p]).array == [0, 2, 3, 5]);
-    assert(iota(index.searchViewItemsCount).map!(p => index._searchIndex[p]).array == [2, 3]);
+    assert(iota(index.mainViewItemsCount).map!(p => index._views.mainRecordAt(p)).array == [0, 2, 3, 5]);
+    assert(iota(index.searchViewItemsCount).map!(p => index._views.searchRecordAt(p)).array == [2, 3]);
     assert(!index.behind);
     events.dispatch();
     assert(grown == 1);
@@ -1274,7 +1114,7 @@ unittest
     waitForOperation(index, () => index.runBuildSearchIndex(every, Anchors.init));
     assert(endingOf(events, Document.Operation.BuildSearchIndex).result == OperationFinished.Result.Completed);
     assert(index.mainViewItemsCount == 0 && index.searchViewItemsCount == 0, "the filter matches nothing");
-    assert(index._filterScanned == lines && !index.behind);
+    assert(index._view.scanned == lines && !index.behind);
 }
 
 @("LogIndex: a cancel or a lost file stops the blocks being scanned, not only the next ones")

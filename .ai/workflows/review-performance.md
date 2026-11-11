@@ -59,7 +59,7 @@ a reused buffer will do.
 2. **Scan loops** (decode, filter, search): no allocation per record (the GC stops every
    thread, and the task pool makes that worse); no Phobos auto-decoding of `wchar[]`/`char[]`
    (`canFind`, `startsWith` on narrow strings decode to `dchar`); cheap checks first; a cancel
-   and a lost file are checked as the existing loops do (every `stopCheckRecords` records of a block, `LogIndex`).
+   and a lost file are checked as the existing loops do (every `stopCheckRecords` records of a block, `scanMatches` of `domain/index/match_scan`).
 3. **Indexes:** they grow by chunks, entries never move; a change of an entry's layout keeps
    readers on the other thread safe. Memory per record: 8 bytes in the offset index is the
    budget; more per record is a decision to name.

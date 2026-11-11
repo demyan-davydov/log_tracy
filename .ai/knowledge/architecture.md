@@ -150,8 +150,23 @@ utils  ←  sciter  ←  ui
   (`utils/parallel_scan`), appended in order as the blocks before them are done; the offset
   index is built sequentially. A format and a filter are called from several threads. A block
   checks a cancel, a lost file and the stop of the scan (`ScanStop`: a failed delivery)
-  every `LogIndex.stopCheckRecords` records. The index grows block by block while the scan
-  runs: keep it so, the results are shown before the scan ends.
+  every `stopCheckRecords` records (`domain/index/match_scan`). The index grows block by
+  block while the scan runs: keep it so, the results are shown before the scan ends.
+- `LogIndex` is the holder of its parts (`domain/index/`), which are not thread-safe: it owns
+  the mutex, the worker and their lifetime. The parts:
+  - `RecordStore` (`record_store`): the source, the format and the offset index, which only
+    grows. Its one promise across threads: the records below the length of a `Records` a
+    reader was given are read by any number of threads while one writer appends after them.
+    The holder gives a reader its `Records` (under the mutex, or by starting the thread or
+    task that reads) and closes the store only once no scan reads it: `LogIndex` joins its
+    worker first, and a scan returns only when its blocks are done. `close()` frees the
+    offset index too: it is a class, and the GC doesn't see that memory;
+  - `ViewIndexes` (`views`): the filter and search indexes, the rows of the two views;
+  - `MatchStage` (`match_stage`): how far the filter or the search of a pass has got;
+  - `scanMatches` (`match_scan`): the parallel scan of a range for the anchored and
+    matching records, over `Records` only: what another reader of the records (a search
+    of its own, apart from the views) scans with too;
+  - `ProgressReporter` (`progress`).
 - The indexes are `BaseIndex` over `utils/chunked_array` (`domain/index/`):
   - they grow by 64K-entry chunks (mmap / VirtualAlloc) up to 2^32 entries;
   - entries never move, which is what lets the indexing thread read the offset index without
