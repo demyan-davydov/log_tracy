@@ -92,6 +92,14 @@ struct ChunkedArray(T, size_t chunkBits = 16, size_t maxChunks = 1 << 16)
         return _chunks[i >> chunkBits][i & indexMask];
     }
 
+    //! Replaces the element `i` < length in place: a reader of it at the same time reads
+    //! either value or a torn one, the caller keeps readers away from it meanwhile
+    void opIndexAssign(T value, size_t i) pure nothrow @nogc
+    {
+        assert(i < _length);
+        slot(i) = value;
+    }
+
     size_t length() const pure nothrow @nogc
     {
         return _length;
@@ -257,6 +265,19 @@ unittest
     assert(a.allocatedChunks == 1, "the first chunk holds 4");
     assert(a.append(5));
     assert(a.allocatedChunks == 2);
+}
+
+@("ChunkedArray: an element is replaced in place, in any chunk")
+unittest
+{
+    ChunkedArray!(int, 2) array; // 4 elements a chunk
+    foreach (i; 0 .. 10)
+        assert(array.append(i));
+    const where = array.addressOf(9);
+    array[1] = 100;
+    array[9] = 900;
+    assert(array[1] == 100 && array[9] == 900 && array[0] == 0 && array[8] == 8);
+    assert(array.addressOf(9) == where && array.length == 10);
 }
 
 @("ChunkedArray: append and read across chunks")

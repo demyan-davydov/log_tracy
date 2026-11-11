@@ -13,7 +13,7 @@
 module domain.index.record_store;
 
 import domain.index.offset_index : OffsetIndex, OffsetIndexItem;
-import domain.index.part_joiner : PartJoiner;
+import domain.index.part_joiner : PartJoiner, StepKind;
 import log_core.byte_source : ByteSource;
 import log_core.log_format : LogFormat, PartedFormat, RecordPart, ScanResult;
 import log_core.log_message : LogMessage;
@@ -40,13 +40,20 @@ struct Bunch
     }
 }
 
-//! A record joined of parts: the offsets of its parts after the first one are
-//! RecordStore._parts[firstPart .. firstPart + parts]
+//! A record that is the head of a message cut into parts: its other parts are a list of
+//! fragments, RecordStore._fragments[first], then each one's next
 private struct Join
 {
     size_t record;
-    size_t firstPart;
-    size_t parts;
+    size_t first = PartJoiner.none; // its first fragment, none: none (yet)
+    size_t fragments; // in its list
+}
+
+//! A part of a message after its head: where it is, and the next part of the message
+private struct Fragment
+{
+    size_t offset;
+    size_t next = PartJoiner.none;
 }
 
 //! The records of a log: its source, the format that splits and decodes it, and the offset
@@ -65,11 +72,12 @@ final class RecordStore
     private OffsetIndex _offsets;
     private size_t _scannedBytes; // the bytes of the source split into records
 
-    // The records joined of parts, by their number, and the offsets of their parts.
-    // Taken as the parts are found: none for a log without them
+    // The heads of messages cut into parts, by their record, and the other parts. Taken
+    // as the parts are found: none for a log without them. Those of an open message
+    // change until it closes: no reader sees them meanwhile (see records())
     private PartJoiner _joiner;
     private ChunkedArray!Join _joins;
-    private ChunkedArray!size_t _parts;
+    private ChunkedArray!Fragment _fragments;
     private bool _broken; // an append failed half done: the joins may not match the records
 
     //! @param source - owned by the store from now on: released by close()
@@ -104,14 +112,17 @@ final class RecordStore
         return _source.lost;
     }
 
-    //! The records found so far. Not while one is being appended (see the module)
+    //! The records found so far that can be read: those before the head of a message
+    //! still open (PartedFormat), whose text may grow. Not while one is being appended
+    //! (see the module)
     size_t length() const pure nothrow @nogc
     {
-        return _offsets.length;
+        const open = _joiner.firstOpenRecord;
+        return open == PartJoiner.none ? _offsets.length : open;
     }
 
-    //! @returns true if records found are held, not appended yet: they wait for the
-    //! parts of a message (PartedFormat), see append()
+    //! @returns true if records found can't be read yet: they wait for the parts of a
+    //! message, see append()
     bool holding() const pure nothrow @nogc
     {
         return _joiner.holding;
@@ -133,7 +144,8 @@ final class RecordStore
     //! being appended
     Records records() const pure nothrow @nogc
     {
-        return Records(this, _offsets.length, _joins.length);
+        const open = _joiner.firstOpenJoin;
+        return Records(this, length, open == PartJoiner.none ? _joins.length : open);
     }
 
     //! @brief Finds the records of `data` after scannedBytes(), bunchSize of them at most,
@@ -154,62 +166,90 @@ final class RecordStore
     }
 
     //! @brief Appends the records findRecords() found: the bytes they were found in are
-    //! split into records from now on. The records of a PartedFormat from a first part
-    //! on may be held (holding()) until its message is whole or can't be; the end of the
-    //! data (Bunch.end) lets them out.
+    //! split into records from now on. A later part of a message of a PartedFormat is not
+    //! a record but a fragment of its head; the records from the head of a message still
+    //! open on can't be read (length()) until it closes: when its last part came, when it
+    //! can't grow (PartJoiner), at the end of the data (Bunch.end).
     //! @return false if the index can't grow (too many records, not enough memory):
     //! nothing changes then; for a PartedFormat the store takes nothing more from then on
     bool append(ref const Bunch bunch) nothrow @nogc
     {
         if (_broken)
             return false;
+        OffsetIndexItem[bunchSize] items;
+        size_t count = 0;
         if (_parted is null)
         {
-            OffsetIndexItem[bunchSize] items;
             foreach (i, offset; bunch.records)
                 items[i].offset = offset;
-            if (!_offsets.append(items[0 .. bunch.found.count]))
-                return false;
-            _scannedBytes = bunch.found.next;
-            return true;
+            count = bunch.found.count;
         }
+        else if (!appendParts(bunch, items, count))
+        {
+            // The joins and fragments may be written: a later append would give the
+            // next records the numbers the joins have
+            _broken = true;
+            return false;
+        }
+        if (!_offsets.append(items[0 .. count]))
+        {
+            _broken |= _parted !is null;
+            return false;
+        }
+        _scannedBytes = bunch.found.next;
+        return true;
+    }
 
-        // The records held before and the ones of the bunch may all leave at once
-        OffsetIndexItem[bunchSize + PartJoiner.maxHeld] items = void;
-        size_t count = 0;
-        bool failed = false;
-        scope emit = (size_t offset, const(size_t)[] parts) nothrow @nogc {
-            OffsetIndexItem item;
-            item.offset = offset;
-            if (parts.length != 0)
-            {
-                // Before the record: a reader of it finds its parts
-                const join = Join(_offsets.length + count, _parts.length, parts.length);
-                failed |= !_parts.append(parts) || !_joins.append(join);
-                item.joined = true;
-            }
-            items[count++] = item;
-        };
-
+    //! Sorts the records of a bunch of a PartedFormat into records (`items`) and fragments
+    //! @return false if the joins or the fragments can't grow
+    private bool appendParts(ref const Bunch bunch, ref OffsetIndexItem[bunchSize] items, ref size_t count) nothrow @nogc
+    {
         const data = _source.data;
         foreach (i, offset; bunch.records)
         {
             const mayBePart = bunch.mayBePart[i];
             if (!mayBePart && !_joiner.holding)
-                items[count++] = OffsetIndexItem(offset); // the usual record, at once
-            else
-                _joiner.add(offset, mayBePart ? _parted.partOf(data, offset) : RecordPart.init, emit);
+            {
+                items[count++] = OffsetIndexItem(offset); // the usual record
+                continue;
+            }
+            const record = _offsets.length + count;
+            const step = _joiner.add(mayBePart ? _parted.partOf(data, offset) : RecordPart.init,
+                record, _joins.length, _fragments.length);
+            final switch (step.kind)
+            {
+            case StepKind.record:
+                items[count++] = OffsetIndexItem(offset);
+                break;
+            case StepKind.head:
+                if (!_joins.append(Join(record)))
+                    return false;
+                OffsetIndexItem item;
+                item.offset = offset;
+                item.joined = true;
+                items[count++] = item;
+                break;
+            case StepKind.fragment:
+                // The message is open: no reader sees its join and fragments yet
+                const fragment = _fragments.length;
+                if (!_fragments.append(Fragment(offset)))
+                    return false;
+                Join join = _joins[step.join];
+                if (step.previous == PartJoiner.none)
+                    join.first = fragment;
+                else
+                {
+                    Fragment previous = _fragments[step.previous];
+                    previous.next = fragment;
+                    _fragments[step.previous] = previous;
+                }
+                ++join.fragments;
+                _joins[step.join] = join;
+                break;
+            }
         }
         if (bunch.end)
-            _joiner.flush(emit);
-        // The joiner has let its records out and the joins are written: a later append
-        // would give the next records the numbers the joins already have
-        if (failed || !_offsets.append(items[0 .. count]))
-        {
-            _broken = true;
-            return false;
-        }
-        _scannedBytes = bunch.found.next;
+            _joiner.flush();
         return true;
     }
 
@@ -221,7 +261,7 @@ final class RecordStore
         _source.close();
         _offsets.clear();
         _joins.clear();
-        _parts.clear();
+        _fragments.clear();
         _joiner = PartJoiner.init;
         _broken = false;
         _scannedBytes = 0;
@@ -275,14 +315,21 @@ struct Records
             return format.decode(msg, format.recordAt(data, item.offset));
 
         const join = joinOf(record);
-        const(ubyte)[][1 + PartJoiner.maxParts] parts;
+        if (join.fragments == 0) // a message whose other parts never came
+            return format.decode(msg, format.recordAt(data, item.offset));
+        const(ubyte)[][PartJoiner.maxParts] parts;
         parts[0] = format.recordAt(data, item.offset);
-        foreach (i; 0 .. join.parts)
-            parts[1 + i] = format.recordAt(data, _store._parts[join.firstPart + i]);
-        return _store._parted.decodeParts(msg, parts[0 .. 1 + join.parts]);
+        size_t next = join.first;
+        foreach (i; 0 .. join.fragments)
+        {
+            const fragment = _store._fragments[next];
+            parts[1 + i] = format.recordAt(data, fragment.offset);
+            next = fragment.next;
+        }
+        return _store._parted.decodeParts(msg, parts[0 .. 1 + join.fragments]);
     }
 
-    //! The parts of the joined record `record`: the joins are in the order of their records
+    //! The parts of the head `record`: the joins are in the order of their records
     private Join joinOf(size_t record) const pure nothrow @nogc
     {
         size_t lo = 0, hi = _joins;
@@ -485,6 +532,27 @@ unittest
     scanAll(store, true);
     assert(store.length == 5, "the data is over: the message won't be whole");
     assert(payloadOf(store.records, 3) == "C1 1/2: cut" && payloadOf(store.records, 4) == "z");
+}
+
+@("RecordStore: a message that can't be whole keeps the parts it got, its records stay in place")
+unittest
+{
+    auto store = new RecordStore(new TextSource("A1 1/3: a\nx\nA2 2/3: b\nA4 3/3: c\ny\n"), new PartedText());
+    scanAll(store, true);
+    const records = store.records;
+    assert(records.length == 4, "the part out of counter is a record of its own");
+    assert(payloadOf(records, 0) == "a|b" && payloadOf(records, 1) == "x");
+    assert(payloadOf(records, 2) == "A4 3/3: c" && payloadOf(records, 3) == "y");
+}
+
+@("RecordStore: the parts of two messages interleaved are linked each to its own")
+unittest
+{
+    auto store = new RecordStore(new TextSource("A1 1/3: a\nB1 1/2: x\nA2 2/3: b\nB2 2/2: y\nA3 3/3: c\n"), new PartedText());
+    scanAll(store, true);
+    const records = store.records;
+    assert(records.length == 2);
+    assert(payloadOf(records, 0) == "a|b|c" && payloadOf(records, 1) == "x|y");
 }
 
 @("RecordStore: once an append of parts failed half done, the store takes nothing more")

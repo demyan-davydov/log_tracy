@@ -95,6 +95,38 @@ private bool appendTexts(Builder)(Builder builder, const(ubyte[])[] parts, bool 
             cut[cutLength++] = c;
     }
     flushCut();
+
+    // A message whose last parts never came (PartJoiner closed it): how many it got
+    if (part.part.number != part.part.count)
+    {
+        char[32] note;
+        size_t length = 0;
+        void add(const(char)[] piece)
+        {
+            note[length .. length + piece.length] = piece;
+            length += piece.length;
+        }
+        void addNumber(uint value) // at most 4 digits: takeNumber
+        {
+            char[4] digits;
+            size_t n = 0;
+            do
+            {
+                digits[n++] = cast(char)('0' + value % 10);
+                value /= 10;
+            }
+            while (value != 0);
+            foreach_reverse (d; digits[0 .. n])
+                note[length++] = d;
+        }
+
+        add(" [");
+        addNumber(cast(uint) parts.length);
+        add(" of ");
+        addNumber(part.part.count);
+        add(" parts]");
+        builder.appendAscii(note[0 .. length], false);
+    }
     return true;
 }
 
@@ -529,6 +561,12 @@ unittest
     const a = textRecord("1/2: a" ~ "д"[0 .. 1], 0, true);
     const b = textRecord("2/2: bc", 1, false);
     assert(payloadOf(a, b) == "a?bc");
+}
+
+@("parseDltParts: a message without its last parts tells how many it got")
+unittest
+{
+    assert(payloadOf(textRecord("1/3: one ", 0), textRecord("2/3: two", 1)) == "one two [2 of 3 parts]");
 }
 
 @("parseDltParts: a part that can't be read leaves the first part as it is")

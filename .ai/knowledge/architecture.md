@@ -174,15 +174,17 @@ utils  ←  sciter  ←  ui
     numbered parts of one message) has its parts joined into one record as they are found
     (`part_joiner`): `findRecords` asks the format, without the lock, whether each record
     may be a part (`mayBePart`, a bit a record of its `Bunch`: `utils/static_bit_array`),
-    `append` asks `partOf` of those only; `append` holds the records from a first part on until its message is whole
-    or can't be (`RecordStore.holding`), and the end of the data lets them out (a source
-    may tell its end without more bytes: `LogIndex.behind` counts what is held then). A
-    joined record has the joined bit of its `OffsetIndexItem` and the offsets of its other
-    parts in a table of the store, which `Records.decode` reads. An `append` that fails
-    halfway leaves the store refusing every later one. Its one promise across threads: the
-    records below the length of a `Records` a reader was given are read by any number of
-    threads while one writer appends after them. The holder gives a reader its `Records` (under the mutex, or by starting the thread or
-    task that reads) and closes the store only once no scan reads it: `LogIndex` joins its
+    `append` asks `partOf` of those only. Every record goes to the offset index at once
+    but the later parts of a message: they are fragments of its head (the joined bit of
+    its `OffsetIndexItem`), a list in a table of the store (`Join`, `Fragment`), which
+    `Records.decode` follows. `length()` and `records()` stop before the head of the
+    oldest message still open (`RecordStore.holding`): its text may still grow, and its
+    join and fragments still change. The end of the data closes every message (a source
+    may tell its end without more bytes: `LogIndex.behind` counts what is held then). An
+    `append` that fails halfway leaves the store refusing every later one. Its one promise
+    across threads: the records below the length of a `Records` a reader was given are
+    read by any number of threads while one writer appends after them. The holder gives a
+    reader its `Records` (under the mutex, or by starting the thread or task that reads) and closes the store only once no scan reads it: `LogIndex` joins its
     worker first, and a scan returns only when its blocks are done. `close()` frees the
     offset index too: it is a class, and the GC doesn't see that memory;
   - `ViewIndexes` (`views`): the filter and search indexes, the rows of the two views;
