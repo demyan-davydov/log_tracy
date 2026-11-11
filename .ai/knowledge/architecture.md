@@ -14,9 +14,10 @@ ByteSource (log_core/byte_source)          bytes of a log, addressed by offset (
             └ formats/*                    PlainTextFormat (fallback), LogcatFormat, ...
 LogIndex (domain/log_index)                offset/filter/search indexes, built on a background thread
 LogDocument (domain/log_document)          a log + its main view and search view, operation events
-Workspace (domain/workspace)               open documents, the current one
-AppSession (ui/app_session)                what the calls of the script do: files, tabs, views,
-                                           search, filters, settings (Sciter-free, tested)
+DocumentStore (domain/document_store)      open documents and who holds them, their events by id
+AppSession (ui/app_session)                what the calls of the script do: files, tabs
+                                           (ui/document_tabs), views, search, filters, settings
+                                           (Sciter-free, tested)
 MainWindow (ui/main_window)                Sciter window: xcall bridge to the session, table rows
 resources/script.js, tabs.js               the window: tabs, placeholder, settings, backend callbacks
 resources/document-pane.js                 a panel per document: its parts (view-table: the two tables,
@@ -99,9 +100,23 @@ utils  ←  sciter  ←  ui
   `settings.lock` next to it): a second one brings the first forward and exits. Debug builds
   run side by side.
 - A recent file (`ui/recent_files`) keeps its format choice and its filter sets.
-- `main()` (`app.d`) puts the application together: it makes the `AppSession` with its
-  factory of documents (`LogDocument`), so `ui/` doesn't create documents itself, and gives it
-  to `MainWindow`.
+- `main()` (`app.d`) puts the application together: it makes the `DocumentStore` and the
+  `AppSession` over it with its factory of documents (`LogDocument`), so `ui/` doesn't create
+  documents itself, gives the session to `MainWindow`, and closes the store after the window
+  (on macOS Quit the loop never returns: `AppSession.terminate` closes the store then).
+- A document lives while someone holds it (`DocumentStore.hold`/`release`; `add` holds it for
+  the caller): a tab of the window (`AppSession`: a tab is a holder, `ui/document_tabs` the
+  order and the active one), later an AI session. The last `release` closes it; closing a tab
+  doesn't close a document another still holds. Ids are the store's, the tabs know only theirs.
+  The views, filters, search and anchors of a document are its tab's: another holder only holds
+  it and reads records. Only the window opens files yet, so every document has a tab (a tab for
+  a document of another holder: `docs/backlog.md`).
+  The store is of the UI thread: `add`, `hold`, `release` (its `destroy` cancels and joins the
+  indexing), `doc` are called there, so a holder on another thread (the MCP core) hands its
+  calls over to it. Its events are pumped by the window's idle loop
+  (`AppSession.dispatchEvents`); a subscriber may release documents meanwhile. A holder keeps
+  the id, not the `Document`: a Retry replaces the object for every holder, and takes
+  `doc(id)` each time.
 - Environment variables for trying things, read in `main()` (`newSession` of `app.d`) and
   passed to the session and the window: `OPEN_AT_START` (logs opened at start, `backend.startFiles()`), `MENU_BAR_PLATFORM`,
   `PSEUDO_LOCALE`, `SCITER_DEBUG_MODE` (the debug mode of Sciter, for its inspector). The table of them: `docs/building.md`, "Environment variables for

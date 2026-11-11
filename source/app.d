@@ -4,6 +4,7 @@ import std.stdio;
 
 import ui.app_resources : appResource, appResourceUrl;
 import domain.document : Document;
+import domain.document_store : DocumentStore;
 import domain.log_document : LogDocument;
 import log_core.log_format : FormatChoice;
 import ui.app_menu : hostMenuPlatform, windowMenu;
@@ -31,12 +32,13 @@ static assert(size_t.sizeof == 8, "DLT Explorer is built for 64-bit systems only
 /// The application behind the window: its documents are LogDocuments of the files, and the
 /// environment variables for development (docs/building.md, "Environment variables for
 /// development") are all read here
+/// @param documents - the open documents, of the window's tabs and of whoever else holds them
 /// @param sciterDebugMode - set when SCITER_DEBUG_MODE asks for the debug mode of Sciter
-private AppSession newSession(AppSettings settings, out bool sciterDebugMode)
+private AppSession newSession(AppSettings settings, DocumentStore documents, out bool sciterDebugMode)
 {
 	import std.process : environment;
 
-	auto session = new AppSession(settings,
+	auto session = new AppSession(settings, documents,
 		(string path, FormatChoice choice) => cast(Document) new LogDocument(path, choice));
 	// MENU_BAR_PLATFORM=windows|linux: that menu bar in the window, for a try on any platform
 	session.showMenu(windowMenu(hostMenuPlatform(), environment.get("MENU_BAR_PLATFORM", "")));
@@ -120,7 +122,9 @@ int main()
 	{
 		auto settings = loadSettings();
 		bool sciterDebugMode;
-		auto session = newSession(settings, sciterDebugMode);
+		// Made here, not by the session: the window is one holder of its documents among others
+		auto documents = new DocumentStore();
+		auto session = newSession(settings, documents, sciterDebugMode);
 		scope auto win = new MainWindow(session, sciterDebugMode); // scope ensures that d'tor is called on exit
 
 		// SCITER_DEBUG_PORT=<port>: the debug channel to the window, debug builds only
@@ -146,6 +150,7 @@ int main()
 		// Cancel and join indexing threads: they are not daemon threads, so the
 		// runtime would otherwise wait for them to finish after main() returns.
 		win.closeAllDocuments();
+		documents.closeAll(); // those the window let go but another still held
 		forgetAppMenuWindow(); // `win` is destroyed at the end of this block
 		writeln("Documents closed");
 
