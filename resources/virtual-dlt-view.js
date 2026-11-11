@@ -473,6 +473,7 @@ export class VirtualDltTBody extends VirtualSelect {
         index = Math.max(0, Math.min(total - 1, index));
         const changed = extend ? this.selection.extendTo(index) : this.selection.moveTo(index);
         if (changed) this._setTextSelection(null); // Cmd+C copies the rows chosen now
+        this.cancelSmoothJump();
         if (navigation) this.navigateTo(navigation);
         else this.vlist.advanceTo(index);
         this.updateRowStates();
@@ -481,12 +482,14 @@ export class VirtualDltTBody extends VirtualSelect {
     }
 
     // Makes the row `position` current and the only one selected with `top` the
-    // first row shown (by the render componentUpdate() posts; null: the scroll
-    // stays), a step of jumpStep (pane-state.js). The keyboard stays where it is.
+    // first row shown (by the render componentUpdate() posts, the end of the
+    // way animated: smoothAnimateTo; null: the scroll stays), a step of
+    // jumpStep (pane-state.js). The keyboard stays where it is.
     showRow({ position, top }) {
         this.selection.moveTo(position);
         if (top !== null) {
             this.navigateTarget = top;
+            this.navigateSmoothly = true;
             this.componentUpdate();
         }
         this.updateRowStates();

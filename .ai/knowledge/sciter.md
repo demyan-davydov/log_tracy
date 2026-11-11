@@ -236,6 +236,12 @@ agent can't drive it. In scapp a plain
   above the screen; below the screen but inside the window it lands at the bottom; on screen
   it doesn't scroll. `VirtualList.navigateToTop` navigates past n first
   (n + slidingWindowSize), then to n (`resources/list-navigation.js`).
+- A virtual-list scrolls animated with `scrollTo({ top, behavior: "smooth" })` and
+  `vlist.advanceTo(n)` (~250 ms, eased); `vlist.scrollBy` and `vlist.navigateTo` are instant
+  (6.0.5.5). A smooth scroll renders no rows: it stops at the last rendered one; it goes past
+  the last row of the list (clamp to `scrollHeight - clientHeight`); in the frame of an
+  instant `scrollTo` it overshoots by that one. `VirtualList.smoothAnimateTo` jumps first,
+  then animates the last rows of the way (`approachStep`).
 - When rows change height (a class toggle, a smaller font) the scroll position stays in pixels
   and may be past the end. Layout isn't redone until the next frame, not even in a `post`ed
   call; inside `requestAnimationFrame(...)` the geometry is new and `navigateTo` works.

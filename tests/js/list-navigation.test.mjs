@@ -2,7 +2,7 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { navigationPast, growStep, windowSize, minWindowSize, windowMargin, safeTarget, navigationStep, fillStep } from "../../resources/list-navigation.js";
+import { navigationPast, growStep, windowSize, minWindowSize, windowMargin, safeTarget, navigationStep, fillStep, approachStep } from "../../resources/list-navigation.js";
 
 // Rows 100..179 rendered, 100..129 on screen, 1000 rows in all
 const list = { firstVisible: 100, lastBuffer: 179, total: 1000, windowSize: 80 };
@@ -157,4 +157,40 @@ test("a list with its window rendered, all its rows, or no row has nothing to fi
     assert.equal(fillStep({ before: 100, rendered: 120, after: 500, windowSize: 100, gap: true }), null);
     assert.equal(fillStep({ before: 0, rendered: 20, after: 0, windowSize: 100, gap: true }), null);
     assert.equal(fillStep({ before: 100, rendered: 0, after: 500, windowSize: 100, gap: true }), null, "Sciter fills an empty list");
+});
+
+// Rows 100..179 rendered, 120.. on screen, 1000 rows in all, a window of 40: the approach is 10 rows
+const shown = { firstVisible: 120, firstBuffer: 100, lastBuffer: 179, total: 1000, windowSize: 40 };
+
+test("a far row below: the list jumps to it, shows the rows half a screen above it, scrolls down from there", () => {
+    assert.deepEqual(approachStep(5000, shown), { jumpTo: 5000, startAt: 4990 });
+});
+
+test("a far row above: the list jumps half a screen below it and scrolls up from there", () => {
+    assert.deepEqual(approachStep(50, shown), { jumpTo: 60, startAt: 60 });
+});
+
+test("a near row whose way is rendered is scrolled to from where the list is", () => {
+    assert.equal(approachStep(130, shown), null, "below, the rows to 150 (half a window under it) are rendered");
+    assert.equal(approachStep(110, shown), null, "above, rendered");
+});
+
+test("a near row whose way isn't rendered is jumped to as a far one", () => {
+    assert.deepEqual(approachStep(105, { ...shown, firstVisible: 110, firstBuffer: 107 }), { jumpTo: 115, startAt: 115 }, "above the rendered rows");
+    assert.deepEqual(approachStep(165, { ...shown, firstVisible: 158 }), { jumpTo: 165, startAt: 155 }, "half a window under it isn't rendered");
+});
+
+test("the approach stays within the rows", () => {
+    assert.deepEqual(approachStep(4, shown), { jumpTo: 14, startAt: 14 }, "a jump up");
+    assert.deepEqual(approachStep(995, { ...shown, firstVisible: 500, firstBuffer: 480, lastBuffer: 559 }), { jumpTo: 995, startAt: 985 }, "a jump down near the end");
+    assert.deepEqual(approachStep(3, { ...shown, firstVisible: 900, firstBuffer: 880, lastBuffer: 959, total: 6 }), { jumpTo: 5, startAt: 5 }, "a jump up in a short list");
+    assert.deepEqual(approachStep(5, { firstVisible: null, firstBuffer: 0, lastBuffer: -1, total: 1000, windowSize: 40 }), { jumpTo: 5, startAt: 0 }, "the top of the list");
+});
+
+test("with no row on screen the row is jumped to and scrolled to downwards", () => {
+    assert.deepEqual(approachStep(500, { ...shown, firstVisible: null }), { jumpTo: 500, startAt: 490 });
+});
+
+test("at least one row of approach with a tiny window", () => {
+    assert.deepEqual(approachStep(500, { ...shown, windowSize: 3 }), { jumpTo: 500, startAt: 499 });
 });
