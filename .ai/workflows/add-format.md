@@ -9,7 +9,9 @@ Background: `.ai/knowledge/formats.md`.
 2. Derive from `TextFormat` (`log_core/text/text_format`) and implement `decodeText`,
    `columns` and `name`. A line it can't parse goes to the payload as it is
    (`decodeAsPlainText`). Implement `isRecordStart` too if continuation lines are glued to
-   their record. Parsing helpers: `log_core/text/text_parsing`.
+   their record. Parsing helpers: `log_core/text/text_parsing`. `scanRecords`, `recordAt`
+   and `decode` are final: UTF-16 logs are read past them (`inEncoding`), and a format that
+   doesn't derive from `TextFormat` gets no UTF-16.
 3. One module in `formats/` (`formats/logcat.d`), or a package when it has several
    (`formats/syslog/`).
 4. Declare the format's `FormatInfo`: a stable `id` (never changed later: settings refer to
@@ -17,7 +19,9 @@ Background: `.ai/knowledge/formats.md`.
    detector's `info`.
 5. Add a `FormatDetector` (a score on the first 64 KB; plain text is the low-score fallback)
    and register it in `detectors()` of `formats/registry`. Add a registry test that a sample
-   is detected as the new format and not as another.
+   is detected as the new format and not as another. For a UTF-16 log `detect` and `create`
+   get that head converted to UTF-8, without its byte order mark: other bytes and another
+   length than the file's.
 6. A column that needs a look of its own (a width) gets it in `resources/table.css`
    (`col-<format id>-<column id>`), not in the format.
 7. Variants: the detector reports the variant, `createFormat` must refuse a variant the format

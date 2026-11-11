@@ -5,12 +5,13 @@
 - The formats supported now and the ones planned: `docs/formats.md`. Keep it up to date when
   a format or a variant is added.
 - `formats/registry.detectFormat` asks every `FormatDetector` for a score on the first 64 KB
-  and picks the best.
+  and picks the best (in UTF-8: see Text Formats for UTF-16).
 - Plain text is the low-score fallback; data no detector accepts is refused.
 - A `.dlt` extension alone only decides for binary data.
-- A recent file remembers the format it was opened with (`FormatChoice`: `FormatInfo.id` and
-  the variant) and opens in it again through `createFormat`, without detection; a file with no
-  saved format, or one this build can't create (unknown id, invalid variant), is detected.
+- A recent file remembers the format it was opened with (`FormatChoice`: `FormatInfo.id`, the
+  variant and the text encoding) and opens in it again through `createFormat`, without
+  detection; a file with no saved format, one this build can't create (unknown id, invalid
+  variant) or whose data is not in the saved encoding (a UTF-16 mark or look) is detected.
   Never change a format's `id`: settings refer to it.
 - A format instance is created per document (it may hold a variant) and must stay immutable:
   the UI thread, the indexing thread (`scanRecords`) and the threads of a filter or a search
@@ -67,5 +68,17 @@ Adding a format, step by step: `.ai/workflows/add-format.md`.
 - `TextFormat` (`log_core/text/text_format`) is the line-based base: multiline records, the
   record length limit.
 - Parsing helpers (numbers, times, dates) live in `log_core/text/text_parsing`.
+- Text formats parse UTF-8 only. UTF-16 is read by `inEncoding` (`log_core/text/text_format`):
+  a `LogFormat` over the text format that finds lines and records in UTF-16 (a line ends at
+  the code unit U+000A, not at a `0x0A` byte) and gives `isRecordStart`/`decodeText` their
+  text converted to UTF-8 on the stack. A UTF-16 record is cut at 2/3 of `maxRecordLength`
+  bytes, so its UTF-8 fits the limit every format relies on.
+- The encoding (`log_core/text_encoding`) is decided by `formats/registry`, not by the
+  formats. The detectors see the data as it is and, for UTF-16, in UTF-8: with a UTF-16 byte
+  order mark UTF-16 wins whenever a format reads it (else the data is read as it is: binary
+  bytes may look like a mark); without one, UTF-16 is guessed (`guessUtf16`) and wins only
+  over a weaker detection of the data as it is (none, or the `.dlt` extension hint). The detectors and `FormatDetector.create` then get
+  the head converted to UTF-8 (`utf8Head`). `FormatChoice.encoding` keeps it, saved as
+  `"encoding"` of a recent file.
 - `std.datetime`'s `valid!"days"` halts the process on a month outside 1..12, even in release
   builds: check the month first.

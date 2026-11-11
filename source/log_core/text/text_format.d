@@ -3,10 +3,11 @@ module log_core.text.text_format;
 import log_core.log_format;
 import log_core.log_message : LogMessage;
 static import log_core.log_message;
+import log_core.text_encoding : bomLength, isHighSurrogate, TextEncoding, transcodeUtf16, unitAt;
 
 import core.stdc.string : memchr;
 
-//! Base of the line-oriented text formats (UTF-8).
+//! Base of the line-oriented text formats (UTF-8, and UTF-16 through inEncoding()).
 //!
 //! A record is a line. A multiline format glues the lines that don't start a
 //! record (a stack trace, a continued message) to the record before them; a
@@ -50,28 +51,74 @@ abstract class TextFormat : LogFormat
         return true;
     }
 
+    // scanRecords, recordAt and decode are final: inEncoding() reads UTF-16
+    // past them, with isRecordStart() and decodeText() only; what a format
+    // does differently goes into those two
+    final override ScanResult scanRecords(const(ubyte)[] data, size_t from, size_t[] offsets, bool final_) const nothrow @nogc
+    {
+        return scanIn!(TextEncoding.utf8)(this, data, from, offsets, final_);
+    }
+
+    final override const(ubyte)[] recordAt(const(ubyte)[] data, size_t offset) const nothrow @nogc
+    {
+        return recordIn!(TextEncoding.utf8)(this, data, offset);
+    }
+
+    final override bool decode(ref LogMessage!wchar msg, const(ubyte)[] record) const nothrow @nogc
+    {
+        if (record.length == 0)
+        {
+            msg.clear();
+            return false;
+        }
+        return decodeText(msg, withoutLineBreak(cast(const(char)[]) record));
+    }
+}
+
+//! @returns `format` reading its text in `encoding`: itself for UTF-8, else a
+//! format of the same records and columns that reads UTF-16
+LogFormat inEncoding(TextFormat format, TextEncoding encoding) pure nothrow @safe
+{
+    final switch (encoding)
+    {
+    case TextEncoding.utf8:
+        return format;
+    case TextEncoding.utf16le:
+        return new Utf16TextFormat!(TextEncoding.utf16le)(format);
+    case TextEncoding.utf16be:
+        return new Utf16TextFormat!(TextEncoding.utf16be)(format);
+    }
+}
+
+//! A text format reading UTF-16: it finds the lines and records in UTF-16 and
+//! gives the format their text in UTF-8
+private final class Utf16TextFormat(TextEncoding encoding) : LogFormat
+{
+    private const TextFormat _text;
+
+    this(const TextFormat text) pure nothrow @nogc @safe
+    {
+        _text = text;
+    }
+
+    override string name() const pure nothrow @nogc
+    {
+        return _text.name;
+    }
+
+    override const(ColumnInfo)[] columns() const pure nothrow @nogc
+    {
+        return _text.columns;
+    }
+
     override ScanResult scanRecords(const(ubyte)[] data, size_t from, size_t[] offsets, bool final_) const nothrow @nogc
     {
-        size_t pos = from == 0 ? bomLength(data) : from;
-        const size_t limit = pos + maxScanBytes;
-        size_t count = 0;
-
-        while (count < offsets.length && pos < data.length && pos < limit)
-        {
-            const end = recordEnd(data, pos, final_);
-            if (end == 0) // the record may still grow: wait for more data
-                break;
-            offsets[count++] = pos;
-            pos = end;
-        }
-        return ScanResult(count, pos);
+        return scanIn!encoding(_text, data, from, offsets, final_);
     }
 
     override const(ubyte)[] recordAt(const(ubyte)[] data, size_t offset) const nothrow @nogc
     {
-        if (offset >= data.length)
-            return null;
-        return data[offset .. recordEnd(data, offset, true)];
+        return recordIn!encoding(_text, data, offset);
     }
 
     override bool decode(ref LogMessage!wchar msg, const(ubyte)[] record) const nothrow @nogc
@@ -81,84 +128,171 @@ abstract class TextFormat : LogFormat
             msg.clear();
             return false;
         }
-        return decodeText(msg, withoutLineBreak(cast(const(char)[]) record));
+        Utf8Line buffer = void;
+        return _text.decodeText(msg, withoutLineBreak(buffer[0 .. transcodeUtf16(record, encoding, buffer[])]));
     }
+}
 
-    //! @returns the end of the record starting at `start` (after its line
-    //! break), or 0 if it is not complete yet (only without final_)
-    private size_t recordEnd(const(ubyte)[] data, size_t start, bool final_) const nothrow @nogc
+// ─── Records in an Encoding ─────────────────────────────────────────────────
+
+//! The most bytes of a line, without its line break, and of a record in
+//! `encoding`: their text in UTF-8 never takes more than maxRecordLength bytes
+private template maxBytes(TextEncoding encoding)
+{
+    static if (encoding == TextEncoding.utf8)
+        enum size_t maxBytes = TextFormat.maxRecordLength;
+    else // UTF-8 takes at most 3 bytes for 2 bytes of UTF-16
+        enum size_t maxBytes = TextFormat.maxRecordLength * 2 / 3 & ~cast(size_t) 1;
+}
+
+private enum size_t unitSize(TextEncoding encoding) = encoding == TextEncoding.utf8 ? 1 : 2;
+
+//! The UTF-8 of a UTF-16 record of maxBytes and its line break, on the stack
+private alias Utf8Line = char[TextFormat.maxRecordLength + 8];
+
+private ScanResult scanIn(TextEncoding encoding)(const TextFormat format, const(ubyte)[] data, size_t from,
+    size_t[] offsets, bool final_) nothrow @nogc
+{
+    size_t pos = from == 0 ? bomLength(data, encoding) : from;
+    const size_t limit = pos + TextFormat.maxScanBytes;
+    size_t count = 0;
+
+    while (count < offsets.length && pos < data.length && pos < limit)
     {
-        const first = lineEnd(data, start);
-        if (first == tooLong)
-            return cutLine(data, start);
-        if (first == incomplete)
-            return final_ ? data.length : 0;
-        size_t end = first;
-        if (!_multiline)
-            return end;
+        const end = recordEnd!encoding(format, data, pos, final_);
+        if (end == 0) // the record may still grow: wait for more data
+            break;
+        offsets[count++] = pos;
+        pos = end;
+    }
+    return ScanResult(count, pos);
+}
 
-        while (end < data.length)
-        {
-            const next = lineEnd(data, end);
-            if (next == incomplete && !final_)
-                return 0; // can't tell yet whether the line starts a record
-            if (next == tooLong)
-                return end; // a line that long is a record of its own
-            const lineStop = next == incomplete ? data.length : next;
-            if (isRecordStart(withoutLineBreak(cast(const(char)[]) data[end .. lineStop])))
-                return end;
-            if (withoutFinalNewline(data, start, lineStop) - start > maxRecordLength)
-                return end; // the record would be too long with the line
-            end = lineStop;
-        }
-        if (end == data.length && !final_)
-            return 0; // the next lines may continue the record
+private const(ubyte)[] recordIn(TextEncoding encoding)(const TextFormat format, const(ubyte)[] data, size_t offset) nothrow @nogc
+{
+    if (offset >= data.length)
+        return null;
+    return data[offset .. recordEnd!encoding(format, data, offset, true)];
+}
+
+//! @returns the end of the record starting at `start` (after its line
+//! break), or 0 if it is not complete yet (only without final_)
+private size_t recordEnd(TextEncoding encoding)(const TextFormat format, const(ubyte)[] data, size_t start,
+    bool final_) nothrow @nogc
+{
+    const first = lineEnd!encoding(data, start);
+    if (first == tooLong)
+        return cutLine!encoding(data, start);
+    if (first == incomplete)
+        return final_ ? data.length : 0;
+    size_t end = first;
+    if (!format._multiline)
         return end;
+
+    while (end < data.length)
+    {
+        const next = lineEnd!encoding(data, end);
+        if (next == incomplete && !final_)
+            return 0; // can't tell yet whether the line starts a record
+        if (next == tooLong)
+            return end; // a line that long is a record of its own
+        const lineStop = next == incomplete ? data.length : next;
+        if (startsRecord!encoding(format, data[end .. lineStop]))
+            return end;
+        if (withoutFinalNewline!encoding(data, start, lineStop) - start > maxBytes!encoding)
+            return end; // the record would be too long with the line
+        end = lineStop;
+    }
+    if (end == data.length && !final_)
+        return 0; // the next lines may continue the record
+    return end;
+}
+
+//! @returns true if the line (with its line break) starts a record of `format`
+private bool startsRecord(TextEncoding encoding)(const TextFormat format, const(ubyte)[] line) nothrow @nogc
+{
+    static if (encoding == TextEncoding.utf8)
+        return format.isRecordStart(withoutLineBreak(cast(const(char)[]) line));
+    else
+    {
+        Utf8Line buffer = void;
+        return format.isRecordStart(withoutLineBreak(buffer[0 .. transcodeUtf16(line, encoding, buffer[])]));
     }
 }
 
 private enum size_t incomplete = size_t.max; // lineEnd(): the data ends first
-private enum size_t tooLong = size_t.max - 1; // lineEnd(): longer than maxRecordLength
+private enum size_t tooLong = size_t.max - 1; // lineEnd(): longer than maxBytes
 
 //! @returns the end of the line starting at `start` (after its line break),
-//! `incomplete` or `tooLong`: a line holds at most maxRecordLength bytes and
-//! its "\n". Looks at that many bytes at most.
-private size_t lineEnd(const(ubyte)[] data, size_t start) nothrow @nogc
+//! `incomplete` or `tooLong`: a line holds at most maxBytes and its "\n".
+//! Looks at that many bytes at most.
+private size_t lineEnd(TextEncoding encoding)(const(ubyte)[] data, size_t start) nothrow @nogc
 {
-    const limit = start + TextFormat.maxRecordLength + 1 < data.length
-        ? start + TextFormat.maxRecordLength + 1 : data.length;
-    const newline = findNewline(data[0 .. limit], start);
-    if (newline != notFound)
-        return newline + 1;
+    enum size_t room = maxBytes!encoding + unitSize!encoding;
+    const limit = start + room < data.length ? start + room : data.length;
+    const end = findLineEnd!encoding(data[0 .. limit], start);
+    if (end != notFound)
+        return end;
     return limit == data.length ? incomplete : tooLong;
 }
 
 //! @returns `end` without the "\n" just before it, if there is one after `start`
-private size_t withoutFinalNewline(const(ubyte)[] data, size_t start, size_t end) pure nothrow @nogc @safe
+private size_t withoutFinalNewline(TextEncoding encoding)(const(ubyte)[] data, size_t start, size_t end) pure nothrow @nogc @safe
 {
-    return end > start && data[end - 1] == '\n' ? end - 1 : end;
+    static if (encoding == TextEncoding.utf8)
+        return end > start && data[end - 1] == '\n' ? end - 1 : end;
+    else
+        return end >= start + 2 && (end - start) % 2 == 0 && unitAt!encoding(data, end - 2) == '\n' ? end - 2 : end;
 }
 
-//! @returns where a line too long for a record is cut: maxRecordLength bytes
-//! after `start`, moved back to the start of a UTF-8 character. A character
-//! takes 4 bytes at most: data that is not UTF-8 is cut 3 bytes back at most.
-private size_t cutLine(const(ubyte)[] data, size_t start) pure nothrow @nogc @safe
+//! @returns where a line too long for a record is cut: maxBytes after
+//! `start`, moved back to the start of a character.
+private size_t cutLine(TextEncoding encoding)(const(ubyte)[] data, size_t start) pure nothrow @nogc @safe
 {
-    const size_t limit = start + TextFormat.maxRecordLength;
-    size_t cut = limit;
-    while (cut > limit - 3 && (data[cut] & 0xC0) == 0x80)
-        --cut;
-    return (data[cut] & 0xC0) == 0x80 ? limit : cut; // not UTF-8: cut at the limit
+    const size_t limit = start + maxBytes!encoding;
+    static if (encoding == TextEncoding.utf8)
+    {
+        // A character takes 4 bytes at most: data that is not UTF-8 is cut 3 bytes back at most
+        size_t cut = limit;
+        while (cut > limit - 3 && (data[cut] & 0xC0) == 0x80)
+            --cut;
+        return (data[cut] & 0xC0) == 0x80 ? limit : cut; // not UTF-8: cut at the limit
+    }
+    else
+    {
+        return isHighSurrogate(unitAt!encoding(data, limit - 2)) ? limit - 2 : limit; // a surrogate pair stays whole
+    }
 }
 
 private enum size_t notFound = size_t.max;
 
-private size_t findNewline(const(ubyte)[] data, size_t from) nothrow @nogc
+//! @returns the end of the first line break of `encoding` after `from`
+//! (code units start at even offsets of the data), or notFound
+private size_t findLineEnd(TextEncoding encoding)(const(ubyte)[] data, size_t from) nothrow @nogc
 {
-    if (from >= data.length)
-        return notFound;
-    const p = cast(const(ubyte)*) memchr(data.ptr + from, '\n', data.length - from);
-    return p is null ? notFound : p - data.ptr;
+    size_t pos = from;
+    while (pos < data.length)
+    {
+        const p = cast(const(ubyte)*) memchr(data.ptr + pos, '\n', data.length - pos);
+        if (p is null)
+            return notFound;
+        const size_t i = p - data.ptr;
+        // A UTF-16 character such as U+0A0A has a 0x0A byte too: only the unit U+000A ends a line
+        static if (encoding == TextEncoding.utf8)
+            return i + 1;
+        else static if (encoding == TextEncoding.utf16le)
+        {
+            if (i % 2 == 0 && i + 1 < data.length && data[i + 1] == 0)
+                return i + 2;
+        }
+        else
+        {
+            if (i % 2 == 1 && data[i - 1] == 0)
+                return i + 1;
+        }
+        pos = i + 1;
+    }
+    return notFound;
 }
 
 //! @returns `text` without its trailing line break: "\n" and the "\r"s
@@ -172,17 +306,11 @@ const(char)[] withoutLineBreak(const(char)[] text) pure nothrow @nogc @safe
     return text;
 }
 
-//! @returns the length of the UTF-8 byte order mark at the start of `data`
-size_t bomLength(const(ubyte)[] data) pure nothrow @nogc @safe
-{
-    return data.length >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF ? 3 : 0;
-}
-
 //! @returns true if `head` looks like text: no zero bytes and no UTF-16 mark
 bool looksLikeText(const(ubyte)[] head) pure nothrow @nogc @safe
 {
     if (head.length >= 2 && ((head[0] == 0xFF && head[1] == 0xFE) || (head[0] == 0xFE && head[1] == 0xFF)))
-        return false; // UTF-16: not supported yet
+        return false; // UTF-16: the registry gives it to the detectors in UTF-8
     foreach (b; head)
         if (b == 0)
             return false;
@@ -206,14 +334,14 @@ Detection detectionByShare(size_t fits, size_t lines, int variant, float minShar
 //! without its line break; the last line is skipped if it may be cut
 void forEachSampleLine(const(ubyte)[] head, scope void delegate(const(char)[] line) dg)
 {
-    size_t pos = bomLength(head);
+    size_t pos = bomLength(head, TextEncoding.utf8);
     while (pos < head.length)
     {
-        const newline = findNewline(head, pos);
-        if (newline == notFound)
+        const end = findLineEnd!(TextEncoding.utf8)(head, pos);
+        if (end == notFound)
             break;
-        dg(withoutLineBreak(cast(const(char)[]) head[pos .. newline + 1]));
-        pos = newline + 1;
+        dg(withoutLineBreak(cast(const(char)[]) head[pos .. end]));
+        pos = end;
     }
 }
 
@@ -251,7 +379,9 @@ version (unittest)
         }
     }
 
-    private size_t[] scanAll(const(TextFormat) format, const(ubyte)[] data)
+    import log_core.text_encoding : utf16Bytes;
+
+    private size_t[] scanAll(const(LogFormat) format, const(ubyte)[] data)
     {
         size_t[] result;
         size_t[3] offsets;
@@ -451,6 +581,82 @@ unittest
 
     auto offsets = scanAll(new HashFormat(false), data);
     assert(offsets.length <= 4, "not thousands of tiny records");
+}
+
+@("inEncoding: UTF-16 lines, a character with a 0x0A or 0x0D byte ends none")
+unittest
+{
+    foreach (encoding; [TextEncoding.utf16le, TextEncoding.utf16be])
+    {
+        auto format = inEncoding(new HashFormat(false), encoding);
+        const data = utf16Bytes("#a\u0A0A\r\n#\u0D0Ab\n\n#c", encoding, true);
+        assert(scanAll(format, data) == [2, 12, 20, 22], "after the byte order mark, a record per line");
+
+        LogMessage!wchar msg;
+        assert(format.decode(msg, format.recordAt(data, 2)) && msg.payloadText == "#a\u0A0A"w,
+            "the line break is not part of the text");
+        assert(format.decode(msg, format.recordAt(data, 12)) && msg.payloadText == "#\u0D0Ab"w);
+        assert(format.decode(msg, format.recordAt(data, 20)) && msg.payloadText == ""w);
+        assert(format.decode(msg, format.recordAt(data, 22)) && msg.payloadText == "#c"w);
+    }
+}
+
+@("inEncoding: UTF-16 multiline records")
+unittest
+{
+    foreach (encoding; [TextEncoding.utf16le, TextEncoding.utf16be])
+    {
+        auto format = inEncoding(new HashFormat(true), encoding);
+        const data = utf16Bytes("lead\n#a\n x\n#b", encoding);
+        assert(scanAll(format, data) == [0, 10, 22]);
+
+        LogMessage!wchar msg;
+        assert(format.decode(msg, format.recordAt(data, 10)) && msg.payloadText == "#a\n x"w);
+    }
+}
+
+@("inEncoding: without final_ a UTF-16 line waits for its line break")
+unittest
+{
+    auto format = inEncoding(new HashFormat(false), TextEncoding.utf16le);
+    size_t[4] offsets;
+    auto r = format.scanRecords(utf16Bytes("#a\n#b", TextEncoding.utf16le), 0, offsets[], false);
+    assert(r.count == 1 && r.next == 6);
+    r = format.scanRecords(utf16Bytes("#a\n", TextEncoding.utf16le) ~ cast(ubyte) '\n', 0, offsets[], false);
+    assert(r.count == 1 && r.next == 6, "half a code unit is no line break");
+}
+
+@("inEncoding: a long UTF-16 line is cut between characters, its text within the limit")
+unittest
+{
+    import std.algorithm : canFind;
+    import std.array : replicate;
+    import std.utf : toUTF16;
+
+    enum max = TextFormat.maxRecordLength;
+    // A surrogate pair at every odd unit: a cut at any even unit count splits one
+    const line = "#" ~ "\U0001F600".replicate(max);
+    const data = utf16Bytes(line, TextEncoding.utf16le);
+
+    foreach (multiline; [false, true])
+    {
+        auto format = inEncoding(new HashFormat(multiline), TextEncoding.utf16le);
+        auto offsets = scanAll(format, data);
+        assert(offsets.length > 1, "a long line is several records");
+        LogMessage!wchar msg;
+        wstring joined;
+        foreach (i, offset; offsets)
+        {
+            const record = format.recordAt(data, offset);
+            const next = i + 1 < offsets.length ? offsets[i + 1] : data.length;
+            assert(offset + record.length == next, "recordAt agrees with the scan");
+            assert(format.decode(msg, record));
+            assert(!msg.payloadText.canFind('\uFFFD'), "no surrogate pair is split");
+            assert(msg.payloadText.length * 3 / 2 <= max, "its UTF-8 fits a record of UTF-8");
+            joined ~= msg.payloadText;
+        }
+        assert(joined == line.toUTF16, "the parts hold the line, every character once");
+    }
 }
 
 @("detectionByShare: nothing below the share, a score above the fallbacks")

@@ -9,6 +9,7 @@ import log_core.filter_file : ruleFromJson, rulesToJson;
 import log_core.log_format : FormatChoice, FormatInfo;
 import log_core.rule_filter : FilterRule;
 import log_core.search_filter : SearchChip;
+import log_core.text_encoding : encodingByName, encodingName, TextEncoding;
 import ui.search_chips : chipsFromJson, chipsToJson;
 
 import std.algorithm;
@@ -266,7 +267,7 @@ string recentFilesJson(const RecentFile[] list, const string[] openPaths = null)
 }
 
 /// The recent list as the settings keep it: [{"path", "format", "variant",
-/// "lastUsed", "filterSets", "searches"}], the keys without a value left out
+/// "encoding", "lastUsed", "filterSets", "searches"}], the keys without a value left out
 JSONValue recentFilesToJson(const RecentFile[] list)
 {
     JSONValue[] recentArray;
@@ -277,6 +278,8 @@ JSONValue recentFilesToJson(const RecentFile[] list)
         {
             fv.object["format"] = JSONValue(f.format.id);
             fv.object["variant"] = JSONValue(f.format.variant);
+            if (f.format.encoding != TextEncoding.utf8)
+                fv.object["encoding"] = JSONValue(encodingName(f.format.encoding));
         }
         if (f.lastUsed > 0)
             fv.object["lastUsed"] = JSONValue(f.lastUsed);
@@ -318,20 +321,25 @@ RecentFile[] recentFilesFromJson(const JSONValue json)
     return list;
 }
 
-/// The format saved in a recent file entry: {"format": id, "variant"}; unset if there is none
+/// The format saved in a recent file entry: {"format": id, "variant",
+/// "encoding"}; unset if there is none or this build can't read it
 private FormatChoice formatOf(const JSONValue entry)
 {
     const id = "format" in entry;
     if (id is null || id.type != JSONType.string)
         return FormatChoice.init;
+    FormatChoice choice = FormatChoice(id.str);
     const variant = "variant" in entry;
     if (variant !is null && variant.type == JSONType.integer)
     {
         if (variant.integer < int.min || variant.integer > int.max)
             return FormatChoice.init; // not a variant: the format is detected again
-        return FormatChoice(id.str, cast(int) variant.integer);
+        choice.variant = cast(int) variant.integer;
     }
-    return FormatChoice(id.str);
+    const encoding = "encoding" in entry;
+    if (encoding !is null && (encoding.type != JSONType.string || !encodingByName(encoding.str, choice.encoding)))
+        return FormatChoice.init; // an encoding of another build: detected again
+    return choice;
 }
 
 /// The filter sets saved in a recent file entry: {"filterSets": [{"name",
@@ -520,6 +528,25 @@ unittest
     assert(savedFormat(list, "/logs/../a.log") == text);
     assert(!savedFormat(list, "/b.log").isSet);
     assert(!savedFormat(list, "/c.log").isSet);
+}
+
+/// The encoding of a text format is saved with it, UTF-8 left out; an encoding
+/// this build doesn't know has the format detected again
+unittest
+{
+    import log_core.text_encoding : TextEncoding;
+
+    const utf16 = FormatChoice("text", 0, TextEncoding.utf16be);
+    auto j = recentFilesToJson([RecentFile("/a.log", utf16), RecentFile("/b.log", FormatChoice("text"))]);
+    assert(j[0]["encoding"].str == "utf-16be");
+    assert("encoding" !in j[1]);
+
+    auto list = recentFilesFromJson(j);
+    assert(savedFormat(list, "/a.log") == utf16);
+    assert(savedFormat(list, "/b.log") == FormatChoice("text"));
+
+    auto unknown = parseJSON(`[{"path": "/c.log", "format": "text", "variant": 0, "encoding": "koi8-r"}]`);
+    assert(!savedFormat(recentFilesFromJson(unknown), "/c.log").isSet);
 }
 
 /// The placeholder gets the badge and the name of a file's format, if it is known

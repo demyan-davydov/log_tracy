@@ -9,7 +9,8 @@ ByteSource (log_core/byte_source)          bytes of a log, addressed by offset (
   └ LogFormat (log_core/log_format)        splits bytes into records, decodes one into a LogMessage,
        │                                   declares the table columns (ColumnInfo)
        ├ DltFormat (formats/dlt/format)    binary DLT; parser in formats/dlt/parser
-       └ TextFormat (log_core/text/...)    line-based base: multiline records, record length limit
+       └ TextFormat (log_core/text/...)    line-based base: multiline records, record length limit,
+            │                              UTF-16 through inEncoding (log_core/text_encoding)
             └ formats/*                    PlainTextFormat (fallback), LogcatFormat, ...
 LogIndex (domain/log_index)                offset/filter/search indexes, built on a background thread
 LogDocument (domain/log_document)          a log + its main view and search view, operation events
@@ -41,7 +42,7 @@ utils  ←  sciter  ←  ui
   whatever the system) and their codes of macOS (`utils/mac_keys`), Objective-C calls
   (`utils/objc`).
 - `log_core/`: what doesn't depend on a format (LogMessage, LogFormat, filters, ByteSource,
-  column layout); `log_core/text/` the base of the text formats.
+  column layout, the encodings of text: `text_encoding`); `log_core/text/` the base of the text formats.
 - `formats/`: every format, one module (`formats/logcat.d`) or a package when it has several
   (`formats/dlt/`, `formats/can/`, `formats/syslog/`). `formats/registry.d` lists them.
   `formats/generator/` is not a format: the test log generator, compiled only for the
