@@ -208,6 +208,9 @@ agent can't drive it. In scapp a plain
     work (unsupported, circular);
   - a child's `min-width` is left out of the parent's max-content: two buttons with
     `min-width: 16dip` around 11dip glyphs cut every name by 10dip. Give them a `width`.
+  - a block of text in a `width: max-content; max-width: 100%` parent keeps the width of its
+    own text when the parent is capped: it doesn't wrap at the parent's width and runs out
+    to the right. `width: *` on it wraps it there (the status views, `tab-content.css`).
 - In a `flow: horizontal` row a child's own `vertical-align` (meant for its content) also
   places it in the row: `margin-bottom: *` keeps it at the top.
 - `text-shadow` is faint (no halo that keeps a white glyph seen on white) and a list of

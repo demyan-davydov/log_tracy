@@ -7,7 +7,8 @@
 /* ---- Status views: loading, filtering, searching, failures, lost file ----
    Shown instead of a table. A centered block: title, thin progress bar,
    detail (hint or error, wraps), buttons. Centered by flexible margins: when
-   the panel is low they shrink to zero instead of pushing the content out. */
+   the panel is low they shrink to zero instead of pushing the content out.
+   As wide as its widest line, at least 380dip, at most the panel. */
 
 .status-view {
     size: *;
@@ -46,8 +47,10 @@
 
 .status-body {
     flow: vertical;
-    width: 380dip;
+    width: max-content;
+    min-width: 380dip;
     max-width: 100%;
+    box-sizing: border-box;
     margin: * *;
     padding: 12dip 16dip;
 }
@@ -65,16 +68,20 @@
 }
 
 .status-detail {
+    width: *; /* wraps at the block's width, not at its own text's */
     margin-top: 6dip;
     text-align: center;
     color: var(--text-label);
+    /* An error holds a path: a word wider than the block wraps instead of
+       running out of it to the right, off the center */
+    overflow-wrap: break-word;
 }
 
 .status-detail:empty {
     display: none;
 }
 
-/* A path has separators: cut in the middle, on one line */
+/* A path has separators: cut in the middle, on one line, within the block */
 .status-path {
     overflow-x: hidden;
     white-space: nowrap;
@@ -83,6 +90,13 @@
 
 .status-error {
     color: var(--log-error);
+}
+
+/* The path and the error are selected and copied */
+.status-path,
+.status-error {
+    behavior: selectable;
+    cursor: text;
 }
 
 .status-actions {
