@@ -1,6 +1,6 @@
 // A list that renders only the items on screen (behavior: virtual-list). The
 // selection lives in the subclasses (see VirtualDltTBody).
-import { navigationPast, growStep } from "./list-navigation.js";
+import { navigationPast, growStep, navigationStep, fillStep } from "./list-navigation.js";
 
 export class VirtualList extends Element {
     // Where the next render() scrolls to: a row number, "start" or "end"; null
@@ -49,28 +49,27 @@ export class VirtualList extends Element {
             if (target !== null) {
                 // No rows rendered: the target comes from outside the window
                 this.post(() => {
-                    this.vlist?.navigateTo(target);
+                    this.navigateTo(target);
                 });
                 return this.renderList([]); // render empty list and request the asked navigation
             }
 
             if (firstVisibleIndex == 0) {
                 this.post(() => {
-                    this.vlist?.navigate("start");
+                    this.navigateTo("start");
                 });
                 return this.renderList([]); // render empty list and request "from start" navigation
             }
 
             if (lastVisibleIndex >= totalItems) {
                 this.post(() => {
-                    this.vlist?.navigate("end");
+                    this.navigateTo("end"); // the last row, see safeTarget
                 });
                 return this.renderList([]); // render empty list and request "from end" navigation
             }
 
             lastIndex = Math.min(totalItems, firstIndex + this.vlist.slidingWindowSize) - 1;
             this.post(() => {
-                console.log(totalItems, this.vlist.itemsBefore, this.children.length);
                 this.vlist.itemsAfter = totalItems - this.vlist.itemsBefore - this.children.length;
             });
         }
@@ -101,8 +100,52 @@ export class VirtualList extends Element {
             total,
             windowSize: vlist.slidingWindowSize,
         });
-        if (past !== null) vlist.navigateTo(past);
-        vlist.navigateTo(target);
+        if (past !== null) this.navigateTo(past);
+        this.navigateTo(target);
+    }
+
+    // vlist.navigateTo(target) made safe, see navigationStep: the rows of a
+    // view that grew are counted first, the target kept within the rows (a row
+    // past the count crashes Sciter, "end" is the last row). Every navigation
+    // of a list goes through here, never vlist.navigateTo or vlist.navigate.
+    navigateTo(target) {
+        const vlist = this.vlist;
+        if (!vlist) return;
+        const step = navigationStep(target, {
+            total: this.totalItems(), before: vlist.itemsBefore, rendered: this.children.length, after: vlist.itemsAfter,
+        });
+        if (step.after !== null) vlist.itemsAfter = step.after;
+        if (step.target !== null) vlist.navigateTo(step.target);
+    }
+
+    // Renders rows up to the window, see fillStep: a list whose window grew
+    // shows a gap under its rows otherwise. The rows on screen stay as they are.
+    fill() {
+        const vlist = this.vlist;
+        if (!vlist) return;
+        const before = vlist.itemsBefore;
+        const rendered = this.children.length;
+        const step = fillStep({ before, rendered, after: vlist.itemsAfter, windowSize: vlist.slidingWindowSize });
+        if (step === null) return;
+        const rows = (from, to) => {
+            const elements = [];
+            for (let index = from; index < to; ++index) {
+                const item = this.itemAt(index);
+                if (!item) return null; // gone meanwhile: the list asks for what there is when scrolled
+                elements.push(this.renderItem(item));
+            }
+            return elements;
+        };
+        const after = rows(before + rendered, before + rendered + step.append);
+        const prepended = after && rows(step.before, before);
+        if (!after || !prepended) return;
+        if (after.length) this.append(after);
+        if (prepended.length) this.prepend(prepended);
+        vlist.itemsAfter = step.after;
+        vlist.itemsBefore = step.before;
+        // Rows before are rendered at the end of the rows only: the rows on screen
+        // were pushed down by them, the last row goes back to the bottom
+        if (prepended.length) this.navigateTo("end");
     }
 
     // The list has more items after the ones it had (totalItems() grew, the
@@ -219,7 +262,7 @@ export class VirtualSelect extends VirtualList {
             this.items = props?.items || [];
             if (this.vlist) {
                 this.post(() => {
-                    this.vlist.navigate("start");
+                    this.navigateTo("start");
                 });
             }
             return this.renderList([], props);
