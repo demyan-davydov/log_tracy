@@ -16,7 +16,7 @@ import ui.app_menu : MenuItem, MenuPlatform;
 import ui.main_menu_loader : retitleAppMenu;
 import utils.ui_text : UiText;
 import log_core.rule_filter : RuleId;
-import log_core.search_filter : checkRegex, MatchBuffer, MatchRange;
+import log_core.search_filter : MatchBuffer, MatchRange;
 import ui.app_resources : appResourceOfUrl, appResourceUrl, builtInCatalogs;
 import ui.app_session : AppSession;
 import ui.app_settings : toJSON;
@@ -304,7 +304,7 @@ class MainWindow : SciterWindow
             return true;
         case "checkRegex":
             // checkRegex(pattern, matchCase) -> error message, "" for a valid regex
-            answer(checkRegex(param!string(0), !param!bool(1)));
+            answer(_session.checkRegex(param!string(0), param!bool(1)));
             return true;
 
         // ── Filters: the commands return a message for the user (an error, or

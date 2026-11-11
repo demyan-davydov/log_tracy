@@ -532,6 +532,15 @@ final class AppSession
         }
     }
 
+    /// What is wrong with the regular expression of a chip, for the engine the search uses.
+    /// Returns: the error message (of the engine, as startChipSearch gives it), "" for a valid one
+    string checkRegex(string pattern, bool matchCase)
+    {
+        static import log_core.search_filter;
+
+        return log_core.search_filter.checkRegex(pattern, !matchCase);
+    }
+
     /// What the File Info page shows of the document: {name, path, format,
     /// bytes, records}, null if it isn't open
     string documentInfoJson(DocumentId docId)
@@ -1489,4 +1498,14 @@ unittest
     assert(f.session.filterCommand(id, (DocumentFilters filters) => filters.remove(7)) == "no such filter");
     f.session.useLanguage("ru");
     assert(f.session.filterCommand(id, (DocumentFilters filters) => filters.remove(7)) == "такого фильтра нет");
+}
+
+@("AppSession: checkRegex tells what is wrong with a regular expression, nothing for a valid one")
+unittest
+{
+    auto f = Fixture.make();
+    // The patterns themselves are the cases of log_core.search_filter.checkRegex. The case of
+    // the chip doesn't change whether a pattern is valid, so it can't be told apart here
+    assert(f.session.checkRegex(`time(out|d)\s+\d`, false) == "");
+    assert(f.session.checkRegex("(unclosed", true).length > 0);
 }

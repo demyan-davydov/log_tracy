@@ -1,3 +1,5 @@
+//! DocumentItem: a row of a view of a document, its decoded record and what the
+//! document knows of it (its index in the log, its anchor, whether the search found it).
 module domain.document_item;
 
 import log_core.log_message : LogMessage;
@@ -12,12 +14,10 @@ struct DocumentItem
 
     // index in the original log file, can differ from the index in the document if filters are applied
     size_t realIndex;
-    uint filterMask;
     bool anchored;
     //! The current search found it: it matches the search, not only listed by
     //! its anchor (an anchored message is always in the search view)
     bool found;
-    bool selected;
 
     package LogMessage!Char _message;
 

@@ -544,12 +544,6 @@ struct LogIndex
 
         enforceSourceAvailable(); // the last step may have read zeros
         _seenBytes = data.length;
-        synchronized (cast(Mutex)_mutex)
-        {
-            _offsetIndex.isReady = true;
-            _filterIndex.isReady = _viewIsFiltered;
-            _searchIndex.isReady = true;
-        }
         // The search is complete: the stages before it told their end above
         assert(!loading && !_reportFilter);
         progress.report(float.nan, float.nan, _reportSearch ? 1.0f : float.nan);
@@ -778,10 +772,8 @@ struct LogIndex
         if (!decoded || _source.lost)
             return false; // no record there: e.g. the file was read as zeros
         item.realIndex = index;
-        item.filterMask = fileOffset.filterMask;
         item.anchored = false;
         item.found = false;
-        item.selected = false;
         return true;
     }
 
@@ -811,10 +803,8 @@ struct LogIndex
         if (!decoded || _source.lost)
             return false; // no record there: e.g. the file was read as zeros
         item.realIndex = globalIndex;
-        item.filterMask = fileOffset.filterMask;
         item.anchored = false;
         item.found = false;
-        item.selected = false;
         return true;
     }
 

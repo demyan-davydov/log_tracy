@@ -1,3 +1,5 @@
+//! The offset index: where each record of a log starts in its source, 48 bits of an
+//! entry; the 16 bits left are kept for later (docs/backlog.md).
 module domain.index.offset_index;
 
 import domain.index.base_index;

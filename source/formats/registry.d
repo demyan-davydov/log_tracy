@@ -1,3 +1,5 @@
+//! The formats this build reads: detection of the format and the text encoding of some
+//! data, creation of a format chosen before, their infos and columns.
 module formats.registry;
 
 import utils.ui_text : uiText, UiTextException;

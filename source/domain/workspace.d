@@ -1,3 +1,5 @@
+//! Workspace: the open documents in the order of their tabs and the current one, their
+//! events forwarded with the id of their document, and the null document of no tab.
 module domain.workspace;
 
 import domain.document;

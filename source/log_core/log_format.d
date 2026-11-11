@@ -1,3 +1,7 @@
+//! What a log format is to the rest of the program: LogFormat (records of bytes, their
+//! decoding) with the columns of the table it declares (ColumnInfo), FormatDetector with what
+//! it tells of a format (FormatInfo, Detection), and the format a file was opened with
+//! (FormatChoice).
 module log_core.log_format;
 
 import log_core.log_message : LogMessage, TimeKind;

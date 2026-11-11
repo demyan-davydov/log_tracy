@@ -9,7 +9,6 @@ struct BaseIndex(T)
 {
     alias Type = T;
     private ChunkedArray!Type _data;
-    public bool isReady = false;
 
     //! Memory the index has taken, in bytes
     size_t reservedBytes() const pure nothrow @nogc
