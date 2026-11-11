@@ -138,10 +138,10 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
 29. **Text is selected across cells and rows.** A plain drag in any cell (not the anchor)
     selects text from the press to the mouse, across cells and rows, auto-scrolling at the
     edges; a plain click selects the row; Shift/Cmd click and drag work on rows. A double click
-    selects a word; Escape clears the text first, then the rows; Cmd+C copies the selected text
-    if any, else the rows (cells by tabs, rows by new lines); the row context menu offers
-    "Copy" while text is selected, and "Copy Row". Selected text is painted over the match
-    colors (`--bg-text-selected`).
+    selects a word, a triple click the whole text of its cell; Escape clears the text first,
+    then the rows; Cmd+C copies the selected text if any, else the rows (cells by tabs, rows by
+    new lines); the row context menu offers "Copy" while text is selected, and "Copy Row".
+    Selected text is painted over the match colors (`--bg-text-selected`).
 
 ## Search
 

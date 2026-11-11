@@ -2,7 +2,7 @@
 // resources/text-selection.js. Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { textRange, cellPart, rangeText, repaintRows, splitSelected, wordAt, sameSelection, isDrag, cellHit, pastEnd }
+import { textRange, cellPart, rangeText, repaintRows, splitSelected, wordAt, wholeText, sameSelection, isDrag, cellHit, pastEnd }
     from "../../resources/text-selection.js";
 
 const at = (row, col, offset) => ({ row, col, offset });
@@ -112,6 +112,18 @@ test("wordAt: the word a double click selects", () => {
     assert.deepEqual(wordAt("abc", 9), [0, 3], "past the end: the word at the end");
     assert.deepEqual(wordAt("ab, ", 9), [3, 4], "past the end: the last character");
     assert.equal(wordAt("", 0), null, "an empty text");
+});
+
+test("wholeText: the whole text of a cell a triple click selects", () => {
+    assert.deepEqual(wholeText("disk error, net ok"), [0, 18], "every character, spaces too");
+    assert.deepEqual(wholeText("a😀"), [0, 3], "in UTF-16 units, as the offsets of a position");
+    assert.equal(wholeText(""), null, "an empty text");
+    // as a selection it is the whole cell and nothing of its neighbours
+    const [from, to] = wholeText("error");
+    const range = textRange({ anchor: { row: 2, col: 1, offset: from }, focus: { row: 2, col: 1, offset: to - 1 } });
+    assert.deepEqual(cellPart(range, 2, 1, 5), [0, 5]);
+    assert.equal(cellPart(range, 2, 0, 5), null);
+    assert.equal(cellPart(range, 2, 2, 5), null);
 });
 
 test("wordAt: characters outside the BMP are never cut in half", () => {

@@ -134,6 +134,11 @@ export function wordAt(text, offset) {
     return [from, to];
 }
 
+// The whole of `text` a triple click selects: [from, to), null for an empty text
+export function wholeText(text) {
+    return text.length ? [0, text.length] : null;
+}
+
 // Whether two selections ({ anchor, focus }, or null) are the same: a mouse
 // move that doesn't change it paints nothing again
 export function sameSelection(a, b) {

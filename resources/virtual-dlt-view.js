@@ -5,7 +5,7 @@ import * as platform from "platform.js";
 import { cellClass, cellTexts, columnClass, itemText, rowLayout, matchPieces } from "cell-format.js";
 import { matchColorClass } from "match-colors.js";
 import { RowSelection, selectedText, autoScrollSpeed } from "row-selection.js";
-import { textRange, cellPart, rangeText, repaintRows, splitSelected, wordAt, sameSelection, isDrag, cellHit }
+import { textRange, cellPart, rangeText, repaintRows, splitSelected, wordAt, wholeText, sameSelection, isDrag, cellHit }
     from "text-selection.js";
 import { anchorEdit } from "pane-state.js";
 import { windowSize } from "list-navigation.js";
@@ -292,13 +292,26 @@ export class VirtualDltTBody extends VirtualSelect {
 
     // A double click selects the word under the mouse (wordAt)
     ["on dblclick"](evt) {
+        return this._selectInCell(evt, wordAt);
+    }
+
+    // A triple click selects the whole text of the cell under the mouse
+    // (wholeText). Its third press came as a mousedown first, as any press.
+    ["on tripleclick"](evt) {
+        return this._selectInCell(evt, wholeText);
+    }
+
+    // Selects a part of the text of the cell under the mouse of `evt`:
+    // `partOf(text, offset)` gives it as [from, to), null for none.
+    // @return true if it selected: the event is handled
+    _selectInCell(evt, partOf) {
         if (evt.target.closest("td.anchor")) return; // toggles the anchor only
         const at = this._textPositionAt(evt.clientX, evt.clientY);
         if (!at) return;
         const text = cellTexts(this.itemAt(at.row), this.columns)?.[at.col] ?? "";
-        const word = wordAt(text, at.offset);
-        if (!word) return;
-        this._setTextSelection({ anchor: { ...at, offset: word[0] }, focus: { ...at, offset: word[1] - 1 } });
+        const part = partOf(text, at.offset);
+        if (!part) return;
+        this._setTextSelection({ anchor: { ...at, offset: part[0] }, focus: { ...at, offset: part[1] - 1 } });
         return true;
     }
 
