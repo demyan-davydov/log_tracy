@@ -34,6 +34,15 @@ test("JSON results come parsed", () => {
     assert.deepEqual(callOf(() => backend.searchHistory(3), `[[]]`).value, [[]]);
     assert.deepEqual(callOf(() => backend.documentInfo(3), `{"records": 5}`),
         { call: ["getDocumentInfo", 3], value: { records: 5 } });
+    assert.deepEqual(callOf(() => backend.attachments(3), `[{"id": 0}]`),
+        { call: ["getAttachments", 3], value: [{ id: 0 }] });
+});
+
+test("an attachment is saved where the script says, the error for the user comes back", () => {
+    assert.deepEqual(callOf(() => backend.saveAttachment(3, 1, "/tmp/a.bin"), ""),
+        { call: ["saveAttachment", 3, 1, "/tmp/a.bin"], value: "" });
+    assert.equal(callOf(() => backend.saveAttachment(3, 1, "/tmp/a.bin"), "no such attachment").value,
+        "no such attachment");
 });
 
 test("no answer gives the value of nothing", () => {
@@ -41,6 +50,7 @@ test("no answer gives the value of nothing", () => {
     assert.deepEqual(callOf(() => backend.columns(3), undefined).value, []);
     assert.equal(callOf(() => backend.filters(3), "").value, null);
     assert.equal(callOf(() => backend.documentInfo(3), "null").value, null);
+    assert.deepEqual(callOf(() => backend.attachments(3), "").value, []);
     assert.equal(callOf(() => backend.settings(), "").value, null);
     assert.equal(callOf(() => backend.workspaceInfo(), undefined).value, null);
 });

@@ -101,25 +101,96 @@ struct RecordPart
     }
 }
 
+//! What a record may be besides a record of its own, by a look at a few of its bytes
+//! (MarkedFormat.marksOf): bits
+enum RecordMark : ubyte
+{
+    none = 0,
+    part = 1, // a part of a message: PartedFormat.partOf tells
+    transfer = 2, // a message of a file sent in the log: TransferringFormat.transferOf tells
+}
+
+//! A format some of whose records may be more than records of their own (PartedFormat,
+//! TransferringFormat, which are MarkedFormats too): the index asks it of every record
+//! once, as the offset index grows, and the full question only of the records marked.
+//! Asked of a format by a cast; immutable like the LogFormat it is.
+interface MarkedFormat
+{
+    //! @returns the RecordMark bits of what the record at `offset` of the data (as
+    //! scanRecords found it) may be: an unset bit rules it out surely, a set one leaves
+    //! it to the full question. Asked of every record: keep it cheap, one look for all
+    ubyte marksOf(const(ubyte)[] data, size_t offset) const nothrow @nogc;
+}
+
 //! A LogFormat whose writers may cut a long message into numbered parts, written as
 //! records of their own: the index joins them into one record (domain/index/part_joiner).
-//! Asked of a format by a cast; immutable like the LogFormat it is.
-interface PartedFormat
+//! It marks the records that may be parts (MarkedFormat). Asked of a format by a cast;
+//! immutable like the LogFormat it is.
+interface PartedFormat : MarkedFormat
 {
-    //! @returns false if the record at `offset` of the data (as scanRecords found it) is
-    //! surely not a part, by a look at a few of its bytes; true for every part (partOf
-    //! tells). Asked of every record as the offset index grows: keep it cheap
-    bool mayBePart(const(ubyte)[] data, size_t offset) const nothrow @nogc;
-
     //! @returns what the record at `offset` of the data (as scanRecords found it) is as
-    //! a part; not a part: RecordPart.init. Asked only of the records mayBePart lets
-    //! through
+    //! a part; not a part: RecordPart.init. Asked only of the records marked
+    //! RecordMark.part
     RecordPart partOf(const(ubyte)[] data, size_t offset) const nothrow @nogc;
 
     //! @brief Decodes the parts of one message (as recordAt gives them, in order, the
     //! first one first) into one record: the fields of the first, the texts of all
     //! @returns false if the first part is not a valid record
     bool decodeParts(ref LogMessage!wchar msg, const(ubyte[])[] parts) const nothrow @nogc;
+}
+
+//! What a record is to a file its writer sends in the log (TransferringFormat.transferOf)
+enum TransferKind : ubyte
+{
+    none, // not a message of a transfer
+    start, // the file: its name, size, date, packets
+    data, // a packet of its bytes
+    end, // the last packet was sent
+    error, // the file can't be sent: with its serial, or none when it could not be read
+}
+
+//! A message of a file sent in the log. The texts and bytes are slices of the data the
+//! record was read from.
+//!
+//! What the catalog of the index (domain/index/transfers) takes of the messages, whatever
+//! the protocol: the messages of one transfer have one serial, a start opens a transfer
+//! (another start of the serial leaves the one before as it is), a packet or an end goes to
+//! the newest open transfer of its serial (a packet of none opens one: the log began during
+//! the transfer), an error closes it as failed (one without a serial, or of none open, is a
+//! failed transfer of its own), packets are numbered from 1 and the file is read from those
+//! that came in turn. A protocol of other rules needs them in the catalog first.
+struct TransferMessage
+{
+    TransferKind kind;
+    bool hasSerial; // the transfer it belongs to is known: all but an error without a file
+    uint serial; // of the file: the messages of one transfer have the same
+
+    // start, an error with a file (name alone for an error without one)
+    const(char)[] name;
+    ulong size; // bytes
+    const(char)[] date; // as the writer wrote it
+    uint packets;
+    uint bufferSize; // the bytes of a packet, the last one may have fewer
+
+    // data
+    uint packet; // 1-based
+    const(ubyte)[] bytes;
+
+    // error
+    long error; // the code of the writer
+    long osError; // errno of its system, negative
+}
+
+//! A LogFormat whose writers may send files as records of the log (the file transfer of
+//! dlt-daemon): the index keeps a catalog of them (domain/index/transfers). It marks the
+//! records that may be messages of a transfer (MarkedFormat). Asked of a format by a
+//! cast; immutable like the LogFormat it is.
+interface TransferringFormat : MarkedFormat
+{
+    //! @returns what the record at `offset` of the data (as scanRecords found it) is to a
+    //! transfer: kind none if it is not a message of one. Asked only of the records
+    //! marked RecordMark.transfer
+    TransferMessage transferOf(const(ubyte)[] data, size_t offset) const nothrow @nogc;
 }
 
 //! How well some bytes fit a format

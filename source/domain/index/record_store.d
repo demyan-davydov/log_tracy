@@ -1,6 +1,7 @@
 //! RecordStore: the records of a log. The bytes of its source, the format that splits and
 //! decodes them, and the offset index of the records found so far, which only grows. The
-//! numbered parts of a message (PartedFormat) are one record of it (domain/index/part_joiner).
+//! numbered parts of a message (PartedFormat) are one record of it (domain/index/part_joiner);
+//! the files sent in the log (TransferringFormat) are cataloged (domain/index/transfers).
 //!
 //! Not thread-safe, but for one promise: the records below a length a reader was given
 //! (Records, records()) may be read by any number of threads at once while one writer
@@ -14,12 +15,12 @@ module domain.index.record_store;
 
 import domain.index.offset_index : OffsetIndex, OffsetIndexItem;
 import domain.index.part_joiner : PartJoiner, StepKind;
+import domain.index.transfers : Transfers;
 import log_core.byte_source : ByteSource;
-import log_core.log_format : LogFormat, PartedFormat, RecordPart, ScanResult;
+import log_core.log_format : LogFormat, MarkedFormat, PartedFormat, RecordMark, RecordPart, ScanResult,
+    TransferringFormat;
 import log_core.log_message : LogMessage;
 import utils.chunked_array : ChunkedArray;
-
-import utils.static_bit_array : StaticBitArray;
 
 import std.typecons : Rebindable;
 
@@ -31,7 +32,8 @@ struct Bunch
     ScanResult found;
     bool end; // the data is over: no more bytes will come, and these were the last ones
 
-    StaticBitArray!(RecordStore.bunchSize) mayBePart; // of a PartedFormat: the record may be a part
+    ubyte[RecordStore.bunchSize] marks; // of a MarkedFormat: what each record may be (RecordMark)
+    ubyte anyMarks; // the marks of all the records together
 
     //! The offsets found
     const(size_t)[] records() const pure nothrow @nogc return
@@ -80,12 +82,18 @@ final class RecordStore
     private ChunkedArray!Fragment _fragments;
     private bool _broken; // an append failed half done: the joins may not match the records
 
+    private const(TransferringFormat) _transferring; // the format, if its records may send files
+    private const(MarkedFormat) _marked; // the format, if it is either: what each record may be
+    private Transfers _transfers; // the files sent in the log
+
     //! @param source - owned by the store from now on: released by close()
     this(ByteSource source, LogFormat format)
     {
         _source = source;
         _format = format;
         _parted = cast(const(PartedFormat)) format;
+        _transferring = cast(const(TransferringFormat)) format;
+        _marked = cast(const(MarkedFormat)) format;
     }
 
     //! The format the records are split and decoded by
@@ -140,6 +148,19 @@ final class RecordStore
         return _offsets.reservedBytes;
     }
 
+    //! The format as a TransferringFormat, null if its records send no files
+    const(TransferringFormat) transferring() const pure nothrow @nogc
+    {
+        return _transferring;
+    }
+
+    //! The files sent in the log found so far (TransferringFormat). Not while a record is
+    //! being appended (see the module)
+    ref const(Transfers) transfers() const pure nothrow @nogc return
+    {
+        return _transfers;
+    }
+
     //! The records found so far, to read from any thread: see the module. Not while one is
     //! being appended
     Records records() const pure nothrow @nogc
@@ -159,9 +180,12 @@ final class RecordStore
         bunch.found = _format.scanRecords(data, _scannedBytes, bunch.offsets[], final_);
         bunch.end = final_ && bunch.found.next == data.length;
         // Here, not in append(): the holder calls this without its lock
-        if (_parted !is null)
+        if (_marked !is null)
             foreach (i, offset; bunch.records)
-                bunch.mayBePart[i] = _parted.mayBePart(data, offset);
+            {
+                bunch.marks[i] = _marked.marksOf(data, offset);
+                bunch.anyMarks |= bunch.marks[i];
+            }
         return bunch;
     }
 
@@ -191,13 +215,35 @@ final class RecordStore
             _broken = true;
             return false;
         }
+        const first = _offsets.length;
         if (!_offsets.append(items[0 .. count]))
         {
             _broken |= _parted !is null;
             return false;
         }
         _scannedBytes = bunch.found.next;
+        if (_transferring !is null && (bunch.anyMarks & RecordMark.transfer))
+            addTransfers(bunch, items[0 .. count], first);
         return true;
+    }
+
+    //! Catalogs the messages of transfers among the records of a bunch appended as `items`,
+    //! numbered from `first`: the records of the bunch but the fragments of a message
+    private void addTransfers(ref const Bunch bunch, const(OffsetIndexItem)[] items, size_t first) nothrow @nogc
+    {
+        const data = _source.data;
+        size_t item = 0;
+        foreach (i, offset; bunch.records)
+        {
+            if (item == items.length || items[item].offset != offset)
+                continue; // a fragment: a part of a message is not a message of a transfer
+            const record = first + item++;
+            if (bunch.marks[i] & RecordMark.transfer)
+            {
+                const message = _transferring.transferOf(data, offset);
+                _transfers.add(message, record, offset);
+            }
+        }
     }
 
     //! Sorts the records of a bunch of a PartedFormat into records (`items`) and fragments
@@ -207,7 +253,7 @@ final class RecordStore
         const data = _source.data;
         foreach (i, offset; bunch.records)
         {
-            const mayBePart = bunch.mayBePart[i];
+            const mayBePart = (bunch.marks[i] & RecordMark.part) != 0;
             if (!mayBePart && !_joiner.holding)
             {
                 items[count++] = OffsetIndexItem(offset); // the usual record
@@ -262,6 +308,7 @@ final class RecordStore
         _offsets.clear();
         _joins.clear();
         _fragments.clear();
+        _transfers.clear();
         _joiner = PartJoiner.init;
         _broken = false;
         _scannedBytes = 0;
@@ -448,7 +495,7 @@ version (unittest)
 
     //! Lines of plain text, "<sender><counter> <k>/<n>: <text>" a part of a message:
     //! its parts are decoded as their texts joined by "|"
-    private final class PartedText : LogFormat, PartedFormat
+    private class PartedText : LogFormat, PartedFormat
     {
         import formats.plain_text : PlainTextFormat;
 
@@ -468,8 +515,8 @@ version (unittest)
         override bool decode(ref LogMessage!wchar msg, const(ubyte)[] record) const nothrow @nogc
             => _text.decode(msg, record);
 
-        override bool mayBePart(const(ubyte)[] data, size_t offset) const nothrow @nogc
-            => partOf(data, offset).isPart;
+        override ubyte marksOf(const(ubyte)[] data, size_t offset) const nothrow @nogc
+            => partOf(data, offset).isPart ? RecordMark.part : RecordMark.none;
 
         override RecordPart partOf(const(ubyte)[] data, size_t offset) const nothrow @nogc
         {
@@ -501,6 +548,72 @@ version (unittest)
             return true;
         }
     }
+}
+
+version (unittest)
+{
+    import log_core.log_format : TransferKind, TransferMessage, TransferringFormat;
+
+    //! PartedText whose lines "FL<kind> <serial> [<packet>]" are messages of a transfer:
+    //! FLST of 2 packets, FLDA, FLFI
+    private final class TransferText : PartedText, TransferringFormat
+    {
+        override ubyte marksOf(const(ubyte)[] data, size_t offset) const nothrow @nogc
+            => super.marksOf(data, offset)
+                | (data.length >= offset + 2 && data[offset .. offset + 2] == "FL" ? RecordMark.transfer : RecordMark.none);
+
+        override TransferMessage transferOf(const(ubyte)[] data, size_t offset) const nothrow @nogc
+        {
+            TransferMessage m;
+            const s = cast(const(char)[]) recordAt(data, offset);
+            if (s.length < 6 || s[0 .. 2] != "FL")
+                return m;
+            m.hasSerial = true;
+            m.serial = s[5] - '0';
+            switch (s[0 .. 4])
+            {
+            case "FLST":
+                m.kind = TransferKind.start;
+                m.packets = 2;
+                break;
+            case "FLDA":
+                m.kind = TransferKind.data;
+                m.packet = s[7] - '0';
+                break;
+            case "FLFI":
+                m.kind = TransferKind.end;
+                break;
+            default:
+                break;
+            }
+            return m;
+        }
+    }
+}
+
+@("RecordStore: the messages of a file sent in the log are cataloged by the numbers of their records")
+unittest
+{
+    const text = "x\nA1 1/2: he\nFLST 7\nFLDA 7 1\nA2 2/2: llo\nFLDA 7 2\nFLFI 7\n";
+    auto store = new RecordStore(new TextSource(text), new TransferText());
+    scanAll(store, true);
+    assert(store.length == 6, "the parts are one record");
+    const transfers = &store.transfers();
+    assert(transfers.length == 1);
+    const t = (*transfers)[0];
+    assert(t.record == 2 && t.offset == 13 && t.started && t.ended && t.inTurn == 2);
+    assert(transfers.inTurnOffsets(0) == [20, 41]);
+
+    store.close();
+    assert(store.transfers.length == 0, "closed with the store");
+}
+
+@("RecordStore: a format that sends no files has no transfers")
+unittest
+{
+    auto store = new RecordStore(new TextSource("FLST 7\nFLDA 7 1\n"), new PartedText());
+    scanAll(store, true);
+    assert(store.length == 2 && store.transfers.length == 0);
 }
 
 @("RecordStore: the numbered parts of a message are one record, where its first part is")

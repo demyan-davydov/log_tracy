@@ -37,13 +37,24 @@ decode one into a `LogMessage` without allocating. See `formats/dlt/` and `forma
 ## Messages Cut into Parts
 
 When the writers of a format cut a long message into records of their own, the format also
-implements `PartedFormat` (`log_core/log_format`): `mayBePart` rules out most records by a
-few of their bytes (asked of every record as the offset index grows: keep it cheap), `partOf`
+implements `PartedFormat` (`log_core/log_format`): `marksOf` (of `MarkedFormat`, which it
+extends) rules out most records by a few of their bytes, setting `RecordMark.part` only on
+those that may be parts (asked of every record as the offset index grows, one look for all
+the marks: keep it cheap), `partOf`
 tells what a record it let through is as a part (the sender, its number and count, the
 counter that comes next), and `decodeParts` decodes the parts as one record: the parts it
 got, which may be fewer than the message has (a message closed before its last part came). The
 index joins them (`domain/index/part_joiner`); the format knows nothing of the waiting. See
 `formats/dlt/parts`.
+
+## Files Sent in the Log
+
+When the writers of a format send files as records (the file transfer of dlt-daemon), the
+format also implements `TransferringFormat`: `marksOf` sets `RecordMark.transfer` on the
+records that may be messages of a transfer, `transferOf` tells what one is (a start with the
+file, a packet with its bytes, the end, an error). The index catalogs them
+(`domain/index/transfers`). See `formats/dlt/file_transfer`; a format that is both shares one
+look at the header in its `marksOf` (`DltFormat`).
 
 ## Checks
 

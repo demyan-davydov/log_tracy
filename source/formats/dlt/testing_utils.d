@@ -102,6 +102,54 @@ struct BuildV1
     }
 }
 
+//! Verbose arguments built one by one, in the byte order of a message:
+//! VerboseArgs(msbf).str("FLFI").u32(7).str("FLFI")
+struct VerboseArgs
+{
+    bool msbf = true;
+    ubyte[] bytes;
+    ubyte count;
+
+    ref VerboseArgs str(string s) return
+    {
+        bytes ~= argument(TypeInfoFlags.TypeString, bytesOf(cast(ushort)(s.length + 1), msbf)
+            ~ cast(const(ubyte)[]) s ~ cast(ubyte) 0, msbf);
+        ++count;
+        return this;
+    }
+
+    ref VerboseArgs u32(uint value) return
+    {
+        bytes ~= argument(TypeInfoFlags.TypeUnsigned | 3, bytesOf(value, msbf), msbf);
+        ++count;
+        return this;
+    }
+
+    ref VerboseArgs i32(int value) return
+    {
+        bytes ~= argument(TypeInfoFlags.TypeSigned | 3, bytesOf(value, msbf), msbf);
+        ++count;
+        return this;
+    }
+
+    ref VerboseArgs raw(const(ubyte)[] data) return
+    {
+        bytes ~= argument(TypeInfoFlags.TypeRaw, bytesOf(cast(ushort) data.length, msbf) ~ data, msbf);
+        ++count;
+        return this;
+    }
+
+    //! A verbose log record of version 1 (info, APP1/CTX1) with these arguments
+    ubyte[] record() const
+    {
+        BuildV1 r;
+        r.msbf = msbf;
+        r.numberOfArguments = count;
+        r.payload = bytes;
+        return r.bytes();
+    }
+}
+
 /// A minimal record: storage header, standard header of type `headerType`
 /// as it is (its flags announce fields the record doesn't have: a broken
 /// record), then `payload`; `length` of the standard header, -1: computed

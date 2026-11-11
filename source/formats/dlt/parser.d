@@ -490,6 +490,160 @@ bool readArgument(ref const(ubyte)[] payload, bool msbf, out VerboseArgument arg
     return true;
 }
 
+//! @returns the size of the storage header at the start of `data` by its pattern alone
+//! (0 if it is too short), for a look at every record: the record was found by the scan
+size_t storageSizeOf()(const(ubyte)[] data) pure nothrow @nogc
+{
+    if (data.length < StorageHeader.sizeof)
+        return 0;
+    return data[3] == 1 ? StorageHeader.sizeof : 14 + data[13];
+}
+
+//! Where the arguments of a verbose message start (findVerboseStart)
+struct VerboseStart
+{
+    size_t at; // of the first argument, from the start of the message: may be past its end
+    MessageInfo messageInfo;
+    ubyte arguments;
+    bool msbf; // of the payload
+    bool hasAppContextId; // always in version 1
+}
+
+//! @brief Finds where the arguments of the verbose message at the start of `message` (no
+//! storage header) start, by a walk over its header: cheaper than findHeaders and
+//! readHeaderV2, for a look at every record as the offset index grows. `start` is written
+//! when it returns true (by ref, not out: no clearing first, asked of every record)
+//! @returns false if it is not a verbose message of version 1 or 2, or a segmented one
+pragma(inline, true) bool findVerboseStart()(const(ubyte)[] message, ref VerboseStart start) pure nothrow @nogc
+{
+    // Version 1 here, inlined where it is asked of every record; version 2 a call
+    const version_ = protocolVersion(message);
+    if (version_ <= 1)
+    {
+        alias T = StandardHeader.Type;
+        if (message.length < StandardHeader.sizeof)
+            return false;
+        const htyp = message[0];
+        const p = StandardHeader.sizeof + (htyp & T.WithEcuId ? 4 : 0)
+            + (htyp & T.WithSessionId ? 4 : 0) + (htyp & T.WithTimestamp ? 4 : 0);
+        // The extended header (MSIN, NOAR, APID, CTID): one check of the flags and the
+        // length, asked of every record
+        if (!(htyp & T.UseExtendedHeader) || message.length < p + ExtendedHeader.sizeof || !(message[p] & 1))
+            return false;
+        start.messageInfo = MessageInfo(message[p]);
+        start.arguments = message[p + 1];
+        start.at = p + ExtendedHeader.sizeof;
+        start.msbf = (htyp & T.MostSignificantByteFirst) != 0;
+        start.hasAppContextId = true;
+        return true;
+    }
+    return version_ == 2 && findVerboseStartV2(message, start);
+}
+
+//! findVerboseStart of a message of version 2
+private bool findVerboseStartV2(const(ubyte)[] message, out VerboseStart start) pure nothrow @nogc
+{
+    import std.bitmanip : littleEndianToNative;
+
+    alias T = HeaderTypeV2;
+    // HTYP2, MCNT, LEN, then MSIN and NOAR of a verbose message
+    if (message.length < baseHeaderV2Size + 2)
+        return false;
+    const htyp = littleEndianToNative!uint(message[0 .. 4]);
+    if ((htyp & T.ContentMask) != ContentInfo.Verbose || (htyp & T.WithSegmentation))
+        return false;
+    size_t p = baseHeaderV2Size + 2 + 9; // the time stamp of a verbose message
+    bool skipText() // a length, then the text
+    {
+        if (p >= message.length)
+            return false;
+        p += 1 + message[p];
+        return true;
+    }
+
+    if ((htyp & T.WithEcuId) && !skipText())
+        return false;
+    if ((htyp & T.WithAppContextId) && (!skipText() || !skipText()))
+        return false;
+    if (htyp & T.WithSessionId)
+        p += 4;
+    if (htyp & T.WithSourceFileName)
+    {
+        if (!skipText())
+            return false;
+        p += 4;
+    }
+    if (htyp & T.WithTags)
+    {
+        if (p >= message.length)
+            return false;
+        const tags = message[p++];
+        foreach (_; 0 .. tags)
+            if (!skipText())
+                return false;
+    }
+    if (htyp & T.WithPrivacyLevel)
+        p += 1;
+    start.messageInfo = MessageInfo(message[baseHeaderV2Size]);
+    start.arguments = message[baseHeaderV2Size + 1];
+    start.at = p;
+    start.msbf = false; // as the parser reads version 2
+    start.hasAppContextId = (htyp & T.WithAppContextId) != 0;
+    return true;
+}
+
+//! The arguments of a verbose message (readVerbose)
+struct VerboseMessage
+{
+    MessageInfo messageInfo;
+    uint arguments;
+    bool msbf;
+    const(ubyte)[] payload; // the arguments
+}
+
+//! @brief Reads the verbose message `record` (a whole record, as DltFormat.recordAt gives
+//! it) as far as its arguments
+//! @returns false if it is not a verbose message of version 1 or 2 that fits in the
+//! record, or a segmented one
+bool readVerbose(const(ubyte)[] record, bool hasStorageHeader, out VerboseMessage verbose) nothrow @nogc
+{
+    const(ubyte)[] message = record;
+    if (hasStorageHeader)
+    {
+        const storage = readStorageHeader(record);
+        if (storage.size == 0)
+            return false;
+        message = record[storage.size .. $];
+    }
+
+    const version_ = protocolVersion(message);
+    if (version_ == 2)
+    {
+        HeaderV2 h;
+        if (readHeaderV2(message, h) != HeaderV2Status.ok || h.content != ContentInfo.Verbose
+            || h.segmented || h.length > message.length)
+            return false;
+        verbose.messageInfo = h.messageInfo;
+        verbose.arguments = h.numberOfArguments;
+        verbose.msbf = false; // as the parser reads version 2
+        verbose.payload = message[h.size .. h.length];
+        return true;
+    }
+    if (version_ > 1 || message.length < StandardHeader.sizeof)
+        return false;
+    const length = (cast(const(StandardHeader)*) message.ptr).nativeLength;
+    if (length > message.length)
+        return false;
+    const headers = findHeaders(message[0 .. length]);
+    if (headers.standard is null || headers.extended is null || !headers.extended.messageInfo.isVerbose)
+        return false;
+    verbose.messageInfo = headers.extended.messageInfo;
+    verbose.arguments = headers.extended.numberOfArguments;
+    verbose.msbf = headers.standard.isBigEndian();
+    verbose.payload = headers.payload;
+    return true;
+}
+
 //! Appends the argument at the start of `payload` and moves `payload` past it.
 //! @returns false, leaving `payload` as it was, if the argument has a type that
 //! isn't supported or doesn't fit in the payload

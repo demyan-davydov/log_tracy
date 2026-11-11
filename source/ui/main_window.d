@@ -298,6 +298,14 @@ class MainWindow : SciterWindow
             // getDocumentInfo(docId) -> {name, path, format, bytes, records}, null if not open
             answer(_session.documentInfoJson(docParam()));
             return true;
+        case "getAttachments":
+            // getAttachments(docId) -> [{id, name, ...}], see AppSession.attachmentsJson
+            answer(_session.attachmentsJson(docParam()));
+            return true;
+        case "saveAttachment":
+            // saveAttachment(docId, id, path) -> error message, "" if saved
+            answer(_session.saveAttachment(docParam(), param!int(1), normalizePath(param!string(2))));
+            return true;
         case "getSearchHistory":
             // getSearchHistory(docId) -> [[chips]] of the document, the latest first
             answer(_session.searchHistoryJson(docParam()));

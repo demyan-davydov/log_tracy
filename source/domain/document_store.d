@@ -4,6 +4,7 @@
 //! the active one are the window's (`ui/document_tabs`).
 module domain.document_store;
 
+import domain.attachments : Attachment;
 import domain.document;
 import domain.document_id;
 import domain.document_item : DocumentItem;
@@ -14,6 +15,7 @@ import log_core.log_format : FormatChoice, LogFormat;
 
 import utils.event_bus.event_bus_interface : SignalConsumer, SubscriptionToken;
 import utils.event_bus.event_bus_sync : EventBusSync;
+import utils.ui_text : uiText, UiTextException;
 
 import std.algorithm : countUntil, remove;
 import std.meta : AliasSeq;
@@ -27,7 +29,7 @@ struct DocumentEvent(E)
 
 /// Document events that DocumentStore forwards as DocumentEvent!E
 alias ForwardedDocumentEvents = AliasSeq!(OperationStarted, OperationProgress, OperationFinished, ContentGrown,
-    SourceLost);
+    SourceLost, AttachmentsChanged);
 
 private class NullDocumentView : DocumentView
 {
@@ -91,6 +93,16 @@ private class NullDocument : Document
     override ulong byteSize() nothrow @nogc
     {
         return 0;
+    }
+
+    override Attachment[] attachments()
+    {
+        return null;
+    }
+
+    override ulong writeAttachment(size_t id, scope void delegate() begin, scope void delegate(const(ubyte)[] bytes) write)
+    {
+        throw new UiTextException(uiText("no such file in the log"));
     }
 
     override void applyViewFilter(LogFilter!wchar filter)

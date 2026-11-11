@@ -7,8 +7,8 @@ module formats.dlt.parts;
 import formats.dlt.fields;
 import formats.dlt.header_v2 : ContentInfo, HeaderTypeV2, HeaderV2, HeaderV2Status, baseHeaderV2Size,
     protocolVersion, readHeaderV2;
-import formats.dlt.parser : ArgumentKind, LogItemHeaders, VerboseArgument, ecuIdOf, findHeaders,
-    parseDltItem, readArgument;
+import formats.dlt.parser : ArgumentKind, LogItemHeaders, VerboseArgument, VerboseStart, ecuIdOf, findHeaders,
+    findVerboseStart, parseDltItem, readArgument, storageSizeOf;
 import formats.dlt.protocol;
 
 import log_core.log_format : RecordPart;
@@ -26,17 +26,15 @@ RecordPart dltPartOf(const(ubyte)[] data, bool hasStorageHeader) nothrow @nogc
 }
 
 //! @returns false if the record at the start of `data` is surely not a part, by a look
-//! at a few of its bytes; true for every part (dltPartOf tells)
+//! at a few of its bytes; true for every part (dltPartOf tells). The look of a record on
+//! its own, for the tests: DltFormat.marksOf walks the header once for it and
+//! dltMayBeTransfer (dltMayBePartAt)
 bool dltMayBePart(const(ubyte)[] data, bool hasStorageHeader) pure nothrow @nogc
 {
-    size_t storage = 0;
-    if (hasStorageHeader)
-        storage = data.length < StorageHeader.sizeof ? 0 : data[3] == 1 ? StorageHeader.sizeof : 14 + data[13];
+    const storage = hasStorageHeader ? storageSizeOf(data) : 0;
     if (storage >= data.length)
         return false;
-    const message = data[storage .. $];
-    const version_ = protocolVersion(message);
-    return version_ <= 1 ? mayBePartV1(message) : version_ == 2 && mayBePartV2(message);
+    return mayBePartOf(data[storage .. $]);
 }
 
 //! @brief Decodes the parts of one message (records as DltFormat.recordAt gives them,
@@ -178,7 +176,7 @@ private bool readPart(const(ubyte)[] record, bool hasStorageHeader, out PartText
     }
     else if (version_ <= 1)
     {
-        if (!mayBePartV1(message))
+        if (!mayBePartOf(message))
             return false;
         const length = (cast(const(StandardHeader)*) message.ptr).nativeLength;
         if (length > message.length || hasStorageHeader && !endsAtHeader(message[length .. $]))
@@ -219,88 +217,32 @@ private bool endsAtHeader(const(ubyte)[] after) pure nothrow @nogc
         : after == DLT_PATTERN[0 .. after.length];
 }
 
-//! @returns false if the version 2 message at the start of `message` is surely not a
-//! part, by a walk over its header to the first bytes of its argument: asked of every
-//! record as the offset index grows, cheaper than readHeaderV2
-private bool mayBePartV2(const(ubyte)[] message) pure nothrow @nogc
+//! @returns false if the message at the start of `message` (no storage header) is surely
+//! not a part, by a look at a few of its bytes: asked of every record as the offset index
+//! grows
+private bool mayBePartOf(const(ubyte)[] message) pure nothrow @nogc
 {
-    import std.bitmanip : littleEndianToNative;
+    VerboseStart start;
+    return findVerboseStart(message, start) && dltMayBePartAt(message, start);
+}
 
-    alias T = HeaderTypeV2;
-    // HTYP2, MCNT, LEN, then MSIN and NOAR of a verbose message
-    if (message.length < baseHeaderV2Size + 2)
+//! @returns false if the verbose message at the start of `message` (no storage header),
+//! whose arguments start as findVerboseStart found, is surely not a part: the look of
+//! dltMayBePart once the header is walked, which DltFormat.marksOf shares
+bool dltMayBePartAt()(const(ubyte)[] message, in VerboseStart start) pure nothrow @nogc
+{
+    if (!start.hasAppContextId || start.arguments != 1)
         return false;
-    const htyp = littleEndianToNative!uint(message[0 .. 4]);
-    if ((htyp & T.ContentMask) != ContentInfo.Verbose || !(htyp & T.WithAppContextId)
-        || (htyp & T.WithSegmentation) || message[baseHeaderV2Size + 1] != 1)
+    // The type info, the length, a digit
+    if (start.at + 7 > message.length)
         return false;
-
-    size_t p = baseHeaderV2Size + 2 + 9; // the time stamp of a verbose message
-    bool skipText() // a length, then the text
-    {
-        if (p >= message.length)
-            return false;
-        p += 1 + message[p];
-        return true;
-    }
-
-    if ((htyp & T.WithEcuId) && !skipText())
-        return false;
-    if (!skipText() || !skipText()) // APID, CTID
-        return false;
-    if (htyp & T.WithSessionId)
-        p += 4;
-    if (htyp & T.WithSourceFileName)
-    {
-        if (!skipText())
-            return false;
-        p += 4;
-    }
-    if (htyp & T.WithTags)
-    {
-        if (p >= message.length)
-            return false;
-        const tags = message[p++];
-        foreach (_; 0 .. tags)
-            if (!skipText())
-                return false;
-    }
-    if (htyp & T.WithPrivacyLevel)
-        p += 1;
-
-    // The type info (little-endian), the length, a digit
-    if (p + 7 > message.length)
-        return false;
-    const typeInfo = readValue!uint(message[p .. p + 4], false);
+    const typeInfo = readValue!uint(message[start.at .. start.at + 4], start.msbf);
     if (!(typeInfo & TypeInfoFlags.TypeString))
         return false;
     if (typeInfo & TypeInfoFlags.VariableInfo)
         return true; // the name comes first: left to readPart
-    const c = message[p + 6];
+    const c = message[start.at + 6];
     return c >= '0' && c <= '9';
-}
-
-//! @returns false if the version 1 message at the start of `message` is surely not a
-//! part, by a look at a few bytes: asked of every record as the offset index grows
-private bool mayBePartV1(const(ubyte)[] message) pure nothrow @nogc
-{
-    alias T = StandardHeader.Type;
-    if (message.length < StandardHeader.sizeof)
-        return false;
-    const htyp = message[0];
-    if (!(htyp & T.UseExtendedHeader))
-        return false;
-    const p = StandardHeader.sizeof + (htyp & T.WithEcuId ? 4 : 0)
-        + (htyp & T.WithSessionId ? 4 : 0) + (htyp & T.WithTimestamp ? 4 : 0);
-    // The extended header (MSIN, NOAR, APID, CTID), the type info, the length, a digit
-    enum extended = 10, text = extended + 4 + 2;
-    if (message.length <= p + text || !(message[p] & 1) || message[p + 1] != 1)
-        return false; // not verbose, not one argument
-    const typeInfo = readValue!uint(message[p + extended .. p + extended + 4], (htyp & T.MostSignificantByteFirst) != 0);
-    if (typeInfo & TypeInfoFlags.VariableInfo)
-        return true; // the name comes first: left to readPart
-    const c = message[p + text];
-    return (typeInfo & TypeInfoFlags.TypeString) && c >= '0' && c <= '9';
 }
 
 //! @brief Takes the number "<k>/<n>: " off the start of `text`: 1 <= k <= n, at most
