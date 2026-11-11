@@ -12,6 +12,7 @@ import log_core.log_message;
 import log_core.log_filter;
 
 import domain.anchors;
+import domain.attachments : Attachment, AttachmentState;
 import domain.log_index;
 import formats.registry : createFormat, detectFormat;
 import log_core.byte_source;
@@ -160,6 +161,16 @@ class LogDocument : Document
     override ulong byteSize() nothrow @nogc
     {
         return _index.byteSize;
+    }
+
+    override Attachment[] attachments()
+    {
+        return _index.attachments;
+    }
+
+    override ulong writeAttachment(size_t id, scope void delegate() begin, scope void delegate(const(ubyte)[] bytes) write)
+    {
+        return _index.writeAttachment(id, begin, write);
     }
 
     //! @brief Rebuilds the main view with `filter`. A pass that runs is stopped
@@ -1857,4 +1868,85 @@ unittest
     assert(realIndexes(doc.searchView) == [7]);
     assert(doc.searchView.fetchItem(0, item) && item.anchored && !item.found);
     assert(doc.mainView.fetchItem(7, item) && item.anchored && !item.found);
+}
+
+@("LogDocument: the files sent in the log are listed by their start and written from their packets")
+unittest
+{
+    import formats.dlt.testing_utils : VerboseArgs;
+    import std.file : remove, tempDir, write;
+    import std.path : buildPath;
+    import utils.ui_text : UiTextException;
+
+    ubyte[] data = buildDltMessage();
+    data ~= VerboseArgs().str("FLST").u32(7).str("a.bin").u32(7).str("today").u32(3).u32(3).str("FLST").record();
+    data ~= VerboseArgs().str("FLDA").u32(7).u32(1).raw([1, 2, 3]).str("FLDA").record();
+    data ~= buildDltMessage();
+    data ~= VerboseArgs().str("FLDA").u32(7).u32(2).raw([4, 5, 6]).str("FLDA").record();
+    data ~= VerboseArgs().str("FLDA").u32(7).u32(3).raw([7, 0, 0]).str("FLDA").record();
+    data ~= VerboseArgs().str("FLFI").u32(7).str("FLFI").record();
+    data ~= VerboseArgs(false).str("FLDA").u32(9).u32(5).raw([1]).str("FLDA").record(); // its start is not in the log
+    data ~= VerboseArgs().str("FLST").u32(8).str("empty").u32(0).str("today").u32(0).u32(3).str("FLST").record();
+    data ~= VerboseArgs().str("FLFI").u32(8).str("FLFI").record();
+    const path = buildPath(tempDir(), "dlt_document_attachments.dlt");
+    write(path, data);
+    scope (exit)
+        remove(path);
+
+    auto doc = new LogDocument(path);
+    auto views = new Views(doc);
+    size_t changed;
+    doc.events.subscribe((const AttachmentsChanged e) { ++changed; });
+    dispatchUntil(doc, () => views.mainReady);
+    assert(changed > 0, "the files were told");
+
+    const list = doc.attachments();
+    assert(list.length == 3);
+    assert(list[0].id == 0 && list[0].name == "a.bin" && list[0].date == "today" && list[0].size == 7);
+    assert(list[0].packets == 3 && list[0].inTurn == 3 && list[0].record == 1);
+    assert(list[0].state == AttachmentState.complete);
+    assert(list[1].name.length == 0 && list[1].serial == 9 && list[1].state == AttachmentState.incomplete);
+    assert(list[2].name == "empty" && list[2].state == AttachmentState.complete);
+
+    ubyte[] written;
+    size_t begun;
+    ulong writeOf(size_t id)
+    {
+        written = null;
+        begun = 0;
+        return doc.writeAttachment(id, () { ++begun; }, (const(ubyte)[] bytes) { written ~= bytes; });
+    }
+
+    assert(writeOf(0) == 7 && begun == 1);
+    assert(written == [1, 2, 3, 4, 5, 6, 7], "cut at its size");
+    assert(writeOf(2) == 0 && begun == 1, "a whole file of no bytes");
+
+    bool refused(size_t id)
+    {
+        try
+            writeOf(id);
+        catch (UiTextException)
+            return begun == 0;
+        return false;
+    }
+
+    assert(refused(1), "nothing of it from its first packet");
+    assert(refused(3), "no such attachment");
+}
+
+@("LogDocument: a log that sends no files tells no change of them")
+unittest
+{
+    import std.file : remove;
+
+    const path = writeTestDlt("dlt_document_no_attachments.dlt", 100);
+    scope (exit)
+        remove(path);
+    auto doc = new LogDocument(path);
+    auto views = new Views(doc);
+    size_t changed;
+    doc.events.subscribe((const AttachmentsChanged e) { ++changed; });
+    dispatchUntil(doc, () => views.mainReady);
+    waitIdle(doc);
+    assert(changed == 0 && doc.attachments.length == 0);
 }

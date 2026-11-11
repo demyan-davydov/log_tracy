@@ -5,7 +5,8 @@
 // functions named ...Json give the text as it is. Messages for the user are ""
 // when there is none. The backend tells the script
 // what changed by calling the global functions of script.js (onDocumentOpened,
-// onDocumentClosed, onMainViewChanged, onSearchViewChanged, getAppState),
+// onDocumentClosed, onMainViewChanged, onSearchViewChanged, onAttachmentsChanged,
+// getAppState),
 // never from inside one of these calls. Kept free of Sciter but for Window:
 // tests/js.
 
@@ -113,6 +114,17 @@ export const searchHistory = docId => parsed(xcall("getSearchHistory", docId), [
 export const documentInfo = docId => parsed(xcall("getDocumentInfo", docId), null);
 // What is wrong with a regular expression, "" if nothing
 export const checkRegex = (pattern, matchCase) => message(xcall("checkRegex", pattern, matchCase));
+
+// ── Files sent in the log ────────────────────────────────────────────────────
+
+// The files sent in the log of the document so far (onAttachmentsChanged tells a
+// change): [{ id, name, date, size, packets, received, inTurn, state ("sending",
+// "complete", "incomplete", "failed"), record (the message that opened it),
+// serial (null if unknown), error, osError }]
+export const attachments = docId => parsed(xcall("getAttachments", docId), []);
+// Saves the file `id` to `path`: its bytes from its first packet in turn.
+// Returns: the error, "" if it was saved
+export const saveAttachment = (docId, id, path) => message(xcall("saveAttachment", docId, id, path));
 
 // ── Filters ──────────────────────────────────────────────────────────────────
 // The commands return a message for the user (an error, what was lost), "" if none

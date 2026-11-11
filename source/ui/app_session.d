@@ -12,6 +12,7 @@
 //! not called any more; what changes after that is written by finish().
 module ui.app_session;
 
+import domain.attachments : Attachment, AttachmentState;
 import domain.document;
 import domain.document_id;
 import domain.document_item : DocumentItem;
@@ -131,6 +132,11 @@ final class AppSession
                 ui.searchViewChanged = false;
                 _scriptCalls ~= ScriptCall("onSearchViewChanged", idOf(docId),
                     toJson(ui.searchViewShown, &textForUser).toString());
+            }
+            if (ui.attachmentsChanged)
+            {
+                ui.attachmentsChanged = false;
+                _scriptCalls ~= ScriptCall("onAttachmentsChanged", idOf(docId));
             }
         }
         auto calls = _scriptCalls;
@@ -576,6 +582,74 @@ final class AppSession
         ]).toString();
     }
 
+    /// The files sent in the log of the document (Document.attachments): [{id, name, date,
+    /// size, packets, received, inTurn, state, record, serial, error, osError}], [] if it
+    /// isn't open. state: "sending", "complete", "incomplete", "failed"; serial null if
+    /// unknown; record: the index of the message that opened the transfer, as
+    /// mainViewPosition takes it (not a row of the main view: a filter hides rows)
+    string attachmentsJson(DocumentId docId)
+    {
+        import std.conv : to;
+
+        if (!sourcePathOf(docId).length)
+            return "[]";
+        JSONValue[] list;
+        foreach (a; _documents.doc(docId).attachments)
+            list ~= JSONValue([
+                "id": JSONValue(a.id),
+                "name": JSONValue(a.name),
+                "date": JSONValue(a.date),
+                "size": JSONValue(a.size),
+                "packets": JSONValue(a.packets),
+                "received": JSONValue(a.received),
+                "inTurn": JSONValue(a.inTurn),
+                "state": JSONValue(a.state.to!string),
+                "record": JSONValue(a.record),
+                "serial": a.hasSerial ? JSONValue(a.serial) : JSONValue(null),
+                "error": JSONValue(a.error),
+                "osError": JSONValue(a.osError),
+            ]);
+        return JSONValue(list).toString();
+    }
+
+    /// Saves the attachment `id` of the document to the file `path`, whole or not at all: its
+    /// bytes go to "<path>.part", which takes the place of `path` once they are all there, so
+    /// a file saved over stays as it was if the save fails.
+    /// Returns: the error for the user, "" if it was saved
+    string saveAttachment(DocumentId docId, size_t id, string path)
+    {
+        import std.file : exists, remove, rename;
+        import std.stdio : File;
+
+        if (!sourcePathOf(docId).length)
+            return _catalog.translate(uiText("the document is not open"));
+        const part = path ~ ".part";
+        File file;
+        try
+        {
+            // Made once the attachment can be written: not for one refused
+            _documents.doc(docId).writeAttachment(id, () { file = File(part, "wb"); },
+                (const(ubyte)[] bytes) { file.rawWrite(bytes); });
+            file.close();
+            rename(part, path);
+            return "";
+        }
+        catch (Exception e)
+        {
+            try
+            {
+                if (file.isOpen)
+                    file.close();
+                if (exists(part))
+                    remove(part);
+            }
+            catch (Exception)
+            {
+            }
+            return _catalog.translate(uiText("Can't save the file: {reason}", "reason", uiTextOf(e)));
+        }
+    }
+
     /// The queries searched in the file of the document, the latest first: [[chips]]
     string searchHistoryJson(DocumentId docId)
     {
@@ -739,6 +813,10 @@ final class AppSession
         });
         events.subscribe((const DocumentEvent!ContentGrown e) {
             processDocumentEvent(e.docId, e.event);
+        });
+        events.subscribe((const DocumentEvent!AttachmentsChanged e) {
+            if (auto ui = _documentUis.get(e.docId, null))
+                ui.attachmentsChanged = true;
         });
         events.subscribe((const DocumentEvent!SourceLost e) {
             writeln("Source lost, doc ", e.docId.toInt(), ": ", _documents.sourcePath(e.docId));
@@ -918,6 +996,25 @@ version (unittest)
         FormatChoice formatChoice() const { return FormatChoice("plain-text", 0); }
         size_t messageCount() nothrow @nogc { return records; }
         ulong byteSize() nothrow @nogc { return bytes; }
+        // The files sent in the log, and how writing one goes: refused before its bytes
+        // (no such file), or failing after the first two of them (the log lost)
+        Attachment[] files;
+        ubyte[] fileBytes = [1, 2, 3, 4, 5];
+        bool refuse, failMidway;
+        Attachment[] attachments() { return files; }
+        ulong writeAttachment(size_t id, scope void delegate() begin, scope void delegate(const(ubyte)[] bytes) write)
+        {
+            import utils.ui_text : uiText, UiTextException;
+
+            if (refuse)
+                throw new UiTextException(uiText("no such file in the log"));
+            begin();
+            write(fileBytes[0 .. 2]);
+            if (failMidway)
+                throw new UiTextException(uiText("the log is no longer available"));
+            write(fileBytes[2 .. $]);
+            return fileBytes.length;
+        }
     }
 
     /// A session over fake documents: a path with "missing" in it can't be opened
@@ -1201,6 +1298,98 @@ unittest
     assert(info["format"].str == "Plain text", info["format"].str);
     assert(info["records"].integer == 1234);
     assert(info["bytes"].integer == 5_000_000_000);
+}
+
+@("AppSession: the files sent in the log of a document, as the script lists them")
+unittest
+{
+    auto f = Fixture.make();
+    const id = f.session.openFile("/logs/a.dlt").docId;
+    Attachment a;
+    a.id = 0;
+    a.name = "trigger.tar.lz4";
+    a.date = "Mon Nov  3 10:19:51 2025\n";
+    a.size = 119_480_325;
+    a.packets = 116_681;
+    a.received = 32_590;
+    a.inTurn = 32_590;
+    a.state = AttachmentState.incomplete;
+    a.record = 1234;
+    a.hasSerial = true;
+    a.serial = 3_033_975_044;
+    Attachment b;
+    b.id = 1;
+    b.state = AttachmentState.failed;
+    b.error = -400;
+    b.osError = -2;
+    f.docOf("/logs/a.dlt").files = [a, b];
+
+    const list = parseJSON(f.session.attachmentsJson(id)).array;
+    assert(list.length == 2);
+    assert(list[0]["id"].integer == 0 && list[0]["name"].str == "trigger.tar.lz4");
+    assert(list[0]["date"].str == "Mon Nov  3 10:19:51 2025\n");
+    assert(list[0]["size"].integer == 119_480_325 && list[0]["packets"].integer == 116_681);
+    assert(list[0]["received"].integer == 32_590 && list[0]["inTurn"].integer == 32_590);
+    assert(list[0]["state"].str == "incomplete" && list[0]["record"].integer == 1234);
+    assert(list[0]["serial"].integer == 3_033_975_044);
+    assert(list[1]["state"].str == "failed" && list[1]["serial"].isNull);
+    assert(list[1]["error"].integer == -400 && list[1]["osError"].integer == -2);
+    assert(f.session.attachmentsJson(DocumentId.init) == "[]", "a document that isn't open");
+}
+
+@("AppSession: the script is told when the files sent in a log change, once a change")
+unittest
+{
+    auto f = Fixture.make();
+    const id = f.session.openFile("/logs/a.dlt").docId;
+    f.session.takeScriptCalls();
+    assert(!namesOf(f.session.takeScriptCalls()).canFind("onAttachmentsChanged"), "none yet");
+
+    f.docOf("/logs/a.dlt").bus.publish(AttachmentsChanged());
+    f.docOf("/logs/a.dlt").bus.publish(AttachmentsChanged());
+    f.session.dispatchEvents();
+    const calls = f.session.takeScriptCalls();
+    assert(calls.canFind(ScriptCall("onAttachmentsChanged", cast(int) id.toInt())));
+    assert(!namesOf(f.session.takeScriptCalls()).canFind("onAttachmentsChanged"), "told once");
+}
+
+@("AppSession: an attachment is saved where the script says, whole or not at all")
+unittest
+{
+    import std.file : exists, mkdirRecurse, read, rmdirRecurse, tempDir, write;
+    import std.path : buildPath;
+
+    const dir = buildPath(tempDir(), "dlt_session_attachments");
+    mkdirRecurse(dir);
+    scope (exit)
+        rmdirRecurse(dir);
+    const path = buildPath(dir, "a.bin");
+
+    auto f = Fixture.make();
+    const id = f.session.openFile("/logs/a.dlt").docId;
+    auto doc = f.docOf("/logs/a.dlt");
+    assert(f.session.saveAttachment(id, 0, path) == "");
+    assert(cast(const(ubyte)[]) read(path) == [1, 2, 3, 4, 5]);
+    assert(!exists(path ~ ".part"), "written beside, then put in its place");
+
+    write(path, "old");
+    doc.failMidway = true;
+    assert(f.session.saveAttachment(id, 0, path) == "Can't save the file: the log is no longer available");
+    assert(cast(const(char)[]) read(path) == "old", "a file saved over stays as it was");
+    assert(!exists(path ~ ".part"), "the bytes written are not left behind");
+
+    const fresh = buildPath(dir, "b.bin");
+    doc.refuse = true;
+    assert(f.session.saveAttachment(id, 0, fresh) == "Can't save the file: no such file in the log");
+    assert(!exists(fresh) && !exists(fresh ~ ".part"), "no file for an attachment refused");
+
+    doc.refuse = false;
+    doc.failMidway = false;
+    import std.algorithm : startsWith;
+
+    const error = f.session.saveAttachment(id, 0, buildPath(dir, "no", "such", "c.bin"));
+    assert(error.startsWith("Can't save the file: "), error);
+    assert(f.session.saveAttachment(DocumentId.init, 0, path) == "the document is not open");
 }
 
 @("AppSession: a document that isn't open has no info")

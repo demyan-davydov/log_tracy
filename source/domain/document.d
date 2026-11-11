@@ -1,12 +1,13 @@
 //! What the UI knows of an open log: the Document (its views, filter,
-//! search, anchors, the format it was opened with), the DocumentView (the
-//! rows of one view) and the operation events a document publishes.
+//! search, anchors, the format it was opened with, the files sent in it), the
+//! DocumentView (the rows of one view) and the operation events a document publishes.
 module domain.document;
 
 import log_core.log_message;
 import log_core.log_filter : LogFilter;
 import utils.ui_text : UiText;
 
+import domain.attachments : Attachment;
 import domain.document_id;
 import log_core.log_format : ColumnInfo, FormatChoice, FormatInfo, LogFormat;
 import domain.document_item;
@@ -85,6 +86,20 @@ interface Document
 
     //! The size of the log in bytes; kept once its file is lost
     ulong byteSize() nothrow @nogc;
+
+    //! The files sent in the log found so far (domain/attachments): the list grows and
+    //! changes while the file loads, AttachmentsChanged tells it
+    Attachment[] attachments();
+
+    //! @brief Writes the bytes of the attachment `id` that can be read: those of its
+    //! packets from the first one in turn, cut at its size. Throws UiTextException: no
+    //! such attachment, the log doesn't have its start, the log was lost or a packet
+    //! can't be read meanwhile
+    //! @param begin - called once the attachment can be written, before its bytes: where
+    //!   they go is made there, not for an attachment refused
+    //! @param write - takes the bytes, in order
+    //! @returns the bytes written
+    ulong writeAttachment(size_t id, scope void delegate() begin, scope void delegate(const(ubyte)[] bytes) write);
 
     //! Columns of the log table, as declared by the format of the document
     final const(ColumnInfo)[] columns()
@@ -190,6 +205,14 @@ struct OperationProgress
 //! Rows that no operation running tells of: a view an operation fills counts
 //! its rows by the progress of that operation.
 struct ContentGrown
+{
+    enum isOverridable = true;
+}
+
+//! The files sent in the log (Document.attachments) are other than told before: more
+//! of them, more of their packets, their end, or the log loaded to its end (a file
+//! without its end is incomplete then). Not published for a log without any.
+struct AttachmentsChanged
 {
     enum isOverridable = true;
 }

@@ -4,7 +4,9 @@ module formats.dlt.format;
 
 import formats.dlt.protocol;
 import formats.dlt.parser : parseDltItem;
-import formats.dlt.parts : dltMayBePart, dltPartOf, parseDltParts;
+import formats.dlt.file_transfer : dltMayBeTransferAt, dltTransferOf;
+import formats.dlt.parser : VerboseStart, findVerboseStart, storageSizeOf;
+import formats.dlt.parts : dltMayBePartAt, dltPartOf, parseDltParts;
 import formats.dlt.header_v2 : HeaderV2, HeaderV2Status, baseHeaderV2Size, messageLengthV2,
     protocolVersion, readHeaderV2;
 
@@ -21,8 +23,9 @@ enum FormatInfo dltFormatInfo = FormatInfo("dlt", "DLT", "DLT");
 //! Record layout: [ Storage Header ] Standard Header [ ... ] where the
 //! standard header holds the length of the message without the storage header.
 //! Both versions of the protocol and of the storage header, mixed in any way.
-//! A message its writer cut into numbered parts is one record (formats/dlt/parts).
-final class DltFormat : LogFormat, PartedFormat
+//! A message its writer cut into numbered parts is one record (formats/dlt/parts); the
+//! messages of a file sent in the log are told (formats/dlt/file_transfer).
+final class DltFormat : LogFormat, PartedFormat, TransferringFormat
 {
     private immutable bool _hasStorageHeader;
 
@@ -150,9 +153,21 @@ final class DltFormat : LogFormat, PartedFormat
         return parseDltItem!wchar(msg, record, _hasStorageHeader);
     }
 
-    override bool mayBePart(const(ubyte)[] data, size_t offset) const nothrow @nogc
+    override ubyte marksOf(const(ubyte)[] data, size_t offset) const nothrow @nogc
     {
-        return dltMayBePart(data[offset .. $], _hasStorageHeader);
+        // One walk over the header for both looks: asked of every record
+        const record = data[offset .. $];
+        const storage = _hasStorageHeader ? storageSizeOf(record) : 0;
+        if (storage >= record.length)
+            return RecordMark.none;
+        const message = record[storage .. $];
+        VerboseStart start;
+        if (!findVerboseStart(message, start))
+            return RecordMark.none;
+        // A part has one argument, a message of a transfer three or more: one look or the other
+        if (start.arguments == 1)
+            return dltMayBePartAt(message, start) ? RecordMark.part : RecordMark.none;
+        return dltMayBeTransferAt(message, start) ? RecordMark.transfer : RecordMark.none;
     }
 
     override RecordPart partOf(const(ubyte)[] data, size_t offset) const nothrow @nogc
@@ -163,6 +178,12 @@ final class DltFormat : LogFormat, PartedFormat
     override bool decodeParts(ref LogMessage!wchar msg, const(ubyte[])[] parts) const nothrow @nogc
     {
         return parseDltParts!wchar(msg, parts, _hasStorageHeader);
+    }
+
+    override TransferMessage transferOf(const(ubyte)[] data, size_t offset) const nothrow @nogc
+    {
+        // The record as recordAt cuts it: a length too long is not trusted
+        return dltTransferOf(recordAt(data, offset), _hasStorageHeader);
     }
 
     //! @returns the layout of the record at the start of `buffer`. Versions 0
@@ -886,4 +907,46 @@ unittest
     // A header cut by the end of the data may still be one
     auto cut = garbage ~ msg[0 .. StorageHeader.sizeof];
     assert(findNextStorageHeader(cut).length == StorageHeader.sizeof);
+}
+
+@("DltFormat: a TransferringFormat, tells a message of a file sent in the log at its offset")
+unittest
+{
+    import formats.dlt.testing_utils : VerboseArgs;
+
+    const usual = buildDltMessage();
+    const data = usual ~ VerboseArgs().str("FLFI").u32(7).str("FLFI").record();
+    const format = cast(const(TransferringFormat)) new DltFormat();
+    assert(format !is null);
+    assert(format.marksOf(data, 0) == RecordMark.none && format.transferOf(data, 0).kind == TransferKind.none);
+    const m = format.transferOf(data, usual.length);
+    assert(format.marksOf(data, usual.length) == RecordMark.transfer && m.kind == TransferKind.end && m.serial == 7);
+}
+
+@("DltFormat.marksOf: a part, a message of a transfer, a usual record, in either version")
+unittest
+{
+    import formats.dlt.header_v2 : ContentInfo;
+    import formats.dlt.testing_utils : BuildV2, VerboseArgs, storageV2;
+
+    const format = new DltFormat();
+    ubyte marks(const(ubyte)[] record) => format.marksOf(record, 0);
+
+    assert(marks(VerboseArgs().str("1/2: he").record()) == RecordMark.part);
+    assert(marks(VerboseArgs(false).str("2/2: llo").record()) == RecordMark.part, "little-endian");
+    assert(marks(VerboseArgs().str("FLFI").u32(7).str("FLFI").record()) == RecordMark.transfer);
+    assert(marks(VerboseArgs().str("a text").record()) == RecordMark.none);
+    assert(marks(VerboseArgs().str("FLFI").u32(7).record()) == RecordMark.none, "two arguments");
+    assert(marks(buildDltMessage()) == RecordMark.none, "not verbose");
+
+    BuildV2 part;
+    part.appId = "APP1";
+    part.ctxId = "CTX1";
+    part.numberOfArguments = 1;
+    part.payload = VerboseArgs(false).str("1/3: a").bytes;
+    assert(marks(storageV2("ECU1", 1, 0) ~ part.bytes()) == RecordMark.part, "version 2");
+    BuildV2 transfer = part;
+    transfer.numberOfArguments = 3;
+    transfer.payload = VerboseArgs(false).str("FLFI").u32(7).str("FLFI").bytes;
+    assert(marks(storageV2("ECU1", 1, 0) ~ transfer.bytes()) == RecordMark.transfer, "version 2");
 }

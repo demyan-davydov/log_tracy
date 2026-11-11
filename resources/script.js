@@ -651,6 +651,12 @@ globalThis.onMainViewChanged = function (docId, json) {
     showTabStatus(docId, pane);
 };
 
+// Native: the files sent in the log of a document changed (backend.attachments):
+// told while the file loads, as their packets come. Nothing shows them yet
+// (docs/stories/file-transfer.md)
+globalThis.onAttachmentsChanged = function (docId) {
+};
+
 // Native: a file was opened, in a new document or in the one that had it open
 // already (then that one is the current document again)
 globalThis.onDocumentOpened = function (docId) {

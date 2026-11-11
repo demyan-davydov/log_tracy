@@ -36,7 +36,7 @@ utils  ←  sciter  ←  ui
 ```
 
 - `utils/`: what knows nothing of logs and could move to another project as it is: chunked
-  array, static bit array, mapped file, lock guard, background slot, state machines (`utils/fsm`), event buses
+  array, mapped file, lock guard, background slot, state machines (`utils/fsm`), event buses
   (`utils/event_bus/`), parallel scan, single instance, `ui_text`, substrings in any case
   (`utils/text_search`), regular expressions (`utils/text_regex`, the only module that uses
   `std.regex`), keys by name (`utils/keys`,
@@ -49,7 +49,8 @@ utils  ←  sciter  ←  ui
   `formats/generator/` is not a format: the test log generator, compiled only for the
   unittests and the `gen_log` tool (`.ai/knowledge/formats.md`, The Log Generator).
 - `domain/`: documents, indexes, anchors. Knows formats only through `LogFormat`,
-  `detectFormat` and the interfaces a format may add, asked by a cast (`PartedFormat`).
+  `detectFormat` and the interfaces a format may add, asked by a cast (`PartedFormat`,
+  `TransferringFormat`, both a `MarkedFormat`).
 - `sciter/`: the D wrapper over Sciter (window, application, value, ...); `sciter/capi/` the C
   API it calls.
 - `ui/`: the window and the logic behind it; the Sciter-free part of it is unit-tested.
@@ -73,7 +74,9 @@ utils  ←  sciter  ←  ui
   A new call gets its function there; the script calls nothing else
   (`.ai/workflows/add-backend-call.md`).
 - The backend tells the script what changed by `callScript` of a global function
-  (`onMainViewChanged(docId, json)`, `onSearchViewChanged`, `onDocumentOpened`, ...). The
+  (`onMainViewChanged(docId, json)`, `onSearchViewChanged`, `onDocumentOpened`, ...). A change
+  the script is told of comes as an event of the document's bus (`AttachmentsChanged` gives
+  `onAttachmentsChanged`), never by the session polling the document. The
   session only queues those calls; `MainWindow.onIdle()` sends them (`takeScriptCalls`) after
   the document events of the indexing thread were dispatched on the UI thread, never from
   inside an `xcall`.
@@ -172,16 +175,28 @@ utils  ←  sciter  ←  ui
   - `RecordStore` (`record_store`): the source, the format and the offset index, which only
     grows. A format that is a `PartedFormat` (`log_core/log_format`: its records may be
     numbered parts of one message) has its parts joined into one record as they are found
-    (`part_joiner`): `findRecords` asks the format, without the lock, whether each record
-    may be a part (`mayBePart`, a bit a record of its `Bunch`: `utils/static_bit_array`),
-    `append` asks `partOf` of those only. Every record goes to the offset index at once
+    (`part_joiner`): `findRecords` asks the format, without the lock, what each record may
+    be (`MarkedFormat.marksOf`, once a record for every question: a `RecordMark` byte a
+    record of its `Bunch`), `append` asks `partOf` of those marked a part only. Every
+    record goes to the offset index at once
     but the later parts of a message: they are fragments of its head (the joined bit of
     its `OffsetIndexItem`), a list in a table of the store (`Join`, `Fragment`), which
     `Records.decode` follows. `length()` and `records()` stop before the head of the
     oldest message still open (`RecordStore.holding`): its text may still grow, and its
     join and fragments still change. The end of the data closes every message (a source
     may tell its end without more bytes: `LogIndex.behind` counts what is held then). An
-    `append` that fails halfway leaves the store refusing every later one. Its one promise
+    `append` that fails halfway leaves the store refusing every later one. A format that
+    is a `TransferringFormat` (files its writers send in the log, the file transfer of
+    dlt-daemon) has them cataloged as their records are appended (`transfers`): `append`
+    asks `transferOf` of the records marked a transfer and gives the catalog the message
+    with the number and offset of the record. The catalog keeps numbers only (the record
+    that opened each transfer, the offsets of its packets in turn); `LogIndex.attachments`
+    names them from the opening records and `writeAttachment` reads the bytes from the
+    packets (`domain/attachments`: what a transfer is to the user), the list of the packets
+    taken under the lock (`Transfers.inTurnOf`) and read apart from it: the packets in turn
+    don't change. A pass publishes `AttachmentsChanged` when the catalog or its loaded state
+    changed; the session writes a file of the bytes (`AppSession.saveAttachment`: beside it,
+    then in its place). Its one promise
     across threads: the records below the length of a `Records` a reader was given are
     read by any number of threads while one writer appends after them. The holder gives a
     reader its `Records` (under the mutex, or by starting the thread or task that reads) and closes the store only once no scan reads it: `LogIndex` joins its
@@ -221,6 +236,8 @@ utils  ←  sciter  ←  ui
 - A document and its views, anchors: `domain/log_document`, `domain/document`,
   `domain/anchors`
 - Formats and detection: `formats/registry` (see `.ai/knowledge/formats.md`)
+- Files sent in a log (the file transfer of DLT): `formats/dlt/file_transfer`,
+  `domain/index/transfers` (the catalog), `domain/attachments`, `AppSession.attachmentsJson`
 - Backend texts for the user: `utils/ui_text`, `ui/translations` (see `.ai/knowledge/i18n.md`)
 - Looking inside the running app (debug builds): `ui/debug_channel`, `ui/debug_protocol`,
   `resources/debug-eval.js`, the client `scripts/app.mjs` (`.ai/workflows/preview-ui.md`)

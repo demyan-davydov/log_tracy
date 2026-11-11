@@ -19,9 +19,11 @@ import domain.index.progress : ProgressReporter;
 import domain.index.record_store : Records, RecordStore;
 import domain.index.views : ViewIndexes;
 import domain.anchors;
+import domain.attachments : Attachment, attachmentOf, writePackets = writeAttachment;
+import domain.index.transfers : InTurn, Transfer;
 import utils.background_slot;
 import domain.document_item;
-import domain.document : ContentGrown, Document, OperationProgress, OperationFinished;
+import domain.document : AttachmentsChanged, ContentGrown, Document, OperationProgress, OperationFinished;
 
 import utils.event_bus.event_bus_interface : SignalProducer;
 
@@ -88,6 +90,7 @@ struct LogIndex
     private bool _loaded; // a pass reached the end of the source once: the load is over
     private Anchors _anchors; // as they were when last told: the worker reads them
     private bool _grownUntold; // rows no operation tells of were added, ContentGrown is to be published
+    private size_t _toldAttachments; // attachmentsState() AttachmentsChanged last told: of the worker
 
     private BackgroundSlot _backgroundSlot;
     private ScopedMutex _mutex; // guards what a pass appends to the parts, against the UI thread
@@ -299,6 +302,81 @@ struct LogIndex
         return _store.length;
     }
 
+    //! The files sent in the log found so far (domain/attachments): named by the records
+    //! that opened them, read on the calling thread
+    Attachment[] attachments()
+    {
+        const format = _store.transferring;
+        if (format is null)
+            return null;
+        Transfer[] transfers;
+        bool loading;
+        synchronized (mutex)
+        {
+            const catalog = &_store.transfers();
+            transfers = new Transfer[catalog.length];
+            foreach (i, ref t; transfers)
+                t = (*catalog)[i];
+            loading = !allRecordsFound;
+        }
+        const data = _store.data;
+        auto list = new Attachment[transfers.length];
+        foreach (i, ref a; list)
+            a = attachmentOf(i, transfers[i], format.transferOf(data, transfers[i].offset), loading);
+        return list;
+    }
+
+    //! @brief Writes the bytes of the attachment `id` that can be read: its packets from the
+    //! first one in turn, cut at its size (Document.writeAttachment). Throws UiTextException
+    //! @param begin - called once the attachment can be written, before the bytes
+    //! @param write - takes the bytes, in order
+    //! @returns the bytes written
+    ulong writeAttachment(size_t id, scope void delegate() begin, scope void delegate(const(ubyte)[] bytes) write)
+    {
+        const format = _store.transferring;
+        Transfer t;
+        InTurn packets;
+        synchronized (mutex)
+        {
+            const catalog = &_store.transfers();
+            if (format is null || id >= catalog.length)
+                throw new UiTextException(uiText("no such file in the log"));
+            t = (*catalog)[id];
+            packets = catalog.inTurnOf(id);
+        }
+        // Apart from the lock: the packets in turn don't change while the pass appends
+        const offsets = _store.transfers.offsetsOf(packets);
+        const empty = t.started && t.ended && t.packets == 0; // a whole file of no bytes
+        if (offsets.length == 0 && !empty)
+            throw new UiTextException(uiText("the log doesn't have the start of this file"));
+        begin();
+        const data = _store.data;
+        bool unreadable;
+        const written = writePackets((size_t offset) => format.transferOf(data, offset), offsets,
+            t.started ? t.size : 0, write, unreadable);
+        if (_store.lost)
+            throw new UiTextException(uiText("the log is no longer available"));
+        if (unreadable)
+            throw new UiTextException(uiText("a packet of the file can't be read from the log"));
+        return written;
+    }
+
+    //! The source is complete and split into records to its end: no more records come.
+    //! Not `_loaded`, which is once for good: a source that grows has records to come again
+    private bool allRecordsFound() const nothrow @nogc
+    {
+        return _store.complete && _store.scannedBytes == _store.data.length && !_store.holding;
+    }
+
+    //! What the files sent in the log were told as (AttachmentsChanged): the messages of
+    //! transfers taken, and whether every record was found then; 0 while there are none.
+    //! Of the worker thread, the writer of the catalog
+    private size_t attachmentsState() const nothrow @nogc
+    {
+        const messages = _store.transfers.messages;
+        return messages == 0 ? 0 : messages * 2 + (allRecordsFound ? 1 : 0);
+    }
+
     //! The records found so far, to read on the calling thread or give to another one
     private Records records() nothrow @nogc
     {
@@ -467,6 +545,12 @@ struct LogIndex
             {
                 _grownUntold = false;
                 _events.publish(ContentGrown());
+            }
+            const attachments = attachmentsState;
+            if (attachments != _toldAttachments)
+            {
+                _toldAttachments = attachments;
+                _events.publish(AttachmentsChanged());
             }
             if (!worked)
                 break;
