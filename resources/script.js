@@ -374,6 +374,20 @@ function openSettingsAction(section = "appearance") {
     }
 }
 
+// Go to Message of the active document: its window asks for the index of a
+// message, its main table goes to it (DocumentPane.goToMessage). Nothing
+// without a document, or before a record is found
+function goToMessageAction() {
+    const pane = shownPane;
+    const count = pane ? backend.documentInfo(pane.docId)?.records : 0;
+    if (!count) return;
+    const index = platform.showModal("go-to-message.htm", {
+        theme: currentTheme, catalog: currentCatalog(), count, current: pane.currentMessageIndex(),
+        jumps: pane.jumps
+    });
+    if (Number.isFinite(index) && pane === shownPane && !pane.destroyed) pane.goToMessage(index);
+}
+
 function openFileAction() {
     const fn = platform.chooseFileToOpen(fileFilter([[tr("Log Files"), "*.dlt;*.log;*.txt"],
         [tr("DLT Files"), "*.dlt"], [tr("Text Logs"), "*.log;*.txt"], allFiles()]));
@@ -397,6 +411,9 @@ globalThis.onMenuCommand = function (id) {
             break;
         case "window.minimize":
             platform.minimizeWindow();
+            break;
+        case "navigation.goToMessage":
+            goToMessageAction();
             break;
         default:
             console.warn("Unhandled menu command:", id);

@@ -87,6 +87,7 @@ enum MenuCommand : string
     quit = "app.quit",
     openFile = "file.open",
     minimize = "window.minimize",
+    goToMessage = "navigation.goToMessage",
 }
 
 /// A key combination, independent of the platform.
@@ -197,6 +198,7 @@ MenuItem[] appMenu(MenuPlatform platform, scope Translate tr) pure @safe
     // `&` marks the mnemonic letter of Windows and Linux; macOS has none
     auto openFile = command(MenuCommand.openFile, tr("&Open File..."), primary("O"));
     auto settings = command(MenuCommand.settings, tr("&Settings..."), primary(","));
+    auto navigation = submenu(tr("&Navigation"), [command(MenuCommand.goToMessage, tr("&Go to Message..."), primary("G"))]);
     final switch (platform)
     {
     case MenuPlatform.mac:
@@ -205,6 +207,7 @@ MenuItem[] appMenu(MenuPlatform platform, scope Translate tr) pure @safe
                 settings, separator(), command(MenuCommand.quit, tr("Quit"), primary("Q")),
             ], MenuRole.app),
             submenu(tr("&File"), [openFile]),
+            navigation,
             submenu(tr("&Window"), [command(MenuCommand.minimize, tr("&Minimize"), primary("M"))]),
         ];
     case MenuPlatform.windows:
@@ -213,6 +216,7 @@ MenuItem[] appMenu(MenuPlatform platform, scope Translate tr) pure @safe
                 openFile, separator(), settings, separator(),
                 command(MenuCommand.quit, tr("E&xit"), Shortcut("F4", false, false, true, true)),
             ]),
+            navigation,
         ];
     case MenuPlatform.linux:
         return [
@@ -220,6 +224,7 @@ MenuItem[] appMenu(MenuPlatform platform, scope Translate tr) pure @safe
                 openFile, separator(), settings, separator(),
                 command(MenuCommand.quit, tr("&Quit"), primary("Q")),
             ]),
+            navigation,
         ];
     }
 }
@@ -392,8 +397,23 @@ unittest
     foreach (platform; [MenuPlatform.mac, MenuPlatform.windows, MenuPlatform.linux])
     {
         auto bar = appMenu(platform);
-        foreach (id; [MenuCommand.openFile, MenuCommand.settings, MenuCommand.quit])
+        foreach (id; [MenuCommand.openFile, MenuCommand.settings, MenuCommand.quit, MenuCommand.goToMessage])
             assert(find(bar, id) !is null, "a platform lacks " ~ id);
+    }
+}
+
+@("Go to Message is in Navigation with Cmd+G / Ctrl+G")
+unittest
+{
+    foreach (platform; [MenuPlatform.mac, MenuPlatform.windows, MenuPlatform.linux])
+    {
+        auto bar = appMenu(platform);
+        const(MenuItem)[] navigation;
+        foreach (ref menu; bar)
+            if (menu.label == "Navigation")
+                navigation = menu.items;
+        assert(find(navigation, MenuCommand.goToMessage) !is null, "not in Navigation");
+        assert(find(bar, MenuCommand.goToMessage).shortcut == primary("G"));
     }
 }
 
@@ -412,7 +432,7 @@ unittest
 unittest
 {
     auto bar = appMenu(MenuPlatform.windows);
-    assert(bar.length == 1 && bar[0].label == "File");
+    assert(bar.length == 2 && bar[0].label == "File" && bar[1].label == "Navigation");
     auto quit = find(bar, MenuCommand.quit);
     assert(quit.label == "Exit");
     assert(shortcutText(quit.shortcut, MenuPlatform.windows) == "Alt+F4");

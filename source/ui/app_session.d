@@ -424,6 +424,17 @@ final class AppSession
         return view.positionOf(cast(size_t) messageIndex, position);
     }
 
+    /// The row of the main view nearest to the message `messageIndex` (see
+    /// DocumentView.nearestPositionOf): where Go to Message lands
+    /// @return false for no message index or an empty view
+    bool nearestMainViewPosition(DocumentId docId, double messageIndex, out size_t position)
+    {
+        if (!(messageIndex >= 0))
+            return false;
+        const index = messageIndex >= size_t.max ? size_t.max : cast(size_t) messageIndex;
+        return _workspace.doc(docId).mainView.nearestPositionOf(index, position);
+    }
+
     /// What the chips of the search found in the payload of a row of either
     /// view; nothing for a row the search didn't find (DocumentItem.found), so
     /// the rows of the main view it didn't find cost nothing.
@@ -839,6 +850,7 @@ version (unittest)
         size_t itemsCount() nothrow @nogc { return 0; }
         bool fetchItem(size_t index, scope ref DocumentItem item) { return false; }
         bool positionOf(size_t realIndex, out size_t position) { return false; }
+        bool nearestPositionOf(size_t realIndex, out size_t position) { return false; }
     }
 
     /// A document whose events the test publishes; it records the searches asked
@@ -1302,6 +1314,10 @@ unittest
     assert(!session.viewPosition(id, true, 3, position), "not found by the search");
     assert(!session.viewPosition(id, false, -1, position), "no message index");
     assert(!session.viewPosition(id, false, 1e12, position), "past the end of the log");
+    assert(session.nearestMainViewPosition(id, 1e12, position) && position == session.doc(id).mainView.itemsCount - 1,
+        "past the end of the log: its last row");
+    assert(session.nearestMainViewPosition(id, 2, position) && position == 2);
+    assert(!session.nearestMainViewPosition(id, -1, position), "no message index");
 
     auto results = session.doc(id).searchView;
     assert(results.itemsCount == 3);

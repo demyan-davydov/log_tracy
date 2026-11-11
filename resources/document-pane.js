@@ -16,6 +16,7 @@ import { noTable, tableStep, rowLookStep, keptRowStep, searchViewKey, jumpStep }
 import { tr } from "i18n/i18n.js";
 import { translateTree } from "i18n/dom.js";
 import { fileInfoRows } from "file-info.js";
+import { rememberJump } from "go-to-message.js";
 import { showNotice } from "notice.js";
 import { FilterPanel } from "filter-panel.js";
 import { SearchBar } from "search-bar.js";
@@ -192,6 +193,7 @@ export class DocumentPane {
         this.path = "";
         this.visible = false;
         this.mainShown = noTable; // what the tables show, see pane-state.js
+        this.jumps = []; // the history of Go to Message, the newest first: kept while the tab is open
         this.searchShown = noTable;
         this.foundShownFor = null; // the search view (searchViewKey) the main rows show the found rows of
         this.appliedColumns = null; // JSON of the columns the tables show
@@ -570,6 +572,31 @@ export class DocumentPane {
         }
         const taken = this.coveredFocus.delete(list);
         if (covers.some(view => isInside(focused, view)) || (taken && !focused)) list.state.focus = true;
+    }
+
+    // The message index of the current row of the main table (followedRow),
+    // null if none: where Go to Message starts
+    currentMessageIndex() {
+        const row = followedRow(this.mainList.selection);
+        const index = row === null ? NaN : Number(this.mainList.itemAt(row)?.[rowLayout.messageIndex]);
+        return Number.isFinite(index) ? index : null;
+    }
+
+    // Go to Message: the row of message `index` in the main table, or of the
+    // first one after it the table shows (hidden by the filters), else its
+    // last row: selected, the keyboard in the table, near the top unless it is
+    // on screen (jumpStep); the search table follows it as a click. Nothing
+    // while the table shows no rows (a status view covers it).
+    goToMessage(index) {
+        if (!this.mainShown.loaded) return;
+        const list = this.mainList;
+        const step = jumpStep({ status: "ready" }, () => backend.mainViewNearestPosition(this.docId, index),
+            { visibleRange: list.wholeRowsRange(), visibleRows: list.visibleRowCount() });
+        if (!step) return;
+        this.jumps = rememberJump(this.jumps, index);
+        list.showRow(step);
+        list.state.focus = true;
+        list.rowChosen(false);
     }
 
     // Shows the row selected in the table `from` (followedRow) in the other

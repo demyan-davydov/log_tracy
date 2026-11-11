@@ -86,6 +86,9 @@ export const searchViewCount = docId => Window.this.xcall("getSearchViewCount", 
 // The row of the main / search view that shows message `messageIndex`, null if none does
 export const mainViewPosition = (docId, messageIndex) => xcall("getMainViewPosition", docId, messageIndex);
 export const searchViewPosition = (docId, messageIndex) => xcall("getSearchViewPosition", docId, messageIndex);
+// The row of the main view Go to Message lands on for message `messageIndex`: its own,
+// or of the first message after it shown, else the last row; null for an empty view
+export const mainViewNearestPosition = (docId, messageIndex) => xcall("getMainViewNearestPosition", docId, messageIndex);
 // The columns the tables of the document show, as JSON text ("[]": none): the
 // text tells whether they changed
 export const tableColumnsJson = docId => xcall("getTableColumns", docId) || "[]";

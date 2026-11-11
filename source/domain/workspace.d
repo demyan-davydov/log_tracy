@@ -44,6 +44,11 @@ private class NullDocumentView : DocumentView
     {
         return false;
     }
+
+    override bool nearestPositionOf(size_t realIndex, out size_t position)
+    {
+        return false;
+    }
 }
 
 private class NullDocument : Document

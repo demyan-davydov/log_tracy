@@ -22,6 +22,8 @@ private enum string[] builtIn = [
     "file-info.js",
     "file-types.js",
     "filter-panel.js",
+    "go-to-message.htm",
+    "go-to-message.js",
     "i18n/dom.js",
     "i18n/i18n.js",
     "i18n/languages.js",

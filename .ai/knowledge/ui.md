@@ -113,6 +113,9 @@ behaviour: `.ai/knowledge/sciter.md`.
   `match-colors.js`, `match-colors.css`, `search-editor.css`
 - Filters and the rule editor: `rule-editor.htm`, `rule-form.js`
 - Settings: `settings.htm`, `settings-sections.js`, `column-settings.js`
+- Go to Message (Navigation menu, Cmd+G / Ctrl+G): `go-to-message.htm`, `go-to-message.js`;
+  the row it lands on (the nearest shown when filtered out) is
+  `backend.mainViewNearestPosition`, `DocumentPane.goToMessage`
 - Recent files: `recent-time.js`, `recent-file-menu.js`
 - File Info page: `file-info.js`
 - Notices: `notice.js`; dropdown lists: `virtual-select.js`

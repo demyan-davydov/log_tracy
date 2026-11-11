@@ -240,11 +240,14 @@ class MainWindow : SciterWindow
                 resultView.set(asSciterRow(index, docItem, _session.tableColumns(doc),
                     _session.ruleOf(docId, docItem), _session.matchesOf(docId, docItem, fragments[])));
             return true;
+        case "getMainViewNearestPosition":
         case "getMainViewPosition":
         case "getSearchViewPosition":
             // get<Main|Search>ViewPosition(docId, messageIndex) -> its row in
-            // that view, null if the view doesn't show it. The row sends message
-            // indexes as doubles (see asSciterRow)
+            // that view, null if the view doesn't show it; getMainViewNearestPosition:
+            // the row Go to Message lands on (AppSession.nearestMainViewPosition),
+            // null for an empty view. The row sends message indexes as doubles
+            // (see asSciterRow)
             double msgIndex = -1;
             if (params.argc > 1)
             {
@@ -256,7 +259,10 @@ class MainWindow : SciterWindow
                     valueView.tryGet(msgIndex);
             }
             size_t position;
-            if (_session.viewPosition(docParam(), method == "getSearchViewPosition", msgIndex, position))
+            const found = method == "getMainViewNearestPosition"
+                ? _session.nearestMainViewPosition(docParam(), msgIndex, position)
+                : _session.viewPosition(docParam(), method == "getSearchViewPosition", msgIndex, position);
+            if (found)
                 resultView = cast(int) position;
             else
                 resultView.set(SciterValue.makeNull());

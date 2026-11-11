@@ -45,6 +45,11 @@ interface DocumentView
     //! @brief The position in the view of the message with index `realIndex`
     //! @return false if the view doesn't show that message
     bool positionOf(size_t realIndex, out size_t position);
+
+    //! @brief The position in the view of the message `realIndex`, or of the first
+    //! message after it the view shows, else of its last row (Go to Message)
+    //! @return false if the view is empty
+    bool nearestPositionOf(size_t realIndex, out size_t position);
 }
 
 interface Document

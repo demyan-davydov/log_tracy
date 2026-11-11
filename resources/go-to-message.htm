@@ -1,0 +1,140 @@
+<html theme="light" window-width="380" window-height="170">
+
+<!-- Go to Message (Cmd+G / Ctrl+G), opened modal by goToMessageAction() of
+     script.js: the index of a message of the log, as the Index column
+     shows it. Parameters: { theme, catalog, count (messages of the log),
+     current (the index of the current row, null if none), jumps (the
+     history of the document, the newest first: plates at the bottom,
+     go at once) }.
+     Closes with the index typed or clicked, or null on Cancel. -->
+
+<head>
+    <title>Go to Message</title>
+    <style id="theme-style" src="theme-light.css" />
+    <style src="style.css" />
+    <style>
+        /* Sized for two lines of history: never a scrollbar */
+        html, body { background: var(--bg-main); color: var(--text-main); overflow: hidden; }
+        body { flow: vertical; }
+        main { size: *; padding: 16dip 18dip; flow: vertical; border-spacing: 6dip; }
+        /* The label with the range under it, the field level with the label */
+        .row { flow: horizontal; border-spacing: 10dip; }
+        .caption { flow: vertical; border-spacing: 2dip; white-space: nowrap; padding-top: 5dip; }
+
+        input[type=text] {
+            width: *;
+            padding: 4dip 6dip;
+            border: 1dip solid var(--border-input);
+            border-radius: 4dip;
+            background: var(--bg-input);
+            color: var(--text-main);
+        }
+        input[type=text]:focus { border-color: var(--border-focus); outline: none; }
+        /* Past the last message: the field and the range in red */
+        main.invalid input[type=text] { border-color: var(--log-error); }
+        main.invalid #range { color: var(--log-error); }
+
+        /* Under the label */
+        #range { font-size: 0.85em; color: var(--text-label); }
+        /* The history of jumps: from the left edge, as the label; each number on a
+           plate of its own, so the groups of digits of two numbers don't merge */
+        #history { flow: horizontal-wrap; vertical-align: middle; border-spacing: 6dip 4dip; margin-top: 4dip; }
+        #history > span { color: var(--text-label); white-space: nowrap; }
+        #history > button {
+            display: block;
+            padding: 1dip 6dip;
+            margin: 0;
+            border: 1dip solid var(--border-color);
+            border-radius: 3dip;
+            background: var(--bg-header);
+            color: var(--btn-primary-bg);
+            font-size: 0.9em;
+            white-space: nowrap;
+            cursor: pointer;
+        }
+        #history > button:hover { border-color: var(--btn-primary-bg); }
+        #btn-ok:disabled { opacity: 0.4; cursor: default; }
+        footer > button#btn-cancel { margin-left: *; }
+    </style>
+    <script type="module">
+        import { $ } from "@sciter";
+        import * as platform from "platform.js";
+        import { applyTheme } from "theme.js";
+        import { setCatalog, tr } from "i18n/i18n.js";
+        import { translateTree } from "i18n/dom.js";
+        import { messageIndexOf, rangeText } from "go-to-message.js";
+        import { groupDigits } from "file-info.js";
+
+        const params = platform.dialogParameters() || {};
+        const count = params.count ?? 1000; // opened on its own to look at it: a sample log
+        setCatalog(params.catalog || null);
+
+        // What is typed now; the field and OK say whether it can be gone to
+        function typed() {
+            const result = messageIndexOf($("#index").value ?? "", count);
+            $("main").classList.toggle("invalid", result.outOfRange);
+            $("#btn-ok").state.disabled = result.index === null;
+            return result.index;
+        }
+
+        function accept() {
+            const index = typed();
+            if (index !== null) platform.closeDialog(index);
+        }
+
+        // The jumps of the document as links, as the Index column shows numbers; none: no line
+        function showHistory(jumps) {
+            const history = $("#history");
+            history.style.display = jumps.length ? "" : "none";
+            if (!jumps.length) return;
+            history.append(<span>{tr("Recent:")}</span>);
+            for (const index of jumps)
+                history.append(<button index={index}>{groupDigits(index)}</button>);
+        }
+
+        document.on("ready", () => {
+            if (params.theme === "dark") applyTheme("dark");
+            translateTree(document);
+            platform.setDialogTitle(tr("Go to Message"));
+            $("#range").innerText = rangeText(count);
+            showHistory(params.jumps || []);
+            const field = $("#index");
+            if (Number.isFinite(params.current)) field.value = String(params.current);
+            typed();
+            field.focus();
+            field.edit?.selectAll?.(); // typing replaces the current index
+        });
+
+        document.on("input", "#index", () => typed());
+        // A jump of the history: gone to at once, past the end of a log that shrank or not
+        document.on("click", "#history > button", (evt, button) => {
+            const index = Number(button.getAttribute("index"));
+            if (index < count) platform.closeDialog(index);
+        });
+        $("#btn-ok").on("click", accept);
+        $("#btn-cancel").on("click", () => platform.closeDialog(null));
+        document.on("keydown", evt => {
+            if (evt.code === "Escape") { platform.closeDialog(null); return true; }
+            if (evt.code === "Enter" && evt.target.tag !== "button") { accept(); return true; }
+        });
+    </script>
+</head>
+
+<body>
+    <main>
+        <div class="row">
+            <div class="caption">
+                <label for="index" data-tr="Message index"></label>
+                <span id="range"></span>
+            </div>
+            <input type="text" id="index" filter="0~9" />
+        </div>
+        <div id="history"></div>
+    </main>
+    <footer>
+        <button id="btn-cancel" data-tr="Cancel"></button>
+        <button id="btn-ok" class="primary" data-tr="Go"></button>
+    </footer>
+</body>
+
+</html>
