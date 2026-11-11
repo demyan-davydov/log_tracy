@@ -106,9 +106,14 @@ struct RecordPart
 //! Asked of a format by a cast; immutable like the LogFormat it is.
 interface PartedFormat
 {
+    //! @returns false if the record at `offset` of the data (as scanRecords found it) is
+    //! surely not a part, by a look at a few of its bytes; true for every part (partOf
+    //! tells). Asked of every record as the offset index grows: keep it cheap
+    bool mayBePart(const(ubyte)[] data, size_t offset) const nothrow @nogc;
+
     //! @returns what the record at `offset` of the data (as scanRecords found it) is as
-    //! a part; not a part: RecordPart.init. Asked of every record as the offset index
-    //! grows: cheaper than recordAt, it needn't check where the record ends
+    //! a part; not a part: RecordPart.init. Asked only of the records mayBePart lets
+    //! through
     RecordPart partOf(const(ubyte)[] data, size_t offset) const nothrow @nogc;
 
     //! @brief Decodes the parts of one message (as recordAt gives them, in order, the

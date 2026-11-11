@@ -108,8 +108,8 @@ node scripts/build.mjs bench <log> --bench index --against master
 
 | Log | Step | master | `joined-parts` | Difference |
 |---|---|---|---|---|
-| `dlt` (2 235 643 records) | offset index | 41.7 ms (41.6–42.7) | 62.5 ms (61.8–62.9) | +50 %, ~9 ns a record |
-| `dlt-v2` (2 017 236 records) | offset index | 46.5 ms (45.3–60.4) | 68.2 ms (66.9–78) | +47 %, ~11 ns a record |
+| `dlt` (2 235 643 records) | offset index | 41.8 ms (41.7–42.4) | 60.3 ms (59.6–62.9) | +44 %, ~8 ns a record |
+| `dlt-v2` (2 017 236 records) | offset index | 46.8 ms (46.5–54.2) | 64.5 ms (64.4–64.9) | +38 %, ~9 ns a record |
 
 The filter and the search don't change (within the noise). On a log of 1 GB the load takes
 about 80 ms more.

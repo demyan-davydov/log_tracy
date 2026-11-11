@@ -21,19 +21,22 @@ import std.traits : isSomeChar;
 //! RecordPart.init
 RecordPart dltPartOf(const(ubyte)[] data, bool hasStorageHeader) nothrow @nogc
 {
-    // Most records: a look at a few bytes of the message tells
+    PartText part;
+    return readPart(data, hasStorageHeader, part) ? part.part : RecordPart.init;
+}
+
+//! @returns false if the record at the start of `data` is surely not a part, by a look
+//! at a few of its bytes; true for every part (dltPartOf tells)
+bool dltMayBePart(const(ubyte)[] data, bool hasStorageHeader) pure nothrow @nogc
+{
     size_t storage = 0;
     if (hasStorageHeader)
         storage = data.length < StorageHeader.sizeof ? 0 : data[3] == 1 ? StorageHeader.sizeof : 14 + data[13];
-    if (storage < data.length)
-    {
-        const message = data[storage .. $];
-        const version_ = protocolVersion(message);
-        if (version_ <= 1 ? !mayBePartV1(message) : version_ == 2 && !mayBePartV2(message))
-            return RecordPart.init;
-    }
-    PartText part;
-    return readPart(data, hasStorageHeader, part) ? part.part : RecordPart.init;
+    if (storage >= data.length)
+        return false;
+    const message = data[storage .. $];
+    const version_ = protocolVersion(message);
+    return version_ <= 1 ? mayBePartV1(message) : version_ == 2 && mayBePartV2(message);
 }
 
 //! @brief Decodes the parts of one message (records as DltFormat.recordAt gives them,
@@ -400,6 +403,28 @@ unittest
     assert(part.isPart && part.number == 2 && part.count == 3);
 }
 
+@("dltMayBePart: every part may be one, most other records surely are not")
+unittest
+{
+    foreach (text; ["1/2: x", "2/2: y", "10/12: z"])
+        assert(dltMayBePart(textRecord(text), true), text);
+    assert(!dltMayBePart(textRecord("a text"), true));
+
+    BuildV1 nonVerbose;
+    nonVerbose.verbose = false;
+    nonVerbose.payload = bytesOf(5u) ~ cast(ubyte[]) "1/2: x".dup;
+    assert(!dltMayBePart(nonVerbose.bytes(), true));
+
+    BuildV2 v2;
+    v2.ecuId = "ECU";
+    v2.appId = "APP";
+    v2.ctxId = "CTX";
+    v2.numberOfArguments = 1;
+    v2.payload = argument(0x200, bytesOf(cast(ushort) 6, false) ~ cast(ubyte[]) "1/2: x".dup, false);
+    assert(dltMayBePart(storageV2("ECU", 1, 0) ~ v2.bytes(), true));
+    assert(!dltMayBePart(null, true));
+}
+
 @("dltPartOf: other records are not parts")
 unittest
 {
@@ -473,6 +498,7 @@ unittest
     r.payload = argument(0x200, bytesOf(cast(ushort) 6, false) ~ cast(ubyte[]) "2/2: x".dup, false);
     const part = dltPartOf(storageV2("ECU", 1, 0) ~ r.bytes(), true);
     assert(part.isPart && part.number == 2 && part.count == 2);
+    assert(dltMayBePart(storageV2("ECU", 1, 0) ~ r.bytes(), true), "the walk over the header");
 
     r.payload = argument(0x200, bytesOf(cast(ushort) 6, false) ~ cast(ubyte[]) "a text".dup, false);
     assert(!dltPartOf(storageV2("ECU", 1, 0) ~ r.bytes(), true).isPart);

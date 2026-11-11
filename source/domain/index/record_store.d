@@ -19,6 +19,8 @@ import log_core.log_format : LogFormat, PartedFormat, RecordPart, ScanResult;
 import log_core.log_message : LogMessage;
 import utils.chunked_array : ChunkedArray;
 
+import utils.static_bit_array : StaticBitArray;
+
 import std.typecons : Rebindable;
 
 //! What RecordStore.findRecords found: the offsets of the records, at most
@@ -26,9 +28,10 @@ import std.typecons : Rebindable;
 struct Bunch
 {
     size_t[RecordStore.bunchSize] offsets;
-    RecordPart[RecordStore.bunchSize] parts; // of a PartedFormat: what each record is as a part
     ScanResult found;
     bool end; // the data is over: no more bytes will come, and these were the last ones
+
+    StaticBitArray!(RecordStore.bunchSize) mayBePart; // of a PartedFormat: the record may be a part
 
     //! The offsets found
     const(size_t)[] records() const pure nothrow @nogc return
@@ -46,6 +49,11 @@ private struct Join
     size_t parts;
 }
 
+//! The records of a log: its source, the format that splits and decodes it, and the offset
+//! index of the records found so far. One writer (LogIndex's worker) finds records and
+//! appends them in the order of the file; readers read them from any thread through
+//! Records. The numbered parts of a message (PartedFormat) are joined into one record as
+//! they are appended. See the module for what is safe across threads.
 final class RecordStore
 {
     //! Records found and appended at a time
@@ -141,7 +149,7 @@ final class RecordStore
         // Here, not in append(): the holder calls this without its lock
         if (_parted !is null)
             foreach (i, offset; bunch.records)
-                bunch.parts[i] = _parted.partOf(data, offset);
+                bunch.mayBePart[i] = _parted.mayBePart(data, offset);
         return bunch;
     }
 
@@ -183,12 +191,14 @@ final class RecordStore
             items[count++] = item;
         };
 
+        const data = _source.data;
         foreach (i, offset; bunch.records)
         {
-            if (!bunch.parts[i].isPart && !_joiner.holding)
+            const mayBePart = bunch.mayBePart[i];
+            if (!mayBePart && !_joiner.holding)
                 items[count++] = OffsetIndexItem(offset); // the usual record, at once
             else
-                _joiner.add(offset, bunch.parts[i], emit);
+                _joiner.add(offset, mayBePart ? _parted.partOf(data, offset) : RecordPart.init, emit);
         }
         if (bunch.end)
             _joiner.flush(emit);
@@ -410,6 +420,9 @@ version (unittest)
             => _text.recordAt(data, offset);
         override bool decode(ref LogMessage!wchar msg, const(ubyte)[] record) const nothrow @nogc
             => _text.decode(msg, record);
+
+        override bool mayBePart(const(ubyte)[] data, size_t offset) const nothrow @nogc
+            => partOf(data, offset).isPart;
 
         override RecordPart partOf(const(ubyte)[] data, size_t offset) const nothrow @nogc
         {

@@ -4,7 +4,7 @@ module formats.dlt.format;
 
 import formats.dlt.protocol;
 import formats.dlt.parser : parseDltItem;
-import formats.dlt.parts : dltPartOf, parseDltParts;
+import formats.dlt.parts : dltMayBePart, dltPartOf, parseDltParts;
 import formats.dlt.header_v2 : HeaderV2, HeaderV2Status, baseHeaderV2Size, messageLengthV2,
     protocolVersion, readHeaderV2;
 
@@ -148,6 +148,11 @@ final class DltFormat : LogFormat, PartedFormat
     override bool decode(ref LogMessage!wchar msg, const(ubyte)[] record) const nothrow @nogc
     {
         return parseDltItem!wchar(msg, record, _hasStorageHeader);
+    }
+
+    override bool mayBePart(const(ubyte)[] data, size_t offset) const nothrow @nogc
+    {
+        return dltMayBePart(data[offset .. $], _hasStorageHeader);
     }
 
     override RecordPart partOf(const(ubyte)[] data, size_t offset) const nothrow @nogc

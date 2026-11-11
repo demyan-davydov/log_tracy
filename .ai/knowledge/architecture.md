@@ -36,7 +36,7 @@ utils  ←  sciter  ←  ui
 ```
 
 - `utils/`: what knows nothing of logs and could move to another project as it is: chunked
-  array, mapped file, lock guard, background slot, state machines (`utils/fsm`), event buses
+  array, static bit array, mapped file, lock guard, background slot, state machines (`utils/fsm`), event buses
   (`utils/event_bus/`), parallel scan, single instance, `ui_text`, substrings in any case
   (`utils/text_search`), regular expressions (`utils/text_regex`, the only module that uses
   `std.regex`), keys by name (`utils/keys`,
@@ -172,8 +172,9 @@ utils  ←  sciter  ←  ui
   - `RecordStore` (`record_store`): the source, the format and the offset index, which only
     grows. A format that is a `PartedFormat` (`log_core/log_format`: its records may be
     numbered parts of one message) has its parts joined into one record as they are found
-    (`part_joiner`): `findRecords` asks the format, without the lock, what each record is
-    as a part; `append` holds the records from a first part on until its message is whole
+    (`part_joiner`): `findRecords` asks the format, without the lock, whether each record
+    may be a part (`mayBePart`, a bit a record of its `Bunch`: `utils/static_bit_array`),
+    `append` asks `partOf` of those only; `append` holds the records from a first part on until its message is whole
     or can't be (`RecordStore.holding`), and the end of the data lets them out (a source
     may tell its end without more bytes: `LogIndex.behind` counts what is held then). A
     joined record has the joined bit of its `OffsetIndexItem` and the offsets of its other
