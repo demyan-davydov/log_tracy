@@ -111,6 +111,10 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     Layouts follow the platform: Windows File → Exit Alt+F4, Linux Quit Ctrl+Q, mnemonics with
     `&` on Windows/Linux only. Shortcut texts in hints come from the same model (⌘O / Ctrl+O).
     D gives the model, the script renders: D builds no Sciter markup.
+44. **After a tab is switched, the keys go to its document.** A click on a tab leaves the
+    keyboard in that document's panel (its table, or what had the focus there) once the button
+    is released, as opening a file does; never nowhere. A switch shows the panel at once, the
+    focus follows the release: it must not slow the switch down (`press-focus.js`).
 
 ## Log Table
 

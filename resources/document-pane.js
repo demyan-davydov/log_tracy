@@ -181,7 +181,9 @@ export class DocumentPane {
     // @param splitters - { rows } the splitter starts with
     // @param host - what the panel asks of the window:
     //   closeTab(docId), refreshTabs(), theme() -> "light" | "dark",
-    //   tableFontSize() -> % of the normal font of the tables
+    //   tableFontSize() -> % of the normal font of the tables,
+    //   focus(take) - take() gives the keys to the panel: now, or when the
+    //     press on a tab that shows it ends (press-focus.js)
     constructor(docId, container, splitters, host) {
         this.docId = docId;
         this.host = host;
@@ -301,7 +303,10 @@ export class DocumentPane {
         // or a page of the bottom panel hidden since
         const focus = isInside(this.lastFocus, this.root) && !this.inHiddenPage(this.lastFocus)
             ? this.lastFocus : this.defaultFocus();
-        focus.state.focus = true;
+        // Still shown and inside when given: the press may end on another tab
+        this.host.focus(() => {
+            if (this.visible && !this.destroyed && isInside(focus, this.root)) focus.state.focus = true;
+        });
     }
 
     // What takes the keys when nothing in the panel has them: the main table

@@ -51,6 +51,8 @@ export class TabStrip {
     //   pressNewTab(), closeNewTab(), closeTab(docId), addTab() (the + button)
     //   moveTab(docId, index) - a tab was dropped at another place
     //   refresh() - render the tabs again (see holdWhileDragging)
+    //   released() - the press on a document tab ended: dropped, released
+    //     where it was, or lost outside the window
     // }
     constructor(host) {
         this.host = host;
@@ -85,6 +87,7 @@ export class TabStrip {
             }
             this.host.pressTab(parseInt(tab.id)); // keeps the tab elements
             this.beginDrag(tab, evt.clientX);
+            if (!this.drag) this.host.released(); // no press to end: the focus is given now
             return true; // no text selection
         });
 
@@ -207,6 +210,7 @@ export class TabStrip {
         if (moved) {
             console.log("Tab", d.tab.id, "moved from", d.from, "to", d.to);
             this.host.moveTab(parseInt(d.tab.id), d.to); // renders the tabs in the new order
+            this.host.released();
             return;
         }
         for (const t of d.items) {
@@ -214,6 +218,7 @@ export class TabStrip {
             setShift(t, 0);
         }
         if (this.refreshPending) this.host.refresh();
+        this.host.released();
     }
 
     // The marker is on the edge of the place the tab will land on, between it

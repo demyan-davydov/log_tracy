@@ -20,7 +20,9 @@
     <div id="main-menu" style="display: none;"></div>
     <header>
         <!-- Open File, Settings: in the menu; the theme: in Settings -->
-        <div id="tabs-container">
+        <!-- Focusable: a press on a tab moves the focus here, not to nothing
+             (press-focus.js) -->
+        <div id="tabs-container" tabindex="0">
             <!-- The + button followed by the tabs, rendered by refreshTabs() -->
             <button id="btn-add-tab" data-tr-title="New Tab" style="display:none;">+</button>
         </div>

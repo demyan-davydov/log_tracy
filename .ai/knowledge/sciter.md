@@ -108,6 +108,15 @@ agent can't drive it. In scapp a plain
   `mouseup` bubbles to the tbody, and `addEventListener(..., {capture: true})` doesn't help. A
   class handler in the sinking phase works: `["on ^mousedown"]` / `["on ^mouseup"]`
   (`^` = sinking); not consuming it leaves the cell its text selection.
+- **Don't move the focus inside a mousedown handler, and don't let a press drop it to nothing.**
+  A press on a non-focusable element (a tab) drops the focus to nothing before any handler
+  runs (sinking phase included) and drops again a focus the handler set. A focus set to the
+  log table in the mousedown of a tab cost a synchronous layout of the panel plus ~150 ms of
+  restyle and layout after the handler (frames 200–310 ms instead of ~55 on large logs, 6.0.5.5,
+  macOS); the same focus from a script or a timer costs ~20 ms. A press with the table focused
+  cost the same. The tab strip has `tabindex="0"` so the press moves the focus to it, cheap, and
+  the panel takes it when the press ends (`resources/press-focus.js`). Measured:
+  `docs/experiments/2026-11-11-tab-switch-focus.md`.
 - A `<button>` (`behavior: button`) takes the focus after its mousedown handler when the focus
   was outside the element the handler focused: an editor that closes its popup on `focusout`
   closes it at once. Use `behavior: clickable` (non-focusable, same look).

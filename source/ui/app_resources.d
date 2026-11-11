@@ -43,6 +43,7 @@ private enum string[] builtIn = [
     "pane-state.js",
     "panel-sizes.js",
     "platform.js",
+    "press-focus.js",
     "recent-file-menu.js",
     "recent-time.js",
     "row-selection.js",

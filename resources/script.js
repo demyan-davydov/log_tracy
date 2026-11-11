@@ -10,6 +10,7 @@ import { recentFileMenu } from "recent-file-menu.js";
 import { DocumentPane } from "document-pane.js";
 import { paneChanges, tabProgress } from "pane-state.js";
 import { TabStrip } from "tabs.js";
+import { PressFocus } from "press-focus.js";
 import * as backend from "backend.js";
 import * as platform from "platform.js";
 import { applyTheme } from "theme.js";
@@ -484,9 +485,14 @@ function setupMenuBar() {
 // onSearchViewChanged.
 const panes = new Map();
 
+// Where the keys go when a press on a tab shows a panel: to it once the press
+// ends (press-focus.js)
+const pressFocus = new PressFocus();
+
 // The tabs (tabs.js): what pressing, closing and moving them does
 const tabStrip = new TabStrip({
     pressTab: (docId) => {
+        pressFocus.press();
         const before = win;
         win = documentPressed(win);
         if (docId !== activeDocId(before)) switchTab(docId); // keeps the tab elements
@@ -511,6 +517,7 @@ const tabStrip = new TabStrip({
         refreshTabs(); // renders the tabs in the new order, without shifts
     },
     refresh: () => refreshTabs(),
+    released: () => pressFocus.release(),
 });
 
 // Shows the status of the document (its panel) on its tab
@@ -521,6 +528,7 @@ function showTabStatus(docId, pane) {
 // What a panel asks of the window
 const paneHost = {
     closeTab: (docId) => closeTab(docId),
+    focus: (take) => pressFocus.request(take),
     refreshTabs: () => refreshTabs(),
     theme: () => currentTheme,
     tableFontSize: () => tableFontSize,

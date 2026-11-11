@@ -34,6 +34,10 @@ behaviour: `.ai/knowledge/sciter.md`.
   panel renders what changed when it is shown.
 - The tab strip (rendering, pressing, dragging, tooltips) is `resources/tabs.js`; what a tab
   does is decided by `script.js`.
+- The focus a panel asks for when shown goes through its host (`host.focus(take)`): given at
+  once, or, when a press on a tab showed it, when the press ends (`resources/press-focus.js`,
+  `TabStrip` host `released()`). The strip itself is focusable and holds the focus during the
+  press (`.ai/knowledge/sciter.md`, Events).
 - The calls of a document's views, filters and search take its id first
   (`backend.mainViewItem(docId, index)`, ...); only the menu and Settings use the active
   document.

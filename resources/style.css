@@ -250,6 +250,11 @@ body > header {
     overflow: visible;
 }
 
+/* It takes the focus of a press on a tab (press-focus.js): no frame for it */
+#tabs-container:focus {
+    outline: none;
+}
+
 .tab {
     position: relative;
     flow: horizontal;
