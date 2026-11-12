@@ -120,7 +120,9 @@ utils  ←  sciter  ←  ui
   calls over to it. Its events are pumped by the window's idle loop
   (`AppSession.dispatchEvents`); a subscriber may release documents meanwhile. A holder keeps
   the id, not the `Document`: a Retry replaces the object for every holder, and takes
-  `doc(id)` each time.
+  `doc(id)` each time. A Retry numbers the records anew: `DocumentStore.generation(id)` is one
+  more after each `replace`, so a holder that keeps numbers of records compares it with the
+  one they were taken in.
 - Environment variables for trying things, read in `main()` (`newSession` of `app.d`) and
   passed to the session and the window: `OPEN_AT_START` (logs opened at start, `backend.startFiles()`), `MENU_BAR_PLATFORM`,
   `PSEUDO_LOCALE`, `SCITER_DEBUG_MODE` (the debug mode of Sciter, for its inspector). The table of them: `docs/building.md`, "Environment variables for

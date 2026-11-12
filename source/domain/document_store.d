@@ -178,6 +178,7 @@ private struct DocumentRecord
     Document document;
     string sourcePath;
     uint[] holds; // the tokens of who uses the document: it is closed when none is left
+    uint generation = 1; // one more after each replace: the records are numbered anew
     SubscriptionToken[] subscriptions; // forwarding subscriptions on document.events
 }
 
@@ -261,8 +262,19 @@ final class DocumentStore
         return idx == -1 ? 0 : _documents[idx].holds.length;
     }
 
+    //! @brief The generation of the document `docId`: one more after each replace(), where
+    //! its records are numbered anew. A holder that keeps numbers of records compares it
+    //! with the one they were taken in.
+    //! @return 0 if it isn't open
+    uint generation(DocumentId docId) const pure nothrow @nogc
+    {
+        const idx = findIndexById(docId);
+        return idx == -1 ? 0 : _documents[idx].generation;
+    }
+
     //! @brief Puts `document` in place of the document `docId`, keeping its id, path and
-    //! holders: they see the new document. Used to reopen a document whose file was lost.
+    //! holders: they see the new document, of the next generation(). Used to reopen a
+    //! document whose file was lost.
     //! @return the replaced document (the caller destroys it), null if not found
     Document replace(DocumentId docId, Document document)
     {
@@ -273,6 +285,7 @@ final class DocumentStore
         auto old = _documents[idx].document;
         stopForwarding(_documents[idx]);
         _documents[idx].document = document;
+        _documents[idx].generation++;
         _documents[idx].subscriptions = startForwarding(document, docId);
         return old;
     }
@@ -545,6 +558,21 @@ unittest
     newDoc.bus.publish(SourceLost());
     store.dispatchEvents();
     assert(lost == [id], "the new document is forwarded under the same id");
+}
+
+@("DocumentStore: a replaced document is of the next generation, the generation of each is its own")
+unittest
+{
+    auto store = new DocumentStore();
+    const id = store.add(new NullDocument(), "a.dlt").docId;
+    const other = store.add(new NullDocument(), "b.dlt").docId;
+    const first = store.generation(id);
+    assert(first != 0 && store.generation(other) == first, "an open document has a generation");
+
+    store.replace(id, new NullDocument());
+    assert(store.generation(id) == first + 1, "its records are numbered anew");
+    assert(store.generation(other) == first, "another document is as it was");
+    assert(store.generation(DocumentId.init) == 0, "no generation without a document");
 }
 
 @("DocumentStore: the null document has no format and no columns")
