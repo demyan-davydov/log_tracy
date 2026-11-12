@@ -43,7 +43,8 @@ utils  ←  sciter  ←  ui
   whatever the system) and their codes of macOS (`utils/mac_keys`), Objective-C calls
   (`utils/objc`).
 - `log_core/`: what doesn't depend on a format (LogMessage, LogFormat, filters, ByteSource,
-  column layout, the encodings of text: `text_encoding`); `log_core/text/` the base of the text formats.
+  column layout, the values of the columns of a record (`column_values`: the one place a
+  record is read by `ColumnKind`; the table writes Sciter values through it), the encodings of text: `text_encoding`); `log_core/text/` the base of the text formats.
 - `formats/`: every format, one module (`formats/logcat.d`) or a package when it has several
   (`formats/dlt/`, `formats/can/`, `formats/syslog/`). `formats/registry.d` lists them.
   `formats/generator/` is not a format: the test log generator, compiled only for the
@@ -236,7 +237,8 @@ utils  ←  sciter  ←  ui
 ## If You Need X, Start Here (backend)
 
 - Opening a file, tabs, views, search, settings as the script sees them: `ui/app_session`
-- The xcall dispatch, table rows as Sciter values: `ui/main_window`, `ui/table_rows`
+- The xcall dispatch, table rows as Sciter values: `ui/main_window`, `ui/table_rows`; the
+  value of each column of a record by its kind, for any reader: `log_core/column_values`
 - Columns of the table for a document: `ui/table_columns`, `log_core/column_layout`
 - Settings model and recent files: `ui/app_settings`, `ui/recent_files`
 - Filter panel commands: `ui/filter_commands`; search chips: `ui/search_chips`
