@@ -8,6 +8,7 @@ import log_core.log_filter : LogFilter;
 import utils.ui_text : UiText;
 
 import domain.attachments : Attachment;
+import domain.index.record_store : RecordsLease;
 import domain.document_id;
 import log_core.log_format : ColumnInfo, FormatChoice, FormatInfo, LogFormat;
 import domain.document_item;
@@ -86,6 +87,13 @@ interface Document
 
     //! The size of the log in bytes; kept once its file is lost
     ulong byteSize() nothrow @nogc;
+
+    //! @brief The records of the log found so far, for a reader of its own on any thread
+    //! (another holder of the document): they stay readable while the lease is held, the
+    //! document closed too. Closing the document doesn't wait for the leases: their
+    //! reader stops once they are closing (RecordsLease.closing), as for a cancel. Taken
+    //! on the thread of the document's store; empty for a document without records
+    RecordsLease leaseRecords();
 
     //! The files sent in the log found so far (domain/attachments): the list grows and
     //! changes while the file loads, AttachmentsChanged tells it

@@ -204,7 +204,13 @@ utils  ←  sciter  ←  ui
     read by any number of threads while one writer appends after them. The holder gives a
     reader its `Records` (under the mutex, or by starting the thread or task that reads) and closes the store only once no scan reads it: `LogIndex` joins its
     worker first, and a scan returns only when its blocks are done. `close()` frees the
-    offset index too: it is a class, and the GC doesn't see that memory;
+    offset index too: it is a class, and the GC doesn't see that memory. A reader on a
+    thread of its own (another holder of the document) leases the records instead
+    (`Document.leaseRecords`, `RecordsLease`, taken under the mutex): the store is counted,
+    `LogIndex` and each lease, and the last to let it go closes it. Closing the document only
+    marks the store closing (`Records.closing`) and doesn't wait for the leases: a reader of
+    one may be waiting for the thread that closes it. A scan checks the mark with a cancel
+    and a lost file;
   - `ViewIndexes` (`views`): the filter and search indexes, the rows of the two views;
   - `MatchStage` (`match_stage`): how far the filter or the search of a pass has got;
   - `scanMatches` (`match_scan`): the parallel scan of a range for the anchored and

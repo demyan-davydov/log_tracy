@@ -11,6 +11,12 @@
 //! reader sees the records below its length (a lock both take, or starting the thread or
 //! the task that reads), and closes the store only once no reader reads it any more: the
 //! bytes of a closed store are gone, and a reader of them crashes.
+//!
+//! A reader the holder doesn't wait for (another reader of the log, on its own thread)
+//! leases the records instead (lease(), RecordsLease): the store is counted, its holder and
+//! each lease, and the last of them to let it go closes it (release()). A holder that is done
+//! with the store marks it closing first (markClosing()): a reader of a lease stops at its
+//! next check (Records.closing) instead of being waited for.
 module domain.index.record_store;
 
 import domain.index.offset_index : OffsetIndex, OffsetIndexItem;
@@ -85,6 +91,9 @@ final class RecordStore
     private const(TransferringFormat) _transferring; // the format, if its records may send files
     private const(MarkedFormat) _marked; // the format, if it is either: what each record may be
     private Transfers _transfers; // the files sent in the log
+
+    private shared size_t _users = 1; // its holder and the leases: the last one closes it
+    private shared bool _closing; // its holder is done with it: the readers of leases stop
 
     //! @param source - owned by the store from now on: released by close()
     this(ByteSource source, LogFormat format)
@@ -167,6 +176,43 @@ final class RecordStore
     {
         const open = _joiner.firstOpenJoin;
         return Records(this, length, open == PartJoiner.none ? _joins.length : open);
+    }
+
+    //! @brief A lease of the records found so far (records()): they stay open while it is
+    //! held, after the holder released the store too. Taken the way records() is: by the
+    //! holder, not while a record is being appended
+    RecordsLease lease() nothrow @nogc
+    {
+        return RecordsLease(this, records);
+    }
+
+    //! The holder is done with the store: the readers of its leases stop at their next
+    //! check (Records.closing). Any thread
+    void markClosing() nothrow @nogc
+    {
+        import core.atomic : atomicStore;
+
+        atomicStore(_closing, true);
+    }
+
+    //! @brief The holder or a lease lets the store go: the last one closes it (close()).
+    //! Any thread
+    void release() nothrow @nogc
+    {
+        import core.atomic : atomicOp;
+
+        const left = atomicOp!"-="(_users, 1);
+        assert(left != size_t.max, "released more often than held");
+        if (left == 0)
+            close(); // no one reads it any more
+    }
+
+    private void retain() nothrow @nogc
+    {
+        import core.atomic : atomicOp;
+
+        const users = atomicOp!"+="(_users, 1);
+        assert(users > 1, "leased once closed");
     }
 
     //! @brief Finds the records of `data` after scannedBytes(), bunchSize of them at most,
@@ -339,7 +385,16 @@ struct Records
     //! The bytes can't be read any more: a record read may be zeros, see decode()
     bool lost() const nothrow @nogc
     {
-        return _store.lost;
+        return _store !is null && _store.lost;
+    }
+
+    //! The holder of the records is done with them (RecordStore.markClosing): a reader of
+    //! a lease stops reading, as it would for a cancel
+    bool closing() const nothrow @nogc
+    {
+        import core.atomic : atomicLoad;
+
+        return _store !is null && atomicLoad(_store._closing);
     }
 
     //! The offset of the record `record` < length in the data of the source
@@ -390,6 +445,47 @@ struct Records
         }
         assert(lo < _joins && _store._joins[lo].record == record);
         return _store._joins[lo];
+    }
+}
+
+//! @brief A lease of the records of a RecordStore (RecordStore.lease): they stay open while
+//! a copy of it lives, wherever the store's holder is. Read records() on any thread, and
+//! stop once they are closing() (the holder is done with them). Empty when not given by a
+//! store (RecordsLease.init): no records.
+struct RecordsLease
+{
+    private RecordStore _store; // null: empty
+    private Records _records;
+
+    private this(RecordStore store, Records records) nothrow @nogc
+    {
+        _store = store;
+        _records = records;
+        store.retain();
+    }
+
+    this(this) nothrow @nogc
+    {
+        if (_store !is null)
+            _store.retain();
+    }
+
+    ~this() nothrow @nogc
+    {
+        if (_store !is null)
+            _store.release();
+    }
+
+    //! The records leased, read while the lease is held
+    Records records() const pure nothrow @nogc
+    {
+        return _records;
+    }
+
+    //! The holder of the records is done with them: stop reading (Records.closing)
+    bool closing() const nothrow @nogc
+    {
+        return _records.closing;
     }
 }
 
@@ -692,4 +788,52 @@ unittest
     assert(store.reservedBytes == 0, "the offsets wait for the GC");
     assert(store.length == 0 && store.records.length == 0);
     store.close(); // idempotent
+}
+
+@("RecordStore: a lease keeps the records open after their holder, the last one closes them")
+unittest
+{
+    import formats.plain_text : PlainTextFormat;
+
+    auto source = new TextSource("one\ntwo\n");
+    auto store = new RecordStore(source, new PlainTextFormat());
+    scanAll(store, true);
+    auto lease = store.lease();
+    auto copy = lease;
+    assert(!lease.closing);
+
+    store.markClosing();
+    store.release(); // the holder is done with it
+    assert(!source.closed, "leased");
+    assert(lease.closing && copy.records.closing, "a reader of a lease stops");
+    assert(lease.records.length == 2 && payloadOf(lease.records, 1) == "two", "still readable");
+
+    destroy(lease);
+    assert(!source.closed, "a copy still leases it");
+    destroy(copy);
+    assert(source.closed, "the last lease closes it");
+}
+
+@("RecordStore: a store whose leases are gone is closed by its holder")
+unittest
+{
+    import formats.plain_text : PlainTextFormat;
+
+    auto source = new TextSource("one\n");
+    auto store = new RecordStore(source, new PlainTextFormat());
+    scanAll(store, true);
+    {
+        auto lease = store.lease();
+    }
+    assert(!source.closed, "its holder holds it");
+    store.release();
+    assert(source.closed);
+}
+
+@("RecordsLease: an empty lease has no records")
+unittest
+{
+    RecordsLease lease;
+    assert(lease.records.length == 0 && !lease.closing && !lease.records.lost);
+    auto copy = lease; // nothing to count
 }

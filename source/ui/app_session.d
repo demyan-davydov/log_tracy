@@ -941,6 +941,7 @@ version (unittest)
     import log_core.log_filter : LogFilter;
     import log_core.log_format : LogFormat;
     import formats.plain_text : PlainTextFormat;
+    import domain.index.record_store : RecordsLease;
     import utils.event_bus.event_bus_async : EventBusAsync;
     import utils.event_bus.event_bus_interface : SignalConsumer;
     import core.time : msecs;
@@ -1010,6 +1011,7 @@ version (unittest)
         FormatChoice formatChoice() const { return FormatChoice("plain-text", 0); }
         size_t messageCount() nothrow @nogc { return records; }
         ulong byteSize() nothrow @nogc { return bytes; }
+        RecordsLease leaseRecords() { return RecordsLease.init; }
         // The files sent in the log, and how writing one goes: refused before its bytes
         // (no such file), or failing after the first two of them (the log lost)
         Attachment[] files;

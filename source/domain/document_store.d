@@ -8,6 +8,7 @@ import domain.attachments : Attachment;
 import domain.document;
 import domain.document_id;
 import domain.document_item : DocumentItem;
+import domain.index.record_store : RecordsLease;
 import domain.anchors;
 
 import log_core.log_filter : LogFilter;
@@ -93,6 +94,11 @@ private class NullDocument : Document
     override ulong byteSize() nothrow @nogc
     {
         return 0;
+    }
+
+    override RecordsLease leaseRecords()
+    {
+        return RecordsLease.init;
     }
 
     override Attachment[] attachments()
@@ -575,12 +581,13 @@ unittest
     assert(store.generation(DocumentId.init) == 0, "no generation without a document");
 }
 
-@("DocumentStore: the null document has no format and no columns")
+@("DocumentStore: the null document has no format, no columns and no records")
 unittest
 {
     auto store = new DocumentStore();
     assert(store.doc(DocumentId.init).format is null);
     assert(store.doc(DocumentId.init).columns is null);
+    assert(store.doc(DocumentId.init).leaseRecords.records.length == 0);
 }
 
 @("DocumentStore.findBySourcePath finds the document of a file, however it is spelled")

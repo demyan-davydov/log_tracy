@@ -16,7 +16,7 @@ import domain.index.match_scan : scanMatches;
 static import match_scan = domain.index.match_scan;
 import domain.index.match_stage : MatchStage;
 import domain.index.progress : ProgressReporter;
-import domain.index.record_store : Records, RecordStore;
+import domain.index.record_store : Records, RecordsLease, RecordStore;
 import domain.index.views : ViewIndexes;
 import domain.anchors;
 import domain.attachments : Attachment, attachmentOf, writePackets = writeAttachment;
@@ -60,8 +60,10 @@ struct PassFinished
 //! of its BackgroundSlot and scans on the task pool; the mutex makes what it appends
 //! (records, rows) safe to read from the UI thread meanwhile. What the parts are told
 //! between passes (setViewFilter, ...) is told while no pass runs.
-//! It closes the records only once no pass reads them: the destructor stops and joins the
+//! It lets the records go only once no pass reads them: the destructor stops and joins the
 //! worker first, and a scan returns only once its blocks are done (utils/parallel_scan).
+//! Another reader leases them (leaseRecords): they are closed when the last of the index
+//! and the leases lets them go, the index doesn't wait for the leases.
 struct LogIndex
 {
     private alias ScopedMutex = typeof(scoped!Mutex());
@@ -115,9 +117,14 @@ struct LogIndex
         // Fields are destroyed in reverse declaration order, so _mutex would go
         // before _backgroundSlot joins the worker that uses it, and the records
         // must not be closed while it reads them. Stop the worker explicitly first.
-        _backgroundSlot.shutdown();
+        // The readers of leases aren't waited for: told to stop, the last one closes the
+        // records. Waiting would hang the thread closing the document while a reader waits
+        // for that thread.
         if (_store !is null) // null if the owner failed before constructing it
-            _store.close();
+            _store.markClosing();
+        _backgroundSlot.shutdown();
+        if (_store !is null)
+            _store.release();
     }
 
     private Mutex mutex() pure nothrow @nogc
@@ -375,6 +382,14 @@ struct LogIndex
     {
         const messages = _store.transfers.messages;
         return messages == 0 ? 0 : messages * 2 + (allRecordsFound ? 1 : 0);
+    }
+
+    //! @brief A lease of the records found so far, to read on any thread (RecordsLease):
+    //! they stay open while it is held, the index closed meanwhile marks them closing
+    RecordsLease leaseRecords() nothrow @nogc
+    {
+        auto lock = LockGuard(mutex);
+        return _store.lease();
     }
 
     //! The records found so far, to read on the calling thread or give to another one

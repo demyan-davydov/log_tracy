@@ -19,7 +19,8 @@ enum size_t stopCheckRecords = 256;
 //! @brief Scans the positions [from, to) in parallel blocks for the records that are in
 //! `anchors` or that `filter` matches, and delivers them block by block in order, as soon
 //! as a block and the ones before it are scanned. A block gives up at its next check when
-//! `cancelled()` is true or the records are lost: what it found then is not delivered.
+//! `cancelled()` is true, the records are lost or closing (Records.closing): what it found then
+//! is not delivered.
 //! @param records - the records the positions are of: read from many threads at once
 //! @param messageAt - the record of a position; called from many threads at once, so it
 //!   may only read what doesn't change while the scan runs
@@ -44,7 +45,7 @@ bool scanMatches(T)(Records records, size_t from, size_t to, scope size_t delega
             {
                 // A stop: the delivery of this block stops the scan, or fails it, or it
                 // is never delivered
-                if ((position - from - lo) % stopCheckRecords == 0 && (cancelled() || records.lost || stop()))
+                if ((position - from - lo) % stopCheckRecords == 0 && (cancelled() || records.lost || records.closing || stop()))
                     break;
                 const record = messageAt(position);
                 if (!records.decode(record, msg))
@@ -210,4 +211,24 @@ unittest
     // A block stops at its next check: a few checks' worth of positions per block at most
     assert(atomicLoad(scanned) < 4 * stopCheckRecords * 2, "a block of lost records went on");
     assert(found.length < 4 * stopCheckRecords * 2);
+}
+
+@("scanMatches: the blocks of leased records whose holder is closing give up at their next check")
+unittest
+{
+    import core.atomic : atomicLoad, atomicOp;
+    import log_core.search_filter : SearchChip, SearchFilter;
+
+    auto store = storeOf(4 * scanBlockLength);
+    auto lease = store.lease();
+    Anchors anchors;
+    shared size_t scanned;
+    scanMatches!uint(lease.records, 0, lease.records.length, (size_t p) {
+            if (atomicOp!"+="(scanned, 1) == 1)
+                store.markClosing(); // the document is closed meanwhile
+            return p;
+        },
+        SearchFilter.fromChips([SearchChip("line")]), anchors, () => false,
+        (size_t done, const(uint)[] found) => true);
+    assert(atomicLoad(scanned) < 4 * stopCheckRecords * 2, "a block of records closing went on");
 }

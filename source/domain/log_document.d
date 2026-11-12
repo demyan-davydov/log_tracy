@@ -14,6 +14,7 @@ import log_core.log_filter;
 import domain.anchors;
 import domain.attachments : Attachment, AttachmentState;
 import domain.log_index;
+import domain.index.record_store : RecordsLease;
 import formats.registry : createFormat, detectFormat;
 import log_core.byte_source;
 import log_core.log_format : LogFormat, ColumnInfo, FormatChoice;
@@ -161,6 +162,11 @@ class LogDocument : Document
     override ulong byteSize() nothrow @nogc
     {
         return _index.byteSize;
+    }
+
+    override RecordsLease leaseRecords()
+    {
+        return _index.leaseRecords;
     }
 
     override Attachment[] attachments()
@@ -513,18 +519,52 @@ version (unittest)
     import formats.dlt.testing_utils : buildDltMessage;
     import formats.dlt.fields : ecuId;
 
+    /// DLT messages whose seconds are their index
+    private ubyte[] testDlt(size_t messageCount, const(char)[4] ecuId = "ECU1")
+    {
+        ubyte[] data;
+        foreach (i; 0 .. messageCount)
+            data ~= buildDltMessage(ecuId, cast(uint) i, 0, 0, cast(ubyte) i, [0xAA, 0xBB]);
+        return data;
+    }
+
     private string writeTestDlt(string name, size_t messageCount, const(char)[4] ecuId = "ECU1")
     {
         import std.file : write, tempDir;
         import std.path : buildPath;
 
-        ubyte[] data;
-        foreach (i; 0 .. messageCount)
-            data ~= buildDltMessage(ecuId, cast(uint) i, 0, 0, cast(ubyte) i, [0xAA, 0xBB]);
-
         auto path = buildPath(tempDir(), name);
-        write(path, data);
+        write(path, testDlt(messageCount, ecuId));
         return path;
+    }
+
+    /// Bytes in memory, all of them at once; tells when it is closed
+    private final class MemorySource : ByteSource
+    {
+        private const(ubyte)[] _data;
+        private shared bool _closed;
+
+        this(const(ubyte)[] data)
+        {
+            _data = data;
+        }
+
+        bool closed() const
+        {
+            import core.atomic : atomicLoad;
+
+            return atomicLoad(_closed);
+        }
+
+        override const(ubyte)[] data() const pure nothrow @nogc { return _data; }
+        override bool complete() const nothrow @nogc { return true; }
+        override bool lost() const nothrow @nogc { return false; }
+        override void close() nothrow @nogc
+        {
+            import core.atomic : atomicStore;
+
+            atomicStore(_closed, true);
+        }
     }
 
     /// Filter of the main view by the ECU ID of DLT messages
@@ -792,6 +832,58 @@ unittest
     const start = MonoTime.currTime;
     destroy(doc); // must cancel the running BuildOffsetIndex, not wait for it or crash
     assert(MonoTime.currTime - start < 1.seconds, "destroy must not wait for indexing to complete");
+}
+
+@("LogDocument: records leased are read on another thread after the document is closed, a scan of them stops")
+unittest
+{
+    import core.atomic : atomicLoad, atomicStore;
+    import core.thread : Thread;
+    import core.time : MonoTime, seconds;
+    import domain.index.match_scan : scanMatches;
+    import formats.dlt.format : DltFormat;
+
+    enum messageCount = 200_000;
+    auto source = new MemorySource(testDlt(messageCount));
+    auto doc = new LogDocument(source, new DltFormat());
+    auto views = new Views(doc);
+    dispatchUntil(doc, () => views.mainReady);
+    assert(views.mainReady);
+
+    auto lease = doc.leaseRecords();
+    assert(lease.records.length == messageCount);
+    // The scan reads a few blocks, then its threads wait at message 50000 until the
+    // document is closed
+    auto gate = new GateFilter(50_000);
+    size_t delivered;
+    shared bool completed = true, scanning;
+    auto reader = new Thread({
+        Anchors anchors;
+        atomicStore(scanning, true);
+        const all = scanMatches!uint(lease.records, 0, lease.records.length, (size_t p) => p, gate, anchors,
+            () => false,
+            (size_t done, const(uint)[] found) {
+                delivered = done;
+                return !lease.closing; // the holder of the records is done with them
+            });
+        atomicStore(completed, all);
+    });
+    reader.start();
+    while (!atomicLoad(scanning))
+        Thread.yield();
+
+    const start = MonoTime.currTime;
+    destroy(doc); // the reader waits at the gate meanwhile: closing must not wait for it
+    assert(MonoTime.currTime - start < 1.seconds, "closing the document waited for the lease");
+    assert(!source.closed, "the records are leased");
+    assert(lease.closing);
+
+    gate.open();
+    reader.join();
+    assert(!atomicLoad(completed) && delivered < messageCount, "the scan went on after the document closed");
+    assert(!source.closed, "the lease is still held");
+    destroy(lease);
+    assert(source.closed, "the last lease closes the records");
 }
 
 @("LogDocument: a search and a filter requested while loading run with the load, latest request wins")
