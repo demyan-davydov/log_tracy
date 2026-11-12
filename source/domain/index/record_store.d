@@ -7,10 +7,16 @@
 //! (Records, records()) may be read by any number of threads at once while one writer
 //! appends after them. Their entries never move (utils/chunked_array) and none is removed.
 //! The rest is the holder's to synchronize (LogIndex): reading length() while a record is
-//! appended, appending, and close(). The holder gives a reader its Records so that the
+//! appended, appending, and release(). The holder gives a reader its Records so that the
 //! reader sees the records below its length (a lock both take, or starting the thread or
 //! the task that reads), and closes the store only once no reader reads it any more: the
 //! bytes of a closed store are gone, and a reader of them crashes.
+//!
+//! A reader the holder doesn't wait for (another reader of the log, on its own thread)
+//! leases the records instead (lease(), RecordsLease): the store is counted, its holder and
+//! each lease, and the last of them to let it go closes it (release()). A holder that is done
+//! with the store marks it closing first (markClosing()): a reader of a lease stops at its
+//! next check (Records.closing) instead of being waited for.
 module domain.index.record_store;
 
 import domain.index.offset_index : OffsetIndex, OffsetIndexItem;
@@ -86,7 +92,10 @@ final class RecordStore
     private const(MarkedFormat) _marked; // the format, if it is either: what each record may be
     private Transfers _transfers; // the files sent in the log
 
-    //! @param source - owned by the store from now on: released by close()
+    private shared size_t _users = 1; // its holder and the leases: the last one closes it
+    private shared bool _closing; // its holder is done with it: the readers of leases stop
+
+    //! @param source - owned by the store from now on: released when the store is closed (release())
     this(ByteSource source, LogFormat format)
     {
         _source = source;
@@ -167,6 +176,43 @@ final class RecordStore
     {
         const open = _joiner.firstOpenJoin;
         return Records(this, length, open == PartJoiner.none ? _joins.length : open);
+    }
+
+    //! @brief A lease of the records found so far (records()): they stay open while it is
+    //! held, after the holder released the store too. Taken the way records() is: by the
+    //! holder, not while a record is being appended
+    RecordsLease lease() nothrow @nogc
+    {
+        return RecordsLease(this, records);
+    }
+
+    //! The holder is done with the store: the readers of its leases stop at their next
+    //! check (Records.closing). Any thread
+    void markClosing() nothrow @nogc
+    {
+        import core.atomic : atomicStore;
+
+        atomicStore(_closing, true);
+    }
+
+    //! @brief The holder or a lease lets the store go: the last one closes it (close()).
+    //! Any thread
+    void release() nothrow @nogc
+    {
+        import core.atomic : atomicOp;
+
+        const left = atomicOp!"-="(_users, 1);
+        assert(left != size_t.max, "released more often than held");
+        if (left == 0)
+            close(); // no one reads it any more
+    }
+
+    private void retain() nothrow @nogc
+    {
+        import core.atomic : atomicOp;
+
+        const users = atomicOp!"+="(_users, 1);
+        assert(users > 1, "leased once closed");
     }
 
     //! @brief Finds the records of `data` after scannedBytes(), bunchSize of them at most,
@@ -300,9 +346,10 @@ final class RecordStore
     }
 
     //! Releases the bytes of the source and the offset index at once: the index lives in
-    //! memory of its own, which the GC neither sees nor would free soon. Only once no reader
-    //! reads them (see the module). Idempotent; no records and data() empty afterwards.
-    void close() nothrow @nogc
+    //! memory of its own, which the GC neither sees nor would free soon. Called by the last
+    //! release() only: no reader reads them any more (see the module). No records and
+    //! data() empty afterwards.
+    private void close() nothrow @nogc
     {
         _source.close();
         _offsets.clear();
@@ -339,7 +386,25 @@ struct Records
     //! The bytes can't be read any more: a record read may be zeros, see decode()
     bool lost() const nothrow @nogc
     {
-        return _store.lost;
+        return _store !is null && _store.lost;
+    }
+
+    //! The holder of the records is done with them (RecordStore.markClosing): a reader of
+    //! a lease stops reading, as it would for a cancel
+    bool closing() const nothrow @nogc
+    {
+        import core.atomic : atomicLoad;
+
+        return _store !is null && atomicLoad(_store._closing);
+    }
+
+    //! @brief Whether a reader of the records gives up: `cancelled()`, or the records are
+    //! lost or closing. A scan checks it every few records and again before what it read is
+    //! delivered: once true it stays true (`cancelled` too), so nothing read by a block cut
+    //! short is delivered, nor a record of a lost file read as zeros
+    bool givesUp(scope bool delegate() cancelled) const
+    {
+        return cancelled() || lost || closing;
     }
 
     //! The offset of the record `record` < length in the data of the source
@@ -376,6 +441,15 @@ struct Records
         return _store._parted.decodeParts(msg, parts[0 .. 1 + join.fragments]);
     }
 
+    //! @brief The parts the record `record` < length is joined of (PartedFormat): 1 for a
+    //! record that is not joined, nor a message whose other parts never came (its text
+    //! tells which part of how many it is)
+    size_t partsOf(size_t record) const pure nothrow @nogc
+    {
+        assert(record < _length);
+        return _store._offsets[record].joined ? 1 + joinOf(record).fragments : 1;
+    }
+
     //! The parts of the head `record`: the joins are in the order of their records
     private Join joinOf(size_t record) const pure nothrow @nogc
     {
@@ -390,6 +464,54 @@ struct Records
         }
         assert(lo < _joins && _store._joins[lo].record == record);
         return _store._joins[lo];
+    }
+}
+
+//! @brief A lease of the records of a RecordStore (RecordStore.lease): they stay open while
+//! a copy of it lives, wherever the store's holder is. Read records() on any thread, and
+//! stop once they are closing() (the holder is done with them). Empty when not given by a
+//! store (RecordsLease.init): no records.
+//! Let it go deterministically (a scope, destroy()): one the GC collects in an object it
+//! finalizes never lets the store go, so the store and its file stay open for good (on
+//! Windows the file can't be deleted or renamed then until the program exits).
+struct RecordsLease
+{
+    private RecordStore _store; // null: empty
+    private Records _records;
+
+    private this(RecordStore store, Records records) nothrow @nogc
+    {
+        _store = store;
+        _records = records;
+        store.retain();
+    }
+
+    this(this) nothrow @nogc
+    {
+        if (_store !is null)
+            _store.retain();
+    }
+
+    ~this() nothrow @nogc
+    {
+        import core.memory : GC;
+
+        // In a finalizer the store, its source and its offsets may be finalized already
+        // (their vtables gone): closing them would crash
+        if (_store !is null && !GC.inFinalizer)
+            _store.release();
+    }
+
+    //! The records leased, read while the lease is held
+    Records records() const pure nothrow @nogc
+    {
+        return _records;
+    }
+
+    //! The holder of the records is done with them: stop reading (Records.closing)
+    bool closing() const nothrow @nogc
+    {
+        return _records.closing;
     }
 }
 
@@ -604,7 +726,7 @@ unittest
     assert(t.record == 2 && t.offset == 13 && t.started && t.ended && t.inTurn == 2);
     assert(transfers.inTurnOffsets(0) == [20, 41]);
 
-    store.close();
+    store.release();
     assert(store.transfers.length == 0, "closed with the store");
 }
 
@@ -625,6 +747,20 @@ unittest
     assert(records.length == 4);
     assert(payloadOf(records, 0) == "x" && payloadOf(records, 1) == "he|llo");
     assert(payloadOf(records, 2) == "B" && payloadOf(records, 3) == "y");
+}
+
+@("Records.partsOf: how many parts a record is joined of, 1 for one that isn't")
+unittest
+{
+    auto store = new RecordStore(new TextSource("x\nA1 1/3: a\nB\nA2 2/3: b\nA3 3/3: c\nC1 1/2: d\ny\n"),
+        new PartedText());
+    scanAll(store, true);
+    const records = store.records;
+    assert(records.length == 5);
+    assert(payloadOf(records, 1) == "a|b|c" && payloadOf(records, 3) == "C1 1/2: d");
+    assert(records.partsOf(0) == 1 && records.partsOf(2) == 1, "records that are no parts");
+    assert(records.partsOf(1) == 3, "joined of three parts");
+    assert(records.partsOf(3) == 1, "a first part whose other parts never came");
 }
 
 @("RecordStore: the records after a first part wait for its message, the end of the data lets them out")
@@ -678,7 +814,7 @@ unittest
     assert(store.length == 0 && store.scannedBytes == 0);
 }
 
-@("RecordStore: close releases the source and the offset index at once, not by the GC later")
+@("RecordStore: the last release closes the source and the offset index at once, not by the GC later")
 unittest
 {
     import formats.plain_text : PlainTextFormat;
@@ -687,9 +823,56 @@ unittest
     auto store = new RecordStore(source, new PlainTextFormat());
     scanAll(store, true);
     assert(store.reservedBytes > 0);
-    store.close();
+    store.release(); // its holder, the only user
     assert(source.closed);
     assert(store.reservedBytes == 0, "the offsets wait for the GC");
     assert(store.length == 0 && store.records.length == 0);
-    store.close(); // idempotent
+}
+
+@("RecordStore: a lease keeps the records open after their holder, the last one closes them")
+unittest
+{
+    import formats.plain_text : PlainTextFormat;
+
+    auto source = new TextSource("one\ntwo\n");
+    auto store = new RecordStore(source, new PlainTextFormat());
+    scanAll(store, true);
+    auto lease = store.lease();
+    auto copy = lease;
+    assert(!lease.closing);
+
+    store.markClosing();
+    store.release(); // the holder is done with it
+    assert(!source.closed, "leased");
+    assert(lease.closing && copy.records.closing, "a reader of a lease stops");
+    assert(lease.records.length == 2 && payloadOf(lease.records, 1) == "two", "still readable");
+
+    destroy(lease);
+    assert(!source.closed, "a copy still leases it");
+    destroy(copy);
+    assert(source.closed, "the last lease closes it");
+}
+
+@("RecordStore: a store whose leases are gone is closed by its holder")
+unittest
+{
+    import formats.plain_text : PlainTextFormat;
+
+    auto source = new TextSource("one\n");
+    auto store = new RecordStore(source, new PlainTextFormat());
+    scanAll(store, true);
+    {
+        auto lease = store.lease();
+    }
+    assert(!source.closed, "its holder holds it");
+    store.release();
+    assert(source.closed);
+}
+
+@("RecordsLease: an empty lease has no records")
+unittest
+{
+    RecordsLease lease;
+    assert(lease.records.length == 0 && !lease.closing && !lease.records.lost);
+    auto copy = lease; // nothing to count
 }

@@ -68,7 +68,8 @@ behaviour: `.ai/knowledge/sciter.md`.
 ## Table Columns
 
 - The table columns and the row cells (`ui/table_rows`: `writeRow` over a cell writer,
-  `main_window` writes them as Sciter values) are built from the format's `ColumnInfo` schema
+  `main_window` writes them as Sciter values; the value of each column, by its kind, is read
+  by `log_core/column_values`) are built from the format's `ColumnInfo` schema
   as the user's layout of that format arranges it (`log_core/column_layout`,
   `AppSettings.columnLayouts` by format id, edited in the Table section of Settings):
   `backend.tableColumnsJson(docId)`, arranged once per format and variant (`ui/table_columns`).

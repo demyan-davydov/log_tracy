@@ -9,6 +9,8 @@ import domain.index.record_store : Records;
 import log_core.log_filter : LogFilter;
 import log_core.log_message : LogMessage;
 
+import std.parallelism : TaskPool;
+
 //! Positions a thread scans at a time: what a block finds is at most 64 KB, and a few
 //! blocks per thread are held (utils/parallel_scan)
 enum size_t scanBlockLength = 16 * 1024;
@@ -19,19 +21,23 @@ enum size_t stopCheckRecords = 256;
 //! @brief Scans the positions [from, to) in parallel blocks for the records that are in
 //! `anchors` or that `filter` matches, and delivers them block by block in order, as soon
 //! as a block and the ones before it are scanned. A block gives up at its next check when
-//! `cancelled()` is true or the records are lost: what it found then is not delivered.
+//! `cancelled()` is true, the records are lost or closing (Records.closing): the scan stops
+//! then, and no block is delivered from then on.
 //! @param records - the records the positions are of: read from many threads at once
 //! @param messageAt - the record of a position; called from many threads at once, so it
 //!   may only read what doesn't change while the scan runs
 //! @param filter - called from many threads at once (LogFilter)
-//! @param cancelled - called from many threads at once
+//! @param cancelled - called from many threads at once; once true, it stays true
 //! @param deliver - `deliver(done, found)` on the calling thread: the records `found` in
 //!   the positions before `done`, valid during the call only; false stops the scan. It may
 //!   throw: the scan stops and the exception comes out of scanMatches
-//! @return false if `deliver` stopped the scan
+//! @param pool - the threads the blocks run on; null: the shared task pool. A reader that
+//!   shouldn't slow the window down scans on a pool of its own
+//! @return false if the scan stopped before `to`: `deliver` or a block gave up (the
+//!   caller tells a cancel from a lost file by Records.lost)
 bool scanMatches(T)(Records records, size_t from, size_t to, scope size_t delegate(size_t position) messageAt,
     const(LogFilter!wchar) filter, ref const(Anchors) anchors, scope bool delegate() cancelled,
-    scope bool delegate(size_t done, const(T)[] found) deliver)
+    scope bool delegate(size_t done, const(T)[] found) deliver, TaskPool pool = null)
 {
     import utils.parallel_scan : parallelScan, ScanStop;
 
@@ -42,9 +48,8 @@ bool scanMatches(T)(Records records, size_t from, size_t to, scope size_t delega
             size_t n = 0;
             foreach (position; from + lo .. from + hi)
             {
-                // A stop: the delivery of this block stops the scan, or fails it, or it
-                // is never delivered
-                if ((position - from - lo) % stopCheckRecords == 0 && (cancelled() || records.lost || stop()))
+                // A stop: this block is never delivered (givesUp is checked again before)
+                if ((position - from - lo) % stopCheckRecords == 0 && (records.givesUp(cancelled) || stop()))
                     break;
                 const record = messageAt(position);
                 if (!records.decode(record, msg))
@@ -54,7 +59,7 @@ bool scanMatches(T)(Records records, size_t from, size_t to, scope size_t delega
             }
             return n;
         },
-        (size_t done, const(T)[] found) => deliver(from + done, found));
+        (size_t done, const(T)[] found) => !records.givesUp(cancelled) && deliver(from + done, found), pool);
 }
 
 version (unittest)
@@ -78,7 +83,7 @@ version (unittest)
     }
 
     //! A store of `lines` lines "line <i>", " seven" after those divisible by 7
-    private RecordStore storeOf(size_t lines)
+    package RecordStore storeOf(size_t lines)
     {
         import formats.plain_text : PlainTextFormat;
         import std.array : appender;
@@ -209,5 +214,50 @@ unittest
         (size_t done, const(uint)[] blockFound) { found ~= blockFound; return true; });
     // A block stops at its next check: a few checks' worth of positions per block at most
     assert(atomicLoad(scanned) < 4 * stopCheckRecords * 2, "a block of lost records went on");
-    assert(found.length < 4 * stopCheckRecords * 2);
+    assert(found.length == 0, "a block cut short was delivered");
+}
+
+@("scanMatches: the blocks of leased records whose holder is closing give up at their next check")
+unittest
+{
+    import core.atomic : atomicLoad, atomicOp;
+    import log_core.search_filter : SearchChip, SearchFilter;
+
+    auto store = storeOf(4 * scanBlockLength);
+    auto lease = store.lease();
+    Anchors anchors;
+    shared size_t scanned;
+    uint[] found;
+    const completed = scanMatches!uint(lease.records, 0, lease.records.length, (size_t p) {
+            if (atomicOp!"+="(scanned, 1) == 1)
+                store.markClosing(); // the document is closed meanwhile
+            return p;
+        },
+        SearchFilter.fromChips([SearchChip("line")]), anchors, () => false,
+        (size_t done, const(uint)[] blockFound) { found ~= blockFound; return true; });
+    assert(atomicLoad(scanned) < 4 * stopCheckRecords * 2, "a block of records closing went on");
+    // Closing from the first record: every block gave up before its end
+    assert(!completed && found.length == 0, "a block cut short was delivered");
+}
+
+@("scanMatches: the blocks run on the pool given")
+unittest
+{
+    import core.atomic : atomicLoad, atomicStore;
+    import log_core.search_filter : SearchChip, SearchFilter;
+
+    auto pool = new TaskPool(2);
+    scope (exit)
+        pool.finish(true);
+    auto records = storeOf(8 * scanBlockLength).records;
+    Anchors anchors;
+    shared bool onPool;
+    scanMatches!uint(records, 0, records.length, (size_t p) {
+            if (pool.workerIndex > 0)
+                atomicStore(onPool, true);
+            return p;
+        },
+        SearchFilter.fromChips([SearchChip("line")]), anchors, () => false,
+        (size_t done, const(uint)[] found) => true, pool);
+    assert(atomicLoad(onPool), "no block ran on a thread of the pool");
 }

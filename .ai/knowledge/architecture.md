@@ -43,7 +43,10 @@ utils  ←  sciter  ←  ui
   whatever the system) and their codes of macOS (`utils/mac_keys`), Objective-C calls
   (`utils/objc`).
 - `log_core/`: what doesn't depend on a format (LogMessage, LogFormat, filters, ByteSource,
-  column layout, the encodings of text: `text_encoding`); `log_core/text/` the base of the text formats.
+  column layout, the values of the columns of a record (`column_values`: the one place the
+  columns of a record are read as values to show; the table writes Sciter values through
+  it), the encodings of text: `text_encoding`); `log_core/text/` the base of the text
+  formats.
 - `formats/`: every format, one module (`formats/logcat.d`) or a package when it has several
   (`formats/dlt/`, `formats/can/`, `formats/syslog/`). `formats/registry.d` lists them.
   `formats/generator/` is not a format: the test log generator, compiled only for the
@@ -109,17 +112,23 @@ utils  ←  sciter  ←  ui
   (on macOS Quit the loop never returns: `AppSession.terminate` closes the store then).
 - A document lives while someone holds it (`DocumentStore.hold`/`release`; `add` holds it for
   the caller): a tab of the window (`AppSession`: a tab is a holder, `ui/document_tabs` the
-  order and the active one), later an AI session. The last `release` closes it; closing a tab
-  doesn't close a document another still holds. Ids are the store's, the tabs know only theirs.
+  order and the active one), later an AI session. A hold is a token (`DocumentHold`), released
+  once: a holder releasing its own twice doesn't take another's. The last `release` closes it;
+  closing a tab doesn't close a document another still holds. Ids are the store's, the tabs
+  know only theirs.
   The views, filters, search and anchors of a document are its tab's: another holder only holds
-  it and reads records. Only the window opens files yet, so every document has a tab (a tab for
-  a document of another holder: `docs/backlog.md`).
+  it, reads records (`Document.leaseRecords`) and asks how far its load has got
+  (`Document.state`: the bytes and records loaded, the end of the load, its error). Only the
+  window opens files yet, so every document has a tab (a tab for a document of another
+  holder: `docs/backlog.md`).
   The store is of the UI thread: `add`, `hold`, `release` (its `destroy` cancels and joins the
   indexing), `doc` are called there, so a holder on another thread (the MCP core) hands its
   calls over to it. Its events are pumped by the window's idle loop
   (`AppSession.dispatchEvents`); a subscriber may release documents meanwhile. A holder keeps
   the id, not the `Document`: a Retry replaces the object for every holder, and takes
-  `doc(id)` each time.
+  `doc(id)` each time. A Retry numbers the records anew: `DocumentStore.generation(id)` is one
+  more after each `replace`, so a holder that keeps numbers of records compares it with the
+  one they were taken in.
 - Environment variables for trying things, read in `main()` (`newSession` of `app.d`) and
   passed to the session and the window: `OPEN_AT_START` (logs opened at start, `backend.startFiles()`), `MENU_BAR_PLATFORM`,
   `PSEUDO_LOCALE`, `SCITER_DEBUG_MODE` (the debug mode of Sciter, for its inspector). The table of them: `docs/building.md`, "Environment variables for
@@ -167,8 +176,10 @@ utils  ←  sciter  ←  ui
 - The filter and search indexes are built in parallel blocks on `std.parallelism`'s task pool
   (`utils/parallel_scan`), appended in order as the blocks before them are done; the offset
   index is built sequentially. A format and a filter are called from several threads. A block
-  checks a cancel, a lost file and the stop of the scan (`ScanStop`: a failed delivery)
-  every `stopCheckRecords` records (`domain/index/match_scan`). The index grows block by
+  checks a cancel, a lost file, records closing and the stop of the scan (`ScanStop`: a
+  failed delivery) every `stopCheckRecords` records, and the first three again before it is
+  delivered (`Records.givesUp`): a block cut short is never delivered,
+  the scan returns false. The index grows block by
   block while the scan runs: keep it so, the results are shown before the scan ends.
 - `LogIndex` is the holder of its parts (`domain/index/`), which are not thread-safe: it owns
   the mutex, the worker and their lifetime. The parts:
@@ -181,9 +192,10 @@ utils  ←  sciter  ←  ui
     record goes to the offset index at once
     but the later parts of a message: they are fragments of its head (the joined bit of
     its `OffsetIndexItem`), a list in a table of the store (`Join`, `Fragment`), which
-    `Records.decode` follows. `length()` and `records()` stop before the head of the
-    oldest message still open (`RecordStore.holding`): its text may still grow, and its
-    join and fragments still change. The end of the data closes every message (a source
+    `Records.decode` follows (`Records.partsOf`: how many parts a record is joined of).
+    `length()` and `records()` stop before the head of the oldest message still open
+    (`RecordStore.holding`): its text may still grow, and its join and fragments still
+    change. The end of the data closes every message (a source
     may tell its end without more bytes: `LogIndex.behind` counts what is held then). An
     `append` that fails halfway leaves the store refusing every later one. A format that
     is a `TransferringFormat` (files its writers send in the log, the file transfer of
@@ -199,14 +211,30 @@ utils  ←  sciter  ←  ui
     then in its place). Its one promise
     across threads: the records below the length of a `Records` a reader was given are
     read by any number of threads while one writer appends after them. The holder gives a
-    reader its `Records` (under the mutex, or by starting the thread or task that reads) and closes the store only once no scan reads it: `LogIndex` joins its
-    worker first, and a scan returns only when its blocks are done. `close()` frees the
-    offset index too: it is a class, and the GC doesn't see that memory;
+    reader its `Records` (under the mutex, or by starting the thread or task that reads)
+    and lets the store go (`release()`) only once no scan reads it: `LogIndex` joins its
+    worker first, and a scan returns only when its blocks are done. Closing the store (the
+    last `release()`) frees the offset index too: it is a class, and the GC doesn't see that
+    memory. A reader on a
+    thread of its own (another holder of the document) leases the records instead
+    (`Document.leaseRecords`, `RecordsLease`, taken under the mutex): the store is counted,
+    `LogIndex` and each lease, and the last to let it go closes it. Closing the document only
+    marks the store closing (`Records.closing`) and doesn't wait for the leases: a reader of
+    one may be waiting for the thread that closes it. A scan checks the mark with a cancel
+    and a lost file;
   - `ViewIndexes` (`views`): the filter and search indexes, the rows of the two views;
   - `MatchStage` (`match_stage`): how far the filter or the search of a pass has got;
   - `scanMatches` (`match_scan`): the parallel scan of a range for the anchored and
     matching records, over `Records` only: what another reader of the records (a search
-    of its own, apart from the views) scans with too;
+    of its own, apart from the views) scans with too. It takes the pool its blocks run
+    on (the shared one by default): a reader that shouldn't slow the window down scans on a
+    pool of its own, and folds likewise;
+  - `foldRecords` (`record_fold`): the parallel fold of a range over `Records`, for another
+    reader (a count by a value, the first and the last record of a group): each block folds
+    into an accumulator of its own, merged in the order of the blocks (`parallelFold` of
+    `utils/parallel_scan`), so nothing is decoded again on one thread. A reader apart from
+    the window scans and folds on a pool of its own: on the shared one its blocks queue
+    before those of an index, and closing a document waits for its index's scan;
   - `ProgressReporter` (`progress`).
 - The indexes are `BaseIndex` over `utils/chunked_array` (`domain/index/`):
   - they grow by 64K-entry chunks (mmap / VirtualAlloc) up to 2^32 entries;
@@ -226,7 +254,8 @@ utils  ←  sciter  ←  ui
 ## If You Need X, Start Here (backend)
 
 - Opening a file, tabs, views, search, settings as the script sees them: `ui/app_session`
-- The xcall dispatch, table rows as Sciter values: `ui/main_window`, `ui/table_rows`
+- The xcall dispatch, table rows as Sciter values: `ui/main_window`, `ui/table_rows`; the
+  value of each column of a record by its kind, for any reader: `log_core/column_values`
 - Columns of the table for a document: `ui/table_columns`, `log_core/column_layout`
 - Settings model and recent files: `ui/app_settings`, `ui/recent_files`
 - Filter panel commands: `ui/filter_commands`; search chips: `ui/search_chips`

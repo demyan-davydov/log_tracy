@@ -8,6 +8,7 @@ import log_core.log_filter : LogFilter;
 import utils.ui_text : UiText;
 
 import domain.attachments : Attachment;
+import domain.index.record_store : RecordsLease;
 import domain.document_id;
 import log_core.log_format : ColumnInfo, FormatChoice, FormatInfo, LogFormat;
 import domain.document_item;
@@ -53,6 +54,21 @@ interface DocumentView
     bool nearestPositionOf(size_t realIndex, out size_t position);
 }
 
+//! How far a document has got with its log, at one moment (Document.state)
+struct DocumentState
+{
+    ulong loadedBytes; /// the bytes split into records so far
+    ulong totalBytes; /// the bytes of the log (Document.byteSize)
+    //! The records that can be read (the length of Records): those before a message
+    //! still open stay out until it closes (PartedFormat)
+    size_t records;
+    bool loaded; /// the load reached the end of the log once (a source may grow after)
+    bool sourceLost; /// its file can't be read any more (Document.sourceLost)
+    //! Why the document is done for: its load, or a pass over what came later, failed (the
+    //! file was lost meanwhile, say); empty if it isn't
+    UiText error;
+}
+
 interface Document
 {
     enum Operation
@@ -86,6 +102,17 @@ interface Document
 
     //! The size of the log in bytes; kept once its file is lost
     ulong byteSize() nothrow @nogc;
+
+    //! @brief The records of the log found so far, for a reader of its own on any thread
+    //! (another holder of the document): they stay readable while the lease is held, the
+    //! document closed too. Closing the document doesn't wait for the leases: their
+    //! reader stops once they are closing (RecordsLease.closing), as for a cancel. Taken
+    //! on the thread of the document's store; empty for a document without records
+    RecordsLease leaseRecords();
+
+    //! How far the document has got with its log now: what was loaded, whether the load
+    //! is over or failed. Cheap: taken on the thread of the document's store
+    DocumentState state();
 
     //! The files sent in the log found so far (domain/attachments): the list grows and
     //! changes while the file loads, AttachmentsChanged tells it

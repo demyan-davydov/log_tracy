@@ -14,6 +14,7 @@ import log_core.log_filter;
 import domain.anchors;
 import domain.attachments : Attachment, AttachmentState;
 import domain.log_index;
+import domain.index.record_store : RecordsLease;
 import formats.registry : createFormat, detectFormat;
 import log_core.byte_source;
 import log_core.log_format : LogFormat, ColumnInfo, FormatChoice;
@@ -58,6 +59,8 @@ class LogDocument : Document
     private bool _filtering;
     private bool _searching;
     private bool _failed; // the index can't be brought up to date: nothing more is asked of it
+    private bool _loadCompleted; // the load reached the end of the source once
+    private UiText _failure; // why the document is done for: its load or a later pass failed
     // The user asked to stop it: told when the pass it stopped ends
     private bool _cancelFilter;
     private bool _cancelSearch;
@@ -161,6 +164,20 @@ class LogDocument : Document
     override ulong byteSize() nothrow @nogc
     {
         return _index.byteSize;
+    }
+
+    override RecordsLease leaseRecords()
+    {
+        return _index.leaseRecords;
+    }
+
+    override DocumentState state()
+    {
+        auto state = _index.state;
+        state.loaded = _loadCompleted;
+        state.sourceLost = sourceLost;
+        state.error = _failure;
+        return state;
     }
 
     override Attachment[] attachments()
@@ -285,6 +302,7 @@ class LogDocument : Document
         if (!running(operation))
             return;
         running(operation) = false;
+        _loadCompleted |= operation == Operation.BuildOffsetIndex && result == OperationFinished.Result.Completed;
         _events.publish(OperationFinished(operation, result, error));
     }
 
@@ -349,6 +367,7 @@ class LogDocument : Document
             // The source can't be taken to its end (the load, or what it got
             // later): the document is done for
             _failed = true;
+            _failure = error;
             _pendingViewFilter = PendingRequest.init;
             _pendingSearch = PendingRequest.init;
             finish(Operation.BuildOffsetIndex, Result.Failed, error);
@@ -513,18 +532,88 @@ version (unittest)
     import formats.dlt.testing_utils : buildDltMessage;
     import formats.dlt.fields : ecuId;
 
+    /// DLT messages whose seconds are their index
+    private ubyte[] testDlt(size_t messageCount, const(char)[4] ecuId = "ECU1")
+    {
+        ubyte[] data;
+        foreach (i; 0 .. messageCount)
+            data ~= buildDltMessage(ecuId, cast(uint) i, 0, 0, cast(ubyte) i, [0xAA, 0xBB]);
+        return data;
+    }
+
     private string writeTestDlt(string name, size_t messageCount, const(char)[4] ecuId = "ECU1")
     {
         import std.file : write, tempDir;
         import std.path : buildPath;
 
-        ubyte[] data;
-        foreach (i; 0 .. messageCount)
-            data ~= buildDltMessage(ecuId, cast(uint) i, 0, 0, cast(ubyte) i, [0xAA, 0xBB]);
-
         auto path = buildPath(tempDir(), name);
-        write(path, data);
+        write(path, testDlt(messageCount, ecuId));
         return path;
+    }
+
+    /// Bytes in memory: all of them at once, or written in parts (a source being written).
+    /// Tells when it is closed; lost when the test says so
+    private final class MemorySource : ByteSource
+    {
+        private ubyte[] _room;
+        private shared size_t _length;
+        private bool _complete;
+        private shared bool _closed;
+        shared bool isLost;
+
+        /// All the bytes there will be
+        this(const(ubyte)[] data)
+        {
+            _room = data.dup;
+            _length = data.length;
+            _complete = true;
+        }
+
+        /// None yet, `room` of them at most: write() gives them
+        this(size_t room)
+        {
+            _room = new ubyte[room];
+        }
+
+        void write(string text)
+        {
+            import core.atomic : atomicLoad, atomicStore;
+
+            assert(!_complete);
+            const length = atomicLoad(_length);
+            _room[length .. length + text.length] = cast(const(ubyte)[]) text;
+            atomicStore(_length, length + text.length);
+        }
+
+        bool closed() const
+        {
+            import core.atomic : atomicLoad;
+
+            return atomicLoad(_closed);
+        }
+
+        override const(ubyte)[] data() const pure nothrow @nogc
+        {
+            import core.atomic : atomicLoad;
+
+            return _room[0 .. atomicLoad(_length)];
+        }
+
+        override bool complete() const nothrow @nogc { return _complete; }
+
+        override bool lost() const nothrow @nogc
+        {
+            import core.atomic : atomicLoad;
+
+            return atomicLoad(isLost);
+        }
+
+        override void close() nothrow @nogc
+        {
+            import core.atomic : atomicStore;
+
+            atomicStore(_closed, true);
+        }
     }
 
     /// Filter of the main view by the ECU ID of DLT messages
@@ -575,48 +664,18 @@ version (unittest)
         }
     }
 
-    /// Lines of text that come in parts: a source being written
-    private final class GrowingText : ByteSource
-    {
-        private ubyte[] _room;
-        private shared size_t _length;
-
-        this(size_t room)
-        {
-            _room = new ubyte[room];
-        }
-
-        void write(string text)
-        {
-            import core.atomic : atomicLoad, atomicStore;
-
-            const length = atomicLoad(_length);
-            _room[length .. length + text.length] = cast(const(ubyte)[]) text;
-            atomicStore(_length, length + text.length);
-        }
-
-        override const(ubyte)[] data() const pure nothrow @nogc
-        {
-            import core.atomic : atomicLoad;
-
-            return _room[0 .. atomicLoad(_length)];
-        }
-
-        override bool complete() const nothrow @nogc { return false; }
-        override bool lost() const nothrow @nogc { return false; }
-        override void close() nothrow @nogc {}
-    }
-
     /// Accepts every message; holds the threads that ask it about the messages
     /// from `held` on (of writeTestDlt: its seconds are its index) until it is
     /// opened: what is being built with it stays unfinished meanwhile, with
-    /// the blocks before that message done
+    /// the blocks before that message done. It opens itself after 10 seconds: a
+    /// test that never opens it fails instead of hanging
     private final class GateFilter : LogFilter!wchar
     {
         import std.typecons : Nullable;
 
         private size_t _held;
         private shared bool _open;
+        private shared bool _reached;
 
         this(size_t held)
         {
@@ -630,16 +689,27 @@ version (unittest)
             atomicStore(_open, true);
         }
 
-        bool matches(scope ref const(LogMessage!wchar) item) const
+        /// A thread was held by it
+        bool reached() const
         {
             import core.atomic : atomicLoad;
+
+            return atomicLoad(_reached);
+        }
+
+        bool matches(scope ref const(LogMessage!wchar) item) const
+        {
+            import core.atomic : atomicLoad, atomicStore;
             import core.thread : Thread;
-            import core.time : msecs;
+            import core.time : MonoTime, msecs, seconds;
             import formats.dlt.fields : timestampSeconds;
 
-            if (item.timestampSeconds >= _held)
-                while (!atomicLoad(_open))
-                    Thread.sleep(1.msecs);
+            if (item.timestampSeconds < _held)
+                return true;
+            atomicStore(*cast(shared(bool)*) &_reached, true);
+            const deadline = MonoTime.currTime + 10.seconds;
+            while (!atomicLoad(_open) && MonoTime.currTime < deadline)
+                Thread.sleep(1.msecs);
             return true;
         }
 
@@ -792,6 +862,102 @@ unittest
     const start = MonoTime.currTime;
     destroy(doc); // must cancel the running BuildOffsetIndex, not wait for it or crash
     assert(MonoTime.currTime - start < 1.seconds, "destroy must not wait for indexing to complete");
+}
+
+@("LogDocument: records leased are read on another thread after the document is closed, a scan of them stops")
+unittest
+{
+    import core.atomic : atomicLoad, atomicStore;
+    import core.thread : Thread;
+    import core.time : MonoTime, seconds;
+    import domain.index.match_scan : scanMatches;
+    import formats.dlt.format : DltFormat;
+
+    enum messageCount = 200_000;
+    auto source = new MemorySource(testDlt(messageCount));
+    auto doc = new LogDocument(source, new DltFormat());
+    auto views = new Views(doc);
+    dispatchUntil(doc, () => views.mainReady);
+    assert(views.mainReady);
+
+    auto lease = doc.leaseRecords();
+    assert(lease.records.length == messageCount);
+    // The scan reads a few blocks, then its threads wait at message 50000 until the
+    // document is closed; they read on to their next check after it
+    auto gate = new GateFilter(50_000);
+    size_t delivered;
+    shared bool completed = true;
+    auto reader = new Thread({
+        Anchors anchors;
+        const all = scanMatches!uint(lease.records, 0, lease.records.length, (size_t p) => p, gate, anchors,
+            () => false,
+            (size_t done, const(uint)[] found) { delivered = done; return true; });
+        atomicStore(completed, all);
+    });
+    reader.start();
+    const held = MonoTime.currTime + 10.seconds;
+    while (!gate.reached && MonoTime.currTime < held)
+        Thread.yield();
+    assert(gate.reached, "the scan never got to the gate");
+
+    const start = MonoTime.currTime;
+    destroy(doc); // the reader waits at the gate meanwhile: closing must not wait for it
+    assert(MonoTime.currTime - start < 1.seconds, "closing the document waited for the lease");
+    assert(!source.closed, "the records are leased");
+    assert(lease.closing);
+
+    gate.open(); // the held blocks read records of the closed document
+    reader.join();
+    assert(!atomicLoad(completed) && delivered < messageCount, "the scan went on after the document closed");
+    assert(!source.closed, "the lease is still held");
+    destroy(lease);
+    assert(source.closed, "the last lease closes the records");
+}
+
+@("LogDocument: its state tells what was loaded, the end of the load and its failure")
+unittest
+{
+    import formats.dlt.format : DltFormat;
+
+    enum messageCount = 1000;
+    const data = testDlt(messageCount);
+    auto doc = new LogDocument(new MemorySource(data), new DltFormat());
+    scope (exit)
+        destroy(doc);
+    auto views = new Views(doc);
+    dispatchUntil(doc, () => views.mainReady);
+    const loaded = doc.state;
+    assert(loaded.loaded && loaded.error.empty && !loaded.sourceLost);
+    assert(loaded.records == messageCount && loaded.records == doc.leaseRecords.records.length);
+    assert(loaded.loadedBytes == data.length && loaded.totalBytes == data.length);
+
+    // A pass after the load fails: the file is lost while a filter runs
+    auto laterSource = new MemorySource(data);
+    auto later = new LogDocument(laterSource, new DltFormat());
+    scope (exit)
+        destroy(later);
+    auto laterViews = new Views(later);
+    dispatchUntil(later, () => laterViews.mainReady);
+    auto gate = new GateFilter(0);
+    later.applyViewFilter(gate);
+    dispatchUntil(later, () => gate.reached);
+    laterSource.isLost = true;
+    gate.open();
+    dispatchUntil(later, () => laterViews.main == Views.State.Failed);
+    const failedLater = later.state;
+    assert(failedLater.loaded, "the load was over before");
+    assert(failedLater.sourceLost && !failedLater.error.empty, "the document is done for");
+
+    auto source = new MemorySource(data);
+    source.isLost = true; // its disk is gone before the load
+    auto lost = new LogDocument(source, new DltFormat());
+    scope (exit)
+        destroy(lost);
+    auto lostViews = new Views(lost);
+    dispatchUntil(lost, () => lostViews.main == Views.State.Failed);
+    const failed = lost.state;
+    assert(!failed.loaded && failed.sourceLost && !failed.error.empty);
+    assert(failed.records == 0 && failed.loadedBytes == 0);
 }
 
 @("LogDocument: a search and a filter requested while loading run with the load, latest request wins")
@@ -983,7 +1149,7 @@ unittest
     import formats.plain_text : PlainTextFormat;
     import log_core.search_filter : SearchChip, SearchFilter;
 
-    auto source = new GrowingText(1024);
+    auto source = new MemorySource(1024);
     source.write("one seven\ntwo\n");
     auto doc = new LogDocument(source, new PlainTextFormat());
     auto views = new Views(doc);
@@ -1708,7 +1874,7 @@ unittest
 {
     import formats.plain_text : PlainTextFormat, plainTextFormatInfo;
 
-    auto doc = new LogDocument(new GrowingText(16), new PlainTextFormat());
+    auto doc = new LogDocument(new MemorySource(16), new PlainTextFormat());
     scope (exit)
         doc.destroy();
     assert(!doc.formatChoice.isSet, "not opened from a file");

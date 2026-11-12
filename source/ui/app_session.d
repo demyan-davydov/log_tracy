@@ -65,6 +65,7 @@ final class AppSession
     private AppSettings _settings;
     private DocumentStore _documents; // given: others may hold its documents too
     private DocumentTabs _tabs; // the documents of the window, each held by its tab
+    private DocumentHold[DocumentId] _tabHolds; // the hold of each tab
     private DocumentUi[DocumentId] _documentUis;
     private TableColumns _tableColumns; // the columns the tables show for each format
     private DocumentFactory _open;
@@ -221,7 +222,7 @@ final class AppSession
         foreach (docId; _tabs.ids.dup)
         {
             _tabs.remove(docId);
-            _documents.release(docId);
+            releaseTabHold(docId);
         }
     }
 
@@ -272,8 +273,9 @@ final class AppSession
         {
             // Opened the way it was last time: the format may have been chosen by hand
             auto document = _open(path, savedFormat(_settings.recentFiles, path));
-            auto docId = _documents.add(document, path); // held by its tab
-            addTab(docId, path);
+            const hold = _documents.add(document, path); // held by its tab
+            const docId = hold.docId;
+            addTab(hold, path);
             _tabs.activate(docId);
             rememberRecentFile(RecentFile(path, document.formatChoice, nowMs()));
             _scriptCalls ~= ScriptCall("onDocumentOpened", idOf(docId));
@@ -860,12 +862,14 @@ final class AppSession
         // its machines start showing at once: their first views are queued
     }
 
-    /// A tab for the document `docId` just opened from the file `path` (held by the tab),
-    /// after the others, with its UI side and the filters the file had last time (before
-    /// the recent list moves it)
-    private void addTab(DocumentId docId, string path)
+    /// A tab for the document just opened from the file `path`, held by the tab by
+    /// `hold`, after the others, with its UI side and the filters the file had last time
+    /// (before the recent list moves it)
+    private void addTab(DocumentHold hold, string path)
     {
+        const docId = hold.docId;
         _tabs.add(docId);
+        _tabHolds[docId] = hold;
         addDocumentUi(docId);
         _documentUis[docId].filters.restore(savedFilters(_settings.recentFiles, path));
     }
@@ -877,11 +881,21 @@ final class AppSession
         const path = sourcePathOf(docId);
         _documentUis.remove(docId);
         if (_tabs.remove(docId))
-            _documents.release(docId);
+            releaseTabHold(docId);
         if (path.length)
         {
             _settings.recentFiles = withFilesUsed(_settings.recentFiles, [path], nowMs());
             settingsChanged();
+        }
+    }
+
+    /// The tab of the document `docId` lets it go
+    private void releaseTabHold(DocumentId docId)
+    {
+        if (auto hold = docId in _tabHolds)
+        {
+            _documents.release(*hold);
+            _tabHolds.remove(docId);
         }
     }
 
@@ -927,6 +941,7 @@ version (unittest)
     import log_core.log_filter : LogFilter;
     import log_core.log_format : LogFormat;
     import formats.plain_text : PlainTextFormat;
+    import domain.index.record_store : RecordsLease;
     import utils.event_bus.event_bus_async : EventBusAsync;
     import utils.event_bus.event_bus_interface : SignalConsumer;
     import core.time : msecs;
@@ -996,6 +1011,8 @@ version (unittest)
         FormatChoice formatChoice() const { return FormatChoice("plain-text", 0); }
         size_t messageCount() nothrow @nogc { return records; }
         ulong byteSize() nothrow @nogc { return bytes; }
+        RecordsLease leaseRecords() { return RecordsLease.init; }
+        DocumentState state() { return DocumentState.init; }
         // The files sent in the log, and how writing one goes: refused before its bytes
         // (no such file), or failing after the first two of them (the log lost)
         Attachment[] files;
@@ -1176,15 +1193,30 @@ unittest
 {
     auto f = Fixture.make();
     const id = f.session.openFile("/logs/a.log").docId;
-    assert(f.store.hold(id)); // an AI session, say
+    const agent = f.store.hold(id); // an AI session, say
+    assert(agent.isValid);
 
     f.session.closeTab(cast(int) id.toInt());
     assert(!f.session.findDocument(cast(int) id.toInt()).isValid, "no tab");
     assert(parseJSON(f.session.workspaceInfoJson()).array.length == 0);
     assert(f.store.doc(id) is f.docOf("/logs/a.log"), "still open for its holder");
 
-    f.store.release(id);
+    f.store.release(agent);
     assert(!f.store.isOpen(id), "closed by its last holder");
+}
+
+@("AppSession: another holder releasing its hold twice leaves the tab its document")
+unittest
+{
+    auto f = Fixture.make();
+    const id = f.session.openFile("/logs/a.log").docId;
+    const agent = f.store.hold(id);
+    f.store.release(agent);
+    f.store.release(agent);
+    assert(f.store.isOpen(id), "the hold of the tab stays");
+
+    f.session.closeTab(cast(int) id.toInt());
+    assert(!f.store.isOpen(id), "closed with its tab");
 }
 
 @("AppSession: the settings are written from the idle loop, once for the changes before it")
