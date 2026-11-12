@@ -109,8 +109,9 @@ utils  ←  sciter  ←  ui
   (on macOS Quit the loop never returns: `AppSession.terminate` closes the store then).
 - A document lives while someone holds it (`DocumentStore.hold`/`release`; `add` holds it for
   the caller): a tab of the window (`AppSession`: a tab is a holder, `ui/document_tabs` the
-  order and the active one), later an AI session. The last `release` closes it; closing a tab
-  doesn't close a document another still holds. Ids are the store's, the tabs know only theirs.
+  order and the active one), later an AI session. A hold is a token (`DocumentHold`), released
+  once: a holder releasing its own twice doesn't take another's. The last `release` closes it;
+  closing a tab doesn't close a document another still holds. Ids are the store's, the tabs know only theirs.
   The views, filters, search and anchors of a document are its tab's: another holder only holds
   it and reads records. Only the window opens files yet, so every document has a tab (a tab for
   a document of another holder: `docs/backlog.md`).

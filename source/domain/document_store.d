@@ -157,12 +157,27 @@ shared static this()
     k_nullEvents = new EventBusSync(); // owns a Mutex: cannot be built at compile time
 }
 
+//! A hold of an open document (DocumentStore.add, hold): what its holder lets it go by
+//! (DocumentStore.release). A hold is released once: a second release of it does nothing,
+//! so a holder can't take away the hold of another.
+struct DocumentHold
+{
+    DocumentId docId;
+    private uint _token; // unique in its store; 0: no hold
+
+    //! false for the hold of a document that wasn't open
+    bool isValid() const pure nothrow @nogc @safe
+    {
+        return _token != 0;
+    }
+}
+
 private struct DocumentRecord
 {
     DocumentId docId;
     Document document;
     string sourcePath;
-    size_t holders; // who uses the document: it is closed when none is left
+    uint[] holds; // the tokens of who uses the document: it is closed when none is left
     SubscriptionToken[] subscriptions; // forwarding subscriptions on document.events
 }
 
@@ -171,6 +186,7 @@ final class DocumentStore
 {
     private DocumentRecord[] _documents; // in the order they were opened
     private DocumentIdGenerator _idGenerator;
+    private uint _lastHold; // the token of the last hold given
     private EventBusSync _events; // already on the UI thread: documents dispatch there
 
     this()
@@ -193,35 +209,44 @@ final class DocumentStore
 
     //! @brief Adds the document opened from `sourcePath`, held by the caller (release()
     //! lets it go)
-    //! @return its id
-    DocumentId add(Document document, string sourcePath)
+    //! @return the caller's hold, with the id of the document
+    DocumentHold add(Document document, string sourcePath)
     {
-        auto record = DocumentRecord(_idGenerator.popId(), document, sourcePath, 1);
+        auto record = DocumentRecord(_idGenerator.popId(), document, sourcePath);
+        const hold = DocumentHold(record.docId, ++_lastHold);
+        record.holds = [hold._token];
         record.subscriptions = startForwarding(document, record.docId);
         _documents ~= record;
-        return record.docId;
+        return hold;
     }
 
     //! @brief One more holder of the document `docId`: it stays open until each holder
-    //! released it
-    //! @return false if it isn't open
-    bool hold(DocumentId docId)
+    //! released its hold
+    //! @return the new hold, invalid if the document isn't open
+    DocumentHold hold(DocumentId docId)
     {
         const idx = findIndexById(docId);
         if (idx == -1)
-            return false;
-        _documents[idx].holders++;
-        return true;
+            return DocumentHold.init;
+        const hold = DocumentHold(docId, ++_lastHold);
+        _documents[idx].holds ~= hold._token;
+        return hold;
     }
 
-    //! @brief A holder lets the document `docId` go: the last one closes it (stops its
-    //! background operations and frees its file). Nothing if it isn't open.
-    void release(DocumentId docId)
+    //! @brief A holder lets its document go: the last one closes it (stops its background
+    //! operations and frees its file). Nothing if the hold was released before or the
+    //! document isn't open.
+    void release(DocumentHold hold)
     {
-        const idx = findIndexById(docId);
+        const idx = findIndexById(hold.docId);
         if (idx == -1)
             return;
-        if (--_documents[idx].holders > 0)
+        auto holds = &_documents[idx].holds;
+        const at = (*holds).countUntil(hold._token);
+        if (at == -1)
+            return; // released before
+        *holds = (*holds).remove(at);
+        if ((*holds).length > 0)
             return;
         auto record = _documents[idx];
         _documents = _documents.remove(idx);
@@ -233,7 +258,7 @@ final class DocumentStore
     size_t holders(DocumentId docId) const pure nothrow @nogc
     {
         const idx = findIndexById(docId);
-        return idx == -1 ? 0 : _documents[idx].holders;
+        return idx == -1 ? 0 : _documents[idx].holds.length;
     }
 
     //! @brief Puts `document` in place of the document `docId`, keeping its id, path and
@@ -384,22 +409,45 @@ unittest
 {
     int destroyed;
     auto store = new DocumentStore();
-    const id = store.add(new EventSourceDocument(&destroyed), "a.dlt");
-    assert(store.isOpen(id) && store.holders(id) == 1, "the caller of add() holds it");
+    const tab = store.add(new EventSourceDocument(&destroyed), "a.dlt");
+    const id = tab.docId;
+    assert(tab.isValid && store.isOpen(id) && store.holders(id) == 1, "the caller of add() holds it");
 
-    assert(store.hold(id)); // an AI session, say
-    store.release(id); // the tab closes
+    const agent = store.hold(id); // an AI session, say
+    assert(agent.isValid && agent.docId == id);
+    store.release(tab); // the tab closes
     assert(store.isOpen(id) && destroyed == 0, "still held");
     assert(store.sourcePath(id) == "a.dlt");
 
-    store.release(id);
+    store.release(agent);
     assert(!store.isOpen(id) && destroyed == 1, "the last holder closes it");
     assert(store.doc(id) is k_nullDocument);
     assert(store.length == 0);
 
-    assert(!store.hold(id), "a closed document can't be held");
-    store.release(id); // nothing
+    assert(!store.hold(id).isValid, "a closed document can't be held");
+    store.release(agent); // nothing
     assert(destroyed == 1);
+}
+
+@("DocumentStore: a hold is released once, a second release takes no other holder's")
+unittest
+{
+    int destroyed;
+    auto store = new DocumentStore();
+    const tab = store.add(new EventSourceDocument(&destroyed), "a.dlt");
+    const agent = store.hold(tab.docId);
+
+    store.release(agent);
+    store.release(agent); // by mistake: the hold of the tab stays
+    assert(store.isOpen(tab.docId) && store.holders(tab.docId) == 1 && destroyed == 0);
+
+    const again = store.hold(tab.docId);
+    assert(again != agent, "a new hold is another one");
+    store.release(tab);
+    store.release(tab);
+    assert(store.isOpen(tab.docId) && destroyed == 0, "held by the new hold");
+    store.release(again);
+    assert(!store.isOpen(tab.docId) && destroyed == 1);
 }
 
 @("DocumentStore: a released document is no longer forwarded")
@@ -408,8 +456,8 @@ unittest
     auto store = new DocumentStore();
     auto doc1 = new EventSourceDocument();
     auto doc2 = new EventSourceDocument();
-    const id1 = store.add(doc1, "doc1");
-    const id2 = store.add(doc2, "doc2");
+    const hold1 = store.add(doc1, "doc1");
+    const id1 = hold1.docId, id2 = store.add(doc2, "doc2").docId;
 
     DocumentId[] startedIds;
     float progress = -1;
@@ -432,7 +480,7 @@ unittest
 
     // Kept alive by the test after the store closed it: its events go nowhere
     auto bus1 = doc1.bus;
-    store.release(id1);
+    store.release(hold1);
     bus1.publish(OperationStarted(Document.Operation.BuildSearchIndex));
     bus1.dispatch();
     store.dispatchEvents();
@@ -445,11 +493,12 @@ unittest
     int destroyed;
     auto store = new DocumentStore();
     auto doc1 = new EventSourceDocument(&destroyed);
-    const id1 = store.add(doc1, "doc1");
-    const id2 = store.add(new EventSourceDocument(&destroyed), "doc2");
+    const id1 = store.add(doc1, "doc1").docId;
+    const hold2 = store.add(new EventSourceDocument(&destroyed), "doc2");
+    const id2 = hold2.docId;
 
     // A holder letting the next document go in answer to an event of the first one
-    store.events.subscribe((const DocumentEvent!SourceLost e) { store.release(id2); });
+    store.events.subscribe((const DocumentEvent!SourceLost e) { store.release(hold2); });
     doc1.bus.publish(SourceLost());
     store.dispatchEvents(); // doc2, destroyed by then, must not be called
 
@@ -461,7 +510,7 @@ unittest
 {
     int destroyed;
     auto store = new DocumentStore();
-    const a = store.add(new EventSourceDocument(&destroyed), "doc1");
+    const a = store.add(new EventSourceDocument(&destroyed), "doc1").docId;
     store.add(new EventSourceDocument(&destroyed), "doc2");
     store.hold(a);
 
@@ -478,7 +527,7 @@ unittest
     auto store = new DocumentStore();
     auto oldDoc = new EventSourceDocument();
     auto newDoc = new EventSourceDocument();
-    const id = store.add(oldDoc, "file.dlt");
+    const id = store.add(oldDoc, "file.dlt").docId;
     store.hold(id);
 
     DocumentId[] lost;
@@ -512,8 +561,9 @@ unittest
     import std.path : absolutePath, buildPath;
 
     auto store = new DocumentStore();
-    const a = store.add(new NullDocument(), "/logs/a.dlt");
-    const b = store.add(new NullDocument(), absolutePath("b.dlt"));
+    const holdA = store.add(new NullDocument(), "/logs/a.dlt");
+    const a = holdA.docId;
+    const b = store.add(new NullDocument(), absolutePath("b.dlt")).docId;
 
     assert(store.findBySourcePath("/logs/a.dlt") == a);
     assert(store.findBySourcePath("/logs/./x/../a.dlt") == a);
@@ -521,10 +571,10 @@ unittest
     assert(!store.findBySourcePath("/logs/c.dlt").isValid);
     version (Windows)
     {
-        const w = store.add(new NullDocument(), `C:\Logs\W.dlt`);
+        const w = store.add(new NullDocument(), `C:\Logs\W.dlt`).docId;
         assert(store.findBySourcePath(`c:/logs/w.dlt`) == w, "case and separators don't matter");
     }
 
-    store.release(a);
+    store.release(holdA);
     assert(!store.findBySourcePath("/logs/a.dlt").isValid, "a closed file can be opened again");
 }
