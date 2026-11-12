@@ -431,6 +431,15 @@ struct Records
         return _store._parted.decodeParts(msg, parts[0 .. 1 + join.fragments]);
     }
 
+    //! @brief The parts the record `record` < length is joined of (PartedFormat): 1 for a
+    //! record that is not joined, nor a message whose other parts never came (its text
+    //! tells which part of how many it is)
+    size_t partsOf(size_t record) const pure nothrow @nogc
+    {
+        assert(record < _length);
+        return _store._offsets[record].joined ? 1 + joinOf(record).fragments : 1;
+    }
+
     //! The parts of the head `record`: the joins are in the order of their records
     private Join joinOf(size_t record) const pure nothrow @nogc
     {
@@ -721,6 +730,20 @@ unittest
     assert(records.length == 4);
     assert(payloadOf(records, 0) == "x" && payloadOf(records, 1) == "he|llo");
     assert(payloadOf(records, 2) == "B" && payloadOf(records, 3) == "y");
+}
+
+@("Records.partsOf: how many parts a record is joined of, 1 for one that isn't")
+unittest
+{
+    auto store = new RecordStore(new TextSource("x\nA1 1/3: a\nB\nA2 2/3: b\nA3 3/3: c\nC1 1/2: d\ny\n"),
+        new PartedText());
+    scanAll(store, true);
+    const records = store.records;
+    assert(records.length == 5);
+    assert(payloadOf(records, 1) == "a|b|c" && payloadOf(records, 3) == "C1 1/2: d");
+    assert(records.partsOf(0) == 1 && records.partsOf(2) == 1, "records that are no parts");
+    assert(records.partsOf(1) == 3, "joined of three parts");
+    assert(records.partsOf(3) == 1, "a first part whose other parts never came");
 }
 
 @("RecordStore: the records after a first part wait for its message, the end of the data lets them out")

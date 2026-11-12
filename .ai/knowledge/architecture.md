@@ -185,8 +185,8 @@ utils  ←  sciter  ←  ui
     record goes to the offset index at once
     but the later parts of a message: they are fragments of its head (the joined bit of
     its `OffsetIndexItem`), a list in a table of the store (`Join`, `Fragment`), which
-    `Records.decode` follows. `length()` and `records()` stop before the head of the
-    oldest message still open (`RecordStore.holding`): its text may still grow, and its
+    `Records.decode` follows (`Records.partsOf`: how many parts a record is joined of).
+    `length()` and `records()` stop before the head of the oldest message still open (`RecordStore.holding`): its text may still grow, and its
     join and fragments still change. The end of the data closes every message (a source
     may tell its end without more bytes: `LogIndex.behind` counts what is held then). An
     `append` that fails halfway leaves the store refusing every later one. A format that
