@@ -18,22 +18,32 @@ enum size_t scanBlockLength = 16 * 1024;
 //! Positions a block scans between its checks of a stop (a cancel, a lost file)
 enum size_t stopCheckRecords = 256;
 
+//! @brief Whether a reader of `records` gives up: `cancelled()`, or the records are lost
+//! or closing (Records.closing). Checked by a block every stopCheckRecords positions and
+//! again before what it read is delivered: once true it stays true, so nothing read by a
+//! block cut short is ever delivered, nor a record read as zeros of a lost file
+package bool givesUp(Records records, scope bool delegate() cancelled)
+{
+    return cancelled() || records.lost || records.closing;
+}
+
 //! @brief Scans the positions [from, to) in parallel blocks for the records that are in
 //! `anchors` or that `filter` matches, and delivers them block by block in order, as soon
 //! as a block and the ones before it are scanned. A block gives up at its next check when
-//! `cancelled()` is true, the records are lost or closing (Records.closing): what it found then
-//! is not delivered.
+//! `cancelled()` is true, the records are lost or closing (Records.closing): the scan stops
+//! then, and no block is delivered from then on.
 //! @param records - the records the positions are of: read from many threads at once
 //! @param messageAt - the record of a position; called from many threads at once, so it
 //!   may only read what doesn't change while the scan runs
 //! @param filter - called from many threads at once (LogFilter)
-//! @param cancelled - called from many threads at once
+//! @param cancelled - called from many threads at once; once true, it stays true
 //! @param deliver - `deliver(done, found)` on the calling thread: the records `found` in
 //!   the positions before `done`, valid during the call only; false stops the scan. It may
 //!   throw: the scan stops and the exception comes out of scanMatches
 //! @param pool - the threads the blocks run on; null: the shared task pool. A reader that
 //!   shouldn't slow the window down scans on a pool of its own
-//! @return false if `deliver` stopped the scan
+//! @return false if the scan stopped before `to`: `deliver` or a block gave up (the
+//!   caller tells a cancel from a lost file by Records.lost)
 bool scanMatches(T)(Records records, size_t from, size_t to, scope size_t delegate(size_t position) messageAt,
     const(LogFilter!wchar) filter, ref const(Anchors) anchors, scope bool delegate() cancelled,
     scope bool delegate(size_t done, const(T)[] found) deliver, TaskPool pool = null)
@@ -47,9 +57,8 @@ bool scanMatches(T)(Records records, size_t from, size_t to, scope size_t delega
             size_t n = 0;
             foreach (position; from + lo .. from + hi)
             {
-                // A stop: the delivery of this block stops the scan, or fails it, or it
-                // is never delivered
-                if ((position - from - lo) % stopCheckRecords == 0 && (cancelled() || records.lost || records.closing || stop()))
+                // A stop: this block is never delivered (givesUp is checked again before)
+                if ((position - from - lo) % stopCheckRecords == 0 && (givesUp(records, cancelled) || stop()))
                     break;
                 const record = messageAt(position);
                 if (!records.decode(record, msg))
@@ -59,7 +68,7 @@ bool scanMatches(T)(Records records, size_t from, size_t to, scope size_t delega
             }
             return n;
         },
-        (size_t done, const(T)[] found) => deliver(from + done, found), pool);
+        (size_t done, const(T)[] found) => !givesUp(records, cancelled) && deliver(from + done, found), pool);
 }
 
 version (unittest)
@@ -214,7 +223,7 @@ unittest
         (size_t done, const(uint)[] blockFound) { found ~= blockFound; return true; });
     // A block stops at its next check: a few checks' worth of positions per block at most
     assert(atomicLoad(scanned) < 4 * stopCheckRecords * 2, "a block of lost records went on");
-    assert(found.length < 4 * stopCheckRecords * 2);
+    assert(found.length == 0, "a block cut short was delivered");
 }
 
 @("scanMatches: the blocks of leased records whose holder is closing give up at their next check")
@@ -227,14 +236,17 @@ unittest
     auto lease = store.lease();
     Anchors anchors;
     shared size_t scanned;
-    scanMatches!uint(lease.records, 0, lease.records.length, (size_t p) {
+    uint[] found;
+    const completed = scanMatches!uint(lease.records, 0, lease.records.length, (size_t p) {
             if (atomicOp!"+="(scanned, 1) == 1)
                 store.markClosing(); // the document is closed meanwhile
             return p;
         },
         SearchFilter.fromChips([SearchChip("line")]), anchors, () => false,
-        (size_t done, const(uint)[] found) => true);
+        (size_t done, const(uint)[] blockFound) { found ~= blockFound; return true; });
     assert(atomicLoad(scanned) < 4 * stopCheckRecords * 2, "a block of records closing went on");
+    // Closing from the first record: every block gave up before its end
+    assert(!completed && found.length == 0, "a block cut short was delivered");
 }
 
 @("scanMatches: the blocks run on the pool given")

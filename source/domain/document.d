@@ -62,9 +62,11 @@ struct DocumentState
     //! The records that can be read (the length of Records): those before a message
     //! still open stay out until it closes (PartedFormat)
     size_t records;
-    bool loaded; /// the load is over: every byte there was split (a source may grow after)
+    bool loaded; /// the load reached the end of the log once (a source may grow after)
     bool sourceLost; /// its file can't be read any more (Document.sourceLost)
-    UiText error; /// why the load failed, the document is done for; empty if it didn't
+    //! Why the document is done for: its load, or a pass over what came later, failed (the
+    //! file was lost meanwhile, say); empty if it isn't
+    UiText error;
 }
 
 interface Document

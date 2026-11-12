@@ -172,8 +172,10 @@ utils  ←  sciter  ←  ui
 - The filter and search indexes are built in parallel blocks on `std.parallelism`'s task pool
   (`utils/parallel_scan`), appended in order as the blocks before them are done; the offset
   index is built sequentially. A format and a filter are called from several threads. A block
-  checks a cancel, a lost file and the stop of the scan (`ScanStop`: a failed delivery)
-  every `stopCheckRecords` records (`domain/index/match_scan`). The index grows block by
+  checks a cancel, a lost file, records closing and the stop of the scan (`ScanStop`: a
+  failed delivery) every `stopCheckRecords` records, and the first three again before it is
+  delivered (`givesUp` of `domain/index/match_scan`): a block cut short is never delivered,
+  the scan returns false. The index grows block by
   block while the scan runs: keep it so, the results are shown before the scan ends.
 - `LogIndex` is the holder of its parts (`domain/index/`), which are not thread-safe: it owns
   the mutex, the worker and their lifetime. The parts:

@@ -6,7 +6,7 @@
 //! open until it returns (a lease, or the holder's own scan).
 module domain.index.record_fold;
 
-import domain.index.match_scan : scanBlockLength, stopCheckRecords;
+import domain.index.match_scan : givesUp, scanBlockLength, stopCheckRecords;
 import domain.index.record_store : Records;
 import log_core.log_message : LogMessage;
 
@@ -15,53 +15,45 @@ import std.parallelism : TaskPool;
 //! @brief Folds the records of the positions [from, to) in parallel blocks: each block
 //! into an accumulator of its own (A.init), merged block by block in order. A block gives
 //! up at its next check when `cancelled()` is true or the records are lost or closing
-//! (Records.closing): the fold stops then, and that block is not merged.
+//! (Records.closing): the fold stops then, and no block is merged from then on (nor one
+//! that read records of a lost file as zeros).
 //! @param records - the records the positions are of: read from many threads at once
 //! @param messageAt - the record of a position; called from many threads at once, so it
 //!   may only read what doesn't change while the fold runs
 //! @param fold - `fold(acc, record, msg)` adds the record `record`, decoded into `msg`, to
 //!   the accumulator of its block; called from many threads at once, for the records of a
 //!   block in order. A record that can't be decoded is skipped
-//! @param cancelled - called from many threads at once
+//! @param cancelled - called from many threads at once; once true, it stays true
 //! @param merge - `merge(done, acc)` on the calling thread: the accumulator of the
 //!   positions before `done` not merged yet, the block's own; false stops the fold. It may
 //!   throw: the fold stops and the exception comes out of foldRecords
 //! @param pool - the threads the blocks run on; null: the shared task pool (see
 //!   scanMatches)
-//! @return false if the fold stopped before `to`: `merge` or a block gave up
+//! @return false if the fold stopped before `to`: `merge` or a block gave up (the caller
+//!   tells a cancel from a lost file by Records.lost)
 bool foldRecords(A)(Records records, size_t from, size_t to, scope size_t delegate(size_t position) messageAt,
     scope void delegate(ref A acc, size_t record, ref const(LogMessage!wchar) msg) fold,
     scope bool delegate() cancelled, scope bool delegate(size_t done, ref A acc) merge, TaskPool pool = null)
 {
     import utils.parallel_scan : parallelFold, ScanStop;
 
-    // What a block folded, and whether it gave up before its end
-    static struct Folded
-    {
-        A acc;
-        bool cut;
-    }
-
     assert(from <= to);
-    return parallelFold!Folded(to - from, scanBlockLength,
+    return parallelFold!A(to - from, scanBlockLength,
         (size_t lo, size_t hi, ScanStop stop) {
-            Folded folded;
+            A acc;
             LogMessage!wchar msg; // a buffer per block: blocks run on several threads
             foreach (position; from + lo .. from + hi)
             {
-                if ((position - from - lo) % stopCheckRecords == 0
-                    && (cancelled() || records.lost || records.closing || stop()))
-                {
-                    folded.cut = true;
+                // A stop: this block is never merged (givesUp is checked again before)
+                if ((position - from - lo) % stopCheckRecords == 0 && (givesUp(records, cancelled) || stop()))
                     break;
-                }
                 const record = messageAt(position);
                 if (records.decode(record, msg))
-                    fold(folded.acc, record, msg);
+                    fold(acc, record, msg);
             }
-            return folded;
+            return acc;
         },
-        (size_t done, ref Folded folded) => !folded.cut && merge(from + done, folded.acc), pool);
+        (size_t done, ref A acc) => !givesUp(records, cancelled) && merge(from + done, acc), pool);
 }
 
 version (unittest)

@@ -685,7 +685,13 @@ struct LogIndex
             });
 
         if (!completed)
-            return false; // cancelled: a file lost meanwhile doesn't make it a failure
+        {
+            // Cancelled: a file lost meanwhile doesn't make it a failure. Else the scan
+            // gave up for the lost file (or the index is closing)
+            if (!ctx.cancelled)
+                enforceSourceAvailable();
+            return false;
+        }
         enforceSourceAvailable(); // the last block may have read zeros
         return true;
     }

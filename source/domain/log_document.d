@@ -59,7 +59,8 @@ class LogDocument : Document
     private bool _filtering;
     private bool _searching;
     private bool _failed; // the index can't be brought up to date: nothing more is asked of it
-    private UiText _loadError; // why the load (or what the source got later) failed
+    private bool _loadCompleted; // the load reached the end of the source once
+    private UiText _failure; // why the document is done for: its load or a later pass failed
     // The user asked to stop it: told when the pass it stopped ends
     private bool _cancelFilter;
     private bool _cancelSearch;
@@ -173,9 +174,9 @@ class LogDocument : Document
     override DocumentState state()
     {
         auto state = _index.state;
-        state.loaded = !_loading && _loadError.empty;
+        state.loaded = _loadCompleted;
         state.sourceLost = sourceLost;
-        state.error = _loadError;
+        state.error = _failure;
         return state;
     }
 
@@ -301,6 +302,7 @@ class LogDocument : Document
         if (!running(operation))
             return;
         running(operation) = false;
+        _loadCompleted |= operation == Operation.BuildOffsetIndex && result == OperationFinished.Result.Completed;
         _events.publish(OperationFinished(operation, result, error));
     }
 
@@ -365,7 +367,7 @@ class LogDocument : Document
             // The source can't be taken to its end (the load, or what it got
             // later): the document is done for
             _failed = true;
-            _loadError = error;
+            _failure = error;
             _pendingViewFilter = PendingRequest.init;
             _pendingSearch = PendingRequest.init;
             finish(Operation.BuildOffsetIndex, Result.Failed, error);
@@ -549,16 +551,38 @@ version (unittest)
         return path;
     }
 
-    /// Bytes in memory, all of them at once; tells when it is closed, may be lost
+    /// Bytes in memory: all of them at once, or written in parts (a source being written).
+    /// Tells when it is closed; lost when the test says so
     private final class MemorySource : ByteSource
     {
-        private const(ubyte)[] _data;
+        private ubyte[] _room;
+        private shared size_t _length;
+        private bool _complete;
         private shared bool _closed;
         shared bool isLost;
 
+        /// All the bytes there will be
         this(const(ubyte)[] data)
         {
-            _data = data;
+            _room = data.dup;
+            _length = data.length;
+            _complete = true;
+        }
+
+        /// None yet, `room` of them at most: write() gives them
+        this(size_t room)
+        {
+            _room = new ubyte[room];
+        }
+
+        void write(string text)
+        {
+            import core.atomic : atomicLoad, atomicStore;
+
+            assert(!_complete);
+            const length = atomicLoad(_length);
+            _room[length .. length + text.length] = cast(const(ubyte)[]) text;
+            atomicStore(_length, length + text.length);
         }
 
         bool closed() const
@@ -568,8 +592,15 @@ version (unittest)
             return atomicLoad(_closed);
         }
 
-        override const(ubyte)[] data() const pure nothrow @nogc { return _data; }
-        override bool complete() const nothrow @nogc { return true; }
+        override const(ubyte)[] data() const pure nothrow @nogc
+        {
+            import core.atomic : atomicLoad;
+
+            return _room[0 .. atomicLoad(_length)];
+        }
+
+        override bool complete() const nothrow @nogc { return _complete; }
+
         override bool lost() const nothrow @nogc
         {
             import core.atomic : atomicLoad;
@@ -633,48 +664,18 @@ version (unittest)
         }
     }
 
-    /// Lines of text that come in parts: a source being written
-    private final class GrowingText : ByteSource
-    {
-        private ubyte[] _room;
-        private shared size_t _length;
-
-        this(size_t room)
-        {
-            _room = new ubyte[room];
-        }
-
-        void write(string text)
-        {
-            import core.atomic : atomicLoad, atomicStore;
-
-            const length = atomicLoad(_length);
-            _room[length .. length + text.length] = cast(const(ubyte)[]) text;
-            atomicStore(_length, length + text.length);
-        }
-
-        override const(ubyte)[] data() const pure nothrow @nogc
-        {
-            import core.atomic : atomicLoad;
-
-            return _room[0 .. atomicLoad(_length)];
-        }
-
-        override bool complete() const nothrow @nogc { return false; }
-        override bool lost() const nothrow @nogc { return false; }
-        override void close() nothrow @nogc {}
-    }
-
     /// Accepts every message; holds the threads that ask it about the messages
     /// from `held` on (of writeTestDlt: its seconds are its index) until it is
     /// opened: what is being built with it stays unfinished meanwhile, with
-    /// the blocks before that message done
+    /// the blocks before that message done. It opens itself after 10 seconds: a
+    /// test that never opens it fails instead of hanging
     private final class GateFilter : LogFilter!wchar
     {
         import std.typecons : Nullable;
 
         private size_t _held;
         private shared bool _open;
+        private shared bool _reached;
 
         this(size_t held)
         {
@@ -688,16 +689,27 @@ version (unittest)
             atomicStore(_open, true);
         }
 
-        bool matches(scope ref const(LogMessage!wchar) item) const
+        /// A thread was held by it
+        bool reached() const
         {
             import core.atomic : atomicLoad;
+
+            return atomicLoad(_reached);
+        }
+
+        bool matches(scope ref const(LogMessage!wchar) item) const
+        {
+            import core.atomic : atomicLoad, atomicStore;
             import core.thread : Thread;
-            import core.time : msecs;
+            import core.time : MonoTime, msecs, seconds;
             import formats.dlt.fields : timestampSeconds;
 
-            if (item.timestampSeconds >= _held)
-                while (!atomicLoad(_open))
-                    Thread.sleep(1.msecs);
+            if (item.timestampSeconds < _held)
+                return true;
+            atomicStore(*cast(shared(bool)*) &_reached, true);
+            const deadline = MonoTime.currTime + 10.seconds;
+            while (!atomicLoad(_open) && MonoTime.currTime < deadline)
+                Thread.sleep(1.msecs);
             return true;
         }
 
@@ -871,24 +883,22 @@ unittest
     auto lease = doc.leaseRecords();
     assert(lease.records.length == messageCount);
     // The scan reads a few blocks, then its threads wait at message 50000 until the
-    // document is closed
+    // document is closed; they read on to their next check after it
     auto gate = new GateFilter(50_000);
     size_t delivered;
-    shared bool completed = true, scanning;
+    shared bool completed = true;
     auto reader = new Thread({
         Anchors anchors;
-        atomicStore(scanning, true);
         const all = scanMatches!uint(lease.records, 0, lease.records.length, (size_t p) => p, gate, anchors,
             () => false,
-            (size_t done, const(uint)[] found) {
-                delivered = done;
-                return !lease.closing; // the holder of the records is done with them
-            });
+            (size_t done, const(uint)[] found) { delivered = done; return true; });
         atomicStore(completed, all);
     });
     reader.start();
-    while (!atomicLoad(scanning))
+    const held = MonoTime.currTime + 10.seconds;
+    while (!gate.reached && MonoTime.currTime < held)
         Thread.yield();
+    assert(gate.reached, "the scan never got to the gate");
 
     const start = MonoTime.currTime;
     destroy(doc); // the reader waits at the gate meanwhile: closing must not wait for it
@@ -896,7 +906,7 @@ unittest
     assert(!source.closed, "the records are leased");
     assert(lease.closing);
 
-    gate.open();
+    gate.open(); // the held blocks read records of the closed document
     reader.join();
     assert(!atomicLoad(completed) && delivered < messageCount, "the scan went on after the document closed");
     assert(!source.closed, "the lease is still held");
@@ -920,6 +930,23 @@ unittest
     assert(loaded.loaded && loaded.error.empty && !loaded.sourceLost);
     assert(loaded.records == messageCount && loaded.records == doc.leaseRecords.records.length);
     assert(loaded.loadedBytes == data.length && loaded.totalBytes == data.length);
+
+    // A pass after the load fails: the file is lost while a filter runs
+    auto laterSource = new MemorySource(data);
+    auto later = new LogDocument(laterSource, new DltFormat());
+    scope (exit)
+        destroy(later);
+    auto laterViews = new Views(later);
+    dispatchUntil(later, () => laterViews.mainReady);
+    auto gate = new GateFilter(0);
+    later.applyViewFilter(gate);
+    dispatchUntil(later, () => gate.reached);
+    laterSource.isLost = true;
+    gate.open();
+    dispatchUntil(later, () => laterViews.main == Views.State.Failed);
+    const failedLater = later.state;
+    assert(failedLater.loaded, "the load was over before");
+    assert(failedLater.sourceLost && !failedLater.error.empty, "the document is done for");
 
     auto source = new MemorySource(data);
     source.isLost = true; // its disk is gone before the load
@@ -1122,7 +1149,7 @@ unittest
     import formats.plain_text : PlainTextFormat;
     import log_core.search_filter : SearchChip, SearchFilter;
 
-    auto source = new GrowingText(1024);
+    auto source = new MemorySource(1024);
     source.write("one seven\ntwo\n");
     auto doc = new LogDocument(source, new PlainTextFormat());
     auto views = new Views(doc);
@@ -1847,7 +1874,7 @@ unittest
 {
     import formats.plain_text : PlainTextFormat, plainTextFormatInfo;
 
-    auto doc = new LogDocument(new GrowingText(16), new PlainTextFormat());
+    auto doc = new LogDocument(new MemorySource(16), new PlainTextFormat());
     scope (exit)
         doc.destroy();
     assert(!doc.formatChoice.isSet, "not opened from a file");

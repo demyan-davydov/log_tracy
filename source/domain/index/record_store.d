@@ -461,6 +461,8 @@ struct Records
 //! a copy of it lives, wherever the store's holder is. Read records() on any thread, and
 //! stop once they are closing() (the holder is done with them). Empty when not given by a
 //! store (RecordsLease.init): no records.
+//! Let it go deterministically (a scope, destroy()): one the GC collects in an object it
+//! finalizes never lets the store go, so the store and its file stay open for good.
 struct RecordsLease
 {
     private RecordStore _store; // null: empty
@@ -481,7 +483,11 @@ struct RecordsLease
 
     ~this() nothrow @nogc
     {
-        if (_store !is null)
+        import core.memory : GC;
+
+        // In a finalizer the store, its source and its offsets may be finalized already
+        // (their vtables gone): closing them would crash
+        if (_store !is null && !GC.inFinalizer)
             _store.release();
     }
 
