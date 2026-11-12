@@ -6,7 +6,7 @@
 //! open until it returns (a lease, or the holder's own scan).
 module domain.index.record_fold;
 
-import domain.index.match_scan : givesUp, scanBlockLength, stopCheckRecords;
+import domain.index.match_scan : scanBlockLength, stopCheckRecords;
 import domain.index.record_store : Records;
 import log_core.log_message : LogMessage;
 
@@ -26,7 +26,9 @@ import std.parallelism : TaskPool;
 //! @param cancelled - called from many threads at once; once true, it stays true
 //! @param merge - `merge(done, acc)` on the calling thread: the accumulator of the
 //!   positions before `done` not merged yet, the block's own; false stops the fold. It may
-//!   throw: the fold stops and the exception comes out of foldRecords
+//!   throw: the fold stops and the exception comes out of foldRecords. An accumulator
+//!   not merged is dropped (utils/parallel_scan.parallelFold): one holding memory of its
+//!   own frees it in its destructor
 //! @param pool - the threads the blocks run on; null: the shared task pool (see
 //!   scanMatches)
 //! @return false if the fold stopped before `to`: `merge` or a block gave up (the caller
@@ -45,7 +47,7 @@ bool foldRecords(A)(Records records, size_t from, size_t to, scope size_t delega
             foreach (position; from + lo .. from + hi)
             {
                 // A stop: this block is never merged (givesUp is checked again before)
-                if ((position - from - lo) % stopCheckRecords == 0 && (givesUp(records, cancelled) || stop()))
+                if ((position - from - lo) % stopCheckRecords == 0 && (records.givesUp(cancelled) || stop()))
                     break;
                 const record = messageAt(position);
                 if (records.decode(record, msg))
@@ -53,7 +55,7 @@ bool foldRecords(A)(Records records, size_t from, size_t to, scope size_t delega
             }
             return acc;
         },
-        (size_t done, ref A acc) => !givesUp(records, cancelled) && merge(from + done, acc), pool);
+        (size_t done, ref A acc) => !records.givesUp(cancelled) && merge(from + done, acc), pool);
 }
 
 version (unittest)

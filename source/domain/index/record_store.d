@@ -7,7 +7,7 @@
 //! (Records, records()) may be read by any number of threads at once while one writer
 //! appends after them. Their entries never move (utils/chunked_array) and none is removed.
 //! The rest is the holder's to synchronize (LogIndex): reading length() while a record is
-//! appended, appending, and close(). The holder gives a reader its Records so that the
+//! appended, appending, and release(). The holder gives a reader its Records so that the
 //! reader sees the records below its length (a lock both take, or starting the thread or
 //! the task that reads), and closes the store only once no reader reads it any more: the
 //! bytes of a closed store are gone, and a reader of them crashes.
@@ -95,7 +95,7 @@ final class RecordStore
     private shared size_t _users = 1; // its holder and the leases: the last one closes it
     private shared bool _closing; // its holder is done with it: the readers of leases stop
 
-    //! @param source - owned by the store from now on: released by close()
+    //! @param source - owned by the store from now on: released when the store is closed (release())
     this(ByteSource source, LogFormat format)
     {
         _source = source;
@@ -346,9 +346,10 @@ final class RecordStore
     }
 
     //! Releases the bytes of the source and the offset index at once: the index lives in
-    //! memory of its own, which the GC neither sees nor would free soon. Only once no reader
-    //! reads them (see the module). Idempotent; no records and data() empty afterwards.
-    void close() nothrow @nogc
+    //! memory of its own, which the GC neither sees nor would free soon. Called by the last
+    //! release() only: no reader reads them any more (see the module). No records and
+    //! data() empty afterwards.
+    private void close() nothrow @nogc
     {
         _source.close();
         _offsets.clear();
@@ -395,6 +396,15 @@ struct Records
         import core.atomic : atomicLoad;
 
         return _store !is null && atomicLoad(_store._closing);
+    }
+
+    //! @brief Whether a reader of the records gives up: `cancelled()`, or the records are
+    //! lost or closing. A scan checks it every few records and again before what it read is
+    //! delivered: once true it stays true (`cancelled` too), so nothing read by a block cut
+    //! short is delivered, nor a record of a lost file read as zeros
+    bool givesUp(scope bool delegate() cancelled) const
+    {
+        return cancelled() || lost || closing;
     }
 
     //! The offset of the record `record` < length in the data of the source
@@ -462,7 +472,8 @@ struct Records
 //! stop once they are closing() (the holder is done with them). Empty when not given by a
 //! store (RecordsLease.init): no records.
 //! Let it go deterministically (a scope, destroy()): one the GC collects in an object it
-//! finalizes never lets the store go, so the store and its file stay open for good.
+//! finalizes never lets the store go, so the store and its file stay open for good (on
+//! Windows the file can't be deleted or renamed then until the program exits).
 struct RecordsLease
 {
     private RecordStore _store; // null: empty
@@ -715,7 +726,7 @@ unittest
     assert(t.record == 2 && t.offset == 13 && t.started && t.ended && t.inTurn == 2);
     assert(transfers.inTurnOffsets(0) == [20, 41]);
 
-    store.close();
+    store.release();
     assert(store.transfers.length == 0, "closed with the store");
 }
 
@@ -803,7 +814,7 @@ unittest
     assert(store.length == 0 && store.scannedBytes == 0);
 }
 
-@("RecordStore: close releases the source and the offset index at once, not by the GC later")
+@("RecordStore: the last release closes the source and the offset index at once, not by the GC later")
 unittest
 {
     import formats.plain_text : PlainTextFormat;
@@ -812,11 +823,10 @@ unittest
     auto store = new RecordStore(source, new PlainTextFormat());
     scanAll(store, true);
     assert(store.reservedBytes > 0);
-    store.close();
+    store.release(); // its holder, the only user
     assert(source.closed);
     assert(store.reservedBytes == 0, "the offsets wait for the GC");
     assert(store.length == 0 && store.records.length == 0);
-    store.close(); // idempotent
 }
 
 @("RecordStore: a lease keeps the records open after their holder, the last one closes them")

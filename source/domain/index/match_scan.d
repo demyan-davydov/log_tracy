@@ -18,15 +18,6 @@ enum size_t scanBlockLength = 16 * 1024;
 //! Positions a block scans between its checks of a stop (a cancel, a lost file)
 enum size_t stopCheckRecords = 256;
 
-//! @brief Whether a reader of `records` gives up: `cancelled()`, or the records are lost
-//! or closing (Records.closing). Checked by a block every stopCheckRecords positions and
-//! again before what it read is delivered: once true it stays true, so nothing read by a
-//! block cut short is ever delivered, nor a record read as zeros of a lost file
-package bool givesUp(Records records, scope bool delegate() cancelled)
-{
-    return cancelled() || records.lost || records.closing;
-}
-
 //! @brief Scans the positions [from, to) in parallel blocks for the records that are in
 //! `anchors` or that `filter` matches, and delivers them block by block in order, as soon
 //! as a block and the ones before it are scanned. A block gives up at its next check when
@@ -58,7 +49,7 @@ bool scanMatches(T)(Records records, size_t from, size_t to, scope size_t delega
             foreach (position; from + lo .. from + hi)
             {
                 // A stop: this block is never delivered (givesUp is checked again before)
-                if ((position - from - lo) % stopCheckRecords == 0 && (givesUp(records, cancelled) || stop()))
+                if ((position - from - lo) % stopCheckRecords == 0 && (records.givesUp(cancelled) || stop()))
                     break;
                 const record = messageAt(position);
                 if (!records.decode(record, msg))
@@ -68,7 +59,7 @@ bool scanMatches(T)(Records records, size_t from, size_t to, scope size_t delega
             }
             return n;
         },
-        (size_t done, const(T)[] found) => !givesUp(records, cancelled) && deliver(from + done, found), pool);
+        (size_t done, const(T)[] found) => !records.givesUp(cancelled) && deliver(from + done, found), pool);
 }
 
 version (unittest)

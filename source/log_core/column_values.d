@@ -1,6 +1,6 @@
 //! The values of the columns of a record (ColumnInfo), each read by the kind of its column
-//! (ColumnKind) and given to a writer of values: the one place a decoded record is read as
-//! the columns of its format. The log table writes Sciter values through it
+//! (ColumnKind) and given to a writer of values: the one place the columns of a decoded
+//! record are read as values to show (a filter reads them to compare: log_core/rule_filter). The log table writes Sciter values through it
 //! (ui/table_rows), another reader of the records may write text.
 module log_core.column_values;
 
@@ -12,16 +12,16 @@ import log_core.log_message : LogMessage, TimeKind;
 /// the column: W.nothing(column) - the record has no value there (a field it hasn't, no
 /// time); W.time(column, nanoseconds, TimeKind) - the kind of this record, the column's is
 /// only the usual one; W.level(column, LogLevel); W.text(column, wchar[]) - the payload or
-/// a text field; W.hex(column, char[]) - the hex digits of all 64 bits of a Hex column, in
+/// a text field; W.hex(column, wchar[]) - the hex digits of all 64 bits of a Hex column, in
 /// upper case; W.number(column, long) - an Integer, Duration or Enum column, read as its
 /// ColumnInfo tells (unitsPerSecond, labels). What a writer is given is valid during the
 /// call only.
-enum isColumnValueWriter(W) = __traits(compiles, (ref W w, const(wchar)[] s, const(char)[] h) {
+enum isColumnValueWriter(W) = __traits(compiles, (ref W w, const(wchar)[] s) {
     w.nothing(size_t(0));
     w.time(size_t(0), long(0), TimeKind.None);
     w.level(size_t(0), LogLevel.init);
     w.text(size_t(0), s);
-    w.hex(size_t(0), h);
+    w.hex(size_t(0), s);
     w.number(size_t(0), long(0));
 });
 
@@ -55,7 +55,7 @@ void writeColumnValues(W)(ref W writer, ref const(LogMessage!wchar) msg, const(C
             writer.text(i, msg.text(column.field));
             break;
         case ColumnKind.Hex:
-            char[16] digits;
+            wchar[16] digits;
             writer.hex(i, hexDigits(msg.number(column.field), digits));
             break;
         case ColumnKind.Integer:
@@ -71,13 +71,13 @@ void writeColumnValues(W)(ref W writer, ref const(LogMessage!wchar) msg, const(C
 /// (FieldFilter reads FFFFFFFFFFFFFFFF as -1). A script number would round values above
 /// 2^53 and show -1 as "-1".
 /// @return the digits, in `buffer`
-const(char)[] hexDigits(long value, return ref char[16] buffer) pure nothrow @nogc @safe
+const(wchar)[] hexDigits(long value, return ref wchar[16] buffer) pure nothrow @nogc @safe
 {
     ulong bits = cast(ulong) value;
     size_t start = buffer.length;
     do
     {
-        buffer[--start] = "0123456789ABCDEF"[bits & 0xF];
+        buffer[--start] = "0123456789ABCDEF"w[bits & 0xF];
         bits >>= 4;
     }
     while (bits != 0);
@@ -107,7 +107,7 @@ version (unittest)
         void time(size_t column, long ns, TimeKind kind) { values[column] = "time:" ~ ns.to!string ~ ":" ~ kind.to!string; }
         void level(size_t column, LogLevel level) { values[column] = "level:" ~ level.to!string; }
         void text(size_t column, const(wchar)[] value) { values[column] = "t:" ~ value.to!string; }
-        void hex(size_t column, const(char)[] digits) { values[column] = "hex:" ~ digits.idup; }
+        void hex(size_t column, const(wchar)[] digits) { values[column] = "hex:" ~ digits.to!string; }
         void number(size_t column, long value) { values[column] = "n:" ~ value.to!string; }
     }
 
@@ -162,10 +162,44 @@ unittest
     assert(values.values == ["-", "level:Info", "-", "-", "-", "t:hello"], values.values.to!string);
 }
 
+@("writeColumnValues: a writer that doesn't allocate gets the values without allocating")
+unittest
+{
+    static struct Discard
+    {
+        size_t written;
+        const(wchar)[] lastHex;
+
+        void nothing(size_t column) @nogc { ++written; }
+        void time(size_t column, long ns, TimeKind kind) @nogc { ++written; }
+        void level(size_t column, LogLevel level) @nogc { ++written; }
+        void text(size_t column, const(wchar)[] value) @nogc { ++written; }
+        void hex(size_t column, const(wchar)[] digits) @nogc { ++written; lastHex = digits.length == 16 ? "16"w : "?"w; }
+        void number(size_t column, long value) @nogc { ++written; }
+    }
+
+    static immutable ColumnInfo[] columns = [
+        ColumnInfo("id", "Id", ColumnKind.Hex, 0),
+        ColumnInfo("pid", "Pid", ColumnKind.Integer, 1),
+    ];
+    static void write(ref Discard values, ref const(LogMessage!wchar) msg) @nogc
+    {
+        writeColumnValues(values, msg, columns); // compiles as @nogc: nothing allocates
+    }
+
+    LogMessage!wchar msg;
+    msg.beginRecord();
+    msg.setNumber(0, -1);
+    msg.setNumber(1, 42);
+    Discard values;
+    write(values, msg);
+    assert(values.written == 2 && values.lastHex == "16"w, "the hex digits of all 64 bits");
+}
+
 @("hexDigits: the 64 bits in upper case hex")
 unittest
 {
-    char[16] buffer;
+    wchar[16] buffer;
     assert(hexDigits(0x1F, buffer) == "1F");
     assert(hexDigits(0, buffer) == "0");
     assert(hexDigits(-1, buffer) == "FFFFFFFFFFFFFFFF");

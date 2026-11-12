@@ -463,7 +463,6 @@ private struct SciterCells
     void integer(size_t cell, int value) { cells.opIndex(cell, value); }
     void number(size_t cell, double value) { cells.opIndex(cell, value); }
     void text(size_t cell, const(wchar)[] value) { cells.opIndex(cell, value); }
-    void text(size_t cell, const(char)[] value) { cells.opIndex(cell, value); }
 
     void time(size_t cell, double microseconds, TimeKind kind)
     {

@@ -84,7 +84,9 @@ bool parallelScan(T)(size_t length, size_t blockLength,
 //! folded; `done` is the end of the block. It may take what `folded` holds (it is the
 //! block's own). It returns false to stop the fold: no block after it is merged then.
 //! The blocks in flight are as for parallelScan: what is held is an accumulator per block
-//! in flight, whatever `length`.
+//! in flight, whatever `length`. The accumulator of a block that is not merged (the fold
+//! stopped or failed) is dropped, overwritten by A.init or left to the GC: an A holding
+//! memory of its own frees it in its destructor.
 //! @return false if `merge` stopped the fold
 bool parallelFold(A)(size_t length, size_t blockLength,
     scope A delegate(size_t lo, size_t hi, ScanStop stop) fold,

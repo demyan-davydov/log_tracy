@@ -19,16 +19,14 @@ import std.json : JSONValue;
 enum fixedCells = 6;
 
 /// Whether W can write the cells of a row: W.nothing(cell), W.boolean(cell,
-/// bool), W.integer(cell, int), W.number(cell, double), W.text(cell, wchar[] or
-/// char[]: a text made here, e.g. hex, is UTF-8 and goes as it is),
+/// bool), W.integer(cell, int), W.number(cell, double), W.text(cell, wchar[]),
 /// W.time(cell, microseconds, TimeKind), W.matches(cell, MatchRange[])
-enum isCellWriter(W) = __traits(compiles, (ref W w, const(wchar)[] s, const(char)[] n, const(MatchRange)[] m) {
+enum isCellWriter(W) = __traits(compiles, (ref W w, const(wchar)[] s, const(MatchRange)[] m) {
     w.nothing(0);
     w.boolean(0, true);
     w.integer(0, 0);
     w.number(0, 0.0);
     w.text(0, s);
-    w.text(0, n);
     w.time(0, 0.0, TimeKind.None);
     w.matches(0, m);
 });
@@ -87,7 +85,7 @@ private struct ColumnCells(W)
 
     void level(size_t column, LogLevel level) { writer.integer(fixedCells + column, cast(int) level); }
     void text(size_t column, const(wchar)[] value) { writer.text(fixedCells + column, value); }
-    void hex(size_t column, const(char)[] digits) { writer.text(fixedCells + column, digits); }
+    void hex(size_t column, const(wchar)[] digits) { writer.text(fixedCells + column, digits); }
     void number(size_t column, long value) { writer.number(fixedCells + column, cast(double) value); }
 }
 
@@ -144,7 +142,6 @@ version (unittest)
         void integer(size_t cell, int value) { cells[cell] = "i:" ~ value.to!string; }
         void number(size_t cell, double value) { cells[cell] = "n:" ~ value.to!string; }
         void text(size_t cell, const(wchar)[] value) { cells[cell] = "t:" ~ value.to!string; }
-        void text(size_t cell, const(char)[] value) { cells[cell] = "s:" ~ value.idup; }
         void time(size_t cell, double microseconds, TimeKind kind)
         {
             cells[cell] = "time:" ~ (cast(long) microseconds).to!string ~ ":" ~ kind.to!string;
@@ -198,7 +195,7 @@ unittest
     assert(cells.cells == [
         "b:true", "n:3", "i:7", "n:1234", "i:" ~ (cast(int) LogLevel.Warn).to!string, "b:false",
         "time:1500:Absolute", "i:" ~ (cast(int) LogLevel.Warn).to!string, "t:TAG", "n:42",
-        "s:FFFFFFFFFFFFFFFF", "t:hello", "-"
+        "t:FFFFFFFFFFFFFFFF", "t:hello", "-"
     ], cells.cells.to!string);
 }
 
