@@ -1,0 +1,176 @@
+//! foldRecords: the records of a range of positions decoded in parallel blocks
+//! (utils/parallel_scan) and folded, each block into an accumulator of its own, the
+//! accumulators merged in the order of the blocks: a count by a value, the first and the
+//! last record of a group, without decoding the range again on one thread. It reads the
+//! records through Records only, from the threads of the pool, so the caller keeps them
+//! open until it returns (a lease, or the holder's own scan).
+module domain.index.record_fold;
+
+import domain.index.match_scan : scanBlockLength, stopCheckRecords;
+import domain.index.record_store : Records;
+import log_core.log_message : LogMessage;
+
+//! @brief Folds the records of the positions [from, to) in parallel blocks: each block
+//! into an accumulator of its own (A.init), merged block by block in order. A block gives
+//! up at its next check when `cancelled()` is true or the records are lost or closing
+//! (Records.closing): the fold stops then, and that block is not merged.
+//! @param records - the records the positions are of: read from many threads at once
+//! @param messageAt - the record of a position; called from many threads at once, so it
+//!   may only read what doesn't change while the fold runs
+//! @param fold - `fold(acc, record, msg)` adds the record `record`, decoded into `msg`, to
+//!   the accumulator of its block; called from many threads at once, for the records of a
+//!   block in order. A record that can't be decoded is skipped
+//! @param cancelled - called from many threads at once
+//! @param merge - `merge(done, acc)` on the calling thread: the accumulator of the
+//!   positions before `done` not merged yet, the block's own; false stops the fold. It may
+//!   throw: the fold stops and the exception comes out of foldRecords
+//! @return false if the fold stopped before `to`: `merge` or a block gave up
+bool foldRecords(A)(Records records, size_t from, size_t to, scope size_t delegate(size_t position) messageAt,
+    scope void delegate(ref A acc, size_t record, ref const(LogMessage!wchar) msg) fold,
+    scope bool delegate() cancelled, scope bool delegate(size_t done, ref A acc) merge)
+{
+    import utils.parallel_scan : parallelFold, ScanStop;
+
+    // What a block folded, and whether it gave up before its end
+    static struct Folded
+    {
+        A acc;
+        bool cut;
+    }
+
+    assert(from <= to);
+    return parallelFold!Folded(to - from, scanBlockLength,
+        (size_t lo, size_t hi, ScanStop stop) {
+            Folded folded;
+            LogMessage!wchar msg; // a buffer per block: blocks run on several threads
+            foreach (position; from + lo .. from + hi)
+            {
+                if ((position - from - lo) % stopCheckRecords == 0
+                    && (cancelled() || records.lost || records.closing || stop()))
+                {
+                    folded.cut = true;
+                    break;
+                }
+                const record = messageAt(position);
+                if (records.decode(record, msg))
+                    fold(folded.acc, record, msg);
+            }
+            return folded;
+        },
+        (size_t done, ref Folded folded) => !folded.cut && merge(from + done, folded.acc));
+}
+
+version (unittest)
+{
+    import domain.index.match_scan : storeOf;
+
+    //! Of the lines that have "seven": how many, the first and the last
+    private struct Sevens
+    {
+        size_t count, first, last;
+
+        void add(size_t record)
+        {
+            if (count++ == 0)
+                first = record;
+            last = record;
+        }
+
+        void add(ref const Sevens other)
+        {
+            if (other.count == 0)
+                return;
+            if (count == 0)
+                first = other.first;
+            last = other.last;
+            count += other.count;
+        }
+    }
+
+    private bool hasSeven(ref const(LogMessage!wchar) msg)
+    {
+        import std.algorithm.searching : canFind;
+
+        return msg.payloadText.canFind("seven"w);
+    }
+}
+
+@("foldRecords: the records of a range folded over many blocks, merged in order")
+unittest
+{
+    import std.algorithm : filter;
+    import std.array : array;
+    import std.range : iota;
+
+    enum lines = 5 * scanBlockLength + 123;
+    auto records = storeOf(lines).records;
+    const from = 2, to = lines - 10;
+    Sevens all;
+    size_t lastDone = from;
+    const completed = foldRecords!Sevens(records, from, to, (size_t p) => p,
+        (ref Sevens acc, size_t record, ref const(LogMessage!wchar) msg) {
+            if (hasSeven(msg))
+                acc.add(record);
+        },
+        () => false,
+        (size_t done, ref Sevens acc) {
+            assert(done > lastDone && done <= to, "merged in order, up to the end of the range");
+            lastDone = done;
+            all.add(acc);
+            return true;
+        });
+    const expected = iota(from, to).filter!(i => i % 7 == 0).array;
+    assert(completed && lastDone == to);
+    assert(all.count == expected.length && all.first == expected[0] && all.last == expected[$ - 1]);
+}
+
+@("foldRecords: a merge that returns false stops the fold")
+unittest
+{
+    auto records = storeOf(3 * scanBlockLength).records;
+    size_t merged;
+    const completed = foldRecords!size_t(records, 0, records.length, (size_t p) => p,
+        (ref size_t acc, size_t record, ref const(LogMessage!wchar) msg) { ++acc; },
+        () => false, (size_t done, ref size_t acc) => ++merged < 2);
+    assert(!completed && merged == 2);
+}
+
+@("foldRecords: a cancel stops the fold, the block cut short is not merged")
+unittest
+{
+    import core.atomic : atomicLoad, atomicOp, atomicStore;
+
+    enum blocks = 8;
+    auto records = storeOf(blocks * scanBlockLength).records;
+    shared bool cancel;
+    shared size_t folded;
+    size_t merged;
+    const completed = foldRecords!size_t(records, 0, records.length, (size_t p) => p,
+        (ref size_t acc, size_t record, ref const(LogMessage!wchar) msg) {
+            ++acc;
+            if (atomicOp!"+="(folded, 1) == 1)
+                atomicStore(cancel, true); // cancelled by the first record folded
+        },
+        () => atomicLoad(cancel),
+        (size_t done, ref size_t acc) { merged += acc; return true; });
+    assert(!completed, "a fold cancelled is not complete");
+    assert(merged % scanBlockLength == 0, "only whole blocks are merged");
+    assert(atomicLoad(folded) < blocks * stopCheckRecords * 2, "a block went on after the cancel");
+}
+
+@("foldRecords: leased records whose holder is closing stop the fold")
+unittest
+{
+    import core.atomic : atomicOp;
+
+    auto store = storeOf(4 * scanBlockLength);
+    auto lease = store.lease();
+    shared size_t folded;
+    const completed = foldRecords!size_t(lease.records, 0, lease.records.length, (size_t p) => p,
+        (ref size_t acc, size_t record, ref const(LogMessage!wchar) msg) {
+            if (atomicOp!"+="(folded, 1) == 1)
+                store.markClosing(); // the document is closed meanwhile
+        },
+        () => false, (size_t done, ref size_t acc) => true);
+    assert(!completed);
+}

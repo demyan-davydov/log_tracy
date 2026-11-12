@@ -218,6 +218,10 @@ utils  ←  sciter  ←  ui
   - `scanMatches` (`match_scan`): the parallel scan of a range for the anchored and
     matching records, over `Records` only: what another reader of the records (a search
     of its own, apart from the views) scans with too;
+  - `foldRecords` (`record_fold`): the parallel fold of a range over `Records`, for another
+    reader (a count by a value, the first and the last record of a group): each block folds
+    into an accumulator of its own, merged in the order of the blocks (`parallelFold` of
+    `utils/parallel_scan`), so nothing is decoded again on one thread;
   - `ProgressReporter` (`progress`).
 - The indexes are `BaseIndex` over `utils/chunked_array` (`domain/index/`):
   - they grow by 64K-entry chunks (mmap / VirtualAlloc) up to 2^32 entries;

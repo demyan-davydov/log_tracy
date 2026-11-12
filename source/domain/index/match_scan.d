@@ -79,7 +79,7 @@ version (unittest)
     }
 
     //! A store of `lines` lines "line <i>", " seven" after those divisible by 7
-    private RecordStore storeOf(size_t lines)
+    package RecordStore storeOf(size_t lines)
     {
         import formats.plain_text : PlainTextFormat;
         import std.array : appender;

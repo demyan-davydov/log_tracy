@@ -1,5 +1,6 @@
 //! Scans a range of positions on a task pool in blocks and delivers what each
-//! block found in the order of the blocks, as a sequential scan would.
+//! block found (parallelScan) or folded into (parallelFold) in the order of the
+//! blocks, as a sequential scan would.
 module utils.parallel_scan;
 
 import std.parallelism : TaskPool, taskPool;
@@ -47,23 +48,84 @@ bool parallelScan(T)(size_t length, size_t blockLength,
     scope bool delegate(size_t done, const(T)[] found) deliver,
     TaskPool pool = null)
 {
-    import core.atomic : atomicStore;
     import core.memory : GC;
-    import std.algorithm.comparison : min;
     import std.array : uninitializedArray;
-    import std.parallelism : task;
 
     assert(blockLength > 0);
     if (pool is null)
         pool = taskPool;
 
-    const blockCount = (length + blockLength - 1) / blockLength;
-    // Several blocks per thread, so a slow block doesn't leave the others idle
-    const inFlight = (pool.size + 1) * blocksPerThread; // the calling thread works too
-    // The room of a slot, reused by its blocks; what its last block wrote.
-    // Nothing reads what a block didn't write: no need to clear it
+    const inFlight = inFlightOn(pool);
+    // The room of a slot, reused by its blocks. Nothing reads what a block didn't
+    // write: no need to clear it
     auto room = uninitializedArray!(T[])(inFlight * blockLength);
-    auto foundCount = new size_t[inFlight];
+    // After the blocks: none uses the room once scanBlocks returns, and it may be megabytes
+    scope (exit)
+        GC.free(room.ptr);
+
+    return scanBlocks!size_t(length, blockLength, inFlight,
+        (size_t slot, size_t lo, size_t hi, ScanStop stop) {
+            auto slotRoom = room[slot * blockLength .. slot * blockLength + (hi - lo)];
+            const n = scan(lo, hi, slotRoom, stop);
+            assert(n <= slotRoom.length, "more results than positions");
+            return n;
+        },
+        (size_t done, size_t slot, ref size_t n) => deliver(done, room[slot * blockLength .. slot * blockLength + n]),
+        pool);
+}
+
+//! @brief Folds [0, length) in blocks of `blockLength` positions on `pool`: each block
+//! into an accumulator of its own, merged on the calling thread in the order of the
+//! blocks, as a sequential fold would see them (the first and the last of something stay
+//! so). `fold(lo, hi, stop)` runs concurrently for different blocks, must only read
+//! shared state and returns what the block folded into; a long block checks `stop()` now
+//! and then, as for parallelScan. `merge(done, folded)` runs on the calling thread, one
+//! block at a time in their order, as soon as the block and the ones before it are
+//! folded; `done` is the end of the block. It may take what `folded` holds (it is the
+//! block's own). It returns false to stop the fold: no block after it is merged then.
+//! The blocks in flight are as for parallelScan: what is held is an accumulator per block
+//! in flight, whatever `length`.
+//! @return false if `merge` stopped the fold
+bool parallelFold(A)(size_t length, size_t blockLength,
+    scope A delegate(size_t lo, size_t hi, ScanStop stop) fold,
+    scope bool delegate(size_t done, ref A folded) merge,
+    TaskPool pool = null)
+{
+    assert(blockLength > 0);
+    if (pool is null)
+        pool = taskPool;
+    return scanBlocks!A(length, blockLength, inFlightOn(pool),
+        (size_t slot, size_t lo, size_t hi, ScanStop stop) => fold(lo, hi, stop),
+        (size_t done, size_t slot, ref A folded) => merge(done, folded),
+        pool);
+}
+
+//! Blocks in flight for each thread
+private enum blocksPerThread = 4;
+
+//! The blocks in flight on `pool`: several per thread, so a slow block doesn't leave the
+//! others idle; the calling thread works too
+private size_t inFlightOn(TaskPool pool)
+{
+    return (pool.size + 1) * blocksPerThread;
+}
+
+//! @brief Scans [0, length) in blocks on `pool`, `inFlight` of them at most at a time,
+//! each in a slot (< inFlight) a later block reuses once it is delivered. `scan(slot, lo,
+//! hi, stop)` gives the result of a block, `deliver(done, slot, result)` takes it on the
+//! calling thread in the order of the blocks: see parallelScan.
+//! @return false if `deliver` stopped the scan
+private bool scanBlocks(R)(size_t length, size_t blockLength, size_t inFlight,
+    scope R delegate(size_t slot, size_t lo, size_t hi, ScanStop stop) scan,
+    scope bool delegate(size_t done, size_t slot, ref R result) deliver,
+    TaskPool pool)
+{
+    import core.atomic : atomicStore;
+    import std.algorithm.comparison : min;
+    import std.parallelism : task;
+
+    const blockCount = (length + blockLength - 1) / blockLength;
+    auto results = new R[inFlight]; // what the last block of each slot gave
     // What a block threw, rethrown on delivery. A task must not throw: an
     // Error of a task run by yieldForce on the waiting thread leaves the task
     // in progress for good (std.parallelism catches only Exception there)
@@ -82,15 +144,10 @@ bool parallelScan(T)(size_t length, size_t blockLength,
         failure[slot] = null;
         if (atomicLoad(stopped))
             return;
-        foundCount[slot] = 0;
+        results[slot] = R.init;
         const lo = block * blockLength, hi = min(lo + blockLength, length);
-        auto slotRoom = room[slot * blockLength .. slot * blockLength + (hi - lo)];
         try
-        {
-            const n = scan(lo, hi, slotRoom, stop);
-            assert(n <= slotRoom.length, "more results than positions");
-            foundCount[slot] = n;
-        }
+            results[slot] = scan(slot, lo, hi, stop);
         catch (Throwable e)
             failure[slot] = e;
     }
@@ -117,7 +174,6 @@ bool parallelScan(T)(size_t length, size_t blockLength,
         atomicStore(stopped, true);
         foreach (block; delivered .. submitted)
             tasks[block % inFlight].yieldForce(); // doesn't throw: scanBlock catches
-        GC.free(room.ptr); // no block uses it any more, and it may be megabytes
     }
 
     while (submitted < min(inFlight, blockCount))
@@ -130,7 +186,7 @@ bool parallelScan(T)(size_t length, size_t blockLength,
         if (failure[slot] !is null)
             throw failure[slot];
         const done = min((delivered + 1) * blockLength, length);
-        const keepOn = deliver(done, room[slot * blockLength .. slot * blockLength + foundCount[slot]]);
+        const keepOn = deliver(done, slot, results[slot]);
         ++delivered;
         if (!keepOn)
             return false;
@@ -139,9 +195,6 @@ bool parallelScan(T)(size_t length, size_t blockLength,
     }
     return true;
 }
-
-//! Blocks in flight for each thread
-private enum blocksPerThread = 4;
 
 version (unittest)
 {
@@ -388,4 +441,60 @@ unittest
         failed = true;
     assert(failed);
     assert(atomicLoad(running) == 0, "a block still uses the frame of the scan");
+}
+
+@("parallelFold: each block folds into its own accumulator, merged in the order of the blocks")
+unittest
+{
+    static struct Span
+    {
+        size_t first = size_t.max, last, count; // of the multiples of 3
+    }
+
+    auto pool = new TaskPool(3);
+    scope (exit)
+        pool.finish(true);
+
+    foreach (length; [0, 1, 99, 100, 101, 12_345])
+    {
+        Span all;
+        size_t lastDone = 0;
+        const completed = parallelFold!Span(length, 100,
+            (size_t lo, size_t hi, ScanStop stop) {
+                Span span;
+                foreach (i; lo .. hi)
+                    if (i % 3 == 0)
+                    {
+                        if (span.count++ == 0)
+                            span.first = i;
+                        span.last = i;
+                    }
+                return span;
+            },
+            (size_t done, ref Span folded) {
+                assert(done > lastDone && (done == length || done % 100 == 0), "merged in order");
+                lastDone = done;
+                if (folded.count == 0)
+                    return true;
+                if (all.count == 0)
+                    all.first = folded.first;
+                all.last = folded.last;
+                all.count += folded.count;
+                return true;
+            }, pool);
+        assert(completed && lastDone == length);
+        assert(all.count == (length + 2) / 3);
+        if (length > 0)
+            assert(all.first == 0 && all.last == (length - 1) / 3 * 3, "the first and the last stay so");
+    }
+}
+
+@("parallelFold: merge returning false stops the fold")
+unittest
+{
+    size_t merged = 0;
+    const completed = parallelFold!size_t(1_000_000, 10,
+        (size_t lo, size_t hi, ScanStop stop) => hi - lo,
+        (size_t done, ref size_t folded) => ++merged < 3);
+    assert(!completed && merged == 3);
 }
