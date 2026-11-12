@@ -9,6 +9,8 @@ import domain.index.record_store : Records;
 import log_core.log_filter : LogFilter;
 import log_core.log_message : LogMessage;
 
+import std.parallelism : TaskPool;
+
 //! Positions a thread scans at a time: what a block finds is at most 64 KB, and a few
 //! blocks per thread are held (utils/parallel_scan)
 enum size_t scanBlockLength = 16 * 1024;
@@ -29,10 +31,12 @@ enum size_t stopCheckRecords = 256;
 //! @param deliver - `deliver(done, found)` on the calling thread: the records `found` in
 //!   the positions before `done`, valid during the call only; false stops the scan. It may
 //!   throw: the scan stops and the exception comes out of scanMatches
+//! @param pool - the threads the blocks run on; null: the shared task pool. A reader that
+//!   shouldn't slow the window down scans on a pool of its own
 //! @return false if `deliver` stopped the scan
 bool scanMatches(T)(Records records, size_t from, size_t to, scope size_t delegate(size_t position) messageAt,
     const(LogFilter!wchar) filter, ref const(Anchors) anchors, scope bool delegate() cancelled,
-    scope bool delegate(size_t done, const(T)[] found) deliver)
+    scope bool delegate(size_t done, const(T)[] found) deliver, TaskPool pool = null)
 {
     import utils.parallel_scan : parallelScan, ScanStop;
 
@@ -55,7 +59,7 @@ bool scanMatches(T)(Records records, size_t from, size_t to, scope size_t delega
             }
             return n;
         },
-        (size_t done, const(T)[] found) => deliver(from + done, found));
+        (size_t done, const(T)[] found) => deliver(from + done, found), pool);
 }
 
 version (unittest)
@@ -231,4 +235,26 @@ unittest
         SearchFilter.fromChips([SearchChip("line")]), anchors, () => false,
         (size_t done, const(uint)[] found) => true);
     assert(atomicLoad(scanned) < 4 * stopCheckRecords * 2, "a block of records closing went on");
+}
+
+@("scanMatches: the blocks run on the pool given")
+unittest
+{
+    import core.atomic : atomicLoad, atomicStore;
+    import log_core.search_filter : SearchChip, SearchFilter;
+
+    auto pool = new TaskPool(2);
+    scope (exit)
+        pool.finish(true);
+    auto records = storeOf(8 * scanBlockLength).records;
+    Anchors anchors;
+    shared bool onPool;
+    scanMatches!uint(records, 0, records.length, (size_t p) {
+            if (pool.workerIndex > 0)
+                atomicStore(onPool, true);
+            return p;
+        },
+        SearchFilter.fromChips([SearchChip("line")]), anchors, () => false,
+        (size_t done, const(uint)[] found) => true, pool);
+    assert(atomicLoad(onPool), "no block ran on a thread of the pool");
 }

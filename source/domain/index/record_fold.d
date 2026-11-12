@@ -10,6 +10,8 @@ import domain.index.match_scan : scanBlockLength, stopCheckRecords;
 import domain.index.record_store : Records;
 import log_core.log_message : LogMessage;
 
+import std.parallelism : TaskPool;
+
 //! @brief Folds the records of the positions [from, to) in parallel blocks: each block
 //! into an accumulator of its own (A.init), merged block by block in order. A block gives
 //! up at its next check when `cancelled()` is true or the records are lost or closing
@@ -24,10 +26,12 @@ import log_core.log_message : LogMessage;
 //! @param merge - `merge(done, acc)` on the calling thread: the accumulator of the
 //!   positions before `done` not merged yet, the block's own; false stops the fold. It may
 //!   throw: the fold stops and the exception comes out of foldRecords
+//! @param pool - the threads the blocks run on; null: the shared task pool (see
+//!   scanMatches)
 //! @return false if the fold stopped before `to`: `merge` or a block gave up
 bool foldRecords(A)(Records records, size_t from, size_t to, scope size_t delegate(size_t position) messageAt,
     scope void delegate(ref A acc, size_t record, ref const(LogMessage!wchar) msg) fold,
-    scope bool delegate() cancelled, scope bool delegate(size_t done, ref A acc) merge)
+    scope bool delegate() cancelled, scope bool delegate(size_t done, ref A acc) merge, TaskPool pool = null)
 {
     import utils.parallel_scan : parallelFold, ScanStop;
 
@@ -57,7 +61,7 @@ bool foldRecords(A)(Records records, size_t from, size_t to, scope size_t delega
             }
             return folded;
         },
-        (size_t done, ref Folded folded) => !folded.cut && merge(from + done, folded.acc));
+        (size_t done, ref Folded folded) => !folded.cut && merge(from + done, folded.acc), pool);
 }
 
 version (unittest)
@@ -173,4 +177,23 @@ unittest
         },
         () => false, (size_t done, ref size_t acc) => true);
     assert(!completed);
+}
+
+@("foldRecords: the blocks run on the pool given")
+unittest
+{
+    import core.atomic : atomicLoad, atomicStore;
+
+    auto pool = new TaskPool(2);
+    scope (exit)
+        pool.finish(true);
+    auto records = storeOf(8 * scanBlockLength).records;
+    shared bool onPool;
+    foldRecords!size_t(records, 0, records.length, (size_t p) => p,
+        (ref size_t acc, size_t record, ref const(LogMessage!wchar) msg) {
+            if (pool.workerIndex > 0)
+                atomicStore(onPool, true);
+        },
+        () => false, (size_t done, ref size_t acc) => true, pool);
+    assert(atomicLoad(onPool), "no block ran on a thread of the pool");
 }

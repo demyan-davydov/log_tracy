@@ -217,7 +217,9 @@ utils  ←  sciter  ←  ui
   - `MatchStage` (`match_stage`): how far the filter or the search of a pass has got;
   - `scanMatches` (`match_scan`): the parallel scan of a range for the anchored and
     matching records, over `Records` only: what another reader of the records (a search
-    of its own, apart from the views) scans with too;
+    of its own, apart from the views) scans with too. It takes the pool its blocks run
+    on (the shared one by default): a reader that shouldn't slow the window down scans on a
+    pool of its own, and folds likewise;
   - `foldRecords` (`record_fold`): the parallel fold of a range over `Records`, for another
     reader (a count by a value, the first and the last record of a group): each block folds
     into an accumulator of its own, merged in the order of the blocks (`parallelFold` of
