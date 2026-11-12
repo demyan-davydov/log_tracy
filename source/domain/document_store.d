@@ -101,6 +101,11 @@ private class NullDocument : Document
         return RecordsLease.init;
     }
 
+    override DocumentState state()
+    {
+        return DocumentState.init;
+    }
+
     override Attachment[] attachments()
     {
         return null;
@@ -588,6 +593,7 @@ unittest
     assert(store.doc(DocumentId.init).format is null);
     assert(store.doc(DocumentId.init).columns is null);
     assert(store.doc(DocumentId.init).leaseRecords.records.length == 0);
+    assert(store.doc(DocumentId.init).state == DocumentState.init);
 }
 
 @("DocumentStore.findBySourcePath finds the document of a file, however it is spelled")

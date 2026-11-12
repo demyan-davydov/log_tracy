@@ -113,7 +113,8 @@ utils  ←  sciter  ←  ui
   once: a holder releasing its own twice doesn't take another's. The last `release` closes it;
   closing a tab doesn't close a document another still holds. Ids are the store's, the tabs know only theirs.
   The views, filters, search and anchors of a document are its tab's: another holder only holds
-  it and reads records. Only the window opens files yet, so every document has a tab (a tab for
+  it, reads records (`Document.leaseRecords`) and asks how far its load has got
+  (`Document.state`: the bytes and records loaded, the end of the load, its error). Only the window opens files yet, so every document has a tab (a tab for
   a document of another holder: `docs/backlog.md`).
   The store is of the UI thread: `add`, `hold`, `release` (its `destroy` cancels and joins the
   indexing), `doc` are called there, so a holder on another thread (the MCP core) hands its

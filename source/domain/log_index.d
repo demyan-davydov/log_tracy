@@ -23,7 +23,8 @@ import domain.attachments : Attachment, attachmentOf, writePackets = writeAttach
 import domain.index.transfers : InTurn, Transfer;
 import utils.background_slot;
 import domain.document_item;
-import domain.document : AttachmentsChanged, ContentGrown, Document, OperationProgress, OperationFinished;
+import domain.document : AttachmentsChanged, ContentGrown, Document, DocumentState, OperationProgress,
+    OperationFinished;
 
 import utils.event_bus.event_bus_interface : SignalProducer;
 
@@ -382,6 +383,18 @@ struct LogIndex
     {
         const messages = _store.transfers.messages;
         return messages == 0 ? 0 : messages * 2 + (allRecordsFound ? 1 : 0);
+    }
+
+    //! What the index has loaded now: the bytes split, the bytes, the records to read. The
+    //! rest of DocumentState is the document's
+    DocumentState state() nothrow @nogc
+    {
+        DocumentState state;
+        auto lock = LockGuard(mutex);
+        state.loadedBytes = _store.scannedBytes;
+        state.totalBytes = _store.data.length;
+        state.records = _store.length;
+        return state;
     }
 
     //! @brief A lease of the records found so far, to read on any thread (RecordsLease):

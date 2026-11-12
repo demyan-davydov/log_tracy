@@ -59,6 +59,7 @@ class LogDocument : Document
     private bool _filtering;
     private bool _searching;
     private bool _failed; // the index can't be brought up to date: nothing more is asked of it
+    private UiText _loadError; // why the load (or what the source got later) failed
     // The user asked to stop it: told when the pass it stopped ends
     private bool _cancelFilter;
     private bool _cancelSearch;
@@ -167,6 +168,15 @@ class LogDocument : Document
     override RecordsLease leaseRecords()
     {
         return _index.leaseRecords;
+    }
+
+    override DocumentState state()
+    {
+        auto state = _index.state;
+        state.loaded = !_loading && _loadError.empty;
+        state.sourceLost = sourceLost;
+        state.error = _loadError;
+        return state;
     }
 
     override Attachment[] attachments()
@@ -355,6 +365,7 @@ class LogDocument : Document
             // The source can't be taken to its end (the load, or what it got
             // later): the document is done for
             _failed = true;
+            _loadError = error;
             _pendingViewFilter = PendingRequest.init;
             _pendingSearch = PendingRequest.init;
             finish(Operation.BuildOffsetIndex, Result.Failed, error);
@@ -538,11 +549,12 @@ version (unittest)
         return path;
     }
 
-    /// Bytes in memory, all of them at once; tells when it is closed
+    /// Bytes in memory, all of them at once; tells when it is closed, may be lost
     private final class MemorySource : ByteSource
     {
         private const(ubyte)[] _data;
         private shared bool _closed;
+        shared bool isLost;
 
         this(const(ubyte)[] data)
         {
@@ -558,7 +570,13 @@ version (unittest)
 
         override const(ubyte)[] data() const pure nothrow @nogc { return _data; }
         override bool complete() const nothrow @nogc { return true; }
-        override bool lost() const nothrow @nogc { return false; }
+        override bool lost() const nothrow @nogc
+        {
+            import core.atomic : atomicLoad;
+
+            return atomicLoad(isLost);
+        }
+
         override void close() nothrow @nogc
         {
             import core.atomic : atomicStore;
@@ -884,6 +902,35 @@ unittest
     assert(!source.closed, "the lease is still held");
     destroy(lease);
     assert(source.closed, "the last lease closes the records");
+}
+
+@("LogDocument: its state tells what was loaded, the end of the load and its failure")
+unittest
+{
+    import formats.dlt.format : DltFormat;
+
+    enum messageCount = 1000;
+    const data = testDlt(messageCount);
+    auto doc = new LogDocument(new MemorySource(data), new DltFormat());
+    scope (exit)
+        destroy(doc);
+    auto views = new Views(doc);
+    dispatchUntil(doc, () => views.mainReady);
+    const loaded = doc.state;
+    assert(loaded.loaded && loaded.error.empty && !loaded.sourceLost);
+    assert(loaded.records == messageCount && loaded.records == doc.leaseRecords.records.length);
+    assert(loaded.loadedBytes == data.length && loaded.totalBytes == data.length);
+
+    auto source = new MemorySource(data);
+    source.isLost = true; // its disk is gone before the load
+    auto lost = new LogDocument(source, new DltFormat());
+    scope (exit)
+        destroy(lost);
+    auto lostViews = new Views(lost);
+    dispatchUntil(lost, () => lostViews.main == Views.State.Failed);
+    const failed = lost.state;
+    assert(!failed.loaded && failed.sourceLost && !failed.error.empty);
+    assert(failed.records == 0 && failed.loadedBytes == 0);
 }
 
 @("LogDocument: a search and a filter requested while loading run with the load, latest request wins")

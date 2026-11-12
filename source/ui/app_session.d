@@ -1012,6 +1012,7 @@ version (unittest)
         size_t messageCount() nothrow @nogc { return records; }
         ulong byteSize() nothrow @nogc { return bytes; }
         RecordsLease leaseRecords() { return RecordsLease.init; }
+        DocumentState state() { return DocumentState.init; }
         // The files sent in the log, and how writing one goes: refused before its bytes
         // (no such file), or failing after the first two of them (the log lost)
         Attachment[] files;

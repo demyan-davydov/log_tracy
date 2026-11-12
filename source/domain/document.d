@@ -54,6 +54,19 @@ interface DocumentView
     bool nearestPositionOf(size_t realIndex, out size_t position);
 }
 
+//! How far a document has got with its log, at one moment (Document.state)
+struct DocumentState
+{
+    ulong loadedBytes; /// the bytes split into records so far
+    ulong totalBytes; /// the bytes of the log (Document.byteSize)
+    //! The records that can be read (the length of Records): those before a message
+    //! still open stay out until it closes (PartedFormat)
+    size_t records;
+    bool loaded; /// the load is over: every byte there was split (a source may grow after)
+    bool sourceLost; /// its file can't be read any more (Document.sourceLost)
+    UiText error; /// why the load failed, the document is done for; empty if it didn't
+}
+
 interface Document
 {
     enum Operation
@@ -94,6 +107,10 @@ interface Document
     //! reader stops once they are closing (RecordsLease.closing), as for a cancel. Taken
     //! on the thread of the document's store; empty for a document without records
     RecordsLease leaseRecords();
+
+    //! How far the document has got with its log now: what was loaded, whether the load
+    //! is over or failed. Cheap: taken on the thread of the document's store
+    DocumentState state();
 
     //! The files sent in the log found so far (domain/attachments): the list grows and
     //! changes while the file loads, AttachmentsChanged tells it
