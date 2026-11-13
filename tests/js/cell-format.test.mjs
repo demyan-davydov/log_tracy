@@ -3,6 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { formatTime, formatDuration, levelName, cellClass, columnClass, rowText, cellText, cellTexts, itemText, matchPieces, rowLayout } from "../../resources/cell-format.js";
+import { readFileSync } from "node:fs";
 
 // TimeKind values of the backend (log_core/log_message)
 const Absolute = 1, Local = 2, LocalNoYear = 3, SinceBoot = 4;
@@ -137,4 +138,18 @@ test("columnClass: a column is styled by its id, and by the ids of its format an
 test("columnClass: Payload is marked by its kind, whatever its id", () => {
     assert.equal(columnClass({ format: "logcat", id: "message", kind: "Payload" }), "col-message col-logcat-message payload");
     assert.equal(columnClass({ format: "dlt", id: "app", kind: "Text" }), "col-app col-dlt-app");
+});
+
+test("a row the search found keeps the white and grey of the rows and has a ring in its anchor cell", () => {
+    // The stripes are the look of every row in both tables: a background of the
+    // found rows mixed with them. What the search found is a ring around the
+    // anchor's place (and the matches in the colors of their chips).
+    const resource = name => readFileSync(new URL(`../../resources/${name}`, import.meta.url), "utf8");
+    const css = resource("table.css");
+    assert.doesNotMatch(css, /--bg-row-found/);
+    assert.match(css, /tr\[row-found="true"\]\s*>\s*td\.anchor:after\s*\{[^}]*border-color:\s*var\(--found-ring\)/);
+    for (const theme of ["theme-light.css", "theme-dark.css"]) {
+        assert.doesNotMatch(resource(theme), /--bg-row-found/, theme);
+        assert.match(resource(theme), /--found-ring:/, theme);
+    }
 });

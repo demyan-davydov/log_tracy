@@ -79,17 +79,6 @@
     background-color: var(--bg-row-stripe);
 }
 
-/* The rows the search found (in the main view and in the search results; a
-   row listed there only by its anchor is not): the row and the stripe in
-   their own colors. The selection stays above them. */
-.log-table>tbody>tr[row-found="true"][row-selected="false"] {
-    background-color: var(--bg-row-found);
-}
-
-.log-table>tbody>tr:nth-child(even)[row-found="true"][row-selected="false"] {
-    background-color: var(--bg-row-found-stripe);
-}
-
 .log-table>tbody>tr>td:first-child {
     font-family: 'Courier New', Courier, monospace;
     font-size: 100%;
@@ -119,43 +108,57 @@
    and colors, since Sciter ignores opacity and visibility on a :before. Sizes
    in em: the mark follows the font size of the table. */
 .log-table>tbody>tr>td.anchor:before {
-    content: "⚓";
-    display: inline-block;
-    width: 1.25em;
-    height: 1.25em;
-    line-height: 1.25em;
-    margin: -0.1em 0; /* the circle may be a bit higher than the line, not the row */
+    /* A block in the middle of the cell: its centre is that of the cell, as
+       the centre of the ring of a found row (below) is */
+    display: block;
     text-align: center;
-    border-radius: 50%;
+    vertical-align: bottom;
+    width: 15dip; /* the size of the anchor's circle */
+    height: 15dip;
+    line-height: 15dip;
+    margin: 0 *;
     transform: scale(0);
-    color: transparent;
-    background-color: transparent;
-    transition: transform ease-out 180ms, color linear 180ms, background-color linear 180ms;
+
+    transition: transform ease-in 200ms, 
+        color ease-in 200ms, 
+        background-color ease-in 200ms, 
+        border ease-in 200ms;
 }
 
-.log-table>tbody>tr>td.anchor[has-anchor="true"]:before {
+.log-table>tbody>tr[has-anchor="false"]>td.anchor:hover:before {
+    background-color: transparent;
+    border-radius: 50%;
+    color: var(--anchor-faint);
+}
+
+.log-table>tbody>tr[has-anchor="true"]>td.anchor:before {
+    content: "⚓";
+    /* Sciter centres a block by * (flex) margins, not auto; not across: the
+       cell centres its content, the ring (:after) right under it */
+    border-radius: 50%;
+    outline: 1dip solid var(--anchor-border-color);
     transform: scale(1);
     color: var(--text-main);
     background-color: var(--bg-anchor);
 }
 
-.log-table>tbody>tr>td.anchor[has-anchor="false"]:hover:before {
-    transform: scale(1);
-    color: var(--anchor-faint);
+.log-table>tbody>tr[row-found="true"] {
+    -foreground: var(--found-foreground)
 }
 
 /* No room for another anchor (document-pane.js): an empty cell shows on hover
    that none can be set, clicking it shows why. Only the hovered cell changes
    its content. */
-.log-table.anchors-full>tbody>tr>td.anchor[has-anchor="false"]:hover:before {
+.log-table.anchors-full>tbody>tr[has-anchor="false"]>td.anchor:hover:before {
     content: "⊘";
+    transform: scale(1);
     color: var(--anchor-refused);
-    /* A larger glyph in a box of the same size (1.25em of the cell's font):
-       the row keeps its height */
-    font-size: 140%;
-    width: 0.9em;
-    height: 0.9em;
-    line-height: 0.9em;
+    font-size: 190%;
+    transition: transform x-back-out 250ms;
+}
+
+.log-table.anchors-full>tbody>tr[has-anchor="false"]>td.anchor:active:before {
+    transform: scale(0.8);
 }
 
 /* Auxiliary columns (index, time, IDs...): see renderCell() in virtual-dlt-view.js */

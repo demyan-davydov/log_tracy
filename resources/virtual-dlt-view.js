@@ -227,8 +227,9 @@ export class VirtualDltTBody extends VirtualSelect {
         return <tr row-current={selection.current === viewIndex ? "true" : "false"}
             row-selected={selection.has(viewIndex) ? "true" : "false"} view-index={viewIndex}
             row-found={item[rowLayout.found] ? "true" : "false"}
+            has-anchor={item[rowLayout.anchored] ? "true" : "false"}
             rule-color={ruleColor ? "true" : "false"} style={ruleColor ? `--rule-color: ${ruleColor}` : ""}>
-            <td class="anchor" has-anchor={item[rowLayout.anchored] ? "true" : "false"} msg-index={item[rowLayout.messageIndex]}></td>
+            <td class="anchor" msg-index={item[rowLayout.messageIndex]}></td>
             <td class="aux">{cellContent(texts[0], null, null, part(0))}</td>
             {columns.map((column, i) => renderCell(column, item[rowLayout.firstColumn + i], texts[i + 1],
                 item[rowLayout.level], item[rowLayout.matches(columns.length)], matchColors, part(i + 1)))}

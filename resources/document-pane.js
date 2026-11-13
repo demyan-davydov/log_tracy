@@ -594,7 +594,7 @@ export class DocumentPane {
         // their empty anchor cells show on hover that no anchor can be set.
         on("click", "table.log-table td.anchor", (evt, cell) => {
             const index = Number(cell.getAttribute("msg-index"));
-            const anchored = cell.getAttribute("has-anchor") === "true";
+            const anchored = cell.parentElement.getAttribute("has-anchor") === "true";
             const counts = this.lists.map(list => list.totalItems());
             const answer = backend.setAnchor(this.docId, index, !anchored);
             this.markAnchorsFull(answer.full);

@@ -52,9 +52,6 @@
     --bg-table-header: bisque;
     --bg-row: #ffffff;
     --bg-row-stripe: #f0f0f0;
-    /* The rows the search found, in both tables: the row and the stripe a bit darker */
-    --bg-row-found: #ebebeb;
-    --bg-row-found-stripe: #ebebc4;
     /* Text selected in the cells of a log table (text-selection.js), on any row */
     --bg-text-selected: #b4d5fe;
     /* Selected rows of a log table: while the table is focused, while it isn't
@@ -66,8 +63,13 @@
     /* The anchor mark (table.css): its circle, the faint one on hover, the one
        of an anchor that can't be set (the limit) */
     --bg-anchor: #d6d6d6;
+    --anchor-border-color: #b0b0b0;
     --anchor-faint: #b0b0b0;
     --anchor-refused: #c75b5b;
+    /* The ring of a row the search found, in its anchor cell (table.css), and its outline */
+    --found-ring: #e08a1e;
+    --found-ring-edge: #d6d6d6;
+    --found-foreground: rgba(178, 20, 2, 0.16);
 
     /* Details Panel */
     --bg-details: #f5f5f5;
