@@ -39,8 +39,7 @@ Written in D with the [Sciter](https://sciter.com) UI framework.
 ## Building
 
 ```sh
-git lfs pull                      # the Sciter libraries of libs/
-node scripts/build.mjs            # debug build for this machine
+node scripts/build.mjs            # debug build for this machine (fetches its Sciter library from Git LFS)
 node scripts/run.mjs              # build and start
 node scripts/build.mjs test       # D and JS unit tests
 ```

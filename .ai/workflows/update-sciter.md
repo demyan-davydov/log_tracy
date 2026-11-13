@@ -1,8 +1,9 @@
 # Updating Sciter
 
 `libs/<system>/[<architecture>/]` holds the Sciter library of every platform, kept in Git LFS
-(`.gitattributes`: `libs/**/*.dylib|so|dll`); the version is in `libs/VERSION`. After a clone:
-`git lfs pull`.
+(`.gitattributes`: `libs/**/*.dylib|so|dll`); the version is in `libs/VERSION`. A clone fetches
+none of them (`.lfsconfig`); `scripts/build.mjs` fetches the one a build needs. To have all of
+them: `git lfs pull --include="libs/**" --exclude=`.
 
 1. Take the libraries of the new version from the Sciter.JS SDK's `bin/` for every system and
    architecture present in `libs/`. The SDK's `packfolder` is not taken.

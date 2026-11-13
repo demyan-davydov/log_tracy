@@ -1,0 +1,4 @@
+# The Sciter libraries of libs/ (Git LFS) are fetched by none of git's commands: scripts/build.mjs
+# fetches the one a build needs, on demand (`git lfs pull --include=<library> --exclude=`)
+[lfs]
+	fetchexclude = libs/**

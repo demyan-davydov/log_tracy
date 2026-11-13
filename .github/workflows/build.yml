@@ -22,8 +22,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # The Sciter libraries of libs/ are in Git LFS: only the one of this system is fetched,
-      # and cached by its LFS object, so a run downloads it only when it changes
+      # The Sciter libraries of libs/ are in Git LFS: scripts/build.mjs fetches only the one of
+      # this system, on the first build. Cached by its LFS object, so a run downloads it only
+      # when it changes
       - name: The LFS object of the Sciter library
         shell: bash
         run: git lfs ls-files --long --include="${{ matrix.sciter }}" | cut -d ' ' -f1 > .lfs-objects
@@ -31,8 +32,6 @@ jobs:
         with:
           path: .git/lfs
           key: lfs-${{ runner.os }}-${{ hashFiles('.lfs-objects') }}
-      - name: Fetch the Sciter library
-        run: git lfs pull --include="${{ matrix.sciter }}"
 
       - uses: dlang-community/setup-dlang@v2
         with:

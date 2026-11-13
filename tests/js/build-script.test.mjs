@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseCommand, dubArgs, distArch, infoPlist, desktopEntry, sciterLibrary, isLfsPointer,
+import { parseCommand, dubArgs, distArch, infoPlist, desktopEntry, sciterLibrary, isLfsPointer, lfsPullArgs,
     compilerArgs, genLogArgs, moduleTestArgs, commands, buildUsage, runUsage, dmgName, debName, debControl,
     makeDebRoot, signScript, dmgCommand } from "../../scripts/build.mjs";
 
@@ -140,6 +140,12 @@ test("a file Git LFS hasn't fetched is a pointer, a library is not", () => {
     assert.equal(isLfsPointer(Buffer.from([0xcf, 0xfa, 0xed, 0xfe, 7, 0, 0, 1])), false); // Mach-O
     assert.equal(isLfsPointer(Buffer.from("MZ\x90\0")), false);
     assert.equal(isLfsPointer(Buffer.alloc(0)), false);
+});
+
+test("only the Sciter library of the build is pulled, past the exclusion of .lfsconfig", () => {
+    // .lfsconfig excludes libs/ from every fetch: an --include alone fetches nothing
+    assert.deepEqual(lfsPullArgs("libs/linux/x64/libsciter.so"),
+        ["lfs", "pull", "--include=libs/linux/x64/libsciter.so", "--exclude="]);
 });
 
 test("the compiler arguments dub describes, separated by zeros, without the resource script", () => {

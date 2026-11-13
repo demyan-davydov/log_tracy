@@ -155,12 +155,19 @@ export function sciterLibrary(platform, arch) {
 }
 
 /// Whether these first bytes of a file are a pointer of Git LFS, left in place of a file it
-/// hasn't fetched (no `git lfs pull`, or git-lfs not installed when cloning).
+/// hasn't fetched: .lfsconfig excludes libs/ from fetching, or git-lfs wasn't installed.
 export function isLfsPointer(head) {
     return head.subarray(0, lfsPointerStart.length).equals(lfsPointerStart);
 }
 
 const lfsPointerStart = Buffer.from("version https://git-lfs");
+
+/// The arguments of git that fetch one file of Git LFS and put it in place of its pointer.
+/// .lfsconfig excludes libs/ from every fetch (a clone fetches no library) and an --include
+/// alone doesn't lift that: the empty --exclude does.
+export function lfsPullArgs(file) {
+    return ["lfs", "pull", `--include=${file}`, "--exclude="];
+}
 
 /// The compiler arguments of `dub describe --data-0` (each argument ends with a zero, a list
 /// with one more), without the resource script of Windows: ldc2 compiles D only.
@@ -367,22 +374,37 @@ function describe(data, dubBuildArgs) {
     return result.stdout.split(/\r?\n/).filter((line) => line !== "");
 }
 
-/// Stops with what to do when the Sciter library the build will copy is missing or is a
-/// pointer of Git LFS: the program would build and then fail to load it.
+/// Makes sure the Sciter library the build will copy is in libs/: a clone leaves pointers of
+/// Git LFS there (.lfsconfig), so only the library of this build is fetched, on the first
+/// build that needs it. Stops with what to do when it can't be: the program would build and
+/// then fail to load it.
 function checkSciterLibrary(arch) {
     if (!arches.includes(arch)) return; // no library for it: dub will tell
     const library = sciterLibrary(process.platform, arch);
+    if (readLibraryHead(library) !== "pointer") return;
+    if (briefLog === null) console.log(`Fetching ${library} from Git LFS`);
+    const failed = `${library} is a pointer of Git LFS, not the library, and fetching it failed: install git `
+        + `and git-lfs, run "git lfs install", then "git ${lfsPullArgs(library).join(" ")}" (docs/building.md).`;
+    let pulled;
+    try {
+        pulled = run("git", lfsPullArgs(library)).status === 0;
+    } catch (error) {
+        throw new BuildError(`${error.message}\n${failed}`); // no git on the PATH
+    }
+    if (!pulled || readLibraryHead(library) === "pointer") throw new BuildError(failed);
+}
+
+/// "pointer" when the file is a pointer of Git LFS, "library" otherwise; stops when it is missing.
+function readLibraryHead(library) {
     const head = Buffer.alloc(lfsPointerStart.length);
     let read = 0;
     try {
         const file = openSync(library, "r");
         try { read = readSync(file, head); } finally { closeSync(file); }
     } catch {
-        throw new BuildError(`No Sciter library ${library}: run "git lfs pull" (docs/building.md).`);
+        throw new BuildError(`No Sciter library ${library}: run "git checkout -- ${library}" and build again (docs/building.md).`);
     }
-    if (read === head.length && isLfsPointer(head))
-        throw new BuildError(`${library} is a pointer of Git LFS, not the library: install git-lfs `
-            + `and run "git lfs install" and "git lfs pull" (docs/building.md).`);
+    return read === head.length && isLfsPointer(head) ? "pointer" : "library";
 }
 
 /// Builds (`{ release, arch }`) and gives the folder of the program.

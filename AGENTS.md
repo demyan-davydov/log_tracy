@@ -61,8 +61,9 @@ node scripts/backtrace.mjs [pid]          # stacks of every thread of a running 
 
 - `dub.sdl` puts every build in `build/<platform>-<arch>-<build type>/` (`osx-aarch64-unittest`
   for `dub test`) and copies the Sciter library of `libs/` next to it (`copyFiles`): a build
-  runs from there, in a fresh worktree too. `libs/` is in Git LFS (`git lfs pull` after a
-  clone), its Sciter version in `libs/VERSION`; the app's version is `VERSION`.
+  runs from there, in a fresh worktree too. `libs/` is in Git LFS and a clone fetches none
+  of it (`.lfsconfig`): `scripts/build.mjs` fetches the one library a build needs, while a
+  plain `dub build` copies the pointer. The Sciter version is in `libs/VERSION`; the app's version is `VERSION`.
 - `test --module` compiles one module and what it imports with the flags of `dub.sdl`: the
   druntime runner has no filter and stops a module at its first failing `unittest`.
 - Keep the `-preview=in/dip1000/dtorfields` flags of `dub.sdl` when compiling by hand.

@@ -73,10 +73,12 @@ Run the commands below from a terminal that sees all of them (`ldc2 --version`,
 git clone <repository>
 cd <the folder of the clone>
 git lfs install    # once per machine
-git lfs pull       # the Sciter libraries; without it libs/ holds pointers, not libraries
 ```
 
-If you installed Git LFS after cloning, `git lfs pull` fetches what is missing.
+A clone fetches none of the Sciter libraries of `libs/` (`.lfsconfig`): there are five of them,
+one per system and architecture, 20 to 50 MB each. The first build fetches the one it needs
+(`node scripts/build.mjs` runs `git lfs pull --include=<library> --exclude=`), the others stay
+pointers. A plain `dub build` doesn't fetch it: run a build of the script once first.
 
 ## Commands
 
