@@ -69,7 +69,8 @@ node scripts/backtrace.mjs [pid]          # stacks of every thread of a running 
 - The files of `resources/` are built into the executable: a JS/CSS/HTML change needs a
   rebuild, a new file is added to `ui/app_resources`.
 - `settings.json` sits next to the executable and is rewritten on exit: every build folder has
-  its own. Run a copy of the binary from another folder to keep the developer's own settings.
+  its own. Only `dist` builds the installed program (dub's build type `dist`,
+  `version (Installed)`), which keeps it in the user's folder. Run a copy of the binary from another folder to keep the developer's own settings.
   A release build runs one copy per `settings.json`; debug builds run side by side.
 - The script's `console.log` goes to the app's stdout as `info [script]: ...` lines.
 

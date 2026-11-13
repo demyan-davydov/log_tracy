@@ -92,6 +92,11 @@ utils  ←  sciter  ←  ui
 
 - `settings.json` sits next to the executable and is rewritten on exit. Run a copy of the
   binary from another folder to keep the developer's own settings.
+- The distribution is another build type, `dist` (`dub.sdl`): a release with
+  `version (Installed)`, whose settings live in the user's folder (`settingsDir` of
+  `ui/app_settings`: `~/Library/Application Support/Log Tracy`, `%APPDATA%\Log Tracy`,
+  `$XDG_CONFIG_HOME/log_tracy`). Every build of our own, release included, keeps them next
+  to itself.
 - The settings are only marked changed: the next `onIdle()` writes them (`settingsDue`), with
   the script's `getAppState()` merged in. `saveAppState` on closing writes them at once; from
   then on the script is not called any more (its view is being torn down), and what changes

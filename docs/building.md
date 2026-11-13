@@ -107,6 +107,7 @@ Every build has its own folder, `build/<platform>-<architecture>-<type>/`: for e
 there as it is. Plain `dub build --compiler=ldc2` and `dub test --compiler=ldc2` do the same.
 
 The program keeps its settings (`settings.json`) next to itself, so every build has its own.
+Only a distribution keeps them in the user's folder (see "Distribution" below).
 
 The files of the interface (`resources/`) are built into the program: a change of HTML, CSS or
 JS needs a rebuild.
@@ -140,9 +141,19 @@ AI agents, whose context the whole output would fill, and for a quick look; the 
 
 ### Distribution
 
-`dist` makes a release build and puts a distribution in
+`dist` makes a release build of an installed program (dub's build type `dist`, in
+`build/<platform>-<arch>-dist/`) and puts a distribution in
 `build/dist/<macos|linux|windows>/`. The previous one is replaced only once the new one is
 complete. The version comes from the `VERSION` file.
+
+An installed program can't write next to itself, so a distribution keeps its settings in the
+user's folder, created on the first start:
+
+- **macOS**: `~/Library/Application Support/Log Tracy/`
+- **Linux**: `$XDG_CONFIG_HOME/log_tracy/`, by default `~/.config/log_tracy/`
+- **Windows**: `%APPDATA%\Log Tracy\`
+
+Every other build (debug, `--release`) keeps them next to itself, as above.
 
 - **macOS**: `LogTracy.app`, signed ad-hoc, and `sign.command` next to it. macOS won't start
   a downloaded program: it is quarantined, and an ad-hoc signature holds only on the machine

@@ -607,6 +607,18 @@ Windows (программа собирается с `/SUBSYSTEM:WINDOWS`: вид
 About). Подставлять из `VERSION`: в `.rc` через define или сгенерированный файл, в D через
 string import.
 
+## Инсталляторы: DMG и .deb
+
+Настройки установленной копии уже в папке пользователя (история `installed`, сборка `dist`).
+Дальше:
+- macOS: `.dmg` через `hdiutil create -srcfolder` (есть в системе): `LogTracy.app`, ссылка на
+  `/Applications`, `sign.command`. DMG не снимает карантин: без Developer ID и нотаризации
+  Gatekeeper по-прежнему не даст запустить скачанную программу, `sign.command` остаётся.
+- Linux: `.deb` через `dpkg-deb` (есть в Ubuntu и на CI): программа в `/opt/log_tracy`,
+  `.desktop` в `/usr/share/applications`, иконка. AppImage — если понадобится не-Debian.
+- Windows не планируется.
+- CI сохраняет инсталляторы как артефакты рядом с папками дистрибутивов.
+
 ## Universal binary для macOS
 
 `scripts/build.mjs dist` на маке собирает только под архитектуру машины (arm64). Universal: две

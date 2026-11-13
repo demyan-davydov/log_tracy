@@ -42,6 +42,11 @@ test("the dub calls: ldc2 always, the build type, the architecture as dub names 
         ["test", "--compiler=ldc2", "--arch=aarch64"]);
 });
 
+test("a distribution builds the installed program: dub's build type dist", () => {
+    assert.deepEqual(dubArgs("build", { release: true, installed: true, arch: null }),
+        ["build", "--compiler=ldc2", "--build=dist"]);
+});
+
 test("a distribution is for the architecture asked, else this machine's: no universal macOS one yet", () => {
     assert.equal(distArch(null, "arm64"), "arm64");
     assert.equal(distArch("x64", "arm64"), "x64");

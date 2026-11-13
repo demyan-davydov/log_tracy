@@ -86,7 +86,14 @@ int main()
 	{
 		SingleInstance instance;
 		try
-			instance = new SingleInstance(instanceLockPath());
+		{
+			import std.file : mkdirRecurse;
+			import std.path : dirName;
+
+			const lockPath = instanceLockPath();
+			mkdirRecurse(dirName(lockPath)); // the user's folder of an installed copy, on its first start
+			instance = new SingleInstance(lockPath);
+		}
 		catch (Exception e)
 			writeln("Can't check for a running copy: ", e.msg); // started anyway
 		scope (exit) if (instance) instance.release(); // also keeps it alive till the end

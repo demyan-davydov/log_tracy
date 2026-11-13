@@ -26,6 +26,13 @@ buildType "release" {
 	buildOptions "releaseMode" "optimize" "inline" "noBoundsCheck"
 }
 
+// Distribution (dist): the release of a program installed into the system, which keeps its
+// settings in the user's folder instead of next to itself (ui/app_settings, settingsDir)
+buildType "dist" {
+	buildOptions "releaseMode" "optimize" "inline" "noBoundsCheck"
+	versions "Installed"
+}
+
 // Windows resource file
 sourceFiles "resources/app.rc" platform="windows"
 lflags "/SUBSYSTEM:WINDOWS" "/ENTRY:mainCRTStartup" platform="windows"

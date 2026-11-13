@@ -33,7 +33,8 @@ Commands:
   test --module <file.d>
                   the unittests of one D module and of the modules it imports, without
                   dub (one that doesn't depend on Sciter): built into build/tools/
-  dist            a release distribution in build/dist/<macos|linux|windows>/
+  dist            a distribution in build/dist/<macos|linux|windows>/: the release of an
+                  installed program (build type dist), settings in the user's folder
   check-windows   compile the program and its unittests for Windows x64 from macOS or
                   Linux, without linking
   gen-log <file> [options]
@@ -44,7 +45,7 @@ Commands:
                   or bench_index.d (scripts/bench.mjs), see bench --help
 
 Options:
-  --release       a release build instead of debug (build; dist always is)
+  --release       a release build instead of debug (build; dist always is one)
   --arch x64|arm64
                   another architecture than this machine's (build, test, dist)
   --brief         only what failed: compile errors, failed tests with their places and the
@@ -127,9 +128,10 @@ export function parseCommand(argv) {
 }
 
 /// The arguments of dub for `build` or `test` (whose build type is always unittest).
-export function dubArgs(command, { release, arch }) {
+export function dubArgs(command, { release, installed, arch }) {
     const args = [command, "--compiler=ldc2"];
-    if (command === "build") args.push(`--build=${release ? "release" : "debug"}`);
+    // dist: the release of an installed program, settings in the user's folder (dub.sdl)
+    if (command === "build") args.push(`--build=${installed ? "dist" : release ? "release" : "debug"}`);
     if (arch) args.push(`--arch=${dubArchOf[arch]}`);
     return args;
 }
@@ -343,7 +345,7 @@ function languages() {
 
 function distMac(version, arch) {
     const name = "LogTracy";
-    const program = join(build({ release: true, arch }), "log_tracy");
+    const program = join(build({ release: true, installed: true, arch }), "log_tracy");
     return publish("macos", (staging) => {
         const bundle = `${name}.app`;
         makeMacBundle(join(staging, bundle), name, version, program);
@@ -396,7 +398,7 @@ function makeMacBundle(path, name, version, builtProgram) {
 }
 
 function distLinux(arch) {
-    const target = build({ release: true, arch });
+    const target = build({ release: true, installed: true, arch });
     const program = "log_tracy";
     const installDir = `/opt/${program}`;
     const dir = publish("linux", (staging) => {
@@ -410,7 +412,7 @@ function distLinux(arch) {
 }
 
 function distWindows(arch) {
-    const target = build({ release: true, arch });
+    const target = build({ release: true, installed: true, arch });
     // the icon is built into the program (resources/app.rc)
     return publish("windows", (staging) => {
         for (const file of ["log_tracy.exe", "sciter.dll"]) copyFileSync(join(target, file), join(staging, file));
