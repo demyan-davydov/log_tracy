@@ -162,6 +162,10 @@ export function isLfsPointer(head) {
 
 const lfsPointerStart = Buffer.from("version https://git-lfs");
 
+/// The arguments of node that run the JS tests: a pattern, node 22 takes no folder. spec, not
+/// node's default: before node 23 that is TAP when the output is no terminal (--brief).
+export const jsTestArgs = ["--test", "--test-reporter=spec", "tests/js/*.test.mjs"];
+
 /// The arguments of git that fetch one file of Git LFS and put it in place of its pointer.
 /// .lfsconfig excludes libs/ from every fetch (a clone fetches no library) and an --include
 /// alone doesn't lift that: the empty --exclude does.
@@ -170,9 +174,9 @@ export function lfsPullArgs(file) {
 }
 
 /// The compiler arguments of `dub describe --data-0` (each argument ends with a zero, a list
-/// with one more), without the resource script of Windows: ldc2 compiles D only.
+/// with one more), without the resources of Windows (app.res): ldc2 -c compiles D only.
 export function compilerArgs(described) {
-    return described.split("\0").filter((arg) => arg !== "" && !arg.endsWith(".rc"));
+    return described.split("\0").filter((arg) => arg !== "" && !arg.endsWith(".res"));
 }
 
 /// The Info.plist of the macOS bundle. macOS draws its own dialogs and items in the language
@@ -422,8 +426,7 @@ export function targetPath(options) {
 function test(options) {
     checkSciterLibrary(options.arch ?? process.arch);
     const dub = run("dub", dubArgs("test", options)).status === 0;
-    // spec, not node's default: before node 23 that is TAP when the output is no terminal (--brief)
-    const js = run(process.execPath, ["--test", "--test-reporter=spec", "tests/js"]).status === 0;
+    const js = run(process.execPath, jsTestArgs).status === 0;
     // the names of .ai/, AGENTS.md, CLAUDE.md and .claude/ the code no longer has
     const context = run(process.execPath, ["scripts/check-ai-context.mjs"]).status === 0;
     console.log(`D unittests: ${dub ? "OK" : "FAILED"}, JS tests: ${js ? "OK" : "FAILED"}, `
@@ -547,7 +550,7 @@ function makeDeb(path, { dist, version, arch }) {
 
 function distWindows(arch) {
     const target = build({ release: true, installed: true, arch });
-    // the icon is built into the program (resources/app.rc)
+    // the icon is built into the program (resources/app.rc, scripts/windows-res.mjs)
     return publish("windows", (staging) => {
         for (const file of ["log_tracy.exe", "sciter.dll"]) copyFileSync(join(target, file), join(staging, file));
     });

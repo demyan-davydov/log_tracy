@@ -33,7 +33,22 @@ buildType "dist" {
 	versions "Installed"
 }
 
-// Windows resource file
-sourceFiles "resources/app.rc" platform="windows"
-lflags "/SUBSYSTEM:WINDOWS" "/ENTRY:mainCRTStartup" platform="windows"
+// The icon of the program on Windows: ldc2 links a .res, not a .rc, so app.rc is compiled
+// into build/windows/app.res before every build (scripts/windows-res.mjs, rc.exe)
+preBuildCommands "node \"$PACKAGE_DIR/scripts/windows-res.mjs\"" platform="windows"
+sourceFiles "build/windows/app.res" platform="windows"
+
+// The program (dub build, the first configuration) and the library dub test builds its runner
+// of the unittests from. Only the program is a window application of Windows: the runner
+// keeps the console its output goes to
+configuration "application" {
+	targetType "executable"
+	// ldc2 makes wmain of D's main on Windows: a window application starts there, not at
+	// WinMain (the default of /SUBSYSTEM:WINDOWS) nor main (mainCRTStartup)
+	lflags "/SUBSYSTEM:WINDOWS" "/ENTRY:wmainCRTStartup" platform="windows"
+}
+configuration "library" {
+	targetType "library"
+	excludedSourceFiles "source/app.d" // the program's main: dub test brings its own
+}
 

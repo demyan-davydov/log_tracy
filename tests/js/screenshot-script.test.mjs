@@ -3,6 +3,7 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { resolve } from "node:path";
 import { parseShotArgs, absolutePaths, appEnv, mainWindow, programName, systemEnv, windowList,
     xdotoolIds, xdotoolWindow } from "../../scripts/screenshot.mjs";
 
@@ -35,9 +36,10 @@ test("a wrong option, a missing value, a bad wait or variable is an error", () =
 test("the paths given are taken from the folder the command was run in", () => {
     const options = absolutePaths(parseShotArgs(["--open", "a.dlt", "--open", "/l/b.log",
         "--settings", "s.json", "--out", "shots/x.png"]), "/work");
-    assert.deepEqual(options.open, ["/work/a.dlt", "/l/b.log"]);
-    assert.equal(options.settings, "/work/s.json");
-    assert.equal(options.out, "/work/shots/x.png");
+    // as the system builds a path: /work/a.dlt, D:\\work\\a.dlt on Windows
+    assert.deepEqual(options.open, [resolve("/work/a.dlt"), resolve("/l/b.log")]);
+    assert.equal(options.settings, resolve("/work/s.json"));
+    assert.equal(options.out, resolve("/work/shots/x.png"));
     const defaults = absolutePaths(parseShotArgs([]), "/work");
     assert.equal(defaults.settings, null);
     assert.equal(defaults.out, null, "the default is in build/ of the project, wherever run from");

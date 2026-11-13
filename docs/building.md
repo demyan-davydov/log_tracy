@@ -58,7 +58,9 @@ Not tried yet: tell what had to be done differently.
 
 1. [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/) with the
    "Desktop development with C++" workload: the linker, the Windows SDK and the resource
-   compiler for the icon (`resources/app.rc`).
+   compiler for the icon: before every build dub runs `scripts/windows-res.mjs`, which
+   compiles `resources/app.rc` into `build/windows/app.res` with `rc.exe` (the one on the
+   PATH, else that of the newest Windows SDK).
 2. LDC: the installer `ldc2-<version>-windows-multilib.exe` from the
    [LDC releases](https://github.com/ldc-developers/ldc/releases). It brings dub too.
 3. [Git for Windows](https://git-scm.com/download/win), which includes Git LFS.
@@ -116,7 +118,7 @@ JS needs a rebuild.
 
 ### Tests
 
-`test` runs the D unittests (`dub test`) and the JS tests (`node --test tests/js`), the second
+`test` runs the D unittests (`dub test`) and the JS tests (`node --test "tests/js/*.test.mjs"`), the second
 even when the first fail, and tells the result of both. The JS tests also check that the
 translation catalogs are up to date with the code (`node scripts/i18n-extract.mjs` updates
 them). Last, `scripts/check-ai-context.mjs` looks up what `.ai/`, `AGENTS.md`, `CLAUDE.md` and

@@ -49,7 +49,7 @@ node scripts/build.mjs dist              # release distribution in build/dist/<m
 node scripts/build.mjs check-windows     # from macOS/Linux: compiles app + unittests for Windows x64, no link
 node scripts/build.mjs --help            # the commands and options (run.mjs --help too)
 dub build --compiler=ldc2                # the same build without the script; dub test likewise
-node --test tests/js                     # JS unit tests only (pure modules such as resources/new-tab.js)
+node --test "tests/js/*.test.mjs"        # JS unit tests only (pure modules such as resources/new-tab.js)
 node scripts/i18n-extract.mjs            # brings the translation catalogs up to the texts of the code
 node scripts/screenshot.mjs --open <log> # the app's window with a log → build/screenshot.png (--help)
 node scripts/app.mjs start --open <log>  # a running debug copy to drive: eval, wait, shot, run, stop (--help)

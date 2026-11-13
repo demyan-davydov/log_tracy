@@ -16,7 +16,7 @@ Applies to every fix and feature, D and script alike.
 ## Running
 
 - All tests: `node scripts/build.mjs test` (D unittests, "N modules passed unittests", and
-  the JS tests). JS only: `node --test tests/js`.
+  the JS tests). JS only: `node --test "tests/js/*.test.mjs"` (node 22 takes no folder).
 - The druntime test runner has no filter, and it stops a module's tests at the first failing
   `unittest` block: when one module gets several new tests, check each of them separately.
 - One module that doesn't depend on Sciter: `node scripts/build.mjs test --module <file.d>`.

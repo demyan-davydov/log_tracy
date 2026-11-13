@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseCommand, dubArgs, distArch, infoPlist, desktopEntry, sciterLibrary, isLfsPointer, lfsPullArgs,
+import { parseCommand, dubArgs, distArch, infoPlist, desktopEntry, sciterLibrary, isLfsPointer, lfsPullArgs, jsTestArgs,
     compilerArgs, genLogArgs, moduleTestArgs, commands, buildUsage, runUsage, dmgName, debName, debControl,
     makeDebRoot, signScript, dmgCommand } from "../../scripts/build.mjs";
 
@@ -101,7 +101,9 @@ test("the control file of the .deb: the package, its version, Debian's architect
     assert.ok(control.endsWith("\n"), "dpkg-deb wants the last line ended");
 });
 
-test("the tree of the .deb: the program in /opt, the desktop entry in the system's applications", () => {
+// the modes of the files are Unix's, which Windows doesn't keep; a .deb is made on Linux only
+test("the tree of the .deb: the program in /opt, the desktop entry in the system's applications",
+    { skip: process.platform === "win32" && "no Unix file modes on Windows" }, () => {
     const dist = mkdtempSync(join(tmpdir(), "deb-dist-"));
     const root = mkdtempSync(join(tmpdir(), "deb-root-"));
     try {
@@ -148,9 +150,13 @@ test("only the Sciter library of the build is pulled, past the exclusion of .lfs
         ["lfs", "pull", "--include=libs/linux/x64/libsciter.so", "--exclude="]);
 });
 
-test("the compiler arguments dub describes, separated by zeros, without the resource script", () => {
+test("the JS tests are named by a pattern: node 22 takes no folder", () => {
+    assert.deepEqual(jsTestArgs, ["--test", "--test-reporter=spec", "tests/js/*.test.mjs"]);
+});
+
+test("the compiler arguments dub describes, separated by zeros, without the resources of Windows", () => {
     const described = "-I/p/source/\0-I/d/source/\0\0-J/p/resources/\0\0-preview=in\0-mtriple=x86_64-windows-msvc"
-        + "\0\0/p/source/app.d\0/p/resources/app.rc\0/p/source/ui/x.d";
+        + "\0\0/p/source/app.d\0/p/build/windows/app.res\0/p/source/ui/x.d";
     assert.deepEqual(compilerArgs(described), ["-I/p/source/", "-I/d/source/", "-J/p/resources/",
         "-preview=in", "-mtriple=x86_64-windows-msvc", "/p/source/app.d", "/p/source/ui/x.d"]);
 });
