@@ -100,6 +100,8 @@ jobs:
             echo "The tag $GITHUB_REF_NAME is not the version of VERSION, v$version"
             exit 1
           fi
-          ls -l installers
-          gh release create "$GITHUB_REF_NAME" installers/* --verify-tag \
+          # each artifact keeps its folder (macos/, linux/, windows/): the files, wherever they are
+          mapfile -t files < <(find installers -type f)
+          ls -l "${files[@]}"
+          gh release create "$GITHUB_REF_NAME" "${files[@]}" --verify-tag \
             --title "Log Tracy $version" --generate-notes
