@@ -51,7 +51,7 @@ function main() {
         process.exit(1);
     }
     mkdirSync(dirname(output), { recursive: true });
-    // in the folder of the .rc: the files it names (app.ico) are found there
+    // in the folder of the .rc: the files it names (icons/app.ico) are found from there
     const result = spawnSync(rc, rcArgs(input, output), { cwd: dirname(input), stdio: "inherit" });
     if (result.error) {
         console.error(`can't run ${rc}: ${result.error.message}`);

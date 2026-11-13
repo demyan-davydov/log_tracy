@@ -505,7 +505,7 @@ function makeMacBundle(path, name, version, builtProgram) {
     chmodSync(program, 0o755);
     // the library dub put next to the program: the one it was built and tested with
     copyFileSync(join(target, "libsciter.dylib"), join(contents, "MacOS", "libsciter.dylib"));
-    copyFileSync("resources/app.icns", join(contents, "Resources", "app.icns"));
+    copyFileSync("resources/icons/app.icns", join(contents, "Resources", "app.icns"));
     const tags = languages();
     for (const tag of tags) {
         mkdirSync(join(contents, "Resources", `${tag}.lproj`));
@@ -522,7 +522,7 @@ function distLinux(version, arch) {
     const dir = publish("linux", (staging) => {
         for (const file of [program, "libsciter.so"]) copyFileSync(join(target, file), join(staging, file));
         chmodSync(join(staging, program), 0o755);
-        copyFileSync("resources/app.png", join(staging, "app.png"));
+        copyFileSync("resources/icons/app.png", join(staging, "app.png"));
         writeFileSync(join(staging, `${program}.desktop`), desktopEntry({ installDir, program }));
         makeDeb(join(staging, debName({ version, arch })), { dist: staging, version, arch });
     });

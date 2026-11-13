@@ -175,6 +175,11 @@ Every other build (debug, `--release`) keeps them next to itself, as above.
   `.desktop` file into `~/.local/share/applications`.
 - **Windows**: `log_tracy.exe` and `sciter.dll`; the icon is built into the program.
 
+The icons of the three systems are made of the logo, `resources/icons/logo.png` (a square of
+1024 px), by `node scripts/make-icons.mjs` on macOS (`sips`, `iconutil`): `app.icns` for the
+bundle, `app.ico` for Windows (16 to 256 px), `app.png` for Linux and `png/icon-<size>.png`
+of every size from 16 to 1024. Run it after the logo changes and commit what it writes.
+
 ### A screenshot of the window
 
 `node scripts/screenshot.mjs --open <log>` builds the program, starts a copy of it in a

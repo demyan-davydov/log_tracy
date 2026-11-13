@@ -84,7 +84,8 @@ utils  ←  sciter  ←  ui
   the document events of the indexing thread were dispatched on the UI thread, never from
   inside an `xcall`.
 - The resources are built into the executable (`ui/app_resources`, string imports) and served
-  to Sciter at `this://app/<path>` (`SciterWindow.onLoadData`). The icons are not built in.
+  to Sciter at `this://app/<path>` (`SciterWindow.onLoadData`). The icons are not built in:
+  `resources/icons/`, made of its `logo.png` by `scripts/make-icons.mjs`, are taken by `dist`.
 - The script's `console.log` goes to the app's stdout as `info [script]: ...` lines (errors as
   `error [script]: ...`), next to the backend's `writeln`.
 

@@ -75,10 +75,11 @@ private enum string[] builtIn = [
     "window-state.js",
 ];
 
-/// The files of resources/ the interface doesn't use: the icons, taken by the bundle scripts and
-/// the Windows resource script
+/// The files of resources/ the interface doesn't use: the Windows resource script and every file
+/// of icons/ (the logo and the icons made of it by scripts/make-icons.mjs), taken by dist
 // debug-eval.js: evaluated by the debug channel (ui/debug_protocol), never served to the window
-private enum string[] notBuiltIn = ["app.icns", "app.ico", "app.png", "app.rc", "debug-eval.js"];
+private enum string[] notBuiltIn = ["app.rc", "debug-eval.js"];
+private enum notBuiltInFolder = "icons/";
 
 /// The file at `path` of resources/ ("main.htm", "i18n/i18n.js"), null if none is built in.
 immutable(ubyte)[] appResource(string path)
@@ -135,7 +136,7 @@ unittest
     auto onDisk = dirEntries("resources", SpanMode.depth)
         .filter!(e => e.isFile && !e.name.baseName.startsWith("."))
         .map!(e => e.name.replace("\\", "/")["resources/".length .. $])
-        .filter!(p => !notBuiltIn.canFind(p))
+        .filter!(p => !notBuiltIn.canFind(p) && !p.startsWith(notBuiltInFolder))
         .array.sort.array;
     const listed = builtIn.dup.sort.array;
     assert(onDisk == listed, "add to builtIn in ui/app_resources (or to notBuiltIn), or remove: "
@@ -150,7 +151,7 @@ unittest
     assert(appResource("main.htm") == cast(immutable(ubyte)[]) read("resources/main.htm"));
     assert(appResource("i18n/plural.js").length > 0);
     assert(appResource("no-such.js") is null);
-    assert(appResource("app.icns") is null, "the icons are not built in");
+    assert(appResource("icons/app.icns") is null, "the icons are not built in");
 }
 
 @("appResourceOfUrl: a file at this://app/, nothing at another address")
