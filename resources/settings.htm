@@ -124,6 +124,49 @@
         #btn-reset-columns { margin-left: *; }
         #btn-reset-columns:disabled { opacity: 0.4; cursor: default; }
 
+        /* The theme: two radio buttons, each a caption over a small log table
+           drawn in the colors of its theme (theme-*.css apply to a
+           .theme-sample[theme] too), at full size and scaled down */
+        #theme-choice { flow: horizontal; border-spacing: 16dip; }
+        button.theme-option {
+            flow: vertical; border-spacing: 6dip;
+            padding: 0; margin: 0;
+            background: none; border: none; box-shadow: none;
+            color: var(--text-main);
+            font-weight: normal;
+            cursor: pointer;
+        }
+        button.theme-option:hover, button.theme-option:active { background: none; }
+        .theme-caption { margin: 0 *; }
+        .theme-frame {
+            width: 160dip; height: 100dip;
+            overflow: hidden;
+            border: 2dip solid var(--border-color);
+            border-radius: 6dip;
+        }
+        button.theme-option:hover > .theme-frame { border-color: var(--text-label); }
+        button.theme-option:checked > .theme-frame { border-color: var(--btn-primary-bg); }
+        button.theme-option:focus > .theme-frame { outline: 2dip solid var(--border-focus) 1dip; }
+        .theme-sample {
+            /* twice the frame, shown at half */
+            width: 320dip; height: 200dip;
+            transform: scale(0.5);
+            transform-origin: 0 0;
+            flow: vertical;
+            background: var(--bg-table);
+            color: var(--text-main);
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 12dip;
+        }
+        .theme-sample .sample-row { flow: horizontal; white-space: nowrap; background: var(--bg-row); }
+        .theme-sample .sample-row:nth-child(odd) { background: var(--bg-row-stripe); }
+        .theme-sample .sample-row.selected { background: var(--bg-row-selected); color: var(--text-row-selected); }
+        .theme-sample .sample-row > * { padding: 2dip 4dip; border-right: 1dip solid var(--border-color); }
+        .theme-sample .sample-row > :nth-child(1) { width: 24dip; text-align: right; }
+        .theme-sample .sample-row > :nth-child(2) { width: 40dip; }
+        .theme-sample .sample-row > :nth-child(3) { width: 44dip; }
+        .theme-sample .sample-row > :last-child { width: *; border-right: none; }
+
         /* Cancel and Save on the right, as in dialogs of the system */
         footer > button#btn-cancel { margin-left: *; }
     </style>
@@ -339,16 +382,50 @@
             select.value = params.language || "";
         }
 
+        // The small log table of each theme of #theme-choice: a header, rows
+        // of each level, one of them selected
+        function renderThemeSamples() {
+            const rows = [
+                ["#", "AppId", "Level", "Payload"],
+                ["1", "NAV", "info", "route calculated in 42 ms"],
+                ["2", "HMI", "debug", "screen home shown"],
+                ["3", "NAV", "warn", "gps signal is weak"],
+                ["4", "AUD", "info", "volume set to 12"],
+                ["5", "SYS", "error", "watchdog timeout"],
+                ["6", "HMI", "info", "button pressed"],
+                ["7", "SYS", "fatal", "service crashed"],
+                ["8", "AUD", "debug", "stream opened"],
+                ["9", "NAV", "info", "position updated"],
+                ["10", "HMI", "info", "layout ready"],
+            ];
+            for (const sample of $$(".theme-sample")) {
+                rows.forEach(([index, app, level, payload], i) => {
+                    const row = document.createElement("div");
+                    row.className = i === 0 ? "sample-row column-header-row" : i === 3 ? "sample-row selected" : "sample-row";
+                    const levelClass = i === 0 ? "" : `level level-${level}`;
+                    for (const [text, cls] of [[index, ""], [app, ""], [level, levelClass], [payload, ""]]) {
+                        const cell = document.createElement("span");
+                        cell.textContent = text;
+                        cell.className = i === 0 ? "column-header" : cls;
+                        row.append(cell);
+                    }
+                    sample.append(row);
+                });
+            }
+        }
+
+        function selectedTheme() {
+            return $("button.theme-option[value=dark]").state.checked ? "dark" : "light";
+        }
+
         document.on("ready", () => {
             translateTree(document);
+            renderThemeSamples();
             platform.setDialogTitle(tr("Settings"));
             renderLanguages();
-            if (params.theme === "dark") {
-                applyTheme("dark");
-                $("select#theme").value = "dark";
-            } else {
-                $("select#theme").value = "light";
-            }
+            const theme = params.theme === "dark" ? "dark" : "light";
+            if (theme === "dark") applyTheme("dark");
+            $(`button.theme-option[value=${theme}]`).state.checked = true;
             renderFontSizes();
             applyTableFontSize();
             $("#single-line-rows").value = !!params.singleLineRows;
@@ -365,7 +442,7 @@
 
         $("#btn-save").on("click", () => {
             platform.closeDialog({
-                theme: $("select#theme").value,
+                theme: selectedTheme(),
                 language: $("select#language").value,
                 tableFontSize: parseInt($("select#table-font-size").value),
                 singleLineRows: !!$("#single-line-rows").value,
@@ -394,10 +471,16 @@
                 </div>
                 <div class="setting-group">
                     <label data-tr="Theme"></label>
-                    <select id="theme">
-                        <option value="light" data-tr="Light"></option>
-                        <option value="dark" data-tr="Dark"></option>
-                    </select>
+                    <div id="theme-choice">
+                        <button type="radio" name="theme" class="theme-option" value="light">
+                            <span class="theme-caption" data-tr="Light theme"></span>
+                            <div class="theme-frame"><div class="theme-sample" theme="light"></div></div>
+                        </button>
+                        <button type="radio" name="theme" class="theme-option" value="dark">
+                            <span class="theme-caption" data-tr="Dark theme"></span>
+                            <div class="theme-frame"><div class="theme-sample" theme="dark"></div></div>
+                        </button>
+                    </div>
                 </div>
             </div>
             <div class="section" id="table">

@@ -1,4 +1,7 @@
-:root {
+/* Also on a .theme-sample of Settings: a preview of the theme whatever the
+   theme of the page around it */
+:root,
+.theme-sample[theme="light"] {
     /* Main Layout */
     --bg-main: #fff;
     --text-main: #333;

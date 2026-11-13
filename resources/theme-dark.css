@@ -1,4 +1,5 @@
-:root[theme="dark"] {
+:root[theme="dark"],
+.theme-sample[theme="dark"] {
     /* Main Layout */
     --bg-main: #1e1e1e;
     --text-main: #d4d4d4;
