@@ -98,6 +98,9 @@ behaviour: `.ai/knowledge/sciter.md`.
   - The level colors the cells of columns with `ColumnInfo.byLevel` (an HTTP status shown as
     it is).
   - How a cell shows its value is `resources/cell-format.js`.
+  - The Index shows its thousands apart (`groupDigits`): empty `i.digit-gap` elements
+    between the digits, no character in the text, so the selection's offsets and the
+    copied text stay the plain number.
 - Text is selected across cells and rows by the table itself, not by Sciter (no `selectable`
   in a log table: Sciter can't select over a virtual-list): a plain drag selects text, a plain
   click selects the row, Shift/Cmd work on rows. The selection is positions (row, cell,

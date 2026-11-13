@@ -2,7 +2,7 @@ console.log("Loading virtual-dlt-view.js...");
 import { VirtualList, VirtualSelect } from "virtual-select.js";
 import * as backend from "backend.js";
 import * as platform from "platform.js";
-import { cellClass, cellTexts, columnClass, itemText, rowLayout, matchPieces } from "cell-format.js";
+import { cellClass, cellTexts, columnClass, itemText, rowLayout, matchPieces, groupDigits } from "cell-format.js";
 import { matchColorClass } from "match-colors.js";
 import { RowSelection, selectedText, autoScrollSpeed } from "row-selection.js";
 import { textRange, cellPart, rangeText, repaintRows, splitSelected, wordAt, wholeText, sameSelection, isDrag, cellHit }
@@ -24,14 +24,18 @@ function renderHeader(columns) {
 // The content of a cell showing `text`: what the search chips found in it
 // (`matches`, [[start, end, chip]], a Payload of a row the search found) in
 // the colors of the chips (`matchColors`, by their place in the query), and
-// its part the user selected (`part`, [from, to) of cellPart, null if none)
-function cellContent(text, matches, matchColors, part) {
+// its part the user selected (`part`, [from, to) of cellPart, null if none).
+// `grouped`: the thousands of a number apart (groupDigits), by empty elements
+// that add no character to the text.
+function cellContent(text, matches, matchColors, part, grouped = false) {
     // the cell after the columns may be no fragments if the columns of the
     // script and the backend differ for a moment: matchPieces checks it
     const found = Array.isArray(matches) && matches.length > 0;
-    if (!found && !part) return text;
+    if (!found && !part && !grouped) return text;
     const pieces = found ? matchPieces(text, matches) : [{ text, chip: null }];
-    return splitSelected(pieces, part).map(piece => {
+    const parts = splitSelected(pieces, part);
+    return (grouped ? groupDigits(parts) : parts).map(piece => {
+        if (piece.gap) return <i class={piece.selected ? "digit-gap text-selected" : "digit-gap"} />;
         const color = piece.chip === null ? undefined : matchColors[piece.chip];
         // no color known for the chip: plain text rather than another chip's color
         const classes = [color === undefined ? "" : `match ${matchColorClass(color)}`, piece.selected ? "text-selected" : ""]
@@ -176,10 +180,10 @@ export class VirtualDltTBody extends VirtualSelect {
     }
 
     // Drops the text selected keeping the elements of the rows: only the
-    // marks of its spans go
+    // marks of its spans and of the gaps of the Index go
     _unpaintTextSelection() {
         this._textSelection = null;
-        for (const span of this.$$("span.text-selected")) span.classList.remove("text-selected");
+        for (const piece of this.$$(".text-selected")) piece.classList.remove("text-selected");
     }
 
     // Nothing is selected or current any more: the view shows other rows now.
@@ -230,7 +234,7 @@ export class VirtualDltTBody extends VirtualSelect {
             has-anchor={item[rowLayout.anchored] ? "true" : "false"}
             rule-color={ruleColor ? "true" : "false"} style={ruleColor ? `--rule-color: ${ruleColor}` : ""}>
             <td class="anchor" msg-index={item[rowLayout.messageIndex]}></td>
-            <td class="aux">{cellContent(texts[0], null, null, part(0))}</td>
+            <td class="aux">{cellContent(texts[0], null, null, part(0), true)}</td>
             {columns.map((column, i) => renderCell(column, item[rowLayout.firstColumn + i], texts[i + 1],
                 item[rowLayout.level], item[rowLayout.matches(columns.length)], matchColors, part(i + 1)))}
         </tr>

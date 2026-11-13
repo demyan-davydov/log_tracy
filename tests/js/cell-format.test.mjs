@@ -2,7 +2,7 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { formatTime, formatDuration, levelName, cellClass, columnClass, rowText, cellText, cellTexts, itemText, matchPieces, rowLayout } from "../../resources/cell-format.js";
+import { formatTime, formatDuration, levelName, cellClass, columnClass, rowText, cellText, cellTexts, itemText, matchPieces, groupDigits, rowLayout } from "../../resources/cell-format.js";
 import { readFileSync } from "node:fs";
 
 // TimeKind values of the backend (log_core/log_message)
@@ -148,4 +148,30 @@ test("a row the search found keeps the white and grey of the rows", () => {
     assert.doesNotMatch(resource("table.css"), /--bg-row-found/);
     for (const theme of ["theme-light.css", "theme-dark.css"])
         assert.doesNotMatch(resource(theme), /--bg-row-found/, theme);
+});
+
+// The pieces of a cell (splitSelected) as text with "|" for each gap, "^" for
+// a gap inside the selection
+const shown = pieces => pieces.map(p => p.gap ? (p.selected ? "^" : "|") : p.selected ? `[${p.text}]` : p.text).join("");
+
+test("groupDigits: a gap between the thousands of a number, counted from its end", () => {
+    assert.equal(shown(groupDigits([{ text: "1234567" }])), "1|234|567");
+    assert.equal(shown(groupDigits([{ text: "123456" }])), "123|456");
+    assert.equal(shown(groupDigits([{ text: "1000" }])), "1|000");
+});
+
+test("groupDigits: a number of 3 digits or fewer, or not a number, stays as it is", () => {
+    for (const text of ["999", "0", "", "12a456", "-1234", "1 234"])
+        assert.equal(shown(groupDigits([{ text }])), text);
+});
+
+test("groupDigits: the gaps fall inside and between the pieces of a selection, the text is kept", () => {
+    const pieces = groupDigits([{ text: "12", selected: false }, { text: "345", selected: true }, { text: "67", selected: false }]);
+    assert.equal(shown(pieces), "1|2[34]^[5]67");
+    assert.equal(pieces.filter(p => !p.gap).map(p => p.text).join(""), "1234567");
+});
+
+test("groupDigits: a gap at the border of two pieces goes before the second, selected if both are", () => {
+    assert.equal(shown(groupDigits([{ text: "1" }, { text: "234", selected: true }])), "1|[234]");
+    assert.equal(shown(groupDigits([{ text: "1", selected: true }, { text: "234", selected: true }])), "[1]^[234]");
 });

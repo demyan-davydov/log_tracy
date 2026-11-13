@@ -168,6 +168,18 @@
     text-align: right;
 }
 
+/* The gap between the thousands of the Index (groupDigits in cell-format.js):
+   an empty element, so the selected and the copied text stay the number */
+.log-table>tbody>tr>td>i.digit-gap {
+    display: inline-block; /* an inline one, empty, has no width */
+    width: 0.35em;
+    /* the height of the digits' line, from its top: a selected gap is painted
+       as the digits around it (empty, it has none; at the baseline it hangs
+       below them) */
+    height: 1.15em;
+    vertical-align: top;
+}
+
 .log-table>tbody>tr {
     -user-select: none;
 }
@@ -351,8 +363,10 @@ popup.notice.right {
 }
 
 /* Text the user selected across the cells and rows (text-selection.js, see
-   cellContent): over the match colors too; the text of the theme, as above */
-.log-table td>span.text-selected {
+   cellContent): over the match colors too; the text of the theme, as above.
+   A gap of the Index between selected digits too (i.digit-gap) */
+.log-table td>span.text-selected,
+.log-table td>i.text-selected {
     background-color: var(--bg-text-selected);
     color: var(--text-main);
 }

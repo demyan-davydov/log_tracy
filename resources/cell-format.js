@@ -124,3 +124,32 @@ export function columnClass(column) {
     const classes = `col-${column.id} col-${column.format}-${column.id}`;
     return column.kind === "Payload" ? `${classes} payload` : classes;
 }
+
+// The pieces of a cell's text (splitSelected in text-selection.js) with a gap
+// ({ gap: true }) between the thousands of a number of 4 digits or more,
+// counted from its end: drawn as an empty element, it adds no character, so
+// the selection's offsets and the copied text (cellTexts) stay the number. A
+// gap between two selected digits is selected too (painted with them).
+// Pieces of any other text are returned as they are.
+export function groupDigits(pieces) {
+    const text = pieces.map(p => p.text).join("");
+    if (text.length < 4 || !/^[0-9]+$/.test(text)) return pieces;
+    const result = [];
+    let at = 0, before = null; // the piece before this one
+    for (const piece of pieces) {
+        let from = 0;
+        for (let i = 0; i < piece.text.length; i++) {
+            const position = at + i;
+            if (position > 0 && (text.length - position) % 3 === 0) {
+                if (i > from) result.push({ ...piece, text: piece.text.slice(from, i) });
+                const selected = !!piece.selected && (i > 0 || !!before?.selected);
+                result.push({ gap: true, selected });
+                from = i;
+            }
+        }
+        before = piece;
+        result.push({ ...piece, text: piece.text.slice(from) });
+        at += piece.text.length;
+    }
+    return result;
+}

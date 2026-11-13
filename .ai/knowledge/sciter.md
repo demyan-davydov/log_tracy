@@ -240,6 +240,10 @@ agent can't drive it. In scapp a plain
 - No `contrast-color()` and no CSS function of one's own: `morph()` only shifts a color. A
   text on a color set by the script takes its color from the script too (`contrastText`
   of `resources/rule-colors.js`, the chips of the Filters page).
+- An empty element as a space in a line of text (the gaps of the Index): `display: inline`
+  takes no width, padding or not; `inline-block` takes it but has no height (a background
+  unseen) and with a height sits on the baseline, hanging below the text and growing the
+  line: `height: 1.15em; vertical-align: top` lines it up with the text.
 - `overflow: hidden` clips at the content box, not the padding box: a padding doesn't make
   room for an absolute child sticking out (the buttons of a filter chip).
 - To diagnose a layout bug, compare `el.state.box("xywh","border","parent")` between a working
