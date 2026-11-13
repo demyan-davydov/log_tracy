@@ -415,7 +415,10 @@ version (unittest)
 {
     import utils.event_bus.event_bus_async : EventBusAsync;
 
-    // A document whose events the test publishes, counting its destructions
+    // A document whose events the test publishes, counting its destructions. One given
+    // `destroyed` (a local of the test) must be destroyed before the test returns: left to
+    // the GC, its destructor writes into a stack frame that is someone else's by then (it
+    // spoiled a return address and crashed the unittests at exit, on Windows)
     private class EventSourceDocument : NullDocument
     {
         EventBusAsync bus;
@@ -527,6 +530,8 @@ unittest
     store.dispatchEvents(); // doc2, destroyed by then, must not be called
 
     assert(destroyed == 1 && store.isOpen(id1) && !store.isOpen(id2));
+    store.closeAll(); // doc1 too, while `destroyed` lives
+    assert(destroyed == 2);
 }
 
 @("DocumentStore.closeAll closes every document, however many hold it")
