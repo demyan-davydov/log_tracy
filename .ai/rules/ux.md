@@ -127,11 +127,10 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
 27. **Rule colors mark, they don't paint.** A record matching a filter rule with a color is not
     painted whole: only its Index cell shows the color, a gradient from the left edge fading
     out at about a third of the cell; the row's own background (stripes, selection) stays.
-    The white and grey stripes are the look of every row in both tables: a row the
-    search found keeps them and has a ring in its anchor cell, centred on the anchor's circle
-    and a bit larger than it: an orange border (`--found-ring`, in dip) with an outline of a
-    contrast color around it (`--found-ring-edge`), seen on any row and on a rule color. Every found row of the search table has it, the found ones
-    only in the main table. Its matches are in the colors of their chips.
+    The white and grey stripes are the look of every row in both tables: a row the search
+    found keeps them, and the text of a found row keeps its contrast (no layer over it). For
+    now a found row has no mark of its own, only its matches in the colors of their chips; a
+    mark is being chosen (`docs/backlog.md`).
 28. **The other table follows the selected row.** A row selected in the main or the search
     table is shown in the other one if it has that message: selected there, scrolled only if
     not already on screen (near the top then; the far part of the way is jumped over, the last

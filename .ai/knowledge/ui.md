@@ -88,9 +88,9 @@ behaviour: `.ai/knowledge/sciter.md`.
   what the chips of the search found in the payload, `[[start, end, chip]]` in UTF-16 units,
   shown in the chips' match colors in both tables; null for a row the search didn't find.
   - Found: the current search found the record (`DocumentItem.found`; an anchor the search
-    doesn't match is listed in the results but not found); both tables draw a ring in its
-    anchor cell by it (`row-found` in `table.css`); the main view looks the record up in the
-    search index.
+    doesn't match is listed in the results but not found); the row gets `row-found` by it,
+    its matches are shown in the chips' colors (how a found row itself is marked: see
+    `.ai/rules/ux.md`, rule 27); the main view looks the record up in the search index.
   - The rule id: see `.ai/knowledge/filters.md`.
   - A time cell is `[microseconds, TimeKind]`: shown by the kind of the record, not of the
     column.

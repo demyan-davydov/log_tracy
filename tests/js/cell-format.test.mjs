@@ -140,16 +140,12 @@ test("columnClass: Payload is marked by its kind, whatever its id", () => {
     assert.equal(columnClass({ format: "dlt", id: "app", kind: "Text" }), "col-app col-dlt-app");
 });
 
-test("a row the search found keeps the white and grey of the rows and has a ring in its anchor cell", () => {
+test("a row the search found keeps the white and grey of the rows", () => {
     // The stripes are the look of every row in both tables: a background of the
-    // found rows mixed with them. What the search found is a ring around the
-    // anchor's place (and the matches in the colors of their chips).
+    // found rows mixed with them (what the search found is marked over the row,
+    // and its matches are in the colors of their chips)
     const resource = name => readFileSync(new URL(`../../resources/${name}`, import.meta.url), "utf8");
-    const css = resource("table.css");
-    assert.doesNotMatch(css, /--bg-row-found/);
-    assert.match(css, /tr\[row-found="true"\]\s*>\s*td\.anchor:after\s*\{[^}]*border-color:\s*var\(--found-ring\)/);
-    for (const theme of ["theme-light.css", "theme-dark.css"]) {
+    assert.doesNotMatch(resource("table.css"), /--bg-row-found/);
+    for (const theme of ["theme-light.css", "theme-dark.css"])
         assert.doesNotMatch(resource(theme), /--bg-row-found/, theme);
-        assert.match(resource(theme), /--found-ring:/, theme);
-    }
 });

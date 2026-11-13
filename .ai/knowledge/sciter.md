@@ -180,7 +180,14 @@ agent can't drive it. In scapp a plain
   at the left. Vertical `*` margins take all the free height: a block after it (an `:after`)
   goes down to the bottom of the cell.
 - `outline` follows `border-radius`: a ring with a contrast around it is a round block with
-  a `border` and an `outline` (the found ring, `td.anchor:after` in `table.css`).
+  a `border` and an `outline` (tried for the found rows on `td.anchor:after`).
+- Foreground layers (6.0.5.5, tried on the log rows): `foreground-color` with alpha is drawn
+  over the background and the text of a `tr`, so it tints the letters too. `foreground-blend-mode`
+  is ignored (`multiply`, `screen`, `darken`, `lighten`: the layer is drawn opaque, hiding the
+  text). A `foreground-image` (an `icon()` or a gradient) on a `tr` is not drawn at all; on a
+  `td` an `icon()` is drawn as a small square, not stretched by `foreground-size: 100% 100%`.
+  To tint a row and keep its text: a translucent `background-color` on its cells, drawn over
+  the background of the row (its stripe shows through) and under the text.
 - `:empty` is not re-evaluated when a script changes `innerText`: set `style.display` from the
   script instead.
 - `position: absolute` offsets are relative to the padding box (inside the border); calibrate
