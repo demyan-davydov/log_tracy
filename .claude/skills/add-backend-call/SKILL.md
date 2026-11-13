@@ -1,6 +1,6 @@
 ---
 name: add-backend-call
-description: Add a call from the script of DLT Explorer to the D backend (AppSession method, MainWindow xcall case, backend.js function, tests), or a new file to resources/. Use when a script feature needs data or an action of the backend.
+description: Add a call from the script of Log Tracy to the D backend (AppSession method, MainWindow xcall case, backend.js function, tests), or a new file to resources/. Use when a script feature needs data or an action of the backend.
 argument-hint: "<what the script needs from the backend>"
 ---
 

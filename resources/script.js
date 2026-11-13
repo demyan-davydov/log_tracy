@@ -71,7 +71,7 @@ let win = initialWindow;
 let renderedPlaceholder = null;
 
 document.on("ready", function () {
-    console.log("Starting DLT Explorer UI...");
+    console.log("Starting Log Tracy UI...");
     initApp();
 });
 

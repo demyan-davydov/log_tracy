@@ -54,18 +54,18 @@ test("a machine of an architecture not known is told to name one", () => {
 });
 
 test("the Info.plist names the version and the languages", () => {
-    const plist = infoPlist({ name: "DltExplorer", version: "1.2.3", languages: ["en", "ru"] });
+    const plist = infoPlist({ name: "LogTracy", version: "1.2.3", languages: ["en", "ru"] });
     assert.match(plist, /<key>CFBundleShortVersionString<\/key>\s*<string>1\.2\.3<\/string>/);
     assert.match(plist, /<key>CFBundleVersion<\/key>\s*<string>1\.2\.3<\/string>/);
-    assert.match(plist, /<key>CFBundleExecutable<\/key>\s*<string>DltExplorer<\/string>/);
+    assert.match(plist, /<key>CFBundleExecutable<\/key>\s*<string>LogTracy<\/string>/);
     assert.match(plist, /<array>\s*<string>en<\/string>\s*<string>ru<\/string>\s*<\/array>/);
 });
 
 test("the desktop entry starts the program where it is installed", () => {
-    const entry = desktopEntry({ installDir: "/opt/dlt_explorer", program: "dlt_explorer" });
+    const entry = desktopEntry({ installDir: "/opt/log_tracy", program: "log_tracy" });
     assert.match(entry, /^\[Desktop Entry\]$/m);
-    assert.match(entry, /^Exec=\/opt\/dlt_explorer\/dlt_explorer$/m);
-    assert.match(entry, /^Icon=\/opt\/dlt_explorer\/app\.png$/m);
+    assert.match(entry, /^Exec=\/opt\/log_tracy\/log_tracy$/m);
+    assert.match(entry, /^Icon=\/opt\/log_tracy\/app\.png$/m);
 });
 
 test("the Sciter library of a system and an architecture", () => {

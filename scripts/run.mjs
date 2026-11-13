@@ -1,4 +1,4 @@
-// Builds DLT Explorer as scripts/build.mjs does and starts it from its build folder: its
+// Builds Log Tracy as scripts/build.mjs does and starts it from its build folder: its
 // output (the script's console.log too) goes to this terminal, its exit code is this one's.
 // The options: `node scripts/run.mjs --help` (runUsage in build.mjs).
 import { spawnSync } from "node:child_process";
@@ -23,7 +23,7 @@ try {
         brief = true;
     }
     const program = join(build({ release, arch }),
-        process.platform === "win32" ? "dlt_explorer.exe" : "dlt_explorer");
+        process.platform === "win32" ? "log_tracy.exe" : "log_tracy");
     console.log(`> ${program}`);
     const result = spawnSync(program, [], { stdio: "inherit" });
     if (result.error) throw new BuildError(`can't start ${program}: ${result.error.message}`);

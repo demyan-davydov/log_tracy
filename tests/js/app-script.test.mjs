@@ -85,7 +85,7 @@ test("a wrong step names its line", () => {
 });
 
 test("the port is read from the app's output, null until it listens", () => {
-    assert.equal(listeningPort("DLT Explorer starting...\n"), null);
+    assert.equal(listeningPort("Log Tracy starting...\n"), null);
     assert.equal(listeningPort("a\nDebug channel: listening on 127.0.0.1:51234\nb"), 51234);
 });
 

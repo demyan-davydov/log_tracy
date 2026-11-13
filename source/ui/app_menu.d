@@ -203,7 +203,7 @@ MenuItem[] appMenu(MenuPlatform platform, scope Translate tr) pure @safe
     {
     case MenuPlatform.mac:
         return [
-            submenu("DLT Explorer", [
+            submenu("Log Tracy", [
                 settings, separator(), command(MenuCommand.quit, tr("Quit"), primary("Q")),
             ], MenuRole.app),
             submenu(tr("&File"), [openFile]),
@@ -650,7 +650,7 @@ unittest
     assert(bar[0].items[0].label == "Открыть файл..." && bar[0].items[0].mnemonic == 0);
     assert(bar[0].items[$ - 1].label == "Выход" && bar[0].items[$ - 1].mnemonic == 1);
     assert(bar[0].items[2].label == "Settings...", "a text not translated stays english");
-    assert(appMenu(MenuPlatform.mac, &russian)[0].label == "DLT Explorer", "the name of the application is no text to translate");
+    assert(appMenu(MenuPlatform.mac, &russian)[0].label == "Log Tracy", "the name of the application is no text to translate");
 }
 
 @("windowMenuJson: the menu translated")

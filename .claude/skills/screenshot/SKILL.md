@@ -1,6 +1,6 @@
 ---
 name: screenshot
-description: Take a screenshot of the DLT Explorer window (macOS, Windows, Linux on X11) with a log open (scripts/screenshot.mjs) and look at it. Use when the user asks to see the app or to check how a change looks; not for simple CSS tweaks the user checks themselves.
+description: Take a screenshot of the Log Tracy window (macOS, Windows, Linux on X11) with a log open (scripts/screenshot.mjs) and look at it. Use when the user asks to see the app or to check how a change looks; not for simple CSS tweaks the user checks themselves.
 argument-hint: "[log path] [what to look at; --settings, --env options]"
 ---
 

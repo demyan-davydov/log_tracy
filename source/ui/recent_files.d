@@ -496,10 +496,10 @@ unittest
 /// The placeholder gets every recent file with a mark whether it still exists
 unittest
 {
-    const existing = buildPath(tempDir(), "dlt_explorer_recent_existing_test.dlt");
+    const existing = buildPath(tempDir(), "log_tracy_recent_existing_test.dlt");
     std.file.write(existing, "");
     scope (exit) remove(existing);
-    const missing = buildPath(tempDir(), "dlt_explorer_recent_missing_test.dlt");
+    const missing = buildPath(tempDir(), "log_tracy_recent_missing_test.dlt");
 
     auto j = parseJSON(recentFilesJson(recentList(existing, missing)));
     assert(j.array.length == 2);

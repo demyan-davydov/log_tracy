@@ -1,6 +1,6 @@
 ---
 name: update-sciter
-description: Update the Sciter libraries of DLT Explorer in libs/ (Git LFS) to a new version, with libs/VERSION, the C API check and the behaviour checks. Use when the user asks to update or try another Sciter version.
+description: Update the Sciter libraries of Log Tracy in libs/ (Git LFS) to a new version, with libs/VERSION, the C API check and the behaviour checks. Use when the user asks to update or try another Sciter version.
 argument-hint: "<version> [path to the Sciter.JS SDK]"
 disable-model-invocation: true
 ---

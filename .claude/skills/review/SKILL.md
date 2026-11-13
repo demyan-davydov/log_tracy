@@ -1,6 +1,6 @@
 ---
 name: review
-description: Review the current change of DLT Explorer by lenses (rules, architecture, performance and threads, UX), each in its own reviewer agent, chosen by the files the change touches, and join their reports. Use when the user asks to review a change against the project, or before a merge of a feature branch. Complements /code-review (bugs), doesn't replace it.
+description: Review the current change of Log Tracy by lenses (rules, architecture, performance and threads, UX), each in its own reviewer agent, chosen by the files the change touches, and join their reports. Use when the user asks to review a change against the project, or before a merge of a feature branch. Complements /code-review (bugs), doesn't replace it.
 argument-hint: "[lens names: rules, architecture, performance, ux] [range, commit, paths or a plan file; default: the branch against master plus uncommitted changes]"
 ---
 

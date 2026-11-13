@@ -1,9 +1,9 @@
-//! The filter files of DLT Explorer: a filter set (log_core/rule_filter) as
+//! The filter files of Log Tracy: a filter set (log_core/rule_filter) as
 //! JSON, the same for every log format, since the rules refer to the columns
 //! of the format by id. The settings keep the sets of a log the same way.
 //!
 //!   {
-//!     "type": "dlt-explorer-filter", "version": 1,
+//!     "type": "log-tracy-filter", "version": 1,
 //!     "logFormat": "logcat",            // FormatInfo.id the rules were made for
 //!     "name": "Crashes",
 //!     "rules": [{
@@ -30,7 +30,7 @@ import log_core.rule_filter;
 import std.json : JSONValue;
 import utils.ui_text : uiText, UiTextException;
 
-enum string filterFileType = "dlt-explorer-filter";
+enum string filterFileType = "log-tracy-filter";
 enum int filterFileVersion = 1;
 enum string filterFileExtension = ".logfilter";
 
@@ -224,10 +224,10 @@ FilterFile parseFilterFile(string content)
     const json = parseJSON(content); // throws JSONException
     if (json.type != JSONType.object || "type" !in json.object
         || json["type"].type != JSONType.string || json["type"].str != filterFileType)
-        throw new UiTextException(uiText("not a filter file of DLT Explorer"));
+        throw new UiTextException(uiText("not a filter file of Log Tracy"));
     const version_ = "version" in json.object ? json["version"].integer : 0;
     if (version_ > filterFileVersion)
-        throw new UiTextException(uiText("made by a later version of DLT Explorer (version {version})",
+        throw new UiTextException(uiText("made by a later version of Log Tracy (version {version})",
             "version", version_));
 
     FilterFile file;
@@ -306,7 +306,7 @@ unittest
     import std.algorithm.searching : canFind;
 
     const json = filterFileJson(sample(), "logcat");
-    assert(json.canFind(`"type": "dlt-explorer-filter"`) || json.canFind(`"type":"dlt-explorer-filter"`));
+    assert(json.canFind(`"type": "log-tracy-filter"`) || json.canFind(`"type":"log-tracy-filter"`));
     assert(json.canFind(`"min": "fatal"`) || json.canFind(`"min":"fatal"`));
     assert(json.canFind(`"exclude"`) && json.canFind(`"contains"`) && json.canFind(`"range"`));
 }
@@ -334,7 +334,7 @@ unittest
 @("parseFilterFile: hex as text, missing fields take the defaults")
 unittest
 {
-    auto file = parseFilterFile(`{"type": "dlt-explorer-filter", "version": 1, "name": "x", "rules": [
+    auto file = parseFilterFile(`{"type": "log-tracy-filter", "version": 1, "name": "x", "rules": [
         {"conditions": [{"column": "id", "check": "equals", "value": "0x1F"},
                         {"column": "level", "check": "range", "min": "warn", "max": "verbose"}]}]}`);
     assert(file.logFormat == "");
@@ -342,7 +342,7 @@ unittest
     assert(rule.kind == RuleKind.Include && rule.enabled && rule.name == "");
     assert(rule.conditions[0].text == "0x1F", "a number column takes it as text");
     assert(rule.conditions[1].min == LogLevel.Warn && rule.conditions[1].max == LogLevel.Verbose);
-    auto range = parseFilterFile(`{"type": "dlt-explorer-filter", "version": 1, "rules": [
+    auto range = parseFilterFile(`{"type": "log-tracy-filter", "version": 1, "rules": [
         {"conditions": [{"column": "id", "check": "range", "min": "0x10", "max": 32}]}]}`).set.rules[0];
     assert(range.conditions[0].min == 0x10 && range.conditions[0].max == 32);
 }
@@ -354,9 +354,9 @@ unittest
 
     assertThrown(parseFilterFile("not json"));
     assertThrown(parseFilterFile(`{"type": "something else", "version": 1, "rules": []}`));
-    assertThrown(parseFilterFile(`{"type": "dlt-explorer-filter", "version": 2, "rules": []}`));
-    assertThrown(parseFilterFile(`{"type": "dlt-explorer-filter", "version": 1,
+    assertThrown(parseFilterFile(`{"type": "log-tracy-filter", "version": 2, "rules": []}`));
+    assertThrown(parseFilterFile(`{"type": "log-tracy-filter", "version": 1,
         "rules": [{"conditions": [{"column": "x", "check": "nope", "value": "a"}]}]}`));
-    assertThrown(parseFilterFile(`{"type": "dlt-explorer-filter", "version": 1,
+    assertThrown(parseFilterFile(`{"type": "log-tracy-filter", "version": 1,
         "rules": [{"kind": "sometimes"}]}`));
 }

@@ -1533,7 +1533,7 @@ unittest
     import std.file : remove, tempDir, write;
     import std.path : buildPath;
 
-    const path = buildPath(tempDir(), "dlt_explorer_session_test.log");
+    const path = buildPath(tempDir(), "log_tracy_session_test.log");
     write(path, "first line\nsecond line\n");
     scope (exit) remove(path);
 
@@ -1562,7 +1562,7 @@ unittest
     import std.path : buildPath;
     import domain.log_document : LogDocument;
 
-    const path = buildPath(tempDir(), "dlt_explorer_session_matches.log");
+    const path = buildPath(tempDir(), "log_tracy_session_matches.log");
     // Many lines after the three, so that a search can be cancelled before it ends
     write(path, "a timeout here\nnothing\nanother timeout\n" ~ "filler\n".replicate(500_000));
     scope (exit) remove(path);

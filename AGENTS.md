@@ -3,7 +3,7 @@
 This file provides guidance to coding agents (Claude Code, Codex and others) when working with
 code in this repository. `CLAUDE.md` only imports it, so Claude Code loads it into every session.
 
-DLT Explorer: a desktop viewer for DLT and text logs (macOS, Linux, Windows), written in D with
+Log Tracy: a desktop viewer for DLT and text logs (macOS, Linux, Windows), written in D with
 the Sciter UI framework through its own minimal binding (`source/sciter`: the C API in
 `sciter/capi`, the D wrapper over it). The UI is vanilla HTML/CSS/JS in `resources/`, not
 Reactor style. Files can be ~1 GB: nothing loads a whole log into memory.
@@ -39,7 +39,7 @@ Build and test with **ldc2** (`--compiler=ldc2`); the scripts assume it too. One
 every system, `scripts/build.mjs` (for people: `docs/building.md`):
 
 ```sh
-node scripts/build.mjs                   # debug for this machine → build/osx-aarch64-debug/dlt_explorer
+node scripts/build.mjs                   # debug for this machine → build/osx-aarch64-debug/log_tracy
 node scripts/build.mjs --release         # release; --arch x64|arm64 for another architecture
 node scripts/run.mjs                     # builds as above (same options) and starts the app, its stdout here
 node scripts/build.mjs test              # D unittests ("N modules passed unittests"), JS tests, stale names of .ai/

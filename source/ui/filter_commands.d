@@ -1,7 +1,7 @@
 //! The filters of the main view of a document, apart from the window so they
 //! can be tested: the filter sets of the log, the commands that change them
 //! and their state for the filter panel. A set is a copy: a loaded file (a
-//! filter file of DLT Explorer, or a .dlf of dlt-viewer for a DLT log) is
+//! filter file of Log Tracy, or a .dlf of dlt-viewer for a DLT log) is
 //! copied, edited in place, remembered in the settings of the log and can be
 //! exported to either kind of file; no file is referred to, so a file loaded
 //! for two logs doesn't tie them together.
@@ -65,7 +65,7 @@ final class DocumentFilters
     }
 
     //! @brief Appends a copy of the rules of a file and filters the view with
-    //! them: a .dlf (DLT logs only) or a filter file of DLT Explorer (any log;
+    //! them: a .dlf (DLT logs only) or a filter file of Log Tracy (any log;
     //! one made for another format is taken, with a note)
     UiText loadFile(string path)
     {
@@ -123,7 +123,7 @@ final class DocumentFilters
 
     //! @brief Writes a set to a file, with the switches of its rules (all off
     //! if the set is): a .dlf (DLT logs only; what it can't hold is dropped
-    //! and named) or a filter file of DLT Explorer. The set remembers the file.
+    //! and named) or a filter file of Log Tracy. The set remembers the file.
     UiText exportSet(size_t set, string path)
     {
         import std.file : write;
@@ -547,7 +547,7 @@ version (unittest)
         return path;
     }
 
-    //! A temporary filter file of DLT Explorer; remove(path) after use
+    //! A temporary filter file of Log Tracy; remove(path) after use
     private string makeLogfilter(string name, string content)
     {
         import std.file : tempDir, write;
@@ -606,14 +606,14 @@ unittest
     assert(fx.filters.sets[0].name == "filters_first.dlf" && fx.filters.sets[0].source == first);
 }
 
-@("DocumentFilters: a filter file of DLT Explorer is loaded for any log, one of another format with a note")
+@("DocumentFilters: a filter file of Log Tracy is loaded for any log, one of another format with a note")
 unittest
 {
     import formats.logcat : LogcatFormat;
     import std.algorithm.searching : canFind;
     import std.file : remove;
 
-    const path = makeLogfilter("filters_native.dlt.logfilter", `{"type": "dlt-explorer-filter", "version": 1,
+    const path = makeLogfilter("filters_native.dlt.logfilter", `{"type": "log-tracy-filter", "version": 1,
         "logFormat": "dlt", "name": "Apps", "rules": [` ~ appRule("One", "APP1") ~ `]}`);
     scope (exit)
         remove(path);
@@ -1017,7 +1017,7 @@ unittest
     }
 
     auto filters = new DocumentFilters(new DltFormat(), (f) {});
-    const broken = buildPath(tempDir, "dlt_explorer_filters_broken.logfilter");
+    const broken = buildPath(tempDir, "log_tracy_filters_broken.logfilter");
     scope (exit) if (exists(broken)) remove(broken);
     write(broken, "not json");
     import std.algorithm : startsWith;

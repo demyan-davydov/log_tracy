@@ -434,7 +434,7 @@ void saveSettings(in AppSettings settings, string path = defaultSettingsPath())
 /// The recent list survives a save and a load
 unittest
 {
-    const path = buildPath(tempDir(), "dlt_explorer_settings_recent_test.json");
+    const path = buildPath(tempDir(), "log_tracy_settings_recent_test.json");
     scope (exit) if (exists(path)) remove(path);
 
     AppSettings settings;
@@ -446,7 +446,7 @@ unittest
 @("settings: single-line rows survive a save and a load, off by default")
 unittest
 {
-    const path = buildPath(tempDir(), "dlt_explorer_settings_single_line_test.json");
+    const path = buildPath(tempDir(), "log_tracy_settings_single_line_test.json");
     scope (exit) if (exists(path)) remove(path);
 
     AppSettings settings;
@@ -491,7 +491,7 @@ unittest
 /// Settings written before the recent list existed: its files seed the list
 unittest
 {
-    const path = buildPath(tempDir(), "dlt_explorer_settings_migration_test.json");
+    const path = buildPath(tempDir(), "log_tracy_settings_migration_test.json");
     scope (exit) if (exists(path)) remove(path);
 
     std.file.write(path, `{"activeFile": "/b.dlt",
@@ -502,7 +502,7 @@ unittest
 /// A broken recent list doesn't cost the other settings
 unittest
 {
-    const path = buildPath(tempDir(), "dlt_explorer_settings_bad_recent_test.json");
+    const path = buildPath(tempDir(), "log_tracy_settings_bad_recent_test.json");
     scope (exit) if (exists(path)) remove(path);
 
     std.file.write(path, `{"recentFiles": null, "theme": "dark", "tableFontSize": 120}`);
@@ -528,7 +528,7 @@ unittest
 /// A loaded recent list is cleaned: no duplicates, no empty paths, not too long
 unittest
 {
-    const path = buildPath(tempDir(), "dlt_explorer_settings_dirty_recent_test.json");
+    const path = buildPath(tempDir(), "log_tracy_settings_dirty_recent_test.json");
     scope (exit) if (exists(path)) remove(path);
 
     string[] paths = ["/a.dlt", "", "/a.dlt"];
@@ -544,7 +544,7 @@ unittest
 /// The time a file was used survives a save and a load; a broken one is unknown
 unittest
 {
-    const path = buildPath(tempDir(), "dlt_explorer_settings_last_used_test.json");
+    const path = buildPath(tempDir(), "log_tracy_settings_last_used_test.json");
     scope (exit) if (exists(path)) remove(path);
 
     AppSettings settings;
@@ -563,7 +563,7 @@ unittest
 {
     import log_core.rule_filter : Check, Condition, FilterRule, RuleKind;
 
-    const path = buildPath(tempDir(), "dlt_explorer_settings_filters_test.json");
+    const path = buildPath(tempDir(), "log_tracy_settings_filters_test.json");
     scope (exit) if (exists(path)) remove(path);
 
     FilterRule errors;
@@ -599,7 +599,7 @@ unittest
 /// The search history survives a save and a load; a query that can't be read is skipped
 unittest
 {
-    const path = buildPath(tempDir(), "dlt_explorer_settings_searches_test.json");
+    const path = buildPath(tempDir(), "log_tracy_settings_searches_test.json");
     scope (exit) if (exists(path)) remove(path);
 
     AppSettings settings;
@@ -616,7 +616,7 @@ unittest
 /// The layouts of the columns survive a save and a load; broken entries are skipped
 unittest
 {
-    const path = buildPath(tempDir(), "dlt_explorer_settings_columns_test.json");
+    const path = buildPath(tempDir(), "log_tracy_settings_columns_test.json");
     scope (exit) if (exists(path)) remove(path);
 
     AppSettings settings;
@@ -733,7 +733,7 @@ unittest
 @("loadSettings: a bad theme or font size doesn't lose the files and the recent list")
 unittest
 {
-    const path = buildPath(tempDir(), "dlt_explorer_settings_bad_font_test.json");
+    const path = buildPath(tempDir(), "log_tracy_settings_bad_font_test.json");
     scope (exit) if (exists(path)) remove(path);
     std.file.write(path, `{"activeFile": "/b.dlt", "files": [{"path": "/b.dlt", "scrollPosition": 3}],
         "recentFiles": [{"path": "/a.dlt"}], "tableFontSize": 110.5}`);
@@ -758,7 +758,7 @@ unittest
 @("the height of the search panel survives a save and a load")
 unittest
 {
-    const path = buildPath(tempDir(), "dlt_explorer_settings_panels_test.json");
+    const path = buildPath(tempDir(), "log_tracy_settings_panels_test.json");
     scope (exit) if (exists(path)) remove(path);
 
     AppSettings settings;
@@ -771,7 +771,7 @@ unittest
 unittest
 {
     // A regression guard: it passed before the side panel was removed too
-    const path = buildPath(tempDir(), "dlt_explorer_settings_side_panel_test.json");
+    const path = buildPath(tempDir(), "log_tracy_settings_side_panel_test.json");
     scope (exit) if (exists(path)) remove(path);
 
     std.file.write(path, `{"sidePanelWidth": "320dip", "searchPanelHeight": "180dip", "theme": "dark"}`);
@@ -802,7 +802,7 @@ unittest
 @("language: the system one by default, saved and loaded")
 unittest
 {
-    const path = buildPath(tempDir(), "dlt_explorer_settings_language_test.json");
+    const path = buildPath(tempDir(), "log_tracy_settings_language_test.json");
     scope (exit) if (exists(path)) remove(path);
 
     assert(AppSettings.init.language == "", "the language of the system");

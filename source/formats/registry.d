@@ -65,7 +65,7 @@ LogFormat detectFormat(string path, const(ubyte)[] data, out FormatChoice choice
     }
 
     if (best.isNone)
-        throw new UiTextException(uiText("not a log of a format DLT Explorer can read"));
+        throw new UiTextException(uiText("not a log of a format Log Tracy can read"));
     choice = FormatChoice(all[best.index].info.id, best.detection.variant, encoding);
     return withEncoding(all[best.index].create(best.detection.variant, text), encoding);
 }
@@ -83,7 +83,7 @@ LogFormat createFormat(FormatChoice choice, const(ubyte)[] data)
     if (looks == TextEncoding.utf8)
         looks = guessUtf16(raw);
     if (looks != choice.encoding)
-        throw new UiTextException(uiText("not a log of a format DLT Explorer can read"));
+        throw new UiTextException(uiText("not a log of a format Log Tracy can read"));
     const head = utf8Head(raw, choice.encoding);
     foreach (detector; detectors())
         if (detector.info.id == choice.id)
@@ -124,7 +124,7 @@ private LogFormat withEncoding(LogFormat format, TextEncoding encoding)
         return format;
     auto text = cast(TextFormat) format;
     if (text is null)
-        throw new UiTextException(uiText("not a log of a format DLT Explorer can read"));
+        throw new UiTextException(uiText("not a log of a format Log Tracy can read"));
     return log_core.text.text_format.inEncoding(text, encoding);
 }
 

@@ -83,16 +83,16 @@ test("an anchor refused while an operation runs says so", () => {
     assert.equal(anchorRefusalText({ refused: "busy", max: 16 }), "Not while searching or filtering");
 });
 
-const native = ["DLT Explorer Filters", "*.logfilter"];
+const native = ["Log Tracy Filters", "*.logfilter"];
 const dlt = ["dlt-viewer Filters", "*.dlf"];
 const any = ["All Files", "*.*"];
 
-test("a filter is loaded from a file of DLT Explorer, or from a .dlf where the log takes one", () => {
+test("a filter is loaded from a file of Log Tracy, or from a .dlf where the log takes one", () => {
     assert.deepEqual(filterFilesToLoad(false), [native, any]);
     assert.deepEqual(filterFilesToLoad(true), [["Filter Files", "*.logfilter;*.dlf"], native, dlt, any]);
 });
 
-test("a set is exported to a file of DLT Explorer, named after its last file without its extension", () => {
+test("a set is exported to a file of Log Tracy, named after its last file without its extension", () => {
     assert.deepEqual(filterExportDialog(false, ""),
         { caption: "Export Filter", extension: "logfilter", types: [native, any] });
     assert.deepEqual(filterExportDialog(false, "Errors.dlt.logfilter"),
@@ -106,5 +106,5 @@ test("a set from a .dlf is offered as a .dlf first, where the log takes one", ()
     assert.deepEqual(filterExportDialog(true, "errors.logfilter").types, [native, dlt, any]);
     assert.deepEqual(filterExportDialog(false, "errors.dlf"),
         { caption: "Export Filter", extension: "logfilter", types: [native, any], path: "errors" },
-        "a log that can't take a .dlf exports to a file of DLT Explorer");
+        "a log that can't take a .dlf exports to a file of Log Tracy");
 });

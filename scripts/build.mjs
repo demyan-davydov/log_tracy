@@ -1,4 +1,4 @@
-// Builds, tests and packs DLT Explorer on macOS, Linux and Windows alike: one script instead of
+// Builds, tests and packs Log Tracy on macOS, Linux and Windows alike: one script instead of
 // one per system. dub does the building: dub.sdl puts every build in
 // build/<platform>-<arch>-<build type>/ with the Sciter library of libs/ next to the program.
 // The commands and options: `node scripts/build.mjs --help` (buildUsage below), the setup and
@@ -21,7 +21,7 @@ export const commands = ["build", "test", "dist", "check-windows", "gen-log", "b
 export const briefLogPath = "build/brief.log";
 
 /// What `--help` prints. Every command and option is in it: tests/js/build-script.test.mjs.
-export const buildUsage = `Builds, tests and packs DLT Explorer. More: docs/building.md.
+export const buildUsage = `Builds, tests and packs Log Tracy. More: docs/building.md.
 
 Usage: node scripts/build.mjs [command] [options]
 
@@ -56,7 +56,7 @@ Build and start the program: node scripts/run.mjs (see its --help).
 `;
 
 /// What `--help` of scripts/run.mjs prints.
-export const runUsage = `Builds DLT Explorer as scripts/build.mjs does and starts it from its build folder,
+export const runUsage = `Builds Log Tracy as scripts/build.mjs does and starts it from its build folder,
 its output in this terminal.
 
 Usage: node scripts/run.mjs [options]
@@ -183,7 +183,7 @@ ${languageList}    </array>
     <key>CFBundleIconFile</key>
     <string>app.icns</string>
     <key>CFBundleIdentifier</key>
-    <string>com.demiandavidov.dltexplorer</string>
+    <string>com.demiandavidov.logtracy</string>
     <key>CFBundleName</key>
     <string>${name}</string>
     <key>CFBundlePackageType</key>
@@ -202,7 +202,7 @@ ${languageList}    </array>
 /// The desktop entry of Linux: what puts the program with its icon in the menu of applications.
 export function desktopEntry({ installDir, program }) {
     return `[Desktop Entry]
-Name=DLT Explorer
+Name=Log Tracy
 Comment=DLT file viewer and analyzer
 Exec=${installDir}/${program}
 Icon=${installDir}/app.png
@@ -342,8 +342,8 @@ function languages() {
 }
 
 function distMac(version, arch) {
-    const name = "DltExplorer";
-    const program = join(build({ release: true, arch }), "dlt_explorer");
+    const name = "LogTracy";
+    const program = join(build({ release: true, arch }), "log_tracy");
     return publish("macos", (staging) => {
         const bundle = `${name}.app`;
         makeMacBundle(join(staging, bundle), name, version, program);
@@ -390,14 +390,14 @@ function makeMacBundle(path, name, version, builtProgram) {
     for (const tag of tags) {
         mkdirSync(join(contents, "Resources", `${tag}.lproj`));
         writeFileSync(join(contents, "Resources", `${tag}.lproj`, "InfoPlist.strings"),
-            "/* DLT Explorer is translated to this language: resources/i18n/translations */\n");
+            "/* Log Tracy is translated to this language: resources/i18n/translations */\n");
     }
     writeFileSync(join(contents, "Info.plist"), infoPlist({ name, version, languages: tags }));
 }
 
 function distLinux(arch) {
     const target = build({ release: true, arch });
-    const program = "dlt_explorer";
+    const program = "log_tracy";
     const installDir = `/opt/${program}`;
     const dir = publish("linux", (staging) => {
         for (const file of [program, "libsciter.so"]) copyFileSync(join(target, file), join(staging, file));
@@ -413,7 +413,7 @@ function distWindows(arch) {
     const target = build({ release: true, arch });
     // the icon is built into the program (resources/app.rc)
     return publish("windows", (staging) => {
-        for (const file of ["dlt_explorer.exe", "sciter.dll"]) copyFileSync(join(target, file), join(staging, file));
+        for (const file of ["log_tracy.exe", "sciter.dll"]) copyFileSync(join(target, file), join(staging, file));
     });
 }
 
@@ -423,7 +423,7 @@ function dist(arch) {
     const dir = process.platform === "darwin" ? distMac(version, distArchitecture)
         : process.platform === "win32" ? distWindows(distArchitecture)
         : distLinux(distArchitecture);
-    console.log(`DLT Explorer ${version} (${distArchitecture}): ${dir}`);
+    console.log(`Log Tracy ${version} (${distArchitecture}): ${dir}`);
 }
 
 /// Compiles the app and its unittests for Windows x64 with the arguments dub would give,

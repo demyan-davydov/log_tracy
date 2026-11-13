@@ -1,4 +1,4 @@
-# DLT Explorer AI Context Index
+# Log Tracy AI Context Index
 
 ## Overview
 

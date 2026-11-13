@@ -61,9 +61,9 @@ test("the main window: on screen, normal layer, the largest", () => {
 });
 
 test("the program of each system", () => {
-    assert.equal(programName("win32"), "dlt_explorer.exe");
-    assert.equal(programName("linux"), "dlt_explorer");
-    assert.equal(programName("darwin"), "dlt_explorer");
+    assert.equal(programName("win32"), "log_tracy.exe");
+    assert.equal(programName("linux"), "log_tracy");
+    assert.equal(programName("darwin"), "log_tracy");
 });
 
 test("the window list of a lister: JSON, or no window when it printed anything else", () => {

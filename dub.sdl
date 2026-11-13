@@ -1,4 +1,4 @@
-name "dlt_explorer"
+name "log_tracy"
 description "DLT file viewer"
 authors "Demian Davidov"
 copyright "Copyright © 2026, Demian Davidov"

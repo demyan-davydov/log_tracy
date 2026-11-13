@@ -359,7 +359,7 @@ version (unittest)
         import std.path : buildPath;
         import std.process : thisProcessID;
 
-        return buildPath(tempDir, "dlt_explorer_single_instance_" ~ thisProcessID.to!string ~ "_" ~ name);
+        return buildPath(tempDir, "log_tracy_single_instance_" ~ thisProcessID.to!string ~ "_" ~ name);
     }
 }
 

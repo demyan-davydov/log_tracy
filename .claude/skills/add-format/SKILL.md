@@ -1,6 +1,6 @@
 ---
 name: add-format
-description: Add a new log format or a variant of one to DLT Explorer (format module, detector, registry, columns, docs/formats.md). Use when the user asks to support a log format or a variant.
+description: Add a new log format or a variant of one to Log Tracy (format module, detector, registry, columns, docs/formats.md). Use when the user asks to support a log format or a variant.
 argument-hint: "<format> [a sample file or lines, the variant]"
 ---
 

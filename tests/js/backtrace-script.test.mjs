@@ -27,10 +27,10 @@ test("lldb on macOS and gdb on Linux print every thread and leave the process ru
 });
 
 test("without a pid the only running copy is taken; none or several are told", () => {
-    assert.equal(pickProcess("  4242 /p/build/osx-aarch64-debug/dlt_explorer\n"), 4242);
+    assert.equal(pickProcess("  4242 /p/build/osx-aarch64-debug/log_tracy\n"), 4242);
     assert.throws(() => pickProcess(""), /no running/i);
-    assert.throws(() => pickProcess("1 /a/dlt_explorer\n2 /b/dlt_explorer --x\n"), (e) =>
-        /several/i.test(e.message) && /\/a\/dlt_explorer/.test(e.message) && /\/b\/dlt_explorer/.test(e.message));
+    assert.throws(() => pickProcess("1 /a/log_tracy\n2 /b/log_tracy --x\n"), (e) =>
+        /several/i.test(e.message) && /\/a\/log_tracy/.test(e.message) && /\/b\/log_tracy/.test(e.message));
 });
 
 test("the threads are counted in the stacks only, not in what lldb tells on attaching", () => {
@@ -42,10 +42,10 @@ test("the threads are counted in the stacks only, not in what lldb tells on atta
     assert.equal(countThreads("Thread 2 (Thread 0x7f (LWP 11)):\n#0 x\nThread 1 (Thread 0x7e (LWP 10)):\n#0 y\n", "linux"), 2);
 });
 
-test("a pid of an old state.json is the app's only while that process is still dlt_explorer", () => {
-    assert.equal(isAppCommand("/p/build/app/dlt_explorer"), true);
-    assert.equal(isAppCommand("dlt_explorer"), true);
-    assert.equal(isAppCommand("C:\\p\\dlt_explorer.exe"), true);
+test("a pid of an old state.json is the app's only while that process is still log_tracy", () => {
+    assert.equal(isAppCommand("/p/build/app/log_tracy"), true);
+    assert.equal(isAppCommand("log_tracy"), true);
+    assert.equal(isAppCommand("C:\\p\\log_tracy.exe"), true);
     assert.equal(isAppCommand("/Applications/Safari.app/Contents/MacOS/Safari"), false);
     assert.equal(isAppCommand(""), false);
 });

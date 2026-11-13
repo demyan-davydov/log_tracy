@@ -21,7 +21,7 @@
   модуля с членом (`ui/filter_commands.DocumentFilters`) проверяется по частям.
 - **`node scripts/backtrace.mjs [pid]`**: `lldb --batch` на macOS, `gdb -batch` на Linux, стеки
   всех потоков в `build/backtrace-<pid>.txt`, процесс продолжает работать. Без pid — копия
-  `app.mjs`, иначе единственный `dlt_explorer`.
+  `app.mjs`, иначе единственный `log_tracy`.
 
 ## Почему так
 

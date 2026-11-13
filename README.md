@@ -1,4 +1,4 @@
-# DLT Explorer
+# Log Tracy
 
 A desktop viewer for DLT and text logs on macOS, Linux and Windows, written in D with the
 [Sciter](https://sciter.com) UI framework. A functional counterpart of dlt-viewer with a more

@@ -1,4 +1,4 @@
-# DLT Explorer Rules Index
+# Log Tracy Rules Index
 
 ## Overview
 

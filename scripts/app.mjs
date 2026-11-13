@@ -1,4 +1,4 @@
-// Drives a running copy of DLT Explorer through its debug channel (ui/debug_channel, debug
+// Drives a running copy of Log Tracy through its debug channel (ui/debug_channel, debug
 // builds only): starts a copy in a folder of its own (its own settings, its output in app.log)
 // that keeps running, runs JavaScript in its window, waits for a condition, renders the window
 // into a PNG, moves the mouse and presses keys (macOS), stops it. For agents and people
@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { BuildError, build, targetPath } from "./build.mjs";
 import { copyProgram, programName, systemEnv } from "./screenshot.mjs";
 
-export const appUsage = `Drives a copy of DLT Explorer (a debug build) through its debug channel.
+export const appUsage = `Drives a copy of Log Tracy (a debug build) through its debug channel.
 
   node scripts/app.mjs <command> [options]
 

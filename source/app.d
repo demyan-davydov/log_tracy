@@ -26,7 +26,7 @@ import std.stdio : writeln;
 // A 64-bit build only. A log is mapped into memory whole (utils/mapped_file), and logs of a
 // gigabyte with their indexes don't fit the address space of a 32-bit process. The Sciter
 // binding refuses a 32-bit build too (sciter/capi/def).
-static assert(size_t.sizeof == 8, "DLT Explorer is built for 64-bit systems only "
+static assert(size_t.sizeof == 8, "Log Tracy is built for 64-bit systems only "
     ~ "(logs are mapped into memory whole). Build for x86_64 or arm64.");
 
 /// The application behind the window: its documents are LogDocuments of the files, and the
@@ -77,7 +77,7 @@ int main()
 
 	enableSciterDebugOutput();
 
-	writeln("DLT Explorer starting...");
+	writeln("Log Tracy starting...");
 
 	// A release build runs one copy per settings.json: two would overwrite each other's
 	// settings. A second copy brings the first one forward and exits. Debug builds run side by
@@ -93,7 +93,7 @@ int main()
 
 		if (instance && !instance.isFirst)
 		{
-			writeln("DLT Explorer is running already (process ", instance.firstPid, ")");
+			writeln("Log Tracy is running already (process ", instance.firstPid, ")");
 			instance.activateFirst();
 			return 0;
 		}

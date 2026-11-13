@@ -203,7 +203,7 @@ export class FilterPanel {
         const ruleOf = (element) => parseInt(element.getAttribute("rule-index"));
 
         // Filter sets are only appended; each one has its remove button. A filter
-        // file of DLT Explorer for any log, a .dlf of dlt-viewer for a DLT one.
+        // file of Log Tracy for any log, a .dlf of dlt-viewer for a DLT one.
         on("click", ".btn-dlf", () => {
             const fn = platform.chooseFileToOpen(fileFilter(filterFilesToLoad(this.filters.canDlf)));
             if (fn) this.showResult(backend.loadFilterFile(docId, fn));
@@ -225,7 +225,7 @@ export class FilterPanel {
         });
 
         // A set is a copy kept with the log: exported to share it, to a filter file
-        // of DLT Explorer or (DLT logs) to a .dlf for dlt-viewer
+        // of Log Tracy or (DLT logs) to a .dlf for dlt-viewer
         on("click", ".filter-export", (evt, button) => {
             const set = setOf(button.parentElement);
             // Offered the file the set was loaded from or exported to last, or

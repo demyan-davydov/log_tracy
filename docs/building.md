@@ -1,6 +1,6 @@
-# Building DLT Explorer
+# Building Log Tracy
 
-DLT Explorer builds with one command on macOS, Linux and Windows: `scripts/build.mjs`. dub does
+Log Tracy builds with one command on macOS, Linux and Windows: `scripts/build.mjs`. dub does
 the building; the script adds the tests, the distributions and a compile check for Windows.
 
 ## Setting up
@@ -71,7 +71,7 @@ Run the commands below from a terminal that sees all of them (`ldc2 --version`,
 
 ```sh
 git clone <repository>
-cd dlt_explorer
+cd <the folder of the clone>
 git lfs install    # once per machine
 git lfs pull       # the Sciter libraries; without it libs/ holds pointers, not libraries
 ```
@@ -144,15 +144,15 @@ AI agents, whose context the whole output would fill, and for a quick look; the 
 `build/dist/<macos|linux|windows>/`. The previous one is replaced only once the new one is
 complete. The version comes from the `VERSION` file.
 
-- **macOS**: `DltExplorer.app`, signed ad-hoc, and `sign.command` next to it. macOS won't start
+- **macOS**: `LogTracy.app`, signed ad-hoc, and `sign.command` next to it. macOS won't start
   a downloaded program: it is quarantined, and an ad-hoc signature holds only on the machine
   that made it. `sign.command` (opens from Finder) clears the quarantine and signs the program
   again. For now it is built for the architecture of the machine only; a universal program is
   in `docs/backlog.md`.
-- **Linux**: the program, `libsciter.so`, the icon and `dlt_explorer.desktop`. To install,
-  copy the folder to `/opt/dlt_explorer` and link the `.desktop` file into
+- **Linux**: the program, `libsciter.so`, the icon and `log_tracy.desktop`. To install,
+  copy the folder to `/opt/log_tracy` and link the `.desktop` file into
   `~/.local/share/applications`.
-- **Windows**: `dlt_explorer.exe` and `sciter.dll`; the icon is built into the program.
+- **Windows**: `log_tracy.exe` and `sciter.dll`; the icon is built into the program.
 
 ### A screenshot of the window
 
@@ -249,10 +249,10 @@ node scripts/build.mjs bench --help
 
 ### The stacks of a hung app
 
-`node scripts/backtrace.mjs [pid]` writes the stacks of every thread of a running DLT
-Explorer into `build/backtrace-<pid>.txt` (`--out` another file) with `lldb` on macOS or `gdb`
+`node scripts/backtrace.mjs [pid]` writes the stacks of every thread of a running Log
+Tracy into `build/backtrace-<pid>.txt` (`--out` another file) with `lldb` on macOS or `gdb`
 on Linux, and leaves the process running. Without a pid it takes the copy of
-`scripts/app.mjs`, else the only running `dlt_explorer`.
+`scripts/app.mjs`, else the only running `log_tracy`.
 
 ### Checking Windows from macOS or Linux
 
@@ -277,7 +277,7 @@ development; users don't need them. They are read at start, in `newSession` of
 For example:
 
 ```sh
-MENU_BAR_PLATFORM=windows OPEN_AT_START=~/logs/trace.dlt build/osx-aarch64-debug/dlt_explorer
+MENU_BAR_PLATFORM=windows OPEN_AT_START=~/logs/trace.dlt build/osx-aarch64-debug/log_tracy
 ```
 
 A new variable goes into this table.

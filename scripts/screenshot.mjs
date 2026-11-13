@@ -1,4 +1,4 @@
-// Takes a screenshot of the window of DLT Explorer (macOS, Windows, Linux on X11): builds the
+// Takes a screenshot of the window of Log Tracy (macOS, Windows, Linux on X11): builds the
 // app (as build.mjs does), starts a copy of it in a folder of its own, with settings of its own (the developer's
 // settings.json is never touched), opens the logs given (OPEN_AT_START), waits, captures that window
 // only (never the screen) and stops the copy. For people and agents checking what a change
@@ -11,7 +11,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { BuildError, build, targetPath } from "./build.mjs";
 
-export const shotUsage = `Takes a screenshot of the DLT Explorer window: macOS, Windows, Linux on X11
+export const shotUsage = `Takes a screenshot of the Log Tracy window: macOS, Windows, Linux on X11
 (also XWayland; needs xdotool and ImageMagick).
 
   node scripts/screenshot.mjs [options]
@@ -96,7 +96,7 @@ export function mainWindow(windows) {
 
 /// The file name of the program on a system
 export function programName(platform) {
-    return platform === "win32" ? "dlt_explorer.exe" : "dlt_explorer";
+    return platform === "win32" ? "log_tracy.exe" : "log_tracy";
 }
 
 /// The environment the app needs on a system for its window to be captured: on Linux the X11
@@ -321,7 +321,7 @@ async function shoot(options) {
     const buildDir = options.build
         ? build({ release: options.release, arch: null })
         : targetPath({ release: options.release, arch: null });
-    const dir = copyProgram(buildDir, join(tmpdir(), `dlt-explorer-shot-${process.pid}`), options.settings);
+    const dir = copyProgram(buildDir, join(tmpdir(), `log-tracy-shot-${process.pid}`), options.settings);
     const logFile = join(dir, "app.log");
     const output = openSync(logFile, "w");
     const app = spawn(join(dir, programName(process.platform)), [], {

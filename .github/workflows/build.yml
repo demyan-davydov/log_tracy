@@ -1,4 +1,4 @@
-# Builds and tests DLT Explorer on macOS, Linux and Windows through scripts/build.mjs, and keeps
+# Builds and tests Log Tracy on macOS, Linux and Windows through scripts/build.mjs, and keeps
 # the distribution of each as an artifact. See docs/building.md.
 name: build
 
@@ -61,8 +61,8 @@ jobs:
       # packed here: an artifact is zipped without the executable bits of the files
       - name: Pack the distribution
         shell: bash
-        run: tar -czf dlt-explorer-${{ runner.os }}.tar.gz -C build/dist .
+        run: tar -czf log-tracy-${{ runner.os }}.tar.gz -C build/dist .
       - uses: actions/upload-artifact@v4
         with:
-          name: dlt-explorer-${{ runner.os }}
-          path: dlt-explorer-${{ runner.os }}.tar.gz
+          name: log-tracy-${{ runner.os }}
+          path: log-tracy-${{ runner.os }}.tar.gz

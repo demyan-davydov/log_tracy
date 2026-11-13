@@ -1,8 +1,8 @@
-# DLT Explorer Knowledge Index
+# Log Tracy Knowledge Index
 
 ## Overview
 
-DLT Explorer is a desktop viewer for DLT and text logs (macOS, Linux, Windows), written in D
+Log Tracy is a desktop viewer for DLT and text logs (macOS, Linux, Windows), written in D
 with the Sciter UI framework through its own minimal binding. The UI is vanilla HTML/CSS/JS in
 `resources/`, not Reactor style. Files can be ~1 GB: nothing loads a whole log into memory.
 

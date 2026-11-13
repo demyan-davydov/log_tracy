@@ -10,9 +10,9 @@ const root = "/p/dlt";
 test("a step that went well says nothing, even when its tests print errors of their own", () => {
     const passed = `> dub test --compiler=ldc2
     Starting Performing "unittest" build using ldc2 for aarch64, arm_hardfloat.
-    Building dlt_explorer ~master: building configuration [dlt_explorer-test-library]
-     Linking dlt_explorer-test-library
-     Running build/osx-aarch64-unittest/dlt_explorer-test-library
+    Building log_tracy ~master: building configuration [log_tracy-test-library]
+     Linking log_tracy-test-library
+     Running build/osx-aarch64-unittest/log_tracy-test-library
 Sciter library loaded: libsciter.dylib
 Error parsing the state of the script: Key not found: width
 Error opening file /refused.log: not a log of DLT or text
@@ -27,7 +27,7 @@ The context of .ai/ names nothing the code lacks.
 });
 
 test("compile errors: the place and the message, not the source line and its caret", () => {
-    const output = `    Building dlt_explorer ~master: building configuration [dlt_explorer-test-library]
+    const output = `    Building log_tracy ~master: building configuration [log_tracy-test-library]
 source/utils/keys.d(254,20): Error: cannot implicitly convert expression \`"str"\` of type \`string\` to \`int\`
 unittest { int x = "str"; undefinedFn(); }
                    ^
@@ -46,7 +46,7 @@ Error ldc2 failed with exit code 1.
 });
 
 test("a failed unittest: the exception, its message and the frames of the project's code", () => {
-    const output = `     Running build/osx-aarch64-unittest/dlt_explorer-test-library
+    const output = `     Running build/osx-aarch64-unittest/log_tracy-test-library
 core.exception.AssertError@source/utils/keys.d(254): probe failure
 second line of the message
 ----------------
@@ -134,7 +134,7 @@ test at tests/js/other.test.mjs:9:1
 });
 
 test("a link that failed: the linker's lines", () => {
-    const output = `     Linking dlt_explorer
+    const output = `     Linking log_tracy
 Undefined symbols for architecture arm64:
   "_foo", referenced from:
 ld: symbol(s) not found for architecture arm64
@@ -174,7 +174,7 @@ test("a flood of errors is cut at the limit, saying how many lines are left out 
 });
 
 test("a failure told only by a summary line (a crash, a linker of Linux) brings the last lines too", () => {
-    const link = `     Linking dlt_explorer
+    const link = `     Linking log_tracy
 /usr/bin/ld: source/a.o: in function \`_D3app4mainFZv':
 /usr/bin/ld: a.d:(.text+0x10): undefined reference to \`foo'
 collect2: error: ld returned 1 exit status

@@ -1,4 +1,4 @@
-// Writes the stacks of every thread of a running DLT Explorer into a file: for a hang of the
+// Writes the stacks of every thread of a running Log Tracy into a file: for a hang of the
 // indexing or of the task pool, when its output doesn't tell who waits for whom. lldb on macOS,
 // gdb on Linux; the process keeps running. The options: `node scripts/backtrace.mjs --help`.
 // Tests: tests/js/backtrace-script.test.mjs.
@@ -8,13 +8,13 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { alive, readState } from "./app.mjs";
 
-export const backtraceUsage = `Writes the stacks of every thread of a running DLT Explorer into a file
+export const backtraceUsage = `Writes the stacks of every thread of a running Log Tracy into a file
 (lldb on macOS, gdb on Linux); the process keeps running.
 
 Usage: node scripts/backtrace.mjs [pid] [options]
 
   pid             the process; by default the copy of scripts/app.mjs while it runs,
-                  else the only running dlt_explorer
+                  else the only running log_tracy
   --out FILE      where to write (default build/backtrace-<pid>.txt)
   -h, --help      this help
 `;
@@ -56,9 +56,9 @@ export function debuggerCommand(platform, pid) {
 export function pickProcess(listing) {
     const processes = listing.split("\n").map((line) => line.trim()).filter((line) => line !== "")
         .map((line) => ({ pid: Number(line.split(" ")[0]), command: line.slice(line.indexOf(" ") + 1) }));
-    if (processes.length === 0) throw new BacktraceError("No running dlt_explorer: start it, or give a pid.");
+    if (processes.length === 0) throw new BacktraceError("No running log_tracy: start it, or give a pid.");
     if (processes.length > 1)
-        throw new BacktraceError("Several dlt_explorer run, give the pid of one:\n"
+        throw new BacktraceError("Several log_tracy run, give the pid of one:\n"
             + processes.map(({ pid, command }) => `  ${pid} ${command}`).join("\n"));
     return processes[0].pid;
 }
@@ -66,7 +66,7 @@ export function pickProcess(listing) {
 /// Whether a command (`ps -o comm=`) is the program: the pid of an old state.json may be of
 /// another process by now.
 export function isAppCommand(command) {
-    return /(^|[\\/])dlt_explorer(\.exe)?$/.test(command.trim());
+    return /(^|[\\/])log_tracy(\.exe)?$/.test(command.trim());
 }
 
 /// The threads in the output of the debugger, counted from the command that prints the stacks
@@ -97,7 +97,7 @@ function main(argv, cwd) {
     if (pid === null) pid = appCopy();
     if (pid === null) {
         // by the name of the program, then what each runs (its folder tells the builds apart)
-        const pids = (spawnSync("pgrep", ["-x", "dlt_explorer"], { encoding: "utf8" }).stdout ?? "").trim();
+        const pids = (spawnSync("pgrep", ["-x", "log_tracy"], { encoding: "utf8" }).stdout ?? "").trim();
         const listed = pids === "" ? ""
             : spawnSync("ps", ["-o", "pid=,command=", "-p", pids.split(/\s+/).join(",")], { encoding: "utf8" }).stdout;
         pid = pickProcess(listed ?? "");

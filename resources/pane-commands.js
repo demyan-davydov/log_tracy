@@ -48,12 +48,12 @@ export function editRule(values, open, apply) {
 }
 
 // ── Filter files ─────────────────────────────────────────────────────────────
-// A filter file of DLT Explorer (.logfilter) for any log, a .dlf of dlt-viewer
+// A filter file of Log Tracy (.logfilter) for any log, a .dlf of dlt-viewer
 // for a log that can take one (canDlf of the filters of the document).
 
 // The types of files the dialog to load a filter offers: [[name, patterns], ...]
 export function filterFilesToLoad(canDlf) {
-    const native = [tr("DLT Explorer Filters"), "*.logfilter"];
+    const native = [tr("Log Tracy Filters"), "*.logfilter"];
     return canDlf
         ? [[tr("Filter Files"), "*.logfilter;*.dlf"], native, [tr("dlt-viewer Filters"), "*.dlf"], allFiles()]
         : [native, allFiles()];
@@ -64,7 +64,7 @@ export function filterFilesToLoad(canDlf) {
 export function filterExportDialog(canDlf, fileName) {
     // The kind of its file is offered first; a .dlf only where the log takes one
     const dlf = canDlf && /\.dlf$/i.test(fileName);
-    const native = [tr("DLT Explorer Filters"), "*.logfilter"];
+    const native = [tr("Log Tracy Filters"), "*.logfilter"];
     const dlt = [tr("dlt-viewer Filters"), "*.dlf"];
     const kinds = !canDlf ? [native] : dlf ? [dlt, native] : [native, dlt];
     const dialog = { caption: tr("Export Filter"), extension: dlf ? "dlf" : "logfilter", types: [...kinds, allFiles()] };
