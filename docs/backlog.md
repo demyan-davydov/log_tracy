@@ -607,6 +607,16 @@ Windows (программа собирается с `/SUBSYSTEM:WINDOWS`: вид
 About). Подставлять из `VERSION`: в `.rc` через define или сгенерированный файл, в D через
 string import.
 
+## Инсталляторы: что осталось (история `installed`)
+
+- DMG без оформления: нет фоновой картинки со стрелкой и расположения иконок (это `.DS_Store`
+  образа, собирают через AppleScript в Finder или `create-dmg`).
+- Убрать запасной `hdiutil` из `dmgCommand`, когда на раннерах CI будет `diskutil image`
+  (macOS 27).
+- Developer ID и нотаризация, чтобы обойтись без `sign.command`: платный аккаунт Apple.
+- AppImage для Linux не на Debian/Ubuntu.
+- Windows-инсталлятора не будет.
+
 ## Universal binary для macOS
 
 `scripts/build.mjs dist` на маке собирает только под архитектуру машины (arm64). Universal: две

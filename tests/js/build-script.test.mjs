@@ -2,8 +2,12 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { parseCommand, dubArgs, distArch, infoPlist, desktopEntry, sciterLibrary, isLfsPointer,
-    compilerArgs, genLogArgs, moduleTestArgs, commands, buildUsage, runUsage } from "../../scripts/build.mjs";
+    compilerArgs, genLogArgs, moduleTestArgs, commands, buildUsage, runUsage, dmgName, debName, debControl,
+    makeDebRoot, signScript, dmgCommand } from "../../scripts/build.mjs";
 
 test("build in debug for the machine by default", () => {
     assert.deepEqual(parseCommand([]), { command: "build", release: false, arch: null });
@@ -42,6 +46,11 @@ test("the dub calls: ldc2 always, the build type, the architecture as dub names 
         ["test", "--compiler=ldc2", "--arch=aarch64"]);
 });
 
+test("a distribution builds the installed program: dub's build type dist", () => {
+    assert.deepEqual(dubArgs("build", { release: true, installed: true, arch: null }),
+        ["build", "--compiler=ldc2", "--build=dist"]);
+});
+
 test("a distribution is for the architecture asked, else this machine's: no universal macOS one yet", () => {
     assert.equal(distArch(null, "arm64"), "arm64");
     assert.equal(distArch("x64", "arm64"), "x64");
@@ -66,6 +75,56 @@ test("the desktop entry starts the program where it is installed", () => {
     assert.match(entry, /^\[Desktop Entry\]$/m);
     assert.match(entry, /^Exec=\/opt\/log_tracy\/log_tracy$/m);
     assert.match(entry, /^Icon=\/opt\/log_tracy\/app\.png$/m);
+});
+
+test("the installers are named by the version and the architecture as each system names it", () => {
+    assert.equal(dmgName({ version: "1.2.3", arch: "arm64" }), "LogTracy-1.2.3-arm64.dmg");
+    assert.equal(dmgName({ version: "1.2.3", arch: "x64" }), "LogTracy-1.2.3-x64.dmg");
+    assert.equal(debName({ version: "1.2.3", arch: "x64" }), "log-tracy_1.2.3_amd64.deb");
+    assert.equal(debName({ version: "1.2.3", arch: "arm64" }), "log-tracy_1.2.3_arm64.deb");
+});
+
+test("the disk image by diskutil image where macOS has it, else by hdiutil", () => {
+    assert.deepEqual(dmgCommand(true, "/t/dmg", "/t/L.dmg"), ["diskutil",
+        ["image", "create", "from", "--format", "ULFO", "--volumeName", "Log Tracy", "/t/dmg", "/t/L.dmg"]]);
+    assert.deepEqual(dmgCommand(false, "/t/dmg", "/t/L.dmg"), ["hdiutil",
+        ["create", "-volname", "Log Tracy", "-srcfolder", "/t/dmg", "-format", "UDZO", "-ov", "/t/L.dmg"]]);
+});
+
+test("the control file of the .deb: the package, its version, Debian's architecture, GTK 3", () => {
+    const control = debControl({ version: "1.2.3", arch: "x64" });
+    assert.match(control, /^Package: log-tracy$/m);
+    assert.match(control, /^Version: 1\.2\.3$/m);
+    assert.match(control, /^Architecture: amd64$/m);
+    assert.match(control, /^Depends: libgtk-3-0$/m);
+    assert.match(control, /^Description: .+\n .+/m); // a summary and a long description
+    assert.ok(control.endsWith("\n"), "dpkg-deb wants the last line ended");
+});
+
+test("the tree of the .deb: the program in /opt, the desktop entry in the system's applications", () => {
+    const dist = mkdtempSync(join(tmpdir(), "deb-dist-"));
+    const root = mkdtempSync(join(tmpdir(), "deb-root-"));
+    try {
+        for (const file of ["log_tracy", "libsciter.so", "app.png"]) writeFileSync(join(dist, file), file);
+        makeDebRoot(root, { dist, version: "1.2.3", arch: "arm64" });
+        const mode = (path) => statSync(join(root, path)).mode & 0o777;
+        assert.equal(mode("opt/log_tracy/log_tracy"), 0o755);
+        assert.equal(mode("opt/log_tracy/libsciter.so"), 0o644);
+        assert.equal(mode("opt/log_tracy/app.png"), 0o644);
+        assert.match(readFileSync(join(root, "usr/share/applications/log_tracy.desktop"), "utf8"),
+            /^Exec=\/opt\/log_tracy\/log_tracy$/m);
+        assert.match(readFileSync(join(root, "DEBIAN/control"), "utf8"), /^Architecture: arm64$/m);
+    } finally {
+        rmSync(dist, { recursive: true, force: true });
+        rmSync(root, { recursive: true, force: true });
+    }
+});
+
+test("sign.command signs the bundle next to it, else, from the read-only image, the one in /Applications", () => {
+    const script = signScript("LogTracy.app");
+    assert.match(script, /\[ -w "LogTracy\.app" \]/);
+    assert.match(script, /"\/Applications\/LogTracy\.app"/);
+    assert.match(script, /codesign --force --sign - "\$app"/);
 });
 
 test("the Sciter library of a system and an architecture", () => {

@@ -1,5 +1,5 @@
 //! The settings of the application, kept in settings.json next to the
-//! executable: the window, the theme, the font size of the tables, the
+//! executable (in the user's folder for an installed copy): the window, the theme, the font size of the tables, the
 //! layouts of the columns by format and the recent files (ui.recent_files);
 //! read, merged with the state of the script, written.
 module ui.app_settings;
@@ -234,17 +234,95 @@ struct AppSettings
     }
 }
 
+/// Whether this is the build of a distribution (`dist`, dub's build type "dist" with
+/// `version (Installed)`): a program installed into the system, where the folder of the
+/// program isn't the user's to write.
+version (Installed) enum bool installedBuild = true;
+else enum bool installedBuild = false;
+
 static string defaultSettingsPath()
 {
     import std.file : thisExePath;
     import std.path : dirName;
+    import std.process : environment;
 
-    // Get directory of executable, go up one level from resources if needed
-    string exeDir = dirName(thisExePath());
-    // If we're in resources folder, go up
+    return buildPath(settingsDir(installedBuild, dirName(thisExePath()),
+        (name) => environment.get(name, "")), "settings.json");
+}
+
+/// The folder of settings.json (and settings.lock). A build of our own (debug, release, the
+/// unittests) keeps it next to the program: every build folder has settings of its own and its
+/// copies run side by side. An installed one (`installed`) keeps it in the user's folder for
+/// settings of the system, from the environment variables `env` gives: the folder of an
+/// installed program is read-only, and a write into a macOS bundle breaks its signature.
+/// Without those variables it falls back to the folder of the program.
+static string settingsDir(bool installed, string exeDir, scope string delegate(string) env)
+{
+    import std.path : dirName;
+
+    if (installed)
+    {
+        const home = env("HOME");
+        version (OSX)
+        {
+            if (home.length)
+                return buildPath(home, "Library", "Application Support", "Log Tracy");
+        }
+        else version (Windows)
+        {
+            const appData = env("APPDATA");
+            if (appData.length) // not `if (appData)`: an empty string is not null
+                return buildPath(appData, "Log Tracy");
+        }
+        else
+        {
+            const config = env("XDG_CONFIG_HOME");
+            if (config.length && isAbsolute(config))
+                return buildPath(config, "log_tracy");
+            if (home.length)
+                return buildPath(home, ".config", "log_tracy");
+        }
+    }
+    // the program run from a resources folder keeps the settings one level up
     if (exeDir.endsWith("resources"))
         exeDir = dirName(exeDir);
-    return buildPath(exeDir, "settings.json");
+    return exeDir;
+}
+
+@("settingsDir: a build of our own keeps the settings next to the program")
+unittest
+{
+    string env(string name) => name == "HOME" ? "/home/u" : "";
+    assert(settingsDir(false, "/b/osx-aarch64-debug", &env) == "/b/osx-aarch64-debug");
+    assert(settingsDir(false, buildPath("/b", "resources"), &env) == "/b");
+}
+
+@("settingsDir: an installed build keeps the settings in the user's folder")
+unittest
+{
+    string[string] vars = ["HOME": "/home/u", "APPDATA": `C:\Users\u\AppData\Roaming`];
+    string env(string name) => vars.get(name, "");
+    version (OSX)
+        assert(settingsDir(true, "/Applications/LogTracy.app/Contents/MacOS", &env)
+            == "/home/u/Library/Application Support/Log Tracy");
+    else version (Windows)
+        assert(settingsDir(true, `C:\Program Files\Log Tracy`, &env)
+            == `C:\Users\u\AppData\Roaming\Log Tracy`);
+    else
+    {
+        assert(settingsDir(true, "/opt/log_tracy", &env) == "/home/u/.config/log_tracy");
+        vars["XDG_CONFIG_HOME"] = "/home/u/conf";
+        assert(settingsDir(true, "/opt/log_tracy", &env) == "/home/u/conf/log_tracy");
+        vars["XDG_CONFIG_HOME"] = "conf"; // relative: ignored, as the XDG spec says
+        assert(settingsDir(true, "/opt/log_tracy", &env) == "/home/u/.config/log_tracy");
+    }
+}
+
+@("settingsDir: an installed build without the user's folder keeps them next to the program")
+unittest
+{
+    string env(string name) => "";
+    assert(settingsDir(true, "/opt/log_tracy", &env) == "/opt/log_tracy");
 }
 
 /// The lock file of the running copy (utils/single_instance), next to the settings it guards:
@@ -422,6 +500,7 @@ void saveSettings(in AppSettings settings, string path = defaultSettingsPath())
     {
         // Remove unnecessary escape slashes from JSON output
         string jsonStr = j.toPrettyString().replace("\\/", "/");
+        mkdirRecurse(dirName(path)); // the user's folder of an installed copy, on its first save
         std.file.write(path, jsonStr);
         writeln("Settings saved to ", path);
     }

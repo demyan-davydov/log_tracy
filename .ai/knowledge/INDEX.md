@@ -16,7 +16,8 @@ Use this file to choose the next context file. Do not load every file by default
   saying a change is done.
 - The packages and what each may import: `.ai/knowledge/architecture.md` (Packages).
 - The files of `resources/` are built into the executable: a JS/CSS/HTML change needs a rebuild.
-- `settings.json` sits next to the executable: every build folder has its own.
+- `settings.json` sits next to the executable: every build folder has its own. Only the
+  distribution (`dist`, `version (Installed)`) keeps it in the user's folder.
 
 ## Primary Context
 
