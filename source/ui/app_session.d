@@ -1112,10 +1112,10 @@ unittest
 unittest
 {
     auto f = Fixture.make();
-    const result = f.session.openFile("/logs/a.log");
+    const result = f.session.openFile(testPath("/logs/a.log"));
     assert(result.docId.isValid && result.failureJson is null);
-    assert(f.session.doc(result.docId) is f.docOf("/logs/a.log"));
-    assert(f.session.settings.recentFiles.pathsOf == ["/logs/a.log"]);
+    assert(f.session.doc(result.docId) is f.docOf(testPath("/logs/a.log")));
+    assert(f.session.settings.recentFiles.pathsOf == [testPath("/logs/a.log")]);
 
     const calls = f.session.takeScriptCalls();
     assert(calls.length >= 1 && calls[0] == ScriptCall("onDocumentOpened", cast(int) result.docId.toInt()));
@@ -1126,12 +1126,12 @@ unittest
 unittest
 {
     auto f = Fixture.make();
-    const result = f.session.openFile("/logs/missing.log");
+    const result = f.session.openFile(testPath("/logs/missing.log"));
     assert(!result.docId.isValid);
     const failure = parseJSON(result.failureJson);
-    assert(failure["path"].str == "/logs/missing.log");
+    assert(failure["path"].str == testPath("/logs/missing.log"));
     assert(failure["error"].str == "no such file");
-    assert(f.session.settings.recentFiles.pathsOf == ["/logs/missing.log"]);
+    assert(f.session.settings.recentFiles.pathsOf == [testPath("/logs/missing.log")]);
     assert(!namesOf(f.session.takeScriptCalls()).canFind("onDocumentOpened"));
 }
 
@@ -1139,11 +1139,11 @@ unittest
 unittest
 {
     auto f = Fixture.make();
-    const first = f.session.openFile("/logs/a.log").docId;
-    f.session.openFile("/logs/b.log");
+    const first = f.session.openFile(testPath("/logs/a.log")).docId;
+    f.session.openFile(testPath("/logs/b.log"));
     f.session.takeScriptCalls();
 
-    assert(f.session.openFile("/logs/a.log").docId == first);
+    assert(f.session.openFile(testPath("/logs/a.log")).docId == first);
     assert(parseJSON(f.session.workspaceInfoJson()).array.length == 2);
     assert(f.session.takeScriptCalls()[0] == ScriptCall("onDocumentOpened", cast(int) first.toInt()));
 }
@@ -1152,7 +1152,7 @@ unittest
 unittest
 {
     auto f = Fixture.make();
-    const id = f.session.openFile("/logs/a.log").docId;
+    const id = f.session.openFile(testPath("/logs/a.log")).docId;
     f.session.dispatchEvents();
     const calls = f.session.takeScriptCalls();
     assert(namesOf(calls) == ["onDocumentOpened", "onMainViewChanged", "onSearchViewChanged"]);
@@ -1164,7 +1164,7 @@ unittest
 unittest
 {
     auto f = Fixture.make();
-    const id = f.session.openFile("/logs/a.log").docId;
+    const id = f.session.openFile(testPath("/logs/a.log")).docId;
     f.session.takeScriptCalls();
 
     f.session.cancelMainView(id);
@@ -1178,13 +1178,13 @@ unittest
 unittest
 {
     auto f = Fixture.make();
-    const id = f.session.openFile("/logs/a.log").docId;
-    f.session.openFile("/logs/b.log");
-    assert(pathsOf(f.session.settings.recentFiles) == ["/logs/b.log", "/logs/a.log"]);
+    const id = f.session.openFile(testPath("/logs/a.log")).docId;
+    f.session.openFile(testPath("/logs/b.log"));
+    assert(pathsOf(f.session.settings.recentFiles) == [testPath("/logs/b.log"), testPath("/logs/a.log")]);
 
     f.session.closeTab(cast(int) id.toInt());
     assert(!f.session.findDocument(cast(int) id.toInt()).isValid);
-    assert(pathsOf(f.session.settings.recentFiles) == ["/logs/a.log", "/logs/b.log"], "used now: on top");
+    assert(pathsOf(f.session.settings.recentFiles) == [testPath("/logs/a.log"), testPath("/logs/b.log")], "used now: on top");
     assert(f.session.takeScriptCalls().length, "the views of b are still told");
 }
 
@@ -1192,14 +1192,14 @@ unittest
 unittest
 {
     auto f = Fixture.make();
-    const id = f.session.openFile("/logs/a.log").docId;
+    const id = f.session.openFile(testPath("/logs/a.log")).docId;
     const agent = f.store.hold(id); // an AI session, say
     assert(agent.isValid);
 
     f.session.closeTab(cast(int) id.toInt());
     assert(!f.session.findDocument(cast(int) id.toInt()).isValid, "no tab");
     assert(parseJSON(f.session.workspaceInfoJson()).array.length == 0);
-    assert(f.store.doc(id) is f.docOf("/logs/a.log"), "still open for its holder");
+    assert(f.store.doc(id) is f.docOf(testPath("/logs/a.log")), "still open for its holder");
 
     f.store.release(agent);
     assert(!f.store.isOpen(id), "closed by its last holder");
@@ -1209,7 +1209,7 @@ unittest
 unittest
 {
     auto f = Fixture.make();
-    const id = f.session.openFile("/logs/a.log").docId;
+    const id = f.session.openFile(testPath("/logs/a.log")).docId;
     const agent = f.store.hold(id);
     f.store.release(agent);
     f.store.release(agent);
@@ -1225,14 +1225,14 @@ unittest
     auto f = Fixture.make();
     assert(!f.session.settingsDue, "nothing changed");
 
-    f.session.openFile("/logs/a.log");
-    f.session.openFile("/logs/b.log");
+    f.session.openFile(testPath("/logs/a.log"));
+    f.session.openFile(testPath("/logs/b.log"));
     assert(f.writes.length == 0, "not written during the calls");
     assert(f.session.settingsDue);
     f.session.saveSettings(`{"theme": "dark"}`);
     assert(f.writes.length == 1, "both changes in one write");
     assert(f.writes[0].theme == "dark", "the state of the script is merged in");
-    assert(pathsOf(f.writes[0].recentFiles) == ["/logs/b.log", "/logs/a.log"]);
+    assert(pathsOf(f.writes[0].recentFiles) == [testPath("/logs/b.log"), testPath("/logs/a.log")]);
     assert(!f.session.settingsDue, "written: nothing changed since");
 }
 
@@ -1240,14 +1240,14 @@ unittest
 unittest
 {
     auto f = Fixture.make();
-    f.session.openFile("/logs/a.log");
-    const closed = f.session.openFile("/logs/c.log").docId;
+    f.session.openFile(testPath("/logs/a.log"));
+    const closed = f.session.openFile(testPath("/logs/c.log")).docId;
     f.session.closeTab(cast(int) closed.toInt());
-    assert(pathsOf(f.session.settings.recentFiles) == ["/logs/c.log", "/logs/a.log"]);
+    assert(pathsOf(f.session.settings.recentFiles) == [testPath("/logs/c.log"), testPath("/logs/a.log")]);
 
     f.session.saveOnClose(`{"tableFontSize": 120}`);
     assert(f.writes.length == 1 && f.writes[0].tableFontSize == 120);
-    assert(pathsOf(f.writes[0].recentFiles) == ["/logs/a.log", "/logs/c.log"],
+    assert(pathsOf(f.writes[0].recentFiles) == [testPath("/logs/a.log"), testPath("/logs/c.log")],
         "the open files were used until now");
 }
 
@@ -1255,7 +1255,7 @@ unittest
 unittest
 {
     auto f = Fixture.make();
-    const id = f.session.openFile("/logs/a.log").docId;
+    const id = f.session.openFile(testPath("/logs/a.log")).docId;
     f.session.saveOnClose(`{}`);
     assert(f.session.closing);
 
@@ -1288,10 +1288,10 @@ unittest
 unittest
 {
     auto f = Fixture.make();
-    const id = f.session.openFile("/logs/a.log").docId;
+    const id = f.session.openFile(testPath("/logs/a.log")).docId;
     f.session.terminate(`{"tableFontSize": 120}`);
     assert(f.writes.length == 1 && f.writes[0].tableFontSize == 120);
-    assert(pathsOf(f.writes[0].recentFiles) == ["/logs/a.log"]);
+    assert(pathsOf(f.writes[0].recentFiles) == [testPath("/logs/a.log")]);
     assert(f.session.closing);
     assert(f.session.findDocument(cast(int) id.toInt()) == DocumentId.init, "documents closed");
 }
@@ -1300,7 +1300,7 @@ unittest
 unittest
 {
     auto f = Fixture.make();
-    const id = f.session.openFile("/logs/a.log").docId;
+    const id = f.session.openFile(testPath("/logs/a.log")).docId;
     f.store.hold(id); // an AI session, say: main() never closes the store on this path
     f.session.terminate(`{}`);
     assert(!f.store.isOpen(id), "no document is left with its threads running");
@@ -1321,12 +1321,12 @@ unittest
 unittest
 {
     auto f = Fixture.make();
-    const id = f.session.openFile("/logs/a.log").docId;
-    f.docOf("/logs/a.log").records = 1234;
-    f.docOf("/logs/a.log").bytes = 5_000_000_000;
+    const id = f.session.openFile(testPath("/logs/a.log")).docId;
+    f.docOf(testPath("/logs/a.log")).records = 1234;
+    f.docOf(testPath("/logs/a.log")).bytes = 5_000_000_000;
     const info = parseJSON(f.session.documentInfoJson(id));
     assert(info["name"].str == "a.log");
-    assert(info["path"].str == "/logs/a.log");
+    assert(info["path"].str == testPath("/logs/a.log"));
     assert(info["format"].str == "Plain text", info["format"].str);
     assert(info["records"].integer == 1234);
     assert(info["bytes"].integer == 5_000_000_000);
@@ -1336,7 +1336,7 @@ unittest
 unittest
 {
     auto f = Fixture.make();
-    const id = f.session.openFile("/logs/a.dlt").docId;
+    const id = f.session.openFile(testPath("/logs/a.dlt")).docId;
     Attachment a;
     a.id = 0;
     a.name = "trigger.tar.lz4";
@@ -1354,7 +1354,7 @@ unittest
     b.state = AttachmentState.failed;
     b.error = -400;
     b.osError = -2;
-    f.docOf("/logs/a.dlt").files = [a, b];
+    f.docOf(testPath("/logs/a.dlt")).files = [a, b];
 
     const list = parseJSON(f.session.attachmentsJson(id)).array;
     assert(list.length == 2);
@@ -1373,12 +1373,12 @@ unittest
 unittest
 {
     auto f = Fixture.make();
-    const id = f.session.openFile("/logs/a.dlt").docId;
+    const id = f.session.openFile(testPath("/logs/a.dlt")).docId;
     f.session.takeScriptCalls();
     assert(!namesOf(f.session.takeScriptCalls()).canFind("onAttachmentsChanged"), "none yet");
 
-    f.docOf("/logs/a.dlt").bus.publish(AttachmentsChanged());
-    f.docOf("/logs/a.dlt").bus.publish(AttachmentsChanged());
+    f.docOf(testPath("/logs/a.dlt")).bus.publish(AttachmentsChanged());
+    f.docOf(testPath("/logs/a.dlt")).bus.publish(AttachmentsChanged());
     f.session.dispatchEvents();
     const calls = f.session.takeScriptCalls();
     assert(calls.canFind(ScriptCall("onAttachmentsChanged", cast(int) id.toInt())));
@@ -1398,8 +1398,8 @@ unittest
     const path = buildPath(dir, "a.bin");
 
     auto f = Fixture.make();
-    const id = f.session.openFile("/logs/a.dlt").docId;
-    auto doc = f.docOf("/logs/a.dlt");
+    const id = f.session.openFile(testPath("/logs/a.dlt")).docId;
+    auto doc = f.docOf(testPath("/logs/a.dlt"));
     assert(f.session.saveAttachment(id, 0, path) == "");
     assert(cast(const(ubyte)[]) read(path) == [1, 2, 3, 4, 5]);
     assert(!exists(path ~ ".part"), "written beside, then put in its place");
@@ -1435,54 +1435,54 @@ unittest
 unittest
 {
     auto f = Fixture.make();
-    const id = f.session.openFile("/logs/a.log").docId;
+    const id = f.session.openFile(testPath("/logs/a.log")).docId;
     const chips = `[{"text": "error", "isRegex": false, "matchCase": false}]`;
     assert(f.session.startChipSearch(id, chips) == "");
-    assert(f.docOf("/logs/a.log").searches.length == 1);
+    assert(f.docOf(testPath("/logs/a.log")).searches.length == 1);
     assert(parseJSON(f.session.searchHistoryJson(id)).array.length == 1);
 
     assert(f.session.startChipSearch(id, `[{"text": "(", "isRegex": true, "matchCase": true}]`).length,
         "an invalid regex is an error");
-    assert(f.docOf("/logs/a.log").searches.length == 1, "and searches nothing");
+    assert(f.docOf(testPath("/logs/a.log")).searches.length == 1, "and searches nothing");
 }
 
 @("AppSession: a file removed from the recent list loses its filters, the change is saved")
 unittest
 {
     auto f = Fixture.make();
-    const id = f.session.openFile("/logs/a.log").docId;
+    const id = f.session.openFile(testPath("/logs/a.log")).docId;
     f.session.filterCommand(id, (DocumentFilters filters) => filters.newSet());
-    f.session.openFile("/logs/b.log");
+    f.session.openFile(testPath("/logs/b.log"));
     f.session.closeTab(cast(int) id.toInt());
     f.session.saveSettings(`{}`);
 
-    assert(f.session.removeRecentFile("/logs/a.log"));
-    assert(pathsOf(f.session.settings.recentFiles) == ["/logs/b.log"]);
+    assert(f.session.removeRecentFile(testPath("/logs/a.log")));
+    assert(pathsOf(f.session.settings.recentFiles) == [testPath("/logs/b.log")]);
     assert(f.session.settingsDue);
     f.session.saveSettings(`{}`);
-    assert(pathsOf(f.writes[$ - 1].recentFiles) == ["/logs/b.log"]);
+    assert(pathsOf(f.writes[$ - 1].recentFiles) == [testPath("/logs/b.log")]);
 
-    f.session.openFile("/logs/a.log");
-    assert(savedFilters(f.session.settings.recentFiles, "/logs/a.log").length == 0, "opened anew, without its filters");
+    f.session.openFile(testPath("/logs/a.log"));
+    assert(savedFilters(f.session.settings.recentFiles, testPath("/logs/a.log")).length == 0, "opened anew, without its filters");
 }
 
 @("AppSession: a file is shown in the file manager, or the reason it can't be")
 unittest
 {
     auto f = Fixture.make();
-    assert(f.session.showInFolder("/logs/a.log") == "");
-    assert(f.records.shown == ["/logs/a.log"]);
-    assert(f.session.showInFolder("/logs/missing.log") == "no such file");
+    assert(f.session.showInFolder(testPath("/logs/a.log")) == "");
+    assert(f.records.shown == [testPath("/logs/a.log")]);
+    assert(f.session.showInFolder(testPath("/logs/missing.log")) == "no such file");
 }
 
 @("AppSession: an open file is not removed from the recent list")
 unittest
 {
     auto f = Fixture.make();
-    f.session.openFile("/logs/a.log");
+    f.session.openFile(testPath("/logs/a.log"));
     f.session.saveSettings(`{}`);
-    assert(!f.session.removeRecentFile("/logs/a.log"));
-    assert(pathsOf(f.session.settings.recentFiles) == ["/logs/a.log"]);
+    assert(!f.session.removeRecentFile(testPath("/logs/a.log")));
+    assert(pathsOf(f.session.settings.recentFiles) == [testPath("/logs/a.log")]);
     assert(!f.session.settingsDue, "nothing changed");
 }
 
@@ -1490,39 +1490,39 @@ unittest
 unittest
 {
     auto f = Fixture.make();
-    const id = f.session.openFile("/logs/a.log").docId;
+    const id = f.session.openFile(testPath("/logs/a.log")).docId;
     assert(f.session.filterCommand(id, (DocumentFilters filters) => filters.newSet()) == "");
-    assert(savedFilters(f.session.settings.recentFiles, "/logs/a.log").length == 1);
+    assert(savedFilters(f.session.settings.recentFiles, testPath("/logs/a.log")).length == 1);
 }
 
 @("AppSession: a filter command that changes the sets is kept even when it has a note (what was lost)")
 unittest
 {
     auto f = Fixture.make();
-    const id = f.session.openFile("/logs/a.log").docId;
+    const id = f.session.openFile(testPath("/logs/a.log")).docId;
     assert(f.session.filterCommand(id, (DocumentFilters filters) { import utils.ui_text : plainText; filters.newSet(); return plainText("a.dlf: a note"); })
         == "a.dlf: a note");
-    assert(savedFilters(f.session.settings.recentFiles, "/logs/a.log").length == 1);
+    assert(savedFilters(f.session.settings.recentFiles, testPath("/logs/a.log")).length == 1);
 }
 
 @("AppSession: a filter command that fails changes nothing in the settings")
 unittest
 {
     auto f = Fixture.make();
-    const id = f.session.openFile("/logs/a.log").docId;
+    const id = f.session.openFile(testPath("/logs/a.log")).docId;
     assert(f.session.filterCommand(id, (DocumentFilters filters) => filters.remove(7)).length);
-    assert(savedFilters(f.session.settings.recentFiles, "/logs/a.log").length == 0);
+    assert(savedFilters(f.session.settings.recentFiles, testPath("/logs/a.log")).length == 0);
 }
 
 @("AppSession: a file opened again gets the filters it had")
 unittest
 {
     auto f = Fixture.make();
-    auto id = f.session.openFile("/logs/a.log").docId;
+    auto id = f.session.openFile(testPath("/logs/a.log")).docId;
     f.session.filterCommand(id, (DocumentFilters filters) => filters.newSet());
     f.session.closeTab(cast(int) id.toInt());
 
-    id = f.session.openFile("/logs/a.log").docId;
+    id = f.session.openFile(testPath("/logs/a.log")).docId;
     assert(f.session.filters(id).saved().length == 1);
 }
 
@@ -1627,9 +1627,9 @@ unittest
     // The format saved last time is only asked for: the document opened in
     // another one (the saved one can't be made any more, say)
     AppSettings settings;
-    settings.recentFiles = [RecentFile("/logs/a.log", FormatChoice("logcat", 1), 1)];
+    settings.recentFiles = [RecentFile(testPath("/logs/a.log"), FormatChoice("logcat", 1), 1)];
     auto f = Fixture.make(settings);
-    f.session.openFile("/logs/a.log");
+    f.session.openFile(testPath("/logs/a.log"));
     assert(f.lastChoice == FormatChoice("logcat", 1), "the saved format is asked for");
     assert(f.session.settings.recentFiles[0].format == FormatChoice("plain-text", 0),
         "the format of the document is remembered");
@@ -1639,7 +1639,7 @@ unittest
 unittest
 {
     auto f = Fixture.make();
-    const id = f.session.openFile("/logs/a.log").docId;
+    const id = f.session.openFile(testPath("/logs/a.log")).docId;
     f.session.saveOnClose(`{"theme": "dark", "tableFontSize": 130}`);
 
     f.session.cancelMainView(id); // closes after the window did: a write without the script
@@ -1689,10 +1689,10 @@ unittest
     f.session.useTranslations([CatalogFile("ru.json", `{"locale": "ru", "name": "Русский", "messages": {
         "not a log of {kinds}": "не журнал формата {kinds}", "the document is not open": "документ не открыт"}}`)]);
 
-    assert(parseJSON(f.session.openFile("/refused.log").failureJson)["error"].str == "not a log of DLT or text");
+    assert(parseJSON(f.session.openFile(testPath("/refused.log")).failureJson)["error"].str == "not a log of DLT or text");
     f.session.useLanguage("ru");
-    assert(parseJSON(f.session.openFile("/refused.log").failureJson)["error"].str == "не журнал формата DLT or text");
-    assert(parseJSON(f.session.openFile("/missing.log").failureJson)["error"].str == "no such file",
+    assert(parseJSON(f.session.openFile(testPath("/refused.log")).failureJson)["error"].str == "не журнал формата DLT or text");
+    assert(parseJSON(f.session.openFile(testPath("/missing.log")).failureJson)["error"].str == "no such file",
         "a message of the OS as it is");
     assert(f.session.retryDocument(12345) == "документ не открыт");
 }
@@ -1705,8 +1705,8 @@ unittest
     import std.json : parseJSON;
 
     auto f = Fixture.make();
-    const id = f.session.openFile("/logs/a.log").docId;
-    auto doc = f.docOf("/logs/a.log");
+    const id = f.session.openFile(testPath("/logs/a.log")).docId;
+    auto doc = f.docOf(testPath("/logs/a.log"));
 
     auto answer = parseJSON(f.session.setAnchor(id, 3, true));
     assert(answer["refused"].isNull && !answer["full"].boolean);
@@ -1764,7 +1764,7 @@ unittest
     auto f = Fixture.make();
     f.session.useTranslations([CatalogFile("ru.json",
         `{"locale": "ru", "name": "Русский", "messages": {"no such filter": "такого фильтра нет"}}`)]);
-    const id = f.session.openFile("/logs/a.log").docId;
+    const id = f.session.openFile(testPath("/logs/a.log")).docId;
 
     assert(f.session.filterCommand(id, (DocumentFilters filters) => filters.remove(7)) == "no such filter");
     f.session.useLanguage("ru");

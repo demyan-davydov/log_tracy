@@ -178,7 +178,8 @@ long parseStart(string text)
     const date = Date(text[0 .. 4].to!int, month, text[8 .. 10].to!int);
     const time = text.length == 19
         ? TimeOfDay(text[11 .. 13].to!int, text[14 .. 16].to!int, text[17 .. 19].to!int) : TimeOfDay(0, 0, 0);
-    return SysTime(DateTime(date, time), UTC()).toUnixTime;
+    // long: time_t of Windows has 32 bits, which would clamp a date past 2038 instead of refusing it
+    return SysTime(DateTime(date, time), UTC()).toUnixTime!long;
 }
 
 @("parseGenCommand: the file, the format, a size and shares")

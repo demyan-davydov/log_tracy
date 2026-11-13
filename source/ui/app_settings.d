@@ -292,9 +292,9 @@ static string settingsDir(bool installed, string exeDir, scope string delegate(s
 @("settingsDir: a build of our own keeps the settings next to the program")
 unittest
 {
-    string env(string name) => name == "HOME" ? "/home/u" : "";
-    assert(settingsDir(false, "/b/osx-aarch64-debug", &env) == "/b/osx-aarch64-debug");
-    assert(settingsDir(false, buildPath("/b", "resources"), &env) == "/b");
+    string env(string name) => name == "HOME" ? testPath("/home/u") : "";
+    assert(settingsDir(false, testPath("/b/osx-aarch64-debug"), &env) == testPath("/b/osx-aarch64-debug"));
+    assert(settingsDir(false, buildPath(testPath("/b"), "resources"), &env) == testPath("/b"));
 }
 
 @("settingsDir: an installed build keeps the settings in the user's folder")
@@ -303,18 +303,18 @@ unittest
     string[string] vars = ["HOME": "/home/u", "APPDATA": `C:\Users\u\AppData\Roaming`];
     string env(string name) => vars.get(name, "");
     version (OSX)
-        assert(settingsDir(true, "/Applications/LogTracy.app/Contents/MacOS", &env)
-            == "/home/u/Library/Application Support/Log Tracy");
+        assert(settingsDir(true, testPath("/Applications/LogTracy.app/Contents/MacOS"), &env)
+            == testPath("/home/u/Library/Application Support/Log Tracy"));
     else version (Windows)
         assert(settingsDir(true, `C:\Program Files\Log Tracy`, &env)
             == `C:\Users\u\AppData\Roaming\Log Tracy`);
     else
     {
-        assert(settingsDir(true, "/opt/log_tracy", &env) == "/home/u/.config/log_tracy");
-        vars["XDG_CONFIG_HOME"] = "/home/u/conf";
-        assert(settingsDir(true, "/opt/log_tracy", &env) == "/home/u/conf/log_tracy");
+        assert(settingsDir(true, testPath("/opt/log_tracy"), &env) == testPath("/home/u/.config/log_tracy"));
+        vars["XDG_CONFIG_HOME"] = testPath("/home/u/conf");
+        assert(settingsDir(true, testPath("/opt/log_tracy"), &env) == testPath("/home/u/conf/log_tracy"));
         vars["XDG_CONFIG_HOME"] = "conf"; // relative: ignored, as the XDG spec says
-        assert(settingsDir(true, "/opt/log_tracy", &env) == "/home/u/.config/log_tracy");
+        assert(settingsDir(true, testPath("/opt/log_tracy"), &env) == testPath("/home/u/.config/log_tracy"));
     }
 }
 
@@ -322,7 +322,7 @@ unittest
 unittest
 {
     string env(string name) => "";
-    assert(settingsDir(true, "/opt/log_tracy", &env) == "/opt/log_tracy");
+    assert(settingsDir(true, testPath("/opt/log_tracy"), &env) == testPath("/opt/log_tracy"));
 }
 
 /// The lock file of the running copy (utils/single_instance), next to the settings it guards:
@@ -517,7 +517,7 @@ unittest
     scope (exit) if (exists(path)) remove(path);
 
     AppSettings settings;
-    settings.recentFiles = [RecentFile("/new.dlt", FormatChoice("syslog", 3)), RecentFile("/old.dlt")];
+    settings.recentFiles = [RecentFile(testPath("/new.dlt"), FormatChoice("syslog", 3)), RecentFile(testPath("/old.dlt"))];
     saveSettings(settings, path);
     assert(loadSettings(path).recentFiles == settings.recentFiles, "with the formats");
 }
@@ -575,7 +575,8 @@ unittest
 
     std.file.write(path, `{"activeFile": "/b.dlt",
         "files": [{"path": "/a.dlt"}, {"path": "/b.dlt"}]}`);
-    assert(loadSettings(path).recentFiles.pathsOf == ["/b.dlt", "/a.dlt"]);
+    // the paths of the JSON as the list spells them: with the current drive on Windows
+    assert(loadSettings(path).recentFiles.pathsOf == [recentFilePath("/b.dlt"), recentFilePath("/a.dlt")]);
 }
 
 /// A broken recent list doesn't cost the other settings
@@ -593,15 +594,15 @@ unittest
     std.file.write(path, `{"recentFiles": ["/a.dlt", 5, "/b.dlt"], "theme": "dark"}`);
     settings = loadSettings(path);
     assert(settings.theme == "dark");
-    assert(settings.recentFiles.pathsOf == ["/a.dlt", "/b.dlt"]);
+    assert(settings.recentFiles.pathsOf == [testPath("/a.dlt"), testPath("/b.dlt")]);
 
     std.file.write(path, `{"recentFiles": [{"path": 5}, {"format": "dlt"}, {"path": "/c.dlt", "format": 7}]}`);
-    assert(loadSettings(path).recentFiles == [RecentFile("/c.dlt")], "a bad entry or format is skipped");
+    assert(loadSettings(path).recentFiles == [RecentFile(testPath("/c.dlt"))], "a bad entry or format is skipped");
 
     std.file.write(path, `{"recentFiles": [{"path": "/d.dlt", "format": "logcat", "variant": 9999999999}], "theme": "dark"}`);
     settings = loadSettings(path);
     assert(settings.theme == "dark", "a variant out of range doesn't cost the other settings");
-    assert(settings.recentFiles == [RecentFile("/d.dlt")]);
+    assert(settings.recentFiles == [RecentFile(testPath("/d.dlt"))]);
 }
 
 /// A loaded recent list is cleaned: no duplicates, no empty paths, not too long
@@ -610,14 +611,14 @@ unittest
     const path = buildPath(tempDir(), "log_tracy_settings_dirty_recent_test.json");
     scope (exit) if (exists(path)) remove(path);
 
-    string[] paths = ["/a.dlt", "", "/a.dlt"];
+    string[] paths = [testPath("/a.dlt"), "", testPath("/a.dlt")];
     foreach (i; 0 .. recentFilesMax + 2)
-        paths ~= "/" ~ i.to!string;
+        paths ~= testPath("/") ~ i.to!string;
     std.file.write(path, JSONValue(["recentFiles": paths]).toString());
 
     auto list = loadSettings(path).recentFiles;
     assert(list.length == recentFilesMax);
-    assert(list[0 .. 2].pathsOf == ["/a.dlt", "/0"]);
+    assert(list[0 .. 2].pathsOf == [testPath("/a.dlt"), testPath("/0")]);
 }
 
 /// The time a file was used survives a save and a load; a broken one is unknown
@@ -627,12 +628,12 @@ unittest
     scope (exit) if (exists(path)) remove(path);
 
     AppSettings settings;
-    settings.recentFiles = [RecentFile("/a.dlt", FormatChoice("dlt"), 1_762_250_000_123), RecentFile("/b.dlt")];
+    settings.recentFiles = [RecentFile(testPath("/a.dlt"), FormatChoice("dlt"), 1_762_250_000_123), RecentFile(testPath("/b.dlt"))];
     saveSettings(settings, path);
     assert(loadSettings(path).recentFiles == settings.recentFiles);
 
     std.file.write(path, `{"recentFiles": [{"path": "/a.dlt", "lastUsed": "x"}, {"path": "/b.dlt", "lastUsed": -5}]}`);
-    assert(loadSettings(path).recentFiles == [RecentFile("/a.dlt"), RecentFile("/b.dlt")]);
+    assert(loadSettings(path).recentFiles == [RecentFile(testPath("/a.dlt")), RecentFile(testPath("/b.dlt"))]);
 }
 
 /// The filter sets of a file survive a save and a load with their rules;
@@ -653,9 +654,9 @@ unittest
     off.kind = RuleKind.Exclude;
 
     AppSettings settings;
-    settings.recentFiles = [RecentFile("/a.log", FormatChoice("logcat"), 100,
-            [SavedFilter("one.dlf", "/f/one.dlf", true, [errors, off]), SavedFilter("New Filter", "", false, [])]),
-        RecentFile("/b.dlt")];
+    settings.recentFiles = [RecentFile(testPath("/a.log"), FormatChoice("logcat"), 100,
+            [SavedFilter("one.dlf", testPath("/f/one.dlf"), true, [errors, off]), SavedFilter("New Filter", "", false, [])]),
+        RecentFile(testPath("/b.dlt"))];
     saveSettings(settings, path);
     assert(loadSettings(path).recentFiles == settings.recentFiles);
 
@@ -682,7 +683,7 @@ unittest
     scope (exit) if (exists(path)) remove(path);
 
     AppSettings settings;
-    settings.recentFiles = [RecentFile("/a.dlt", FormatChoice.init, 0, null,
+    settings.recentFiles = [RecentFile(testPath("/a.dlt"), FormatChoice.init, 0, null,
         [[SearchChip("x|y", true, true), SearchChip(" ")], [SearchChip("z")]])];
     saveSettings(settings, path);
     assert(loadSettings(path).recentFiles == settings.recentFiles);
@@ -801,11 +802,11 @@ unittest
 unittest
 {
     AppSettings base;
-    base.files = [FileState("/a.dlt", 1), FileState("/b.dlt", 2)];
-    base.activeFile = "/b.dlt";
+    base.files = [FileState(testPath("/a.dlt"), 1), FileState(testPath("/b.dlt"), 2)];
+    base.activeFile = testPath("/b.dlt");
 
     const merged = mergeAppStateFromScript(base, `{"scrollPosition": 42}`);
-    assert(merged.files == [FileState("/a.dlt", 1), FileState("/b.dlt", 42)]);
+    assert(merged.files == [FileState(testPath("/a.dlt"), 1), FileState(testPath("/b.dlt"), 42)]);
     assert(base.files[1].scrollPosition == 2, "the files of the settings given are not changed");
 }
 
@@ -818,9 +819,9 @@ unittest
         "recentFiles": [{"path": "/a.dlt"}], "tableFontSize": 110.5}`);
 
     const settings = loadSettings(path);
-    assert(settings.activeFile == "/b.dlt");
+    assert(settings.activeFile == "/b.dlt", "as written: only the recent list makes a path absolute");
     assert(settings.files == [FileState("/b.dlt", 3)]);
-    assert(settings.recentFiles.pathsOf == ["/a.dlt"]);
+    assert(settings.recentFiles.pathsOf == [testPath("/a.dlt")]);
 }
 
 @("mergeAppStateFromScript: the height of the search panel comes from the script")

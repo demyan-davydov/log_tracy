@@ -415,6 +415,21 @@ private long lastUsedOf(const JSONValue entry)
 
 version (unittest)
 {
+    /// A path absolute on every system, for the tests: "/a.dlt" as it is; on Windows on the
+    /// current drive, D:\a.dlt, as the list makes "/a.dlt" absolute (not normalized: the tests of
+    /// a file spelled otherwise keep their dots)
+    string testPath(string posix)
+    {
+        version (Windows)
+        {
+            import std.array : replace;
+
+            return absolutePath(posix.replace("/", `\`));
+        }
+        else
+            return posix;
+    }
+
     /// Recent files without formats
     RecentFile[] recentList(string[] paths...)
     {
@@ -430,39 +445,39 @@ version (unittest)
 /// A file removed from the list takes what was kept for it along
 unittest
 {
-    auto list = [RecentFile("/a.dlt", FormatChoice("dlt"), 10), RecentFile("/b.dlt", FormatChoice("logcat"), 20),
-        RecentFile("/c.dlt")];
+    auto list = [RecentFile(testPath("/a.dlt"), FormatChoice("dlt"), 10), RecentFile(testPath("/b.dlt"), FormatChoice("logcat"), 20),
+        RecentFile(testPath("/c.dlt"))];
     list[1].filters = [SavedFilter("f")];
-    const removed = withoutRecentFile(list, "/logs/../b.dlt");
-    assert(removed.pathsOf == ["/a.dlt", "/c.dlt"], "the same file spelled otherwise");
+    const removed = withoutRecentFile(list, testPath("/logs/../b.dlt"));
+    assert(removed.pathsOf == [testPath("/a.dlt"), testPath("/c.dlt")], "the same file spelled otherwise");
     assert(removed[0] == list[0] && removed[1] == list[2], "the others as they were");
-    assert(savedFilters(removed, "/b.dlt").length == 0);
-    assert(withoutRecentFile(list, "/other.dlt").pathsOf == ["/a.dlt", "/b.dlt", "/c.dlt"], "not in the list");
+    assert(savedFilters(removed, testPath("/b.dlt")).length == 0);
+    assert(withoutRecentFile(list, testPath("/other.dlt")).pathsOf == [testPath("/a.dlt"), testPath("/b.dlt"), testPath("/c.dlt")], "not in the list");
 }
 
 /// Opening a file puts it on top of the recent list, without duplicates
 unittest
 {
-    assert(withRecentFile([], "/a.dlt").pathsOf == ["/a.dlt"]);
-    assert(withRecentFile(recentList("/a.dlt", "/b.dlt"), "/c.dlt").pathsOf == ["/c.dlt", "/a.dlt", "/b.dlt"]);
-    assert(withRecentFile(recentList("/a.dlt", "/b.dlt", "/c.dlt"), "/b.dlt").pathsOf == ["/b.dlt", "/a.dlt", "/c.dlt"]);
-    assert(withRecentFile(recentList("/a.dlt"), "").pathsOf == ["/a.dlt"]);
+    assert(withRecentFile([], testPath("/a.dlt")).pathsOf == [testPath("/a.dlt")]);
+    assert(withRecentFile(recentList(testPath("/a.dlt"), testPath("/b.dlt")), testPath("/c.dlt")).pathsOf == [testPath("/c.dlt"), testPath("/a.dlt"), testPath("/b.dlt")]);
+    assert(withRecentFile(recentList(testPath("/a.dlt"), testPath("/b.dlt"), testPath("/c.dlt")), testPath("/b.dlt")).pathsOf == [testPath("/b.dlt"), testPath("/a.dlt"), testPath("/c.dlt")]);
+    assert(withRecentFile(recentList(testPath("/a.dlt")), "").pathsOf == [testPath("/a.dlt")]);
 }
 
 /// A file of the list that fails to open stays where it is, as it was
 unittest
 {
-    auto list = [RecentFile("/a.dlt", FormatChoice("dlt"), 10), RecentFile("/b.dlt", FormatChoice("logcat"), 20)];
-    const failed = withFailedFile(list, "/b.dlt");
-    assert(failed.pathsOf == ["/a.dlt", "/b.dlt"], "not moved on top");
+    auto list = [RecentFile(testPath("/a.dlt"), FormatChoice("dlt"), 10), RecentFile(testPath("/b.dlt"), FormatChoice("logcat"), 20)];
+    const failed = withFailedFile(list, testPath("/b.dlt"));
+    assert(failed.pathsOf == [testPath("/a.dlt"), testPath("/b.dlt")], "not moved on top");
     assert(failed[1] == list[1], "its format and time are kept");
-    assert(withFailedFile(list, "/logs/../b.dlt").pathsOf == ["/a.dlt", "/b.dlt"], "the same file spelled otherwise");
+    assert(withFailedFile(list, testPath("/logs/../b.dlt")).pathsOf == [testPath("/a.dlt"), testPath("/b.dlt")], "the same file spelled otherwise");
 }
 
 /// A file new to the list that fails to open goes on top, to be tried again
 unittest
 {
-    assert(withFailedFile(recentList("/a.dlt"), "/new.dlt").pathsOf == ["/new.dlt", "/a.dlt"]);
+    assert(withFailedFile(recentList(testPath("/a.dlt")), testPath("/new.dlt")).pathsOf == [testPath("/new.dlt"), testPath("/a.dlt")]);
 }
 
 /// The recent list keeps the newest recentFilesMax files
@@ -470,9 +485,9 @@ unittest
 {
     RecentFile[] list;
     foreach (i; 0 .. recentFilesMax + 3)
-        list = withRecentFile(list, "/" ~ i.to!string);
+        list = withRecentFile(list, testPath("/") ~ i.to!string);
     assert(list.length == recentFilesMax);
-    assert(list[0].path == "/" ~ (recentFilesMax + 2).to!string);
+    assert(list[0].path == testPath("/") ~ (recentFilesMax + 2).to!string);
 }
 
 /// Even an empty path leaves no more than recentFilesMax files
@@ -480,14 +495,14 @@ unittest
 {
     RecentFile[] list;
     foreach (i; 0 .. recentFilesMax + 2)
-        list ~= RecentFile("/" ~ i.to!string);
+        list ~= RecentFile(testPath("/") ~ i.to!string);
     assert(withRecentFile(list, "").length == recentFilesMax);
 }
 
 /// One file spelled in different ways is one entry
 unittest
 {
-    assert(withRecentFile(recentList("/logs/a.dlt"), "/logs/./x/../a.dlt").pathsOf == ["/logs/a.dlt"]);
+    assert(withRecentFile(recentList(testPath("/logs/a.dlt")), testPath("/logs/./x/../a.dlt")).pathsOf == [testPath("/logs/a.dlt")]);
     assert(withRecentFile([], "a.dlt").pathsOf == [buildNormalizedPath(absolutePath("a.dlt"))]);
     version (Windows)
         assert(withRecentFile(recentList(`C:\logs\a.dlt`), "c:/logs/a.dlt").pathsOf == [`c:\logs\a.dlt`]);
@@ -510,24 +525,24 @@ unittest
 /// A path is stored in the recent list the way recentFilePath() spells it
 unittest
 {
-    assert(recentFilePath("/logs/./x/../a.dlt") == "/logs/a.dlt");
-    assert(withRecentFile([], "/logs/./x/../a.dlt").pathsOf == [recentFilePath("/logs/./x/../a.dlt")]);
+    assert(recentFilePath(testPath("/logs/./x/../a.dlt")) == testPath("/logs/a.dlt"));
+    assert(withRecentFile([], testPath("/logs/./x/../a.dlt")).pathsOf == [recentFilePath(testPath("/logs/./x/../a.dlt"))]);
 }
 
 /// A file opened again keeps the format it had, unless it was opened in another one
 unittest
 {
     const logcat = FormatChoice("logcat", 1);
-    auto list = withRecentFile([RecentFile("/a.log", logcat), RecentFile("/b.log")], "/a.log");
-    assert(list == [RecentFile("/a.log", logcat), RecentFile("/b.log")], "failed to open: format kept");
+    auto list = withRecentFile([RecentFile(testPath("/a.log"), logcat), RecentFile(testPath("/b.log"))], testPath("/a.log"));
+    assert(list == [RecentFile(testPath("/a.log"), logcat), RecentFile(testPath("/b.log"))], "failed to open: format kept");
 
     const text = FormatChoice("text");
-    list = withRecentFile(list, RecentFile("/a.log", text));
-    assert(list == [RecentFile("/a.log", text), RecentFile("/b.log")]);
+    list = withRecentFile(list, RecentFile(testPath("/a.log"), text));
+    assert(list == [RecentFile(testPath("/a.log"), text), RecentFile(testPath("/b.log"))]);
 
-    assert(savedFormat(list, "/logs/../a.log") == text);
-    assert(!savedFormat(list, "/b.log").isSet);
-    assert(!savedFormat(list, "/c.log").isSet);
+    assert(savedFormat(list, testPath("/logs/../a.log")) == text);
+    assert(!savedFormat(list, testPath("/b.log")).isSet);
+    assert(!savedFormat(list, testPath("/c.log")).isSet);
 }
 
 /// The encoding of a text format is saved with it, UTF-8 left out; an encoding
@@ -537,16 +552,16 @@ unittest
     import log_core.text_encoding : TextEncoding;
 
     const utf16 = FormatChoice("text", 0, TextEncoding.utf16be);
-    auto j = recentFilesToJson([RecentFile("/a.log", utf16), RecentFile("/b.log", FormatChoice("text"))]);
+    auto j = recentFilesToJson([RecentFile(testPath("/a.log"), utf16), RecentFile(testPath("/b.log"), FormatChoice("text"))]);
     assert(j[0]["encoding"].str == "utf-16be");
     assert("encoding" !in j[1]);
 
     auto list = recentFilesFromJson(j);
-    assert(savedFormat(list, "/a.log") == utf16);
-    assert(savedFormat(list, "/b.log") == FormatChoice("text"));
+    assert(savedFormat(list, testPath("/a.log")) == utf16);
+    assert(savedFormat(list, testPath("/b.log")) == FormatChoice("text"));
 
     auto unknown = parseJSON(`[{"path": "/c.log", "format": "text", "variant": 0, "encoding": "koi8-r"}]`);
-    assert(!savedFormat(recentFilesFromJson(unknown), "/c.log").isSet);
+    assert(!savedFormat(recentFilesFromJson(unknown), testPath("/c.log")).isSet);
 }
 
 /// The placeholder gets the badge and the name of a file's format, if it is known
@@ -554,8 +569,8 @@ unittest
 {
     import formats.logcat : logcatFormatInfo;
 
-    auto j = parseJSON(recentFilesJson([RecentFile("/a.log", FormatChoice(logcatFormatInfo.id)),
-            RecentFile("/b.log"), RecentFile("/c.log", FormatChoice("no-such-format"))]));
+    auto j = parseJSON(recentFilesJson([RecentFile(testPath("/a.log"), FormatChoice(logcatFormatInfo.id)),
+            RecentFile(testPath("/b.log")), RecentFile(testPath("/c.log"), FormatChoice("no-such-format"))]));
     assert(j[0]["format"]["shortName"].str == logcatFormatInfo.shortName);
     assert(j[0]["format"]["name"].str == logcatFormatInfo.name);
     assert("format" !in j[1], "no format saved: no badge");
@@ -565,9 +580,9 @@ unittest
 /// A file that failed to open keeps the time it was used last
 unittest
 {
-    auto list = withRecentFile([RecentFile("/b.log"), RecentFile("/a.log", FormatChoice.init, 100)], "/a.log");
-    assert(list[0] == RecentFile("/a.log", FormatChoice.init, 100));
-    list = withRecentFile(list, RecentFile("/a.log", FormatChoice.init, 200));
+    auto list = withRecentFile([RecentFile(testPath("/b.log")), RecentFile(testPath("/a.log"), FormatChoice.init, 100)], testPath("/a.log"));
+    assert(list[0] == RecentFile(testPath("/a.log"), FormatChoice.init, 100));
+    list = withRecentFile(list, RecentFile(testPath("/a.log"), FormatChoice.init, 200));
     assert(list[0].lastUsed == 200);
 }
 
@@ -576,13 +591,13 @@ unittest
 unittest
 {
     const logcat = FormatChoice("logcat");
-    auto list = [RecentFile("/b.log", FormatChoice.init, 300), RecentFile("/a.log", logcat, 200),
-        RecentFile("/c.log", FormatChoice.init, 100)];
-    auto used = withFilesUsed(list, ["/c.log", "/a.log"], 1000);
-    assert(used == [RecentFile("/a.log", logcat, 1000), RecentFile("/c.log", FormatChoice.init, 1000),
-        RecentFile("/b.log", FormatChoice.init, 300)]);
+    auto list = [RecentFile(testPath("/b.log"), FormatChoice.init, 300), RecentFile(testPath("/a.log"), logcat, 200),
+        RecentFile(testPath("/c.log"), FormatChoice.init, 100)];
+    auto used = withFilesUsed(list, [testPath("/c.log"), testPath("/a.log")], 1000);
+    assert(used == [RecentFile(testPath("/a.log"), logcat, 1000), RecentFile(testPath("/c.log"), FormatChoice.init, 1000),
+        RecentFile(testPath("/b.log"), FormatChoice.init, 300)]);
     assert(withFilesUsed(list, [], 1000) == list);
-    assert(withFilesUsed(list, ["/d.log"], 1000)[0] == RecentFile("/d.log", FormatChoice.init, 1000),
+    assert(withFilesUsed(list, [testPath("/d.log")], 1000)[0] == RecentFile(testPath("/d.log"), FormatChoice.init, 1000),
         "an open file the list lost (more tabs than its length) comes back");
 }
 
@@ -590,16 +605,16 @@ unittest
 /// stays that of the files opened, failed and closed
 unittest
 {
-    auto list = [RecentFile("/b.log", FormatChoice.init, 300), RecentFile("/a.log", FormatChoice("dlt"), 200)];
-    assert(withFilesStamped(list, ["/a.log", "/d.log"], 1000)
-            == [RecentFile("/b.log", FormatChoice.init, 300), RecentFile("/a.log", FormatChoice("dlt"), 1000)]);
+    auto list = [RecentFile(testPath("/b.log"), FormatChoice.init, 300), RecentFile(testPath("/a.log"), FormatChoice("dlt"), 200)];
+    assert(withFilesStamped(list, [testPath("/a.log"), testPath("/d.log")], 1000)
+            == [RecentFile(testPath("/b.log"), FormatChoice.init, 300), RecentFile(testPath("/a.log"), FormatChoice("dlt"), 1000)]);
 }
 
 /// The placeholder gets the time a file was used and whether it is open
 unittest
 {
-    auto j = parseJSON(recentFilesJson([RecentFile("/a.log", FormatChoice.init, 1_762_250_000_123),
-            RecentFile("/b.log")], ["/b.log"]));
+    auto j = parseJSON(recentFilesJson([RecentFile(testPath("/a.log"), FormatChoice.init, 1_762_250_000_123),
+            RecentFile(testPath("/b.log"))], [testPath("/b.log")]));
     assert(j[0]["lastUsed"].integer == 1_762_250_000_123);
     assert(!j[0]["opened"].boolean);
     assert("lastUsed" !in j[1], "unknown: no time");
@@ -617,17 +632,17 @@ unittest
 /// changed in place, without reordering the list
 unittest
 {
-    auto filters = [SavedFilter("one.dlf", "/f/one.dlf")];
-    auto list = [RecentFile("/b.log"), RecentFile("/a.log", FormatChoice("dlt"), 100, filters.dup)];
-    assert(withRecentFile(list, RecentFile("/a.log", FormatChoice("dlt"), 200))[0].filters == filters);
-    assert(withFilesUsed(list, ["/a.log"], 300)[0].filters == filters);
+    auto filters = [SavedFilter("one.dlf", testPath("/f/one.dlf"))];
+    auto list = [RecentFile(testPath("/b.log")), RecentFile(testPath("/a.log"), FormatChoice("dlt"), 100, filters.dup)];
+    assert(withRecentFile(list, RecentFile(testPath("/a.log"), FormatChoice("dlt"), 200))[0].filters == filters);
+    assert(withFilesUsed(list, [testPath("/a.log")], 300)[0].filters == filters);
 
-    assert(savedFilters(list, "/logs/../a.log") == filters);
-    assert(savedFilters(list, "/c.log") is null);
+    assert(savedFilters(list, testPath("/logs/../a.log")) == filters);
+    assert(savedFilters(list, testPath("/c.log")) is null);
 
-    auto changed = withFilters(list, "/a.log", []);
-    assert(changed[1].path == "/a.log" && changed[1].filters.length == 0, "in place");
-    assert(withFilters(list, "/c.log", filters.dup) == list, "a file not in the list isn't added");
+    auto changed = withFilters(list, testPath("/a.log"), []);
+    assert(changed[1].path == testPath("/a.log") && changed[1].filters.length == 0, "in place");
+    assert(withFilters(list, testPath("/c.log"), filters.dup) == list, "a file not in the list isn't added");
 }
 
 /// The search history of a file: the latest query on top, a repeated one moved
@@ -635,30 +650,30 @@ unittest
 unittest
 {
     const a = [SearchChip("a")], b = [SearchChip("b", true, true)], c = [SearchChip("a"), SearchChip("c")];
-    auto list = [RecentFile("/b.log"), RecentFile("/a.log")];
-    list = withSearch(list, "/a.log", a);
-    list = withSearch(list, "/a.log", b);
-    list = withSearch(list, "/logs/../a.log", c);
-    assert(savedSearches(list, "/a.log") == [c, b, a]);
-    assert(list[1].path == "/a.log", "in place");
-    assert(savedSearches(list, "/b.log").length == 0);
-    assert(savedSearches(list, "/c.log") is null);
+    auto list = [RecentFile(testPath("/b.log")), RecentFile(testPath("/a.log"))];
+    list = withSearch(list, testPath("/a.log"), a);
+    list = withSearch(list, testPath("/a.log"), b);
+    list = withSearch(list, testPath("/logs/../a.log"), c);
+    assert(savedSearches(list, testPath("/a.log")) == [c, b, a]);
+    assert(list[1].path == testPath("/a.log"), "in place");
+    assert(savedSearches(list, testPath("/b.log")).length == 0);
+    assert(savedSearches(list, testPath("/c.log")) is null);
 
-    list = withSearch(list, "/a.log", a);
-    assert(savedSearches(list, "/a.log") == [a, c, b], "a repeated query moves up");
-    assert(withSearch(list, "/a.log", [SearchChip("b", true, false)])[1].searches.length == 4,
+    list = withSearch(list, testPath("/a.log"), a);
+    assert(savedSearches(list, testPath("/a.log")) == [a, c, b], "a repeated query moves up");
+    assert(withSearch(list, testPath("/a.log"), [SearchChip("b", true, false)])[1].searches.length == 4,
         "another case is another query");
 
-    assert(withSearch(list, "/a.log", a) == list, "the latest query again changes nothing");
-    assert(withSearch(list, "/a.log", []) == list, "an empty query isn't kept");
-    assert(withSearch(list, "/c.log", a) == list, "a file not in the list isn't added");
+    assert(withSearch(list, testPath("/a.log"), a) == list, "the latest query again changes nothing");
+    assert(withSearch(list, testPath("/a.log"), []) == list, "an empty query isn't kept");
+    assert(withSearch(list, testPath("/c.log"), a) == list, "a file not in the list isn't added");
 
-    auto full = [RecentFile("/a.log")];
+    auto full = [RecentFile(testPath("/a.log"))];
     foreach (i; 0 .. searchHistoryMax + 5)
-        full = withSearch(full, "/a.log", [SearchChip(i.to!string)]);
+        full = withSearch(full, testPath("/a.log"), [SearchChip(i.to!string)]);
     assert(full[0].searches.length == searchHistoryMax);
     assert(full[0].searches[0] == [SearchChip((searchHistoryMax + 4).to!string)], "the latest are kept");
 
-    assert(withRecentFile(list, RecentFile("/a.log", FormatChoice("dlt"), 200))[0].searches == [a, c, b]);
-    assert(withFilesUsed(list, ["/a.log"], 300)[0].searches == [a, c, b]);
+    assert(withRecentFile(list, RecentFile(testPath("/a.log"), FormatChoice("dlt"), 200))[0].searches == [a, c, b]);
+    assert(withFilesUsed(list, [testPath("/a.log")], 300)[0].searches == [a, c, b]);
 }
