@@ -270,7 +270,8 @@ static string settingsDir(bool installed, string exeDir, scope string delegate(s
         }
         else version (Windows)
         {
-            if (const appData = env("APPDATA"))
+            const appData = env("APPDATA");
+            if (appData.length) // not `if (appData)`: an empty string is not null
                 return buildPath(appData, "Log Tracy");
         }
         else

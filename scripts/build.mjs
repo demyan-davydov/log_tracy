@@ -441,8 +441,10 @@ function checkWindows() {
     let ok = true;
     try {
         for (const mode of ["app", "unittest"]) {
-            // the errors straight to the terminal: there may be more than a captured output holds
-            const passed = run("ldc2", ["-c", ...(mode === "unittest" ? ["-unittest"] : []), "-oq",
+            // the errors straight to the terminal: there may be more than a captured output holds.
+            // The program with version Installed too: the code of the distribution (dist) along
+            // with that of debug, which a dist build would leave out
+            const passed = run("ldc2", ["-c", ...(mode === "unittest" ? ["-unittest"] : ["-d-version=Installed"]), "-oq",
                 `-od=${join(out, mode)}`, ...args], { echo: false }).status === 0;
             console.log(`Windows compile (${mode}): ${passed ? "OK" : "FAILED"}`);
             ok &&= passed;
