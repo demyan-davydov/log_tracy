@@ -1,10 +1,28 @@
 # Log Tracy
 
-A desktop viewer for DLT and text logs on macOS, Linux and Windows, written in D with the
-[Sciter](https://sciter.com) UI framework. A functional counterpart of dlt-viewer with a more
-convenient interface. Logs of about a gigabyte open without loading them into memory: the
-file is mapped, and its indexes are built on background threads with the progress shown, the
-window staying responsive.
+A fast cross-platform viewer for DLT and text logs, made for getting to the bottom of an
+incident in logs of many gigabytes.
+
+![Log Tracy: a DLT log searched for three words, an anchored message among the results](docs/images/screenshot.png)
+
+- **Fast on huge files.** Nothing is loaded into memory: a log of gigabytes opens at once,
+  filters and search run on every core, their results show up while they are found, and the
+  window never freezes.
+- **Advanced filtering and search.** Rules on any column show, hide or color messages. A
+  search is several words and regular expressions at once, each found piece highlighted in
+  its own color right in the text.
+- **Anchors.** Mark the messages that matter and they stay in the search results whatever
+  you search for: the key points of an incident are always in sight, among the messages
+  around them.
+- **Whole messages on screen.** A row grows to fit its message: a long one is read at a
+  glance, not scrolled sideways.
+- **Robust DLT.** A damaged record doesn't swallow the ones after it, and a message an
+  application cut into numbered parts is joined back into one.
+- **Many formats.** DLT, Android logcat, kernel log, syslog, web server access logs, CAN
+  traces, plain text.
+- **Tabs.** Several logs open side by side, each with its own filters, search and anchors.
+
+Written in D with the [Sciter](https://sciter.com) UI framework.
 
 ## What It Does
 

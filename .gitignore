@@ -1,5 +1,6 @@
 docs/*
 !docs/*.md
+!docs/images/
 !docs/stories/
 docs/stories/*
 !docs/stories/*.md
