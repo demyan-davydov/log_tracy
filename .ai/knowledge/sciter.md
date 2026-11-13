@@ -25,6 +25,10 @@ agent can't drive it. In scapp a plain
   of 52-686 ms) and its end 80 ms after the last progress, window in the background.
   Sciter doesn't promise it, and Windows and Linux are not checked: if events stall there
   until the mouse moves, wake the loop on publish (`postToWindowThread`).
+- The library is loaded once (`sciter/api`) and unloaded by a module destructor after main.
+  The last collection of the GC runs after the module destructors: a `SciterValue` or a
+  `SciterWindow` left to it would call an unloaded Sciter. `sciterApi()` asserts on such a use
+  (debug builds and the unittests): release whatever holds Sciter before main returns.
 - The script runs with no runtime features (`SCITER_SET_SCRIPT_RUNTIME_FEATURES` 0, `app.d`).
   Not gated by them (6.0.5.5, macOS): modules of `this://app`, `@env` (`language()`,
   `PLATFORM`), `Clipboard`, `Window.screens` and `Window.screenBox`, `Window.this.modal` (the

@@ -20,6 +20,8 @@ shared static this()
     loadSciterLib();
 }
 
+// Unloaded after main: a use of Sciter past this point (a finalizer of the last collection of
+// the GC, which runs after the module destructors) is a bug, and sciterApi() says so
 shared static ~this()
 {
     unloadSciterLib();
@@ -46,6 +48,7 @@ private struct LibHolder
 {
     LibHandle lib;
     SciterAPI_T* api;
+    bool unloaded; // by the module destructor, at exit
 }
 
 private __gshared LibHolder instance;
@@ -94,10 +97,13 @@ private void unloadSciterLib()
         unloadLib(instance.lib);
         instance.lib = null;
         instance.api = null;
+        instance.unloaded = true;
     }
 }
 
 public SciterAPI_T* sciterApi() nothrow @nogc
 {
+    assert(!instance.unloaded, "Sciter is used after it was unloaded at exit: by a finalizer of "
+        ~ "the GC, most likely (a SciterValue or a SciterWindow left to the GC after main)");
     return instance.api;
 }
