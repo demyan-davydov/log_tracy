@@ -155,14 +155,20 @@ user's folder, created on the first start:
 
 Every other build (debug, `--release`) keeps them next to itself, as above.
 
-- **macOS**: `LogTracy.app`, signed ad-hoc, and `sign.command` next to it. macOS won't start
-  a downloaded program: it is quarantined, and an ad-hoc signature holds only on the machine
-  that made it. `sign.command` (opens from Finder) clears the quarantine and signs the program
-  again. For now it is built for the architecture of the machine only; a universal program is
+- **macOS**: `LogTracy.app`, signed ad-hoc, and `sign.command` next to it, and the same two
+  in a disk image, `LogTracy-<version>-<arch>.dmg`, next to a link to Applications to drag the
+  program onto. macOS won't start a downloaded program: it is quarantined, and an ad-hoc
+  signature holds only on the machine that made it. `sign.command` (opens from Finder) clears
+  the quarantine and signs the program again: the one next to it, or, opened from the disk
+  image, the one already dragged into Applications. The disk image doesn't change that: only a
+  Developer ID signature and notarization would. For now it is built for the architecture of the machine only; a universal program is
   in `docs/backlog.md`.
-- **Linux**: the program, `libsciter.so`, the icon and `log_tracy.desktop`. To install,
-  copy the folder to `/opt/log_tracy` and link the `.desktop` file into
-  `~/.local/share/applications`.
+- **Linux**: the program, `libsciter.so`, the icon and `log_tracy.desktop`, and the package
+  `log-tracy_<version>_<amd64|arm64>.deb`, made where `dpkg-deb` is (Debian, Ubuntu, the CI).
+  To install, `sudo apt install ./log-tracy_<version>_amd64.deb`: the program goes to
+  `/opt/log_tracy`, the desktop entry to `/usr/share/applications`, GTK 3 comes as a
+  dependency. Without the package, copy the folder to `/opt/log_tracy` and link the
+  `.desktop` file into `~/.local/share/applications`.
 - **Windows**: `log_tracy.exe` and `sciter.dll`; the icon is built into the program.
 
 ### A screenshot of the window

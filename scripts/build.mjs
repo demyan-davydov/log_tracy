@@ -6,7 +6,7 @@
 // Builds and starts the program: scripts/run.mjs. Tests: tests/js/build-script.test.mjs.
 import { spawnSync } from "node:child_process";
 import { appendFileSync, chmodSync, closeSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync,
-    readFileSync, readSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+    readFileSync, readSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -34,7 +34,8 @@ Commands:
                   the unittests of one D module and of the modules it imports, without
                   dub (one that doesn't depend on Sciter): built into build/tools/
   dist            a distribution in build/dist/<macos|linux|windows>/: the release of an
-                  installed program (build type dist), settings in the user's folder
+                  installed program (build type dist), settings in the user's folder; with
+                  its installer, a .dmg on macOS, a .deb on Linux (where dpkg-deb is)
   check-windows   compile the program and its unittests for Windows x64 from macOS or
                   Linux, without linking
   gen-log <file> [options]
@@ -214,17 +215,94 @@ Categories=Development;Utility;
 `;
 }
 
+/// The disk image of the macOS distribution.
+export function dmgName({ version, arch }) {
+    return `LogTracy-${version}-${arch}.dmg`;
+}
+
+/// The command making the disk image `path` of `folder`: `diskutil image create from` where
+/// macOS has it (APFS, lzfse: ULFO), else `hdiutil create` (HFS+, zlib: UDZO), which newer macOS
+/// calls deprecated but older ones, the CI's runners among them, have alone.
+export function dmgCommand(diskutilImage, folder, path) {
+    return diskutilImage
+        ? ["diskutil", ["image", "create", "from", "--format", "ULFO", "--volumeName", "Log Tracy", folder, path]]
+        : ["hdiutil", ["create", "-volname", "Log Tracy", "-srcfolder", folder, "-format", "UDZO", "-ov", path]];
+}
+
+/// Whether this macOS has `diskutil image` (macOS 27 and newer, where hdiutil is deprecated)
+function hasDiskutilImage() {
+    const result = spawnSync("diskutil", ["image", "create", "from", "--help"], { stdio: "ignore" });
+    return !result.error && result.status === 0;
+}
+
+/// Debian's names of the architectures
+const debArchOf = { x64: "amd64", arm64: "arm64" };
+
+/// The .deb of the Linux distribution, named as Debian names packages.
+export function debName({ version, arch }) {
+    return `log-tracy_${version}_${debArchOf[arch]}.deb`;
+}
+
+/// The control file of the .deb. GTK 3 is what Sciter draws with; libgtk-3-0t64 of newer
+/// Ubuntu provides libgtk-3-0. No maintainer's address: the package isn't in any repository.
+export function debControl({ version, arch }) {
+    return `Package: log-tracy
+Version: ${version}
+Architecture: ${debArchOf[arch]}
+Maintainer: Demian Davidov
+Depends: libgtk-3-0
+Section: devel
+Priority: optional
+Description: viewer of DLT and text logs
+ Log Tracy opens DLT and text logs of any size, gigabytes too, without loading them into
+ memory: search, filters, several views of one log.
+`;
+}
+
+/// The tree a .deb is packed from (dpkg-deb --build), in `root`: the files of the Linux
+/// distribution `dist` (the program, libsciter.so, app.png) in /opt/log_tracy, the desktop
+/// entry in /usr/share/applications for every user, DEBIAN/control. The modes are set here:
+/// dpkg-deb packs them as they are, the owner is root (--root-owner-group).
+export function makeDebRoot(root, { dist, version, arch }) {
+    const program = "log_tracy";
+    const installDir = `/opt/${program}`;
+    const opt = join(root, installDir);
+    const applications = join(root, "usr", "share", "applications");
+    const debian = join(root, "DEBIAN");
+    for (const dir of [opt, applications, debian]) mkdirSync(dir, { recursive: true, mode: 0o755 });
+    for (const file of [program, "libsciter.so", "app.png"]) {
+        copyFileSync(join(dist, file), join(opt, file));
+        chmodSync(join(opt, file), file === program ? 0o755 : 0o644);
+    }
+    const entry = join(applications, `${program}.desktop`);
+    writeFileSync(entry, desktopEntry({ installDir, program }));
+    chmodSync(entry, 0o644);
+    writeFileSync(join(debian, "control"), debControl({ version, arch }));
+    chmodSync(join(debian, "control"), 0o644);
+    // mkdirSync's mode is masked by the umask: set the folders once more
+    for (const dir of [root, join(root, "opt"), opt, join(root, "usr"), join(root, "usr", "share"), applications, debian])
+        chmodSync(dir, 0o755);
+}
+
 /// The script next to the macOS bundle: a downloaded program is in quarantine and unsigned,
 /// and macOS on arm64 starts no unsigned code. Clears the quarantine and signs (ad-hoc) the
-/// Sciter library, then the bundle. A .command opens in Terminal from Finder.
-function signScript(bundle) {
+/// Sciter library, then the bundle. A .command opens in Terminal from Finder. The bundle next
+/// to it, or, when that can't be written (the script runs from the disk image), the copy
+/// already dragged into /Applications.
+export function signScript(bundle) {
     return `#!/bin/bash
 # Lets macOS start ${bundle}: clears its quarantine and signs it for this machine.
 cd "$(dirname "$0")" || exit 1
-xattr -cr "${bundle}" &&
-codesign --force --sign - "${bundle}/Contents/MacOS/libsciter.dylib" &&
-codesign --force --sign - "${bundle}" &&
-echo "${bundle} is ready."
+app="${bundle}"
+[ -w "${bundle}" ] || app="/Applications/${bundle}"
+if [ ! -w "$app" ]; then
+    echo "Drag ${bundle} into Applications first, then open this again."
+    exit 1
+fi
+xattr -cr "$app" &&
+codesign --force --sign - "$app/Contents/MacOS/libsciter.dylib" &&
+codesign --force --sign - "$app" &&
+echo "$app is ready."
 `;
 }
 
@@ -352,7 +430,22 @@ function distMac(version, arch) {
         const sign = join(staging, "sign.command");
         writeFileSync(sign, signScript(bundle), { mode: 0o755 });
         runOrFail("bash", [sign], "Signing failed.");
+        makeDmg(join(staging, dmgName({ version, arch })), [bundle, "sign.command"].map((f) => join(staging, f)));
     });
+}
+
+/// The disk image to install from: the bundle and sign.command next to a link to
+/// /Applications, to drag the bundle onto. Compressed, read-only.
+function makeDmg(path, files) {
+    const folder = mkdtempSync(join(tmpdir(), "dlt-dmg-"));
+    try {
+        // ditto keeps the signature and attributes of the bundle
+        for (const file of files) runOrFail("ditto", [file, join(folder, basename(file))], "Copying into the disk image failed.");
+        symlinkSync("/Applications", join(folder, "Applications"));
+        runOrFail(...dmgCommand(hasDiskutilImage(), folder, path), "Making the disk image failed.");
+    } finally {
+        rmSync(folder, { recursive: true, force: true });
+    }
 }
 
 /// Makes a distribution by `make(folder)` and only when it is all made and copied replaces
@@ -397,7 +490,7 @@ function makeMacBundle(path, name, version, builtProgram) {
     writeFileSync(join(contents, "Info.plist"), infoPlist({ name, version, languages: tags }));
 }
 
-function distLinux(arch) {
+function distLinux(version, arch) {
     const target = build({ release: true, installed: true, arch });
     const program = "log_tracy";
     const installDir = `/opt/${program}`;
@@ -406,9 +499,28 @@ function distLinux(arch) {
         chmodSync(join(staging, program), 0o755);
         copyFileSync("resources/app.png", join(staging, "app.png"));
         writeFileSync(join(staging, `${program}.desktop`), desktopEntry({ installDir, program }));
+        makeDeb(join(staging, debName({ version, arch })), { dist: staging, version, arch });
     });
-    console.log(`To install, copy ${dir} to ${installDir} and link ${program}.desktop.`);
+    console.log(`To install: sudo apt install ./${join(dir, debName({ version, arch }))}, `
+        + `or copy ${dir} to ${installDir} and link ${program}.desktop.`);
     return dir;
+}
+
+/// The .deb of the distribution `dist` (makeDebRoot), by dpkg-deb: there on Debian and Ubuntu
+/// (the CI too); on another Linux the distribution is made without it.
+function makeDeb(path, { dist, version, arch }) {
+    const found = spawnSync("dpkg-deb", ["--version"], { stdio: "ignore" }); // run throws when it is missing
+    if (found.error || found.status !== 0) {
+        console.log("No dpkg-deb here: the distribution is made without the .deb.");
+        return;
+    }
+    const root = mkdtempSync(join(tmpdir(), "dlt-deb-"));
+    try {
+        makeDebRoot(root, { dist, version, arch });
+        runOrFail("dpkg-deb", ["--root-owner-group", "--build", root, path], "Making the .deb failed.");
+    } finally {
+        rmSync(root, { recursive: true, force: true });
+    }
 }
 
 function distWindows(arch) {
@@ -424,7 +536,7 @@ function dist(arch) {
     const distArchitecture = distArch(arch, process.arch);
     const dir = process.platform === "darwin" ? distMac(version, distArchitecture)
         : process.platform === "win32" ? distWindows(distArchitecture)
-        : distLinux(distArchitecture);
+        : distLinux(version, distArchitecture);
     console.log(`Log Tracy ${version} (${distArchitecture}): ${dir}`);
 }
 

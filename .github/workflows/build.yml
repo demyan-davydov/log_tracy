@@ -66,3 +66,12 @@ jobs:
         with:
           name: log-tracy-${{ runner.os }}
           path: log-tracy-${{ runner.os }}.tar.gz
+      # the installers on their own: they keep what they install as it is, the zip harms nothing
+      - uses: actions/upload-artifact@v4
+        if: runner.os != 'Windows'
+        with:
+          name: log-tracy-${{ runner.os }}-installer
+          path: |
+            build/dist/macos/*.dmg
+            build/dist/linux/*.deb
+          if-no-files-found: error

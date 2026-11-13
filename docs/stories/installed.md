@@ -44,3 +44,35 @@ release плюс `version (Installed)`. Такая программа храни
 ## Дальше
 
 Инсталляторы: DMG для macOS и `.deb` для Linux (`docs/backlog.md`).
+
+## Инсталляторы
+
+`dist` теперь собирает рядом с папкой дистрибутива ещё и инсталлятор:
+
+- macOS: `LogTracy-<version>-<arch>.dmg` — `LogTracy.app`, `sign.command` и ссылка на
+  `/Applications`, куда перетаскивают программу. Собирает `diskutil image create from` (APFS,
+  сжатие lzfse — ULFO), а где его нет — `hdiutil create` (HFS+, UDZO). Оба есть в системе,
+  ставить ничего не нужно.
+- Linux: `log-tracy_<version>_<amd64|arm64>.deb` (`dpkg-deb --root-owner-group`): программа,
+  `libsciter.so` и иконка в `/opt/log_tracy`, `.desktop` в `/usr/share/applications`,
+  зависимость `libgtk-3-0` (в новых Ubuntu её предоставляет `libgtk-3-0t64`). Где `dpkg-deb`
+  нет (не Debian), дистрибутив собирается без `.deb`, со строкой об этом.
+- Windows — без инсталлятора, по решению пользователя.
+
+CI выкладывает инсталляторы отдельным артефактом.
+
+### Почему так
+
+- DMG не снимает карантин: без Developer ID и нотаризации Gatekeeper по-прежнему не запустит
+  скачанную программу. Поэтому `sign.command` лежит и в образе. Образ только для чтения,
+  подписывать бандл в нём бесполезно: скрипт подписывает бандл рядом с собой, а если туда не
+  записать — уже перетащенный в `/Applications`, иначе просит сначала перетащить.
+- Раскладка `.deb` (`makeDebRoot`) и `control` (`debControl`) — отдельные функции с тестами:
+  на маке `dpkg-deb` нет, а дерево пакета проверяется и без него. Права файлов ставятся явно:
+  `dpkg-deb` пакует их как есть, а `mkdirSync` зависит от umask.
+- Без адреса в `Maintainer`: пакет не в репозитории, а адрес в публичном артефакте ни к чему.
+- `diskutil image`, а не `hdiutil`: на macOS 27 `hdiutil create`/`attach` пишут, что устарели,
+  и отсылают к `diskutil image`. Но на старых macOS (раннеры CI) `diskutil image` нет, поэтому
+  `hdiutil` остаётся запасным: есть ли `diskutil image`, проверяет его `--help`.
+- `.deb`, а не AppImage: `dpkg-deb` есть в Ubuntu и на CI, AppImage требует внешнего
+  `appimagetool`. AppImage — в бэклоге, если понадобится.
