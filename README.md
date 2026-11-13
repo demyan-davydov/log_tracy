@@ -44,7 +44,7 @@ The latest release, for macOS (Apple silicon), Linux (x64) and Windows (x64):
 - **macOS**: open the `.dmg` and drag Log Tracy into Applications, then open `sign.command`
   from the disk image once: the program isn't signed by Apple, and macOS won't start it
   otherwise.
-- **Linux** (Debian, Ubuntu): `sudo apt install ./log-tracy_<version>_amd64.deb`.
+- **Linux** (Debian, Ubuntu): `sudo apt install ./LogTracy-<version>-linux-x64.deb`.
 - **Windows**: unpack the `.zip` anywhere and run `log_tracy.exe`. The program isn't signed:
   on the first start SmartScreen warns about it, "More info", then "Run anyway".
 
@@ -54,6 +54,7 @@ The latest release, for macOS (Apple silicon), Linux (x64) and Windows (x64):
 node scripts/build.mjs            # debug build for this machine (fetches its Sciter library from Git LFS)
 node scripts/run.mjs              # build and start
 node scripts/build.mjs test       # D and JS unit tests
+node scripts/build.mjs dist       # the distribution of this system and its installer, in build/dist/
 ```
 
 Setting up the tools on each system and the other commands: [docs/building.md](docs/building.md).

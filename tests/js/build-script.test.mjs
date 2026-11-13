@@ -78,10 +78,11 @@ test("the desktop entry starts the program where it is installed", () => {
 });
 
 test("the installers are named by the version and the architecture as each system names it", () => {
-    assert.equal(dmgName({ version: "1.2.3", arch: "arm64" }), "LogTracy-1.2.3-arm64.dmg");
-    assert.equal(dmgName({ version: "1.2.3", arch: "x64" }), "LogTracy-1.2.3-x64.dmg");
-    assert.equal(debName({ version: "1.2.3", arch: "x64" }), "log-tracy_1.2.3_amd64.deb");
-    assert.equal(debName({ version: "1.2.3", arch: "arm64" }), "log-tracy_1.2.3_arm64.deb");
+    // one shape on every system: LogTracy-<version>-<system>-<arch>, x64 on Linux too
+    assert.equal(dmgName({ version: "1.2.3", arch: "arm64" }), "LogTracy-1.2.3-macos-arm64.dmg");
+    assert.equal(dmgName({ version: "1.2.3", arch: "x64" }), "LogTracy-1.2.3-macos-x64.dmg");
+    assert.equal(debName({ version: "1.2.3", arch: "x64" }), "LogTracy-1.2.3-linux-x64.deb");
+    assert.equal(debName({ version: "1.2.3", arch: "arm64" }), "LogTracy-1.2.3-linux-arm64.deb");
     assert.equal(zipName({ version: "1.2.3", arch: "x64" }), "LogTracy-1.2.3-windows-x64.zip");
     assert.equal(zipName({ version: "1.2.3", arch: "arm64" }), "LogTracy-1.2.3-windows-arm64.zip");
 });

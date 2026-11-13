@@ -227,9 +227,9 @@ Categories=Development;Utility;
 `;
 }
 
-/// The disk image of the macOS distribution.
+/// The disk image of the macOS distribution: LogTracy-<version>-<system>-<arch>, as every installer.
 export function dmgName({ version, arch }) {
-    return `LogTracy-${version}-${arch}.dmg`;
+    return `LogTracy-${version}-macos-${arch}.dmg`;
 }
 
 /// The name of the zip of the Windows distribution: the version and the architecture in it.
@@ -260,12 +260,14 @@ function hasDiskutilImage() {
     return !result.error && result.status === 0;
 }
 
-/// Debian's names of the architectures
+/// Debian's names of the architectures, for the control file
 const debArchOf = { x64: "amd64", arm64: "arm64" };
 
-/// The .deb of the Linux distribution, named as Debian names packages.
+/// The .deb of the Linux distribution, named as the installers of the other systems
+/// (LogTracy-<version>-<system>-<arch>), not as Debian names packages: apt reads the package's
+/// name and architecture from its control file, not from the file's name.
 export function debName({ version, arch }) {
-    return `log-tracy_${version}_${debArchOf[arch]}.deb`;
+    return `LogTracy-${version}-linux-${arch}.deb`;
 }
 
 /// The control file of the .deb. GTK 3 is what Sciter draws with; libgtk-3-0t64 of newer
