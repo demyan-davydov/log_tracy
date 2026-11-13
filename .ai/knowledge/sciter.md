@@ -1,7 +1,7 @@
 # Sciter Behaviour and Traps
 
 What was found the hard way, mostly on Sciter 6.0.3.12 (scapp) and 6.0.5.5 (the app's
-library, `libs/VERSION`). Check a surprising behaviour here before blaming our code; add what
+library, `libs/SCITER_VERSION`). Check a surprising behaviour here before blaming our code; add what
 you find. When a behaviour differs between scapp and the app, the app wins: check it there.
 
 The Sciter.JS SDK (docs in `docs/md`, samples in `samples.sciter/`, e.g. `tooltips++`,

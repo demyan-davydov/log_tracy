@@ -304,5 +304,5 @@ A new variable goes into this table.
 ## The Sciter libraries
 
 `libs/<system>/[<architecture>/]` holds the Sciter libraries of every platform; their version
-is in `libs/VERSION`. To update Sciter, replace the files and `libs/VERSION` in one commit: the
+is in `libs/SCITER_VERSION`. To update Sciter, replace the files and `libs/SCITER_VERSION` in one commit: the
 binding (`source/sciter/capi`) is written for the API of that version.

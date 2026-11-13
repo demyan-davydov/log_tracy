@@ -12,7 +12,7 @@ Sciter рядом с программой и тестами, подписать 
 
 - Библиотеки Sciter (`libs/`, 134 МБ на все платформы) хранятся в git через LFS:
   `.gitattributes` отдает LFS файлы `.dylib`, `.so`, `.dll` в `libs/`. Версия Sciter записана
-  в `libs/VERSION`: биндинг `source/sciter/capi` привязан к API конкретной версии.
+  в `libs/SCITER_VERSION`: биндинг `source/sciter/capi` привязан к API конкретной версии.
 - `dub.selections.json` теперь в git: для программы версии зависимостей фиксируются, чтобы
   сборка повторялась.
 - Раскладку сборок делает сам dub (`dub.sdl`): `targetPath "build/$PLATFORM-$ARCH-$BUILD_TYPE"`
