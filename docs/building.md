@@ -33,7 +33,8 @@ You need:
 
 ### Linux
 
-Not tried yet: tell what had to be done differently.
+Checked by the CI on Ubuntu (`ubuntu-latest`), not yet by hand: tell what had to be done
+differently.
 
 1. A C toolchain and GTK 3, which Sciter draws with. On Debian or Ubuntu:
 
@@ -54,7 +55,8 @@ Not tried yet: tell what had to be done differently.
 
 ### Windows
 
-Not tried yet: tell what had to be done differently.
+Checked by the CI on Windows Server (`windows-latest`, Visual Studio and LDC 1.43), not yet by
+hand: tell what had to be done differently.
 
 1. [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/) with the
    "Desktop development with C++" workload: the linker, the Windows SDK and the resource
@@ -173,12 +175,29 @@ Every other build (debug, `--release`) keeps them next to itself, as above.
   `/opt/log_tracy`, the desktop entry to `/usr/share/applications`, GTK 3 comes as a
   dependency. Without the package, copy the folder to `/opt/log_tracy` and link the
   `.desktop` file into `~/.local/share/applications`.
-- **Windows**: `log_tracy.exe` and `sciter.dll`; the icon is built into the program.
+- **Windows**: `log_tracy.exe` and `sciter.dll`, the icon built into the program, and the
+  same two in `LogTracy-<version>-windows-<arch>.zip`, in a `LogTracy` folder: no installer,
+  it runs where it is unpacked. The program is unsigned: Windows SmartScreen warns about it
+  on the first start ("More info", then "Run anyway").
 
 The icons of the three systems are made of the logo, `resources/icons/logo.png` (a square of
 1024 px), by `node scripts/make-icons.mjs` on macOS (`sips`, `iconutil`): `app.icns` for the
 bundle, `app.ico` for Windows (16 to 256 px), `app.png` for Linux and `png/icon-<size>.png`
 of every size from 16 to 1024. Run it after the logo changes and commit what it writes.
+
+### A release
+
+A tag of the version publishes a release on GitHub. Bump `VERSION`, commit, then:
+
+```sh
+git tag v0.9.0
+git push origin v0.9.0
+```
+
+The CI builds and tests the three systems as for any push and, once they pass, its `release`
+job publishes the release `v<version>` with the `.dmg`, the `.deb` and the Windows `.zip`,
+and the notes of the commits since the last one. It stops if the tag is not the version of
+`VERSION`. The README links to the latest release.
 
 ### A screenshot of the window
 

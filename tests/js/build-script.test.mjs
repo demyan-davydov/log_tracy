@@ -6,7 +6,7 @@ import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseCommand, dubArgs, distArch, infoPlist, desktopEntry, sciterLibrary, isLfsPointer, lfsPullArgs, jsTestArgs,
-    compilerArgs, genLogArgs, moduleTestArgs, commands, buildUsage, runUsage, dmgName, debName, debControl,
+    compilerArgs, genLogArgs, moduleTestArgs, commands, buildUsage, runUsage, dmgName, debName, debControl, zipName, zipCommand,
     makeDebRoot, signScript, dmgCommand } from "../../scripts/build.mjs";
 
 test("build in debug for the machine by default", () => {
@@ -82,6 +82,8 @@ test("the installers are named by the version and the architecture as each syste
     assert.equal(dmgName({ version: "1.2.3", arch: "x64" }), "LogTracy-1.2.3-x64.dmg");
     assert.equal(debName({ version: "1.2.3", arch: "x64" }), "log-tracy_1.2.3_amd64.deb");
     assert.equal(debName({ version: "1.2.3", arch: "arm64" }), "log-tracy_1.2.3_arm64.deb");
+    assert.equal(zipName({ version: "1.2.3", arch: "x64" }), "LogTracy-1.2.3-windows-x64.zip");
+    assert.equal(zipName({ version: "1.2.3", arch: "arm64" }), "LogTracy-1.2.3-windows-arm64.zip");
 });
 
 test("the disk image by diskutil image where macOS has it, else by hdiutil", () => {
@@ -120,6 +122,11 @@ test("the tree of the .deb: the program in /opt, the desktop entry in the system
         rmSync(dist, { recursive: true, force: true });
         rmSync(root, { recursive: true, force: true });
     }
+});
+
+test("the zip of Windows is made by PowerShell, the folder in it, quoted for PowerShell", () => {
+    assert.deepEqual(zipCommand("C:\\t\\LogTracy", "D:\\dist\\it's.zip"), ["powershell", ["-NoProfile", "-NonInteractive",
+        "-Command", "Compress-Archive -Path 'C:\\t\\LogTracy' -DestinationPath 'D:\\dist\\it''s.zip' -Force"]]);
 });
 
 test("sign.command signs the bundle next to it, else, from the read-only image, the one in /Applications", () => {

@@ -35,7 +35,8 @@ Commands:
                   dub (one that doesn't depend on Sciter): built into build/tools/
   dist            a distribution in build/dist/<macos|linux|windows>/: the release of an
                   installed program (build type dist), settings in the user's folder; with
-                  its installer, a .dmg on macOS, a .deb on Linux (where dpkg-deb is)
+                  its installer, a .dmg on macOS, a .deb on Linux (where dpkg-deb is), a
+                  .zip on Windows
   check-windows   compile the program and its unittests for Windows x64 from macOS or
                   Linux, without linking
   gen-log <file> [options]
@@ -229,6 +230,19 @@ Categories=Development;Utility;
 /// The disk image of the macOS distribution.
 export function dmgName({ version, arch }) {
     return `LogTracy-${version}-${arch}.dmg`;
+}
+
+/// The name of the zip of the Windows distribution: the version and the architecture in it.
+export function zipName({ version, arch }) {
+    return `LogTracy-${version}-windows-${arch}.zip`;
+}
+
+/// The command packing `folder` (the folder itself, not only its files) into the zip `path`:
+/// PowerShell's Compress-Archive, there on every Windows. Single quotes doubled for PowerShell.
+export function zipCommand(folder, path) {
+    const quoted = (text) => `'${text.replaceAll("'", "''")}'`;
+    return ["powershell", ["-NoProfile", "-NonInteractive", "-Command",
+        `Compress-Archive -Path ${quoted(folder)} -DestinationPath ${quoted(path)} -Force`]];
 }
 
 /// The command making the disk image `path` of `folder`: `diskutil image create from` where
@@ -548,11 +562,22 @@ function makeDeb(path, { dist, version, arch }) {
     }
 }
 
-function distWindows(arch) {
+function distWindows(version, arch) {
     const target = build({ release: true, installed: true, arch });
     // the icon is built into the program (resources/app.rc, scripts/windows-res.mjs)
     return publish("windows", (staging) => {
-        for (const file of ["log_tracy.exe", "sciter.dll"]) copyFileSync(join(target, file), join(staging, file));
+        const files = ["log_tracy.exe", "sciter.dll"];
+        for (const file of files) copyFileSync(join(target, file), join(staging, file));
+        // the zip to download: a LogTracy folder with the program in it
+        const folder = mkdtempSync(join(tmpdir(), "dlt-zip-"));
+        try {
+            const inZip = join(folder, "LogTracy");
+            mkdirSync(inZip);
+            for (const file of files) copyFileSync(join(staging, file), join(inZip, file));
+            runOrFail(...zipCommand(inZip, join(staging, zipName({ version, arch }))), "Making the zip failed.");
+        } finally {
+            rmSync(folder, { recursive: true, force: true });
+        }
     });
 }
 
@@ -560,7 +585,7 @@ function dist(arch) {
     const version = readFileSync("VERSION", "utf8").trim();
     const distArchitecture = distArch(arch, process.arch);
     const dir = process.platform === "darwin" ? distMac(version, distArchitecture)
-        : process.platform === "win32" ? distWindows(distArchitecture)
+        : process.platform === "win32" ? distWindows(version, distArchitecture)
         : distLinux(version, distArchitecture);
     console.log(`Log Tracy ${version} (${distArchitecture}): ${dir}`);
 }

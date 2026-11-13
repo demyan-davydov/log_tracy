@@ -36,6 +36,18 @@ Written in D with the [Sciter](https://sciter.com) UI framework.
   their format and filters.
 - Table columns arranged per format, light and dark themes, translations.
 
+## Download
+
+The latest release, for macOS (Apple silicon), Linux (x64) and Windows (x64):
+[github.com/demyan-davydov/log_tracy/releases/latest](https://github.com/demyan-davydov/log_tracy/releases/latest).
+
+- **macOS**: open the `.dmg` and drag Log Tracy into Applications, then open `sign.command`
+  from the disk image once: the program isn't signed by Apple, and macOS won't start it
+  otherwise.
+- **Linux** (Debian, Ubuntu): `sudo apt install ./log-tracy_<version>_amd64.deb`.
+- **Windows**: unpack the `.zip` anywhere and run `log_tracy.exe`. The program isn't signed:
+  on the first start SmartScreen warns about it, "More info", then "Run anyway".
+
 ## Building
 
 ```sh
