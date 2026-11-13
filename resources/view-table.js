@@ -10,7 +10,7 @@
 import * as backend from "backend.js";
 import { rowLayout } from "cell-format.js";
 import { followedRow } from "row-selection.js";
-import { noTable, tableStep, jumpStep } from "pane-state.js";
+import { noTable, tableStep, jumpStep, showsRowsOf } from "pane-state.js";
 import { mainViewStatus, searchViewStatus, showProgress, showStatus } from "status-view.js";
 
 // True if `element` is `root` or inside it (and still in the document)
@@ -167,6 +167,12 @@ export class ViewTable {
         else if (step.grow) list.grow(); // more rows of the same content: the ones on screen stay
     }
 
+    // True if the rows on screen are of the content of the view (showsRowsOf):
+    // not covered by a status, not the rows of a content being replaced
+    showsRowsOfView() {
+        return showsRowsOf(this.shown, this.view);
+    }
+
     // The message index of the row of the table the other one follows
     // (followedRow), null if none
     followedMessage() {
@@ -177,10 +183,11 @@ export class ViewTable {
 
     // Shows the row of message `index` if the view has it: selected, near the
     // top unless it is on screen (jumpStep). The keyboard stays where it is.
+    // Also while a load, a filter or a search fills it: the rows found so far.
     // By the view of the machine, not currentView(): a search view before any
     // search has no rows to look the message up in.
     showMessage(index) {
-        const step = jumpStep(this.view, () => this.positionOf(index),
+        const step = jumpStep(this.shown, this.view, () => this.positionOf(index),
             { visibleRange: this.list.wholeRowsRange(), visibleRows: this.list.visibleRowCount() });
         if (step) this.list.showRow(step);
     }
@@ -234,9 +241,8 @@ export class MainViewTable extends ViewTable {
     // (jumpStep); the search table follows it as a click. Nothing while the
     // table shows no rows (a status view covers it). @returns true if it went
     goToMessage(index) {
-        if (!this.shown.loaded) return false;
         const list = this.list;
-        const step = jumpStep({ status: "ready" }, () => backend.mainViewNearestPosition(this.docId, index),
+        const step = jumpStep(this.shown, this.currentView(), () => backend.mainViewNearestPosition(this.docId, index),
             { visibleRange: list.wholeRowsRange(), visibleRows: list.visibleRowCount() });
         if (!step) return false;
         list.showRow(step);

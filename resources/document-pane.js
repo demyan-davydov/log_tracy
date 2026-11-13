@@ -551,10 +551,12 @@ export class DocumentPane {
     }
 
     // Shows the row selected in the table of `list` (followedRow) in the other
-    // one, if that one has its message. The keyboard stays in `list`.
+    // one, if that one has its message, also while a load, a filter or a
+    // search fills either of them. The keyboard stays in `list`.
     followSelection(list) {
         const [from, to] = list === this.main.list ? [this.main, this.search] : [this.search, this.main];
-        if (from.view?.status !== "ready") return; // its rows are being replaced
+        // its rows are being replaced; a load, a filter or a search filling them is followed
+        if (!from.showsRowsOfView()) return;
         const index = from.followedMessage();
         if (index !== null) to.showMessage(index);
     }

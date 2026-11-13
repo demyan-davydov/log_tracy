@@ -3,7 +3,7 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { noTable, tableStep, paneChanges, anchorEdit, rowLookStep, keptRowStep, searchViewKey, jumpStep } from "../../resources/pane-state.js";
+import { noTable, tableStep, paneChanges, anchorEdit, rowLookStep, keptRowStep, searchViewKey, jumpStep, showsRowsOf } from "../../resources/pane-state.js";
 
 const ready = (dataVersion) => ({ status: "ready", dataVersion });
 
@@ -202,29 +202,55 @@ const at = (position) => () => position;
 const screen = { visibleRange: [200, 229], visibleRows: 30 };
 
 test("jumpStep: the row of the message becomes the only one selected, near the top", () => {
-    assert.deepEqual(jumpStep(ready(1), at(100), screen), { position: 100, top: 98 });
-    assert.deepEqual(jumpStep(ready(1), at(1), screen), { position: 1, top: 0 }, "no rows above the first");
-    assert.deepEqual(jumpStep(ready(1), at(0), screen), { position: 0, top: 0 }, "the first row is a position too");
-    assert.deepEqual(jumpStep(ready(1), at(5), { visibleRange: null, visibleRows: 30 }), { position: 5, top: 3 }, "no rows on screen");
+    assert.deepEqual(jumpStep(table(1), ready(1), at(100), screen), { position: 100, top: 98 });
+    assert.deepEqual(jumpStep(table(1), ready(1), at(1), screen), { position: 1, top: 0 }, "no rows above the first");
+    assert.deepEqual(jumpStep(table(1), ready(1), at(0), screen), { position: 0, top: 0 }, "the first row is a position too");
+    assert.deepEqual(jumpStep(table(1), ready(1), at(5), { visibleRange: null, visibleRows: 30 }), { position: 5, top: 3 }, "no rows on screen");
 });
 
 test("jumpStep: a row already on screen is selected where it is", () => {
-    assert.deepEqual(jumpStep(ready(1), at(200), screen), { position: 200, top: null }, "the first on screen");
-    assert.deepEqual(jumpStep(ready(1), at(229), screen), { position: 229, top: null }, "the last on screen");
-    assert.equal(jumpStep(ready(1), at(230), screen).top, 228, "just below");
+    assert.deepEqual(jumpStep(table(1), ready(1), at(200), screen), { position: 200, top: null }, "the first on screen");
+    assert.deepEqual(jumpStep(table(1), ready(1), at(229), screen), { position: 229, top: null }, "the last on screen");
+    assert.equal(jumpStep(table(1), ready(1), at(230), screen).top, 228, "just below");
 });
 
 test("jumpStep: nowhere to go when the other table doesn't show the message", () => {
-    assert.equal(jumpStep(ready(1), at(null), screen), null, "not in that view");
-    assert.equal(jumpStep(ready(1), at(undefined), screen), null, "no answer");
+    assert.equal(jumpStep(table(1), ready(1), at(null), screen), null, "not in that view");
+    assert.equal(jumpStep(table(1), ready(1), at(undefined), screen), null, "no answer");
 });
 
 test("jumpStep: nowhere to go while the other table shows a status, the backend isn't asked", () => {
     // its positions belong to the content being replaced
     const asked = [];
     const position = () => { asked.push(1); return 5; };
-    for (const status of ["searching", "filtering", "loading", "searchCancelled", "sourceLost"])
-        assert.equal(jumpStep({ status, dataVersion: 1 }, position, screen), null, status);
-    assert.equal(jumpStep(null, position, screen), null, "no view yet");
+    const covered = { loaded: true, dataVersion: null };
+    for (const status of ["searching", "filtering", "loadingFile", "searchCancelled", "sourceLost"])
+        assert.equal(jumpStep(covered, { status, dataVersion: 1 }, position, screen), null, status);
+    assert.equal(jumpStep(table(1), null, position, screen), null, "no view yet");
+    assert.equal(jumpStep(noTable, ready(1), position, screen), null, "no rows shown yet");
     assert.equal(asked.length, 0);
+});
+
+test("jumpStep: while a load, a filter or a search fills the other table, it goes to the rows found so far", () => {
+    // the content of one dataVersion only grows: a position found now stays right
+    for (const status of ["loadingFile", "filtering", "searching"])
+        assert.deepEqual(jumpStep(table(1), { status, dataVersion: 1 }, at(100), screen), { position: 100, top: 98 }, status);
+});
+
+test("jumpStep: nowhere to go while the other table still shows the content being replaced", () => {
+    const asked = [];
+    const position = () => { asked.push(1); return 5; };
+    assert.equal(jumpStep(table(1), { status: "filtering", dataVersion: 2 }, position, screen), null, "a new filter");
+    assert.equal(jumpStep(table(1), ready(2), position, screen), null, "rebuilt, not reloaded yet");
+    assert.equal(asked.length, 0);
+});
+
+test("showsRowsOf: the rows on screen are of the content of the view", () => {
+    assert.equal(showsRowsOf(table(1), ready(1)), true);
+    assert.equal(showsRowsOf(table(0), { status: "loadingFile", dataVersion: 0 }), true, "the first content");
+    assert.equal(showsRowsOf(table(1), { status: "searching", dataVersion: 1 }), true);
+    assert.equal(showsRowsOf(table(1), { status: "searching", dataVersion: 2 }), false, "a new search");
+    assert.equal(showsRowsOf({ loaded: true, dataVersion: null }, { status: "filterFailed" }), false, "a status shown");
+    assert.equal(showsRowsOf(noTable, ready(1)), false, "nothing shown yet");
+    assert.equal(showsRowsOf(table(1), null), false, "no view");
 });

@@ -125,18 +125,30 @@ export function searchViewKey(vm) {
     return `${vm.status}/${vm.dataVersion ?? ""}/${vm.progress ?? ""}`;
 }
 
+// True if the rows a table shows (`shown`, see tableStep) are of the content of
+// its view `vm`: a status doesn't cover them and they aren't the rows of a
+// content being replaced. A load, a filter or a search filling the view counts:
+// its content only grows, the rows shown keep their positions.
+export function showsRowsOf(shown, vm) {
+    return shown.dataVersion !== null && vm != null && shown.dataVersion === vm.dataVersion;
+}
+
 // Where a row selected in one table takes the other one (the same rules both
 // ways): { position: the row of the message there, made current and the only
 // one selected, top: the first row to show so that it is near the top, null
 // if it is on screen already and stays where it is }, or null if that table
-// doesn't show the message or shows a status instead of rows: its positions
-// belong to the content being replaced then, and the backend is not asked.
-// @param vm - the view of that table (see tableStep)
+// doesn't show the message or doesn't show rows of the content of its view
+// (showsRowsOf): a status instead of rows, or the rows of a content being
+// replaced, whose positions are of another content; the backend is not asked
+// then. While a load, a filter or a search fills that table it goes to the
+// rows found so far.
+// @param shown - what that table shows (see tableStep)
+// @param vm - the view of that table
 // @param positionOf - () => the row of the message there, null if none (the backend)
 // @param visibleRange - [first, last] rows wholly on screen there (not cut by an edge), null if none
 // @param visibleRows - the rows that table has room for
-export function jumpStep(vm, positionOf, { visibleRange, visibleRows }) {
-    if (vm?.status !== "ready") return null;
+export function jumpStep(shown, vm, positionOf, { visibleRange, visibleRows }) {
+    if (!showsRowsOf(shown, vm)) return null;
     const position = positionOf();
     if (position === null || position === undefined) return null;
     const onScreen = visibleRange && position >= visibleRange[0] && position <= visibleRange[1];
