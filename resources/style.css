@@ -644,43 +644,28 @@ frameset {
     text-overflow: ellipsis;
 }
 
-/* The switch and the color of a rule are one size: that of Sciter's checkbox
-   (its master.css), set here for both */
-.filter-chip input,
-.filter-swatch {
+/* The switch of a rule: the size of Sciter's checkbox (its master.css) */
+.filter-chip input {
     width: 15dip;
     height: 15dip;
 }
 
-/* The color of the rule with what it does in it: + include, − exclude,
-   ◆ marker, a vector icon of Sciter (its class, set by the script). White
-   outlined in black: seen on any color */
-.filter-swatch {
-    box-sizing: border-box;
-    border-radius: 2dip;
-    border: 1dip solid var(--border-color);
-    vertical-align: middle; /* Sciter: in line with the checkbox */
+/* What a rule does: + include, − exclude, ◆ marker, a vector icon of Sciter
+   (its class, set by the script) in the color of the chip's text */
+.filter-kind {
+    width: 11dip;
+    height: 11dip;
+    vertical-align: middle;
     foreground-repeat: no-repeat;
     foreground-position: 50% 50%;
     foreground-size: 11dip;
-    fill: white;
-    stroke: black;
-    stroke-width: 1dip;
+    fill: currentcolor;
+    stroke: none;
 }
 
-.filter-swatch.include { foreground-image: icon(0 0 12 12;M4.5 1.5h3v3h3v3h-3v3h-3v-3h-3v-3h3z); }
-.filter-swatch.exclude { foreground-image: icon(0 0 12 12;M1.5 4.5h9v3h-9z); }
-.filter-swatch.marker { foreground-image: icon(0 0 12 12;M6 1l5 5l-5 5l-5 -5z); }
-
-/* No color: a checkerboard, as transparency is shown in image editors: a
-   tile of 2x2 cells repeated, its gray cells translucent over the background
-   of the theme */
-.filter-swatch.no-color {
-    background-color: var(--bg-main);
-    background-image: url(checker.png);
-    background-repeat: repeat;
-    background-size: 4dip 4dip; /* cells of 2dip */
-}
+.filter-kind.include { foreground-image: icon(0 0 12 12;M4.5 1.5h3v3h3v3h-3v3h-3v-3h-3v-3h3z); }
+.filter-kind.exclude { foreground-image: icon(0 0 12 12;M1.5 4.5h9v3h-9z); }
+.filter-kind.marker { foreground-image: icon(0 0 12 12;M6 1l5 5l-5 5l-5 -5z); }
 
 /* The buttons of a set (⤓ export, +, ×) and of a rule (✎, ×) */
 .filter-button {
@@ -717,6 +702,16 @@ frameset {
     visibility: hidden;
 }
 
+/* Over a chip of a rule's color: the tab in that color, its buttons in the
+   chip's text color (set by the script) */
+.filter-chip.colored > .filter-chip-actions {
+    background: var(--chip-color);
+}
+
+.filter-chip.colored > .filter-chip-actions > .filter-button {
+    color: inherit;
+}
+
 /* Sciter: flexible margins center the buttons in the tab */
 .filter-chip-actions > :first-child { margin-left: *; }
 .filter-chip-actions > :last-child { margin-right: *; }
@@ -725,11 +720,15 @@ frameset {
     visibility: visible;
 }
 
-/* Switched off, in a set switched off, or not applied: muted */
-.filter-chip.off .filter-name,
-.filter-chip.error .filter-name,
-.filter-set.off .filter-name {
+/* A set switched off: its name muted, its chips faded whole (their text stays
+   readable on their color). A rule switched off is told by its switch, one
+   not applied by its red border */
+.filter-set.off .filter-set-head .filter-name {
     color: var(--text-label);
+}
+
+.filter-set.off .filter-chips {
+    opacity: 0.5;
 }
 
 /* The File Info page: a label and its value on each row */

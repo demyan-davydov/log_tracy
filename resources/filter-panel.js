@@ -9,11 +9,12 @@
 import * as backend from "backend.js";
 import * as platform from "platform.js";
 import { editRule, filterFilesToLoad, filterExportDialog } from "pane-commands.js";
-import { ruleColors } from "rule-colors.js";
+import { ruleColors, contrastText } from "rule-colors.js";
 import { currentCatalog, tr } from "i18n/i18n.js";
 import { fileFilter } from "file-types.js";
 
-// What a rule does: its mark is drawn in its swatch by its class (style.css)
+// What a rule does: the tooltip of its chip, its mark drawn by the class of
+// .filter-kind (style.css)
 const ruleKindTitles = {
     include: () => tr("Shows the records it matches"),
     exclude: () => tr("Hides the records it matches"),
@@ -34,18 +35,23 @@ function setHead(set, s) {
     </div>;
 }
 
-// The chip of a rule: its switch, kind, color and name; its buttons in a tab
-// shown over it on hover, out of its width. Its set-index and rule-index are
-// read by the handlers. A rule not applied is marked, its
-// error in its tooltip.
+// The chip of a rule: its switch, the mark of its kind and its name, filled
+// with the color of the rule and its text in the contrasting one; its buttons
+// in a tab shown over it on hover, out of its width, in its color
+// (--chip-color). Its set-index and rule-index are read by the handlers. Its
+// tooltip (and its mark's: a cut name has a tooltip of its own) says what the
+// rule does; a rule not applied is marked, its error in its tooltip.
 function ruleChip(rule, s, r) {
     const classes = ["filter-chip"];
-    if (!rule.enabled) classes.push("off");
+    if (rule.color) classes.push("colored");
     if (rule.error) classes.push("error");
-    const title = rule.error ? tr("Not applied: {error}", { error: rule.error }) : "";
-    return <div class={classes.join(" ")} set-index={s} rule-index={r} title={title}>
+    const kind = ruleKindTitles[rule.kind]?.() ?? "";
+    const title = rule.error ? tr("Not applied: {error}", { error: rule.error }) : kind;
+    const look = rule.color
+        ? `background-color: ${rule.color}; color: ${contrastText(rule.color)}; --chip-color: ${rule.color}` : "";
+    return <div class={classes.join(" ")} set-index={s} rule-index={r} title={title} style={look}>
         <input type="checkbox" class="filter-rule-switch" />
-        <span class={"filter-swatch " + rule.kind + (rule.color ? "" : " no-color")} title={ruleKindTitles[rule.kind]?.() ?? ""} />
+        <span class={"filter-kind " + rule.kind} title={kind} />
         <span class="filter-name">{rule.name || tr("(no name)")}</span>
         <span class="filter-chip-actions">
             <span class="filter-button filter-rule-edit" title={tr("Edit this rule (or double-click it)")}>✎</span>
@@ -70,7 +76,6 @@ function renderSets(panel, sets) {
             chips.append(ruleChip(rule, s, r));
             const chip = chips.lastElementChild;
             chip.$(".filter-rule-switch").value = rule.enabled;
-            if (rule.color) chip.$(".filter-swatch").style.setProperty("background-color", rule.color);
         });
         for (const rule of set.rules)
             if (rule.error)

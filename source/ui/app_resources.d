@@ -13,7 +13,6 @@ enum appResourceUrl = "this://app/";
 private enum string[] builtIn = [
     "backend.js",
     "cell-format.js",
-    "checker.png",
     "column-settings.js",
     "document-pane.js",
     "drag-order.js",

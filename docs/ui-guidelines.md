@@ -58,7 +58,7 @@
 
 | Уровень | Радиус | Элементы |
 | :--- | :--- | :--- |
-| **Sharp / Micro** | `2dip` – `3dip` | Поле поиска `.chip-editor`, выпадающий список истории, чипы правил `.filter-chip`, индикаторы цвета `.filter-swatch` |
+| **Sharp / Micro** | `2dip` – `3dip` | Поле поиска `.chip-editor`, выпадающий список истории, чипы правил `.filter-chip` |
 | **Control** | `4dip` | Текстовые поля `input[type=text]`, заголовки наборов `.filter-set-head`, теги клавиш `<kbd>`, палитра цветов `.swatch` |
 | **Card / Tab** | `6dip` – `7dip` | Строки недавних файлов `.recent-file`, табы разделов настроек `.section-tab`, вкладки документа `.tab` (`7dip 7dip 0 0`) |
 | **Group Box** | `8dip` | Карточки группировки `.group` (в `rule-editor.htm`) |
@@ -88,7 +88,7 @@
 - Строка набора (`.filter-set`): `flow: horizontal`; заголовок набора шириной `12em` у всех наборов, чипы правил в остатке строки (`.filter-chips`: `flow: horizontal-wrap`, `border-spacing: 4dip`).
 - Заголовок набора (`.filter-set-head`): высота `1.6em`, `padding: 0 4dip`, скругление `4dip`, `font-weight: 600`.
 - Чип правила (`.filter-chip`): высота `1.6em`, `padding: 0 3dip`, рамка `1dip solid var(--chip-border)` (ошибка: `var(--log-error)`), скругление `3dip`, не шире остатка строки набора (длинное имя обрезается).
-- Маркер цвета (`.filter-swatch`): `15x15dip`, как чекбокс Sciter рядом, скругление `2dip`, рамка `1dip solid var(--border-color)`; внутри знак вида правила (+, −, ◆): векторная иконка Sciter (`icon()`), белая с чёрным контуром, видна на любом цвете. Правило без цвета — шахматка (`.no-color`), как прозрачность в графических редакторах.
+- Чип правила (`.filter-chip`) залит цветом правила, текст на нем черный или белый, что контрастнее (`contrastText` в `resources/rule-colors.js`): в Sciter нет `contrast-color()`. Правило без цвета — фон темы. Вид правила (показать, скрыть, пометить) — значок `.filter-kind` (+, −, ◆: векторная иконка Sciter цвета текста чипа, без рамки) и всплывающая подсказка чипа.
 - Кнопки правила (✎, ×): `visibility: visible` при hover чипа, место под них занято всегда.
 - Точка на вкладке (`.bottom-tab-dot`): `5dip`, цвет `var(--border-focus)`, появляется через `scale` и `opacity`.
 

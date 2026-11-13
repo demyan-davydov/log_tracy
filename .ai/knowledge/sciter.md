@@ -236,8 +236,10 @@ agent can't drive it. In scapp a plain
   places it in the row: `margin-bottom: *` keeps it at the top.
 - `text-shadow` is faint (no halo that keeps a white glyph seen on white) and a list of
   shadows draws none; a glyph in a small box sits ~1px low. For a mark on any color draw a
-  vector icon: `foreground-image: icon(viewbox;d-path)` with `fill` and `stroke` (the rule
-  swatch, `.filter-swatch` in `style.css`).
+  vector icon: `foreground-image: icon(viewbox;d-path)` with `fill` and `stroke`.
+- No `contrast-color()` and no CSS function of one's own: `morph()` only shifts a color. A
+  text on a color set by the script takes its color from the script too (`contrastText`
+  of `resources/rule-colors.js`, the chips of the Filters page).
 - `overflow: hidden` clips at the content box, not the padding box: a padding doesn't make
   room for an absolute child sticking out (the buttons of a filter chip).
 - To diagnose a layout bug, compare `el.state.box("xywh","border","parent")` between a working
