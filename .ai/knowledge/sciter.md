@@ -304,3 +304,10 @@ agent can't drive it. In scapp a plain
 - `element.rangeFromPoint(x, y)` (x, y in the element's inner box) works on a non-selectable
   cell too: it gives the character **under** the point (right of the text: length − 1), on the
   line under `y`; an empty cell gives a node outside it.
+- No frozen columns in CSS (6.0.5.5, tried 2026-11-13 on the log table with single-line
+  rows, which the `table` itself scrolls sideways): the attributes `fixedcols` and
+  `fixedrows` (their names are in the library) change nothing, on a plain table too, and
+  `position: sticky` is unknown (`style.position` stays null). A cell with
+  `position: relative` moves twice its `left` (`left: 100dip` → 200dip), and
+  `transform: translate(...)` doesn't move a cell at all. Pinning the anchor and Index
+  columns would take a scroll handler shifting them: dropped as not worth it.
