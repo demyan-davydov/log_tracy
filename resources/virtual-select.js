@@ -322,7 +322,23 @@ export class VirtualList extends Element {
         if (where > 0) evt.data = this.appendElements(start, length); // scrolling down, need to append more elements
         else if (where < 0) evt.data = this.prependElements(start, length); // scrolling up, need to prepend more elements
         else evt.data = this.replaceElements(start, length); // scrolling to index
+        this.restyleRows();
         return true;
+    }
+
+    // Sciter doesn't restyle the rows that stay when rows are added or removed
+    // before them: they keep the :nth-child of their old place (the stripes of
+    // table.css go wrong), only a change of the list restyles its rows.
+    // Posted: virtual-list removes the rows past its window after
+    // contentrequired returns. Once per batch of requests.
+    restyleRows() {
+        if (this.restylePosted) return;
+        this.restylePosted = true;
+        this.post(() => {
+            this.restylePosted = false;
+            this.classList.toggle("restyle");
+            this.classList.toggle("restyle");
+        });
     }
 }
 

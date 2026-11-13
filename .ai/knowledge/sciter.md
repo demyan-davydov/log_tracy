@@ -171,11 +171,15 @@ agent can't drive it. In scapp a plain
   use a real child element. On `:before`, `visibility: hidden` and `opacity` are ignored;
   `color: transparent` hides it, `color: inherit` shows it. Changing its `content` relayouts
   the table and the rows below blink: keep the content, toggle the color.
-- `:nth-child` is not re-evaluated for the siblings after an element is prepended or removed:
-  the rows of a virtual list (scrolled, patched) keep the parity of the place they had, so
-  stripes by `:nth-child(even)` (`table.css`) go wrong now and then. Kept so on purpose:
-  striping by the view index from the script must follow every change of the rows in place
-  too (an anchor inserts a row, `followAnchor`), which costs more than the flaw.
+- `:nth-child` styles are not updated for the siblings that stay when an element is prepended
+  or removed (6.0.5.5): `matches(":nth-child(even)")` gives the new answer, the applied style
+  is the old one. The rows virtual-list keeps while scrolling had wrong stripes
+  (`:nth-child(even)`, `table.css`) at every odd shift of its window. Any change of the
+  document restyles them: a class toggled on the `tbody` (`VirtualList.restyleRows`, posted
+  from `oncontentrequired`: virtual-list removes the rows past its window after it returns),
+  an attribute set on each row (`followAnchor` sets `view-index`). So a check of this bug
+  must not write into the page (a status text heals it): the repro writes to the window
+  caption.
 - A block is centred in its parent by `margin: 0 *` (flex units); `margin: 0 auto` leaves it
   at the left. Vertical `*` margins take all the free height: a block after it (an `:after`)
   goes down to the bottom of the cell.
