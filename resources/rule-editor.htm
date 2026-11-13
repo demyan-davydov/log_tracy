@@ -100,7 +100,7 @@
         const editable = editableColumns(columns);
         let kept = [];
 
-        const checkTitles = { equals: trc("check", "is"), contains: trc("check", "contains"), regex: trc("check", "matches regex") };
+        const checkTitles = { equals: trc("check", "is"), contains: trc("check", "contains"), regex: trc("check", "regex") };
 
         // The controls of a row by their role, for a column of its kind
         function renderRow(column) {
@@ -197,8 +197,8 @@
         // Asks the log (params.check, see editRule() in script.js) what is wrong
         // with the rule as it is now and shows it at once: the row of a wrong
         // condition is marked, its message is under it. A rule switched on
-        // can't be taken while something is wrong; one switched off can,
-        // with its errors, to be fixed later.
+        // can't be taken while something is wrong; one switched off (in the
+        // list of rules) can, with its errors, to be fixed later.
         function validate() {
             if (!params.check) return;
             const rule = read();
@@ -219,7 +219,7 @@
             const blocked = (!!result.error || errors.blocking) && rule.enabled;
             $("#btn-ok").state.disabled = blocked;
             $("#ok-hint").innerText = blocked
-                ? tr("Fix the marked conditions, or switch the rule off to keep it as it is") : "";
+                ? tr("Fix the marked conditions") : "";
         }
 
         function read() {
@@ -228,7 +228,7 @@
             return {
                 name: $("#name").value || "",
                 kind: type ? type.getAttribute("value") : "include",
-                enabled: !!$("#enabled").value,
+                enabled: rule.enabled !== false, // switched on and off in the list of rules
                 color: color ? color.toString("RGB") : "",
                 conditions: conditionsFromRows(readRows(), columns, kept)
             };
@@ -242,7 +242,6 @@
             for (const column of editable) conditions.append(renderRow(column));
 
             $("#name").value = rule.name || "";
-            $("#enabled").value = rule.enabled !== false;
             const radio = $(`input[name=kind][value="${rule.kind || "include"}"]`);
             if (radio) radio.state.checked = true;
             $("#has-color").value = !!rule.color;
@@ -288,11 +287,7 @@
         <div id="rule-error"></div>
 
         <div class="row">
-            <div class="label"><label><input type="checkbox" id="enabled" /> <span data-tr="Active"></span></label></div>
-        </div>
-        <div class="row">
-            <div class="label" data-tr="Name"></div>
-            <div class="value"><input type="text" id="name" /></div>
+            <input type="text" id="name" data-tr-placeholder="Name" />
         </div>
 
         <div class="group">
