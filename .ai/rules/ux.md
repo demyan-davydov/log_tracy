@@ -24,8 +24,8 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
 3. **No duplicate controls.** An action available in the app menu doesn't get a toolbar button
    too (there is no top toolbar). Exception: "+" in the tab strip. Actions that belong to a
    panel's content live in that panel (Load Filter next to the filters on their page; Load
-   FIBEX moves to the bottom panel too, on the Filters page or a FIBEX page of its own: not
-   decided yet).
+   File, Load Folder and Unload FIBEX on the File Info page of a DLT log, under the path of
+   the FIBEX).
 4. **Settings, not quick toggles.** Rarely changed preferences (the theme) live in Settings; no
    separate toggle button or menu item.
 5. **Hide what can't be used.** Panels that only work with a document (filters, document view,
@@ -226,8 +226,12 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     The "Filters" tab has a dot after its name while some rule works on the log (an enabled,
     applied rule of an enabled set, markers too), so a filtered log is seen with another page
     open; the dot grows in and out, the tab keeps its width.
-42. **File Info.** Path, Size (physical size with the record count next to it), Format (last).
-    No Name row (the tab shows it). Every value that carries information is selectable.
+42. **File Info.** Path, Size (physical size with the record count next to it), Format, and
+    for a DLT log FIBEX last: the path of the FIBEX with "file" or "folder" after it (or that
+    there is none; the remembered one muted while it is read or if it can't be), a note under
+    it (reading, or why it can't be read: the one before stays), and the buttons Load File,
+    Load Folder (the system dialogs pick files or folders, not both) and Unload. No Name row
+    (the tab shows it). Every value that carries information is selectable.
 43. **Filters as chips.** The Filters page shows a block per filter set: its head (switch,
     name, buttons) on its own line, its rules as chips wrapping under it, indented (switch,
     color with the kind in it (+, −, ◆), name). Edit and remove of a rule are in a tab shown

@@ -1,5 +1,6 @@
 //! The formats this build reads: detection of the format and the text encoding of some
-//! data, creation of a format chosen before, their infos and columns.
+//! data, creation of a format chosen before, a format decoding by a file of descriptions
+//! (takesDescriptions, withDescriptions), their infos and columns.
 module formats.registry;
 
 import utils.ui_text : uiText, UiTextException;
@@ -20,6 +21,33 @@ import std.algorithm : canFind, countUntil, filter, map, min;
 import std.array : array;
 
 version (unittest) import log_core.log_message : LogMessage;
+
+//! @returns true if the records of `format` can be decoded by a file of descriptions
+//! (withDescriptions): a FIBEX for DLT
+bool takesDescriptions(const(LogFormat) format) pure nothrow @nogc
+{
+    import formats.dlt.format : takesFibex;
+
+    return takesFibex(format);
+}
+
+//! @brief `format` decoding by the file of descriptions at `path` (FormatChoice.descriptions),
+//! by none for an empty one: the same records, decoded another way
+//! @param stop - asked while the file is read: true gives the read up
+//! @returns null if `format` takes no descriptions (takesDescriptions) or `stop` gave the read up
+//! @throws UiTextException if the file can't be read or isn't one of descriptions
+LogFormat withDescriptions(const(LogFormat) format, string path, scope bool delegate() nothrow stop = null)
+{
+    import formats.dlt.fibex : loadFibex;
+    import formats.dlt.format : withFibex;
+
+    if (!takesDescriptions(format))
+        return null;
+    if (!path.length)
+        return withFibex(format, null);
+    auto fibex = loadFibex(path, stop);
+    return fibex is null ? null : withFibex(format, fibex);
+}
 
 //! Bytes from the start of the data the detectors look at
 enum size_t detectionHeadSize = 64 * 1024;
@@ -551,4 +579,43 @@ unittest
                     detector.info.id ~ " variant " ~ variant.to!string ~ ": " ~ ids[i - 1] ~ ", " ~ ids[i]);
         }
     }
+}
+
+@("withDescriptions: a FIBEX for a DLT log, none for an empty path, null for a format that takes none")
+unittest
+{
+    import formats.dlt.fibex : fibexOf, logFrame, textPdu;
+    import formats.dlt.format : DltFormat;
+    import formats.plain_text : PlainTextFormat;
+    import std.exception : assertThrown;
+    import std.file : remove, tempDir, write;
+    import std.path : buildPath;
+
+    const path = buildPath(tempDir(), "log_tracy_registry_fibex_test.xml");
+    write(path, fibexOf(textPdu("P_T", "x"), logFrame("ID_1", "APP1", "CON1", "P_T")));
+    scope (exit)
+        remove(path);
+
+    assert(takesDescriptions(new DltFormat()) && !takesDescriptions(new PlainTextFormat()));
+    auto described = cast(DltFormat) withDescriptions(new DltFormat(), path);
+    assert(described !is null && described.fibex !is null && described.fibex.length == 1);
+    assert((cast(DltFormat) withDescriptions(described, "")).fibex is null);
+    assert(withDescriptions(new PlainTextFormat(), path) is null);
+    assertThrown!UiTextException(withDescriptions(new DltFormat(), path ~ ".missing"));
+}
+
+@("withDescriptions: stopped, null without an error")
+unittest
+{
+    import formats.dlt.fibex : fibexOf, logFrame, textPdu;
+    import formats.dlt.format : DltFormat;
+    import std.file : remove, tempDir, write;
+    import std.path : buildPath;
+
+    const path = buildPath(tempDir(), "log_tracy_registry_fibex_stop_test.xml");
+    write(path, fibexOf(textPdu("P_T", "x"), logFrame("ID_1", "APP1", "CON1", "P_T")));
+    scope (exit)
+        remove(path);
+    assert(withDescriptions(new DltFormat(), path, () => true) is null);
+    assert(withDescriptions(new DltFormat(), path, () => false) !is null);
 }

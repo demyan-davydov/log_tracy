@@ -28,6 +28,7 @@ final class DocumentUi : MainViewSink, MainViewCommands, SearchViewSink, SearchV
     bool searchViewChanged;
     bool closeRequested; // the machine asked to close the document
     bool attachmentsChanged; // the files sent in the log changed since it was last told to JS
+    bool fileInfoChanged; // its descriptions or format choice changed since it was last told to JS
 
     this(DocumentStore documents, DocumentId docId)
     {

@@ -15,7 +15,7 @@ import std.array : array;
 import formats.dlt.dlf : canLoadDlf, fromDlf, readDlf, toDlf, writeDlf;
 import log_core.filter_file;
 import log_core.log_filter : LogFilter;
-import log_core.log_format : LogFormat;
+import log_core.log_format : ColumnInfo, LogFormat;
 import log_core.log_message : LogMessage;
 import log_core.rule_filter;
 import ui.app_settings : copyOf, SavedFilter;
@@ -24,7 +24,10 @@ import std.json : JSONValue;
 
 final class DocumentFilters
 {
-    private const(LogFormat) _format;
+    // What the filters need of the format of the log, not the format: a document may decode
+    // by another one later (Document.loadDescriptions), of the same columns
+    private const(ColumnInfo)[] _columns;
+    private bool _canDlf; // the log takes the filter files of DLT (canLoadDlf)
     private string _formatId; // FormatInfo.id of the log, written to the filter files
     private void delegate(LogFilter!wchar) _apply;
     private FilterSet[] _sets;
@@ -40,7 +43,8 @@ final class DocumentFilters
     //! @param apply - filters the main view of the document (null: no filter)
     this(const(LogFormat) format, void delegate(LogFilter!wchar) apply)
     {
-        _format = format;
+        _columns = format is null ? null : format.columns;
+        _canDlf = canLoadDlf(format);
         _formatId = format is null ? "" : format.info.id;
         _apply = apply;
     }
@@ -61,7 +65,7 @@ final class DocumentFilters
     //! @returns true if the log has columns to filter by
     bool canFilter() const
     {
-        return _format !is null && _format.columns.length > 0;
+        return _columns.length > 0;
     }
 
     //! @brief Appends a copy of the rules of a file and filters the view with
@@ -83,7 +87,7 @@ final class DocumentFilters
         {
             if (isDlf(path))
             {
-                if (!canLoadDlf(_format))
+                if (!_canDlf)
                     return uiText("DLT filters (.dlf) apply to DLT logs only");
                 set.name = baseName(path);
                 set.rules = fromDlf(readDlf(path), notes);
@@ -142,7 +146,7 @@ final class DocumentFilters
         {
             if (isDlf(path))
             {
-                if (!canLoadDlf(_format))
+                if (!_canDlf)
                     return uiText("DLT filters (.dlf) are for DLT logs only");
                 writeDlf(path, toDlf(written.rules, notes));
                 _sets[set].name = baseName(path); // a .dlf has no name of its own
@@ -277,7 +281,7 @@ final class DocumentFilters
     {
         import std.json : parseJSON;
 
-        const columns = _format is null ? null : _format.columns;
+        const columns = _columns;
         FilterRule rule;
         try
             rule = ruleFromJson(parseJSON(json));
@@ -344,7 +348,7 @@ final class DocumentFilters
         }
         return JSONValue([
             "canFilter": JSONValue(canFilter()),
-            "canDlf": JSONValue(canLoadDlf(_format)),
+            "canDlf": JSONValue(_canDlf),
             "active": JSONValue(active()),
             "sets": JSONValue(sets),
         ]);
@@ -390,7 +394,7 @@ final class DocumentFilters
         // A mistake in a condition on a column of the log is refused; one on a
         // column the log doesn't have only keeps the rule from being applied
         if (rule.enabled)
-            foreach (i, error; conditionErrors(_format.columns, rule))
+            foreach (i, error; conditionErrors(_columns, rule))
                 if (!error.empty && hasColumn(rule.conditions[i].columnId))
                     return error;
 
@@ -408,7 +412,7 @@ final class DocumentFilters
     {
         import std.algorithm.searching : canFind;
 
-        return _format !is null && _format.columns.canFind!(c => c.id == id);
+        return _columns.canFind!(c => c.id == id);
     }
 
     //! @returns why the rule can't be applied to this log (see ruleError), empty if it can
@@ -429,7 +433,7 @@ final class DocumentFilters
 
     private void findProblem(ref const(FilterRule) rule)
     {
-        const problem = ruleError(_format.columns, rule);
+        const problem = ruleError(_columns, rule);
         if (problem.empty)
             _problems.remove(rule.id);
         else
@@ -480,13 +484,13 @@ final class DocumentFilters
     //! Compiles the matcher of the records from the rules, after a change of them
     private void rematch()
     {
-        _matcher = RuleMatcher.compile(_format is null ? null : _format.columns, _sets);
+        _matcher = RuleMatcher.compile(_columns, _sets);
     }
 
     //! Filters the view with the enabled rules
     private void apply()
     {
-        const columns = _format is null ? null : _format.columns;
+        const columns = _columns;
         _apply(RuleFilter.compile(columns, _sets)); // null: no filter
     }
 }

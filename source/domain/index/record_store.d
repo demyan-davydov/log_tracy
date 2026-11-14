@@ -12,6 +12,11 @@
 //! the task that reads), and closes the store only once no reader reads it any more: the
 //! bytes of a closed store are gone, and a reader of them crashes.
 //!
+//! The format that decodes the records may be replaced by one that splits them the same way
+//! (replaceFormat(): a format decoding them another way), by the holder while no record is
+//! found nor appended. A reader decodes by the format of its Records, taken with them: one
+//! given before the replacement goes on with the format of before, with no race on it.
+//!
 //! A reader the holder doesn't wait for (another reader of the log, on its own thread)
 //! leases the records instead (lease(), RecordsLease): the store is counted, its holder and
 //! each lease, and the last of them to let it go closes it (release()). A holder that is done
@@ -76,7 +81,7 @@ final class RecordStore
 
     private ByteSource _source;
     private LogFormat _format;
-    private const(PartedFormat) _parted; // the format, if its records may be parts
+    private Rebindable!(const PartedFormat) _parted; // the format, if its records may be parts
     private OffsetIndex _offsets;
     private size_t _scannedBytes; // the bytes of the source split into records
 
@@ -88,8 +93,8 @@ final class RecordStore
     private ChunkedArray!Fragment _fragments;
     private bool _broken; // an append failed half done: the joins may not match the records
 
-    private const(TransferringFormat) _transferring; // the format, if its records may send files
-    private const(MarkedFormat) _marked; // the format, if it is either: what each record may be
+    private Rebindable!(const TransferringFormat) _transferring; // the format, if its records may send files
+    private Rebindable!(const MarkedFormat) _marked; // the format, if it is either: what each record may be
     private Transfers _transfers; // the files sent in the log
 
     private shared size_t _users = 1; // its holder and the leases: the last one closes it
@@ -109,6 +114,18 @@ final class RecordStore
     const(LogFormat) format() const pure nothrow @nogc
     {
         return _format;
+    }
+
+    //! @brief Decodes the records by `format` from now on: one that splits the bytes into the
+    //! same records (the same format, decoding them another way). Records given before decode
+    //! by the format of before. By the holder, while no record is found nor appended
+    void replaceFormat(LogFormat format)
+    {
+        assert(format !is null && format.info.id == _format.info.id, "a format of other records");
+        _format = format;
+        _parted = cast(const(PartedFormat)) format;
+        _transferring = cast(const(TransferringFormat)) format;
+        _marked = cast(const(MarkedFormat)) format;
     }
 
     //! The bytes of the source so far (ByteSource.data): they may grow, see ByteSource
@@ -160,7 +177,7 @@ final class RecordStore
     //! The format as a TransferringFormat, null if its records send no files
     const(TransferringFormat) transferring() const pure nothrow @nogc
     {
-        return _transferring;
+        return _transferring.get;
     }
 
     //! The files sent in the log found so far (TransferringFormat). Not while a record is
@@ -175,7 +192,7 @@ final class RecordStore
     Records records() const pure nothrow @nogc
     {
         const open = _joiner.firstOpenJoin;
-        return Records(this, length, open == PartJoiner.none ? _joins.length : open);
+        return Records(this, _format, _parted, length, open == PartJoiner.none ? _joins.length : open);
     }
 
     //! @brief A lease of the records found so far (records()): they stay open while it is
@@ -226,7 +243,7 @@ final class RecordStore
         bunch.found = _format.scanRecords(data, _scannedBytes, bunch.offsets[], final_);
         bunch.end = final_ && bunch.found.next == data.length;
         // Here, not in append(): the holder calls this without its lock
-        if (_marked !is null)
+        if (_marked.get !is null)
             foreach (i, offset; bunch.records)
             {
                 bunch.marks[i] = _marked.marksOf(data, offset);
@@ -248,7 +265,7 @@ final class RecordStore
             return false;
         OffsetIndexItem[bunchSize] items;
         size_t count = 0;
-        if (_parted is null)
+        if (_parted.get is null)
         {
             foreach (i, offset; bunch.records)
                 items[i].offset = offset;
@@ -264,11 +281,11 @@ final class RecordStore
         const first = _offsets.length;
         if (!_offsets.append(items[0 .. count]))
         {
-            _broken |= _parted !is null;
+            _broken |= _parted.get !is null;
             return false;
         }
         _scannedBytes = bunch.found.next;
-        if (_transferring !is null && (bunch.anyMarks & RecordMark.transfer))
+        if (_transferring.get !is null && (bunch.anyMarks & RecordMark.transfer))
             addTransfers(bunch, items[0 .. count], first);
         return true;
     }
@@ -367,12 +384,18 @@ final class RecordStore
 struct Records
 {
     private Rebindable!(const RecordStore) _store; // a copy may be assigned another one
+    // The format of the store when they were given: the store may decode by another one later
+    private Rebindable!(const LogFormat) _format;
+    private Rebindable!(const PartedFormat) _parted; // the format, if its records may be parts
     private size_t _length;
     private size_t _joins; // the joined records below _length: RecordStore._joins
 
-    private this(const RecordStore store, size_t length, size_t joins) pure nothrow @nogc
+    private this(const RecordStore store, const LogFormat format, const PartedFormat parted,
+        size_t length, size_t joins) pure nothrow @nogc
     {
         _store = store;
+        _format = format;
+        _parted = parted;
         _length = length;
         _joins = joins;
     }
@@ -420,7 +443,7 @@ struct Records
     bool decode(size_t record, ref LogMessage!wchar msg) const nothrow @nogc
     {
         assert(record < _length);
-        const format = _store._format;
+        const format = _format.get;
         const data = _store._source.data;
         const item = _store._offsets[record];
         if (!item.joined)
@@ -438,7 +461,7 @@ struct Records
             parts[1 + i] = format.recordAt(data, fragment.offset);
             next = fragment.next;
         }
-        return _store._parted.decodeParts(msg, parts[0 .. 1 + join.fragments]);
+        return _parted.decodeParts(msg, parts[0 .. 1 + join.fragments]);
     }
 
     //! @brief The parts the record `record` < length is joined of (PartedFormat): 1 for a
@@ -875,4 +898,31 @@ unittest
     RecordsLease lease;
     assert(lease.records.length == 0 && !lease.closing && !lease.records.lost);
     auto copy = lease; // nothing to count
+}
+
+@("RecordStore: a format replaced decodes the records from then on, Records given before by the old one")
+unittest
+{
+    import formats.dlt.fibex : fibexOf, logFrame, parseFibex, textPdu;
+    import formats.dlt.format : DltFormat, withFibex;
+    import formats.dlt.testing_utils : BuildV1, bytesOf;
+
+    BuildV1 r;
+    r.extended = false;
+    r.payload = bytesOf(3u);
+    const record = r.bytes();
+    auto store = new RecordStore(new TextSource(cast(string)(record ~ record)), new DltFormat());
+    scanAll(store, true);
+    assert(store.length == 2);
+    const before = store.records;
+    auto lease = store.lease();
+
+    const fibex = parseFibex(fibexOf(textPdu("P_T", "Started"), logFrame("ID_3", "APP1", "CON1", "P_T")));
+    auto described = withFibex(store.format, fibex);
+    store.replaceFormat(described);
+    assert(store.format is described);
+    assert(payloadOf(store.records, 1) == "Started", "decoded by the new format");
+    assert(payloadOf(before, 1) == "[3]" && payloadOf(lease.records, 1) == "[3]",
+        "Records given before decode as they did");
+    assert(store.length == 2, "the records stay");
 }

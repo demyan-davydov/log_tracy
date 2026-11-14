@@ -147,7 +147,9 @@ behaviour: `.ai/knowledge/sciter.md`.
   the row it lands on (the nearest shown when filtered out) is
   `backend.mainViewNearestPosition`, `MainViewTable.goToMessage`
 - Recent files: `recent-time.js`, `recent-file-menu.js`
-- File Info page: `file-info.js`
+- File Info page: `file-info.js` (the rows; the FIBEX row of a DLT log: what decodes it, a
+  read going on or why one failed, Load File / Load Folder / Unload), rendered by
+  `DocumentPane.updateFileInfo`, refreshed by `onFileInfoChanged`
 - Notices: `notice.js`; dropdown lists: `virtual-select.js`
 - Menu bar (Windows/Linux): `menu-bar.js`, `menu-bar.css`, `menu-shortcuts.js`
 - Theme and window frame: `theme.js`, `theme-light.css`, `theme-dark.css`, `window-frame.js`,

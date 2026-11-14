@@ -11,6 +11,7 @@ import std.traits : isSomeChar;
 
 import log_core.log_message;
 import formats.dlt.fields;
+import formats.dlt.fibex : Fibex, FibexMessage, FibexValue;
 
 //! @brief DLT Message structure (protocol version 1, see header_v2 for version 2):
 //! [ Storage Header ]        (in files: 16 bytes in version 1, 14 + ECU ID in version 2)
@@ -114,7 +115,8 @@ const(char)[] ecuIdOf(ref const HeaderV2 header, ref const StorageInfo storage) 
 //! @brief Decodes a DLT message into `msg`, reusing its buffer
 //! @note `msg` is `ref`, not `out`: `out` resets it to .init without its
 //! destructor, which leaks the buffer and allocates a new one on every call.
-bool parseDltItem(Char)(ref LogMessage!Char msg, const(ubyte)[] data, bool hasStorageHeader = true) nothrow @nogc
+bool parseDltItem(Char)(ref LogMessage!Char msg, const(ubyte)[] data, bool hasStorageHeader = true,
+    const Fibex fibex = null) nothrow @nogc
         if (isSomeChar!Char)
 {
     StorageInfo storage;
@@ -132,7 +134,7 @@ bool parseDltItem(Char)(ref LogMessage!Char msg, const(ubyte)[] data, bool hasSt
 
     const ubyte version_ = protocolVersion(message);
     if (version_ == 2)
-        return decodeV2(msg, storage, message);
+        return decodeV2(msg, storage, message, fibex);
 
     const LogItemHeaders headers = findHeaders(message);
     if (headers.standard is null)
@@ -174,6 +176,25 @@ bool parseDltItem(Char)(ref LogMessage!Char msg, const(ubyte)[] data, bool hasSt
         msgType = headers.extended.messageInfo.messageType();
     }
 
+    // A non-verbose message described by the FIBEX: its AppId and CtxId if it has none, its
+    // type and level
+    const bool nonVerbose = !(headers.extended && (headers.extended.messageInfo.isVerbose()
+            || msgType == MessageType.Control));
+    const(FibexMessage)* described;
+    if (fibex !is null && nonVerbose && headers.hasMessageId)
+    {
+        const(char)[] ownApp = headers.extended ? withoutTrailingZeros(appId) : "";
+        const(char)[] ownCtx = headers.extended ? withoutTrailingZeros(ctxId) : "";
+        described = fibex.find(headers.messageId, ownApp, ownCtx);
+        if (described !is null)
+        {
+            appId = ownApp.length ? appId : described.appId;
+            ctxId = ownCtx.length ? ctxId : described.ctxId;
+            level = described.level;
+            msgType = described.type;
+        }
+    }
+
     // Resets the message and stores ecu/appId/ctxId
     auto builder = msg.beginDltRecord(ecuId, appId, ctxId);
 
@@ -192,6 +213,8 @@ bool parseDltItem(Char)(ref LogMessage!Char msg, const(ubyte)[] data, bool hasSt
     // ── Payload ─────────────────────────────────────────────────────────────
     if (headers.extended && headers.extended.messageInfo.isVerbose())
         decodeArguments(builder, headers.payload, headers.extended.numberOfArguments, msbf);
+    else if (described !is null) // before the type: the FIBEX may say control
+        decodeByFibex(builder, *described, headers.payload, msbf);
     else if (headers.extended && msgType == MessageType.Control)
         decodeControl(builder, headers.messageId,
             headers.extended.messageInfo.messageTypeInfo(), headers.payload, msbf);
@@ -205,7 +228,7 @@ bool parseDltItem(Char)(ref LogMessage!Char msg, const(ubyte)[] data, bool hasSt
 //! Decodes a message of protocol version 2 (no storage header in `message`).
 //! Its payload is little-endian: DLT viewers commonly read it so, the protocol doesn't say.
 private bool decodeV2(Char)(ref LogMessage!Char msg, ref const StorageInfo storage,
-    const(ubyte)[] message) nothrow @nogc
+    const(ubyte)[] message, const Fibex fibex) nothrow @nogc
 {
     HeaderV2 h;
     if (readHeaderV2(message, h) != HeaderV2Status.ok)
@@ -217,8 +240,15 @@ private bool decodeV2(Char)(ref LogMessage!Char msg, ref const StorageInfo stora
         return true;
     }
 
-    auto builder = msg.beginDltRecord(ecuIdOf(h, storage),
-        h.hasAppContextId ? h.appId : "-", h.hasAppContextId ? h.ctxId : "-");
+    // A non-verbose message described by the FIBEX, as in version 1
+    const(FibexMessage)* described;
+    if (fibex !is null && h.content == ContentInfo.NonVerbose && !h.segmented)
+        described = fibex.find(h.messageId, h.hasAppContextId ? h.appId : "",
+            h.hasAppContextId ? h.ctxId : "");
+    const(char)[] appId = h.hasAppContextId ? h.appId : described !is null ? described.appId : "-";
+    const(char)[] ctxId = h.hasAppContextId ? h.ctxId : described !is null ? described.ctxId : "-";
+
+    auto builder = msg.beginDltRecord(ecuIdOf(h, storage), appId, ctxId);
 
     setStorageTime(msg, storage);
     msg.setNumber(DltField.Counter, h.counter);
@@ -240,6 +270,11 @@ private bool decodeV2(Char)(ref LogMessage!Char msg, ref const StorageInfo stora
     msg.level = h.hasMessageInfo ? h.messageInfo.logLevel() : LogLevel.None;
     if (h.hasMessageInfo)
         msg.setNumber(DltField.Type, h.messageInfo.messageType());
+    if (described !is null)
+    {
+        msg.level = described.level;
+        msg.setNumber(DltField.Type, described.type);
+    }
     if (h.hasMessageId)
         msg.messageId = h.messageId;
 
@@ -258,7 +293,10 @@ private bool decodeV2(Char)(ref LogMessage!Char msg, ref const StorageInfo stora
         decodeArguments(builder, payload, h.numberOfArguments, msbf);
         break;
     case ContentInfo.NonVerbose:
-        decodeNonVerbose(builder, true, h.messageId, payload);
+        if (described !is null)
+            decodeByFibex(builder, *described, payload, msbf);
+        else
+            decodeNonVerbose(builder, true, h.messageId, payload);
         break;
     case ContentInfo.Control:
         uint serviceId = 0;
@@ -677,17 +715,23 @@ private bool decodeArgument(Builder)(ref Builder builder, ref const(ubyte)[] pay
         appendInteger(builder, value, typeInfo, argument.kind == Kind.Signed, msbf);
         break;
     case Kind.Float:
-        if (value.length == 2)
-            builder.append(halfToFloat(readValue!ushort(value, msbf)));
-        else if (value.length == 4)
-            builder.append(readValue!float(value, msbf));
-        else if (value.length == 8)
-            builder.append(readValue!double(value, msbf));
-        else
-            builder.appendAscii("?"); // 8 or 128 bits: no such float to show
+        appendFloat(builder, value, msbf);
         break;
     }
     return true;
+}
+
+//! Appends a float of 2, 4 or 8 bytes; "?" for another size: no such float to show
+private void appendFloat(Builder)(ref Builder builder, const(ubyte)[] value, bool msbf) nothrow @nogc
+{
+    if (value.length == 2)
+        builder.append(halfToFloat(readValue!ushort(value, msbf)));
+    else if (value.length == 4)
+        builder.append(readValue!float(value, msbf));
+    else if (value.length == 8)
+        builder.append(readValue!double(value, msbf));
+    else
+        builder.appendAscii("?");
 }
 
 //! @returns the size in bytes of a TYLE value, 0 for an invalid one
@@ -793,6 +837,71 @@ float halfToFloat(ushort half) pure nothrow @nogc
         result = ldexp(cast(float)(mantissa | 0x400), exponent - 25);
 
     return negative ? -result : result;
+}
+
+//! Appends the parts of the non-verbose message `m` described by the FIBEX: its texts and
+//! the values of `payload` (after the message ID) in turn, each as a verbose argument of
+//! its type is shown. A value the payload is too short for: the rest of it in hex
+private void decodeByFibex(Builder)(ref Builder builder, ref const FibexMessage m,
+    const(ubyte)[] payload, bool msbf) nothrow @nogc
+{
+    foreach (ref part; m.parts)
+    {
+        if (part.value == FibexValue.text)
+        {
+            builder.appendUtf8(part.text);
+            continue;
+        }
+        // The value: of its length, or of the length in 2 bytes before it
+        size_t length = part.byteLength;
+        size_t skip = 0;
+        const bool prefixed = part.value == FibexValue.ascii || part.value == FibexValue.utf8
+            || part.value == FibexValue.raw;
+        if (prefixed)
+        {
+            if (payload.length < 2)
+                break;
+            length = readValue!ushort(payload[0 .. 2], msbf);
+            skip = 2;
+        }
+        if (payload.length < skip + length)
+            break;
+        const value = payload[skip .. skip + length];
+        payload = payload[skip + length .. $];
+
+        final switch (part.value)
+        {
+        case FibexValue.text:
+            break;
+        case FibexValue.boolean:
+            if (value.length)
+                builder.appendBool(value[0] != 0);
+            break;
+        case FibexValue.signed:
+        case FibexValue.unsigned:
+            if (value.length == 1 || value.length == 2 || value.length == 4 || value.length == 8
+                || value.length == 16)
+                appendInteger(builder, value, 0, part.value == FibexValue.signed, msbf);
+            else
+                builder.appendHex(cast(const(char)[]) value);
+            break;
+        case FibexValue.floating:
+            appendFloat(builder, value, msbf);
+            break;
+        case FibexValue.ascii:
+            builder.appendAscii(withoutTrailingZeros(cast(const(char)[]) value));
+            break;
+        case FibexValue.utf8:
+            builder.appendUtf8(withoutTrailingZeros(cast(const(char)[]) value));
+            break;
+        case FibexValue.raw:
+        case FibexValue.unknown:
+            builder.appendHex(cast(const(char)[]) value);
+            break;
+        }
+    }
+    if (payload.length)
+        builder.appendHex(cast(const(char)[]) payload);
 }
 
 //! Appends the message ID of a non-verbose message, if its payload is long
@@ -2315,4 +2424,216 @@ unittest
     const data = bytesOf(cast(ushort) 1, false) ~ id("") ~ bytesOf(cast(ushort) 2, false)
         ~ id("") ~ [cast(ubyte) 4] ~ id("C2") ~ [cast(ubyte) 4];
     assert(logInfo(4, data) == "[get_log_info ok] -: - level=info, C2 level=info");
+}
+
+version (unittest)
+{
+    import formats.dlt.fibex : fibexOf, frame, logFrame, parseFibex, textPdu, valuePdu;
+    import formats.dlt.testing_utils : argument, BuildV1, BuildV2, bytesOf;
+}
+
+@("parseDltItem: a non-verbose message described by FIBEX takes its AppId, CtxId, type, level and text")
+unittest
+{
+    const fibex = parseFibex(fibexOf(textPdu("PDU_11_0", "Free size:")
+            ~ valuePdu("PDU_11_1", "S_UINT16", 2),
+            frame("ID_11", "DLT_TYPE_LOG", "DLT_LOG_WARN", "APP1", "CON1", "PDU_11_0", "PDU_11_1")));
+    BuildV1 r;
+    r.extended = false;
+    r.payload = bytesOf(11u) ~ bytesOf(cast(ushort) 42);
+
+    LogMessage!char msg;
+    assert(parseDltItem(msg, r.bytes(), true, fibex));
+    assert(msg.appId == "APP1" && msg.ctxId == "CON1", "from the frame: the message has none");
+    assert(msg.level == LogLevel.Warn);
+    assert(msg.number(DltField.Type) == MessageType.Log);
+    assert(msg.messageId == 11);
+    assert(msg.payloadText == "Free size: 42", msg.payloadText);
+}
+
+@("parseDltItem: a non-verbose message with AppId and CtxId is described by its ID, AppId and CtxId")
+unittest
+{
+    const fibex = parseFibex(fibexOf(textPdu("PDU_A", "of APP1") ~ textPdu("PDU_B", "of APP2"),
+            logFrame("ID_7", "APP1", "CTX1", "PDU_A") ~ logFrame("ID_7", "APP2", "CTX2", "PDU_B")));
+    BuildV1 r;
+    r.verbose = false;
+    r.appId = "APP2";
+    r.ctxId = "CTX2";
+    r.payload = bytesOf(7u);
+
+    LogMessage!char msg;
+    assert(parseDltItem(msg, r.bytes(), true, fibex));
+    assert(msg.appId == "APP2" && msg.payloadText == "of APP2", msg.payloadText);
+
+    r.appId = "APP3";
+    assert(parseDltItem(msg, r.bytes(), true, fibex));
+    assert(msg.payloadText == "[7]", "no frame of APP3: shown as without FIBEX");
+}
+
+@("parseDltItem: the values of a message described by FIBEX, in the byte order of the message")
+unittest
+{
+    const pdus = valuePdu("P_BOOL", "S_BOOL", 1) ~ valuePdu("P_S8", "S_SINT8", 1)
+        ~ valuePdu("P_S32", "S_SINT32", 4) ~ valuePdu("P_U64", "S_UINT64", 8)
+        ~ valuePdu("P_F32", "S_FLOA32", 4) ~ valuePdu("P_F64", "S_FLOA64", 8)
+        ~ valuePdu("P_STR", "S_STRG_ASCII", 0) ~ valuePdu("P_UTF", "S_STRG_UTF8", 0)
+        ~ valuePdu("P_RAW", "S_RAWD", 0) ~ valuePdu("P_ODD", "S_MY_STRUCT", 3);
+    const fibex = parseFibex(fibexOf(pdus, logFrame("ID_5", "APP1", "CON1", "P_BOOL", "P_S8",
+            "P_S32", "P_U64", "P_F32", "P_F64", "P_STR", "P_UTF", "P_RAW", "P_ODD")));
+    foreach (msbf; [true, false])
+    {
+        BuildV1 r;
+        r.msbf = msbf;
+        r.verbose = false;
+        r.ctxId = "CON1";
+        r.payload = bytesOf(5u, msbf) ~ [cast(ubyte) 1] ~ [cast(ubyte) 0xFF]
+            ~ bytesOf(-70_000, msbf) ~ bytesOf(1UL << 40, msbf) ~ bytesOf(1.5f, msbf)
+            ~ bytesOf(-0.25, msbf) ~ bytesOf(cast(ushort) 3, msbf) ~ cast(ubyte[]) "ab\0"
+            ~ bytesOf(cast(ushort) 4, msbf) ~ cast(ubyte[]) "\u00e9\u00e9" ~ bytesOf(cast(ushort) 2, msbf)
+            ~ cast(ubyte[])[0xAB, 0xCD] ~ cast(ubyte[])[1, 2, 3];
+
+        LogMessage!char msg;
+        assert(parseDltItem(msg, r.bytes(), true, fibex));
+        assert(msg.payloadText == "true -1 -70000 1099511627776 1.50000000 -0.25000000 ab \u00e9\u00e9 ABCD 010203",
+            msg.payloadText);
+    }
+}
+
+@("parseDltItem: a payload too short for the parts of its FIBEX message shows the rest in hex")
+unittest
+{
+    const fibex = parseFibex(fibexOf(textPdu("P_T", "Size:") ~ valuePdu("P_U32", "S_UINT32", 4)
+            ~ textPdu("P_END", "bytes"), logFrame("ID_9", "APP1", "CON1", "P_T", "P_U32", "P_END")));
+    BuildV1 r;
+    r.extended = false;
+    r.payload = bytesOf(9u) ~ cast(ubyte[])[0x01, 0x02];
+
+    LogMessage!char msg;
+    assert(parseDltItem(msg, r.bytes(), true, fibex));
+    assert(msg.payloadText == "Size: 0102", msg.payloadText);
+}
+
+@("parseDltItem v2: a non-verbose message described by FIBEX, its message ID in the header")
+unittest
+{
+    const fibex = parseFibex(fibexOf(textPdu("P_T", "Temperature") ~ valuePdu("P_U8", "S_UINT8", 1),
+            frame("ID_1234", "DLT_TYPE_LOG", "DLT_LOG_ERROR", "APP1", "CON1", "P_T", "P_U8")));
+    BuildV2 b;
+    b.content = ContentInfo.NonVerbose;
+    b.messageId = 1234;
+    b.payload = [cast(ubyte) 21];
+
+    LogMessage!char msg;
+    assert(parseDltItem(msg, b.bytes(), false, fibex));
+    assert(msg.appId == "APP1" && msg.ctxId == "CON1");
+    assert(msg.level == LogLevel.Error && msg.number(DltField.Type) == MessageType.Log);
+    assert(msg.payloadText == "Temperature 21", msg.payloadText);
+}
+
+@("parseDltItem: a message described as a control one by FIBEX is decoded by its parts")
+unittest
+{
+    const fibex = parseFibex(fibexOf(textPdu("P_T", "Reset"),
+            frame("ID_5", "DLT_TYPE_CONTROL", "", "APP1", "CON1", "P_T")));
+    BuildV1 r;
+    r.verbose = false;
+    r.ctxId = "CON1";
+    r.payload = bytesOf(5u);
+
+    LogMessage!char msg;
+    assert(parseDltItem(msg, r.bytes(), true, fibex));
+    assert(msg.number(DltField.Type) == MessageType.Control);
+    assert(msg.payloadText == "Reset", msg.payloadText);
+}
+
+@("parseDltItem: an integer of FIBEX not of 1, 2, 4, 8 or 16 bytes and the bytes after the parts in hex")
+unittest
+{
+    // A regression guard: decodeByFibex did so from the start
+    const fibex = parseFibex(fibexOf(valuePdu("P_U24", "S_UINT32", 3),
+            logFrame("ID_4", "APP1", "CON1", "P_U24")));
+    BuildV1 r;
+    r.extended = false;
+    r.payload = bytesOf(4u) ~ cast(ubyte[])[1, 2, 3, 0xAA, 0xBB];
+
+    LogMessage!char msg;
+    assert(parseDltItem(msg, r.bytes(), true, fibex));
+    assert(msg.payloadText == "010203 AABB", msg.payloadText);
+}
+
+@("parseDltItem: a string of FIBEX with no room for its length shows the rest in hex")
+unittest
+{
+    // A regression guard: decodeByFibex did so from the start
+    const fibex = parseFibex(fibexOf(textPdu("P_T", "Name:") ~ valuePdu("P_S", "S_STRG_ASCII", 0),
+            logFrame("ID_4", "APP1", "CON1", "P_T", "P_S")));
+    BuildV1 r;
+    r.extended = false;
+    r.payload = bytesOf(4u) ~ cast(ubyte[])[1];
+
+    LogMessage!char msg;
+    assert(parseDltItem(msg, r.bytes(), true, fibex));
+    assert(msg.payloadText == "Name: 01", msg.payloadText);
+}
+
+@("parseDltItem v2: a non-verbose message with its AppId and CtxId keeps them and is described by them")
+unittest
+{
+    // A regression guard: decodeV2 did so from the start
+    const fibex = parseFibex(fibexOf(textPdu("P_OWN", "own") ~ textPdu("P_OTHER", "other"),
+            logFrame("ID_9", "OTHERAPP", "OTHERCTX", "P_OTHER")
+            ~ logFrame("ID_9", "LONGAPP", "LONGCTX", "P_OWN")));
+    BuildV2 b;
+    b.content = ContentInfo.NonVerbose;
+    b.messageId = 9;
+    b.appId = "LONGAPP";
+    b.ctxId = "LONGCTX";
+
+    LogMessage!char msg;
+    assert(parseDltItem(msg, b.bytes(), false, fibex));
+    assert(msg.appId == "LONGAPP" && msg.ctxId == "LONGCTX");
+    assert(msg.payloadText == "own", msg.payloadText);
+}
+
+@("parseDltItem: verbose, control and segmented messages are not decoded by FIBEX")
+unittest
+{
+    // A regression guard: only non-verbose messages were ever looked up
+    import formats.dlt.header_v2 : SegmentFrame;
+
+    const fibex = parseFibex(fibexOf(textPdu("P_T", "FIBEX"),
+            logFrame("ID_7", "APP1", "CTX1", "P_T") ~ logFrame("ID_19", "APP1", "CTX1", "P_T")
+            ~ logFrame("ID_1234", "APP1", "CTX1", "P_T")));
+    void same(const(ubyte)[] bytes, bool storage, string what)
+    {
+        LogMessage!char plain, described;
+        assert(parseDltItem(plain, bytes, storage) && parseDltItem(described, bytes, storage, fibex));
+        assert(described.payloadText == plain.payloadText && described.level == plain.level
+            && described.appId == plain.appId, what ~ ": " ~ described.payloadText);
+    }
+
+    BuildV1 verbose;
+    verbose.numberOfArguments = 1;
+    verbose.payload = argument(TypeInfoFlags.TypeUnsigned | Tyle.Tyle32Bit, bytesOf(7u));
+    same(verbose.bytes(), true, "verbose v1");
+
+    BuildV1 control;
+    control.verbose = false;
+    control.type = MessageType.Control;
+    control.typeInfo = ControlType.Request;
+    control.payload = bytesOf(19u);
+    same(control.bytes(), true, "control v1");
+
+    BuildV2 segmented;
+    segmented.content = ContentInfo.NonVerbose;
+    segmented.messageId = 1234;
+    segmented.segmentation = [cast(ubyte) SegmentFrame.Last];
+    same(segmented.bytes(), false, "segmented v2");
+
+    BuildV2 controlV2;
+    controlV2.content = ContentInfo.Control;
+    controlV2.messageInfo = ControlType.Request << 4 | MessageType.Control << 1;
+    controlV2.payload = bytesOf(19u, false);
+    same(controlV2.bytes(), false, "control v2");
 }

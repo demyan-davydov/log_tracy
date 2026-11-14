@@ -108,6 +108,18 @@ RecentFile[] withFilters(const RecentFile[] list, string path, SavedFilter[] fil
     return result;
 }
 
+/// Returns the recent list with the format choice of `path` replaced, in place (descriptions
+/// loaded or dropped while it is open); a file not in the list isn't added
+RecentFile[] withFormat(const RecentFile[] list, string path, FormatChoice format)
+{
+    path = recentFilePath(path);
+    RecentFile[] result = copyOf(list);
+    foreach (ref file; result)
+        if (filenameCmp(file.path, path) == 0)
+            file.format = format;
+    return result;
+}
+
 /// Returns: the search history of `path`, the latest query first; null if it isn't in the list
 SearchChip[][] savedSearches(const RecentFile[] list, string path)
 {
@@ -267,7 +279,8 @@ string recentFilesJson(const RecentFile[] list, const string[] openPaths = null)
 }
 
 /// The recent list as the settings keep it: [{"path", "format", "variant",
-/// "encoding", "lastUsed", "filterSets", "searches"}], the keys without a value left out
+/// "encoding", "descriptions", "lastUsed", "filterSets", "searches"}], the keys without a
+/// value left out
 JSONValue recentFilesToJson(const RecentFile[] list)
 {
     JSONValue[] recentArray;
@@ -280,6 +293,8 @@ JSONValue recentFilesToJson(const RecentFile[] list)
             fv.object["variant"] = JSONValue(f.format.variant);
             if (f.format.encoding != TextEncoding.utf8)
                 fv.object["encoding"] = JSONValue(encodingName(f.format.encoding));
+            if (f.format.descriptions.length)
+                fv.object["descriptions"] = JSONValue(f.format.descriptions);
         }
         if (f.lastUsed > 0)
             fv.object["lastUsed"] = JSONValue(f.lastUsed);
@@ -322,7 +337,7 @@ RecentFile[] recentFilesFromJson(const JSONValue json)
 }
 
 /// The format saved in a recent file entry: {"format": id, "variant",
-/// "encoding"}; unset if there is none or this build can't read it
+/// "encoding", "descriptions"}; unset if there is none or this build can't read it
 private FormatChoice formatOf(const JSONValue entry)
 {
     const id = "format" in entry;
@@ -339,6 +354,9 @@ private FormatChoice formatOf(const JSONValue entry)
     const encoding = "encoding" in entry;
     if (encoding !is null && (encoding.type != JSONType.string || !encodingByName(encoding.str, choice.encoding)))
         return FormatChoice.init; // an encoding of another build: detected again
+    const descriptions = "descriptions" in entry;
+    if (descriptions !is null && descriptions.type == JSONType.string)
+        choice.descriptions = descriptions.str;
     return choice;
 }
 
@@ -545,6 +563,19 @@ unittest
     assert(!savedFormat(list, testPath("/c.log")).isSet);
 }
 
+@("recentFilesToJson: the descriptions of a format are saved, none left out")
+unittest
+{
+    const described = FormatChoice("dlt", 0, TextEncoding.utf8, testPath("/fibex/ecu.xml"));
+    auto j = recentFilesToJson([RecentFile(testPath("/a.dlt"), described), RecentFile(testPath("/b.dlt"), FormatChoice("dlt"))]);
+    assert(j[0]["descriptions"].str == testPath("/fibex/ecu.xml"));
+    assert("descriptions" !in j[1]);
+
+    auto list = recentFilesFromJson(j);
+    assert(savedFormat(list, testPath("/a.dlt")) == described);
+    assert(savedFormat(list, testPath("/b.dlt")) == FormatChoice("dlt"));
+}
+
 @("recentFilesToJson: the encoding of a text format is saved, UTF-8 left out; an unknown one has the format detected again")
 unittest
 {
@@ -639,6 +670,17 @@ unittest
     auto changed = withFilters(list, testPath("/a.log"), []);
     assert(changed[1].path == testPath("/a.log") && changed[1].filters.length == 0, "in place");
     assert(withFilters(list, testPath("/c.log"), filters.dup) == list, "a file not in the list isn't added");
+}
+
+@("withFormat: the format choice of a file replaced in place, a file not in the list isn't added")
+unittest
+{
+    auto list = [RecentFile(testPath("/b.log")), RecentFile(testPath("/a.dlt"), FormatChoice("dlt"), 100)];
+    const described = FormatChoice("dlt", 0, TextEncoding.utf8, testPath("/fibex/ecu.xml"));
+    auto changed = withFormat(list, testPath("/logs/../a.dlt"), described);
+    assert(changed[1].path == testPath("/a.dlt") && changed[1].format == described, "in place");
+    assert(changed[1].lastUsed == 100, "not used by it");
+    assert(withFormat(list, testPath("/c.dlt"), described) == list, "a file not in the list isn't added");
 }
 
 @("withSearch: the latest query on top, a repeated one moved up, searchHistoryMax at most; kept when the file is opened again")

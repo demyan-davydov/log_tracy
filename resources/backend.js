@@ -6,7 +6,7 @@
 // when there is none. The backend tells the script
 // what changed by calling the global functions of script.js (onDocumentOpened,
 // onDocumentClosed, onMainViewChanged, onSearchViewChanged, onAttachmentsChanged,
-// getAppState),
+// onFileInfoChanged, getAppState),
 // never from inside one of these calls. Kept free of Sciter but for Window:
 // tests/js.
 
@@ -110,8 +110,15 @@ export const cancelSearchView = docId => xcall("cancelSearchView", docId);
 export const startChipSearch = (docId, chips) => message(xcall("startChipSearch", docId, JSON.stringify(chips)));
 // The queries searched in the file, the latest first: [[chips]]
 export const searchHistory = docId => parsed(xcall("getSearchHistory", docId), []);
-// {name, path, format, bytes, records} of the document for its File Info page, null if it isn't open
+// {name, path, format, bytes, records, descriptions} of the document for its File Info page,
+// null if it isn't open. descriptions: null for a log that takes none (no FIBEX row), else
+// {taken, folder, choice, read, reading, problem} (source/ui/app_session.d, documentInfoJson)
 export const documentInfo = docId => parsed(xcall("getDocumentInfo", docId), null);
+// Reads the FIBEX file or folder at `path` for the document in the background; how the read
+// goes is told by onFileInfoChanged. Returns: why it can't be, "" if it was asked
+export const loadDescriptions = (docId, path) => message(xcall("loadDescriptions", docId, path));
+// Drops the FIBEX of the document. Returns: why it can't be, "" if it was dropped
+export const unloadDescriptions = docId => message(xcall("unloadDescriptions", docId));
 // What is wrong with a regular expression, "" if nothing
 export const checkRegex = (pattern, matchCase) => message(xcall("checkRegex", pattern, matchCase));
 

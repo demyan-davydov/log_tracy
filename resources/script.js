@@ -657,6 +657,12 @@ globalThis.onMainViewChanged = function (docId, json) {
 globalThis.onAttachmentsChanged = function (docId) {
 };
 
+// Native: what the File Info page shows of a document changed: its FIBEX is read,
+// failed, taken or dropped. A hidden page is filled when shown
+globalThis.onFileInfoChanged = function (docId) {
+    panes.get(docId)?.updateFileInfo();
+};
+
 // Native: a file was opened, in a new document or in the one that had it open
 // already (then that one is the current document again)
 globalThis.onDocumentOpened = function (docId) {
