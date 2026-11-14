@@ -1,203 +1,673 @@
-//! Reads a FIBEX file: the descriptions of non-verbose DLT messages by message ID.
-//! Nothing imports it yet.
+//! Reads FIBEX files: the descriptions of the non-verbose DLT messages by their message ID,
+//! the subset of FIBEX the tools of DLT generate. A FRAME "ID_<message id>" is a
+//! message: its type, level, AppId and CtxId from its MANUFACTURER-EXTENSION and its parts in
+//! the order of its PDU-REFs; a PDU is a static text (DESC) or a value, of the type its
+//! SIGNAL-REF names (S_UINT16, S_STRG_ASCII, ...) and of its BYTE-LENGTH. A Fibex is never
+//! changed once read: the threads of a document's format look it up concurrently.
 module formats.dlt.fibex;
 
-import std.file;
-import std.stdio;
-import std.string;
-import std.conv;
-import std.algorithm;
-import std.array;
+import formats.dlt.protocol : MessageType;
+import log_core.log_level : LogLevel;
+import utils.ui_text : uiText, uiTextOf, UiTextException;
 
-/// Maps Message ID to Description
-class FibexParser
+//! What a value part of a message is in the payload
+enum FibexValue : ubyte
 {
-    private string[uint] _idMap;
+    text, //< not a value: the static text of the part
+    boolean,
+    unsigned,
+    signed,
+    floating,
+    ascii, //< a string, its length in 2 bytes before it
+    utf8, //< a string, its length in 2 bytes before it
+    raw, //< bytes, their length in 2 bytes before them
+    unknown, //< a signal of no known type: `byteLength` bytes
+}
 
-    /// Load and parse a FIBEX/XML file
-    void load(string path)
+//! A part of a message: a static text or a value read from the payload
+struct FibexPart
+{
+    FibexValue value;
+    string text; //< of FibexValue.text
+    uint byteLength; //< of a value of fixed length
+}
+
+//! The description of a non-verbose message
+struct FibexMessage
+{
+    uint id;
+    string appId, ctxId;
+    MessageType type;
+    LogLevel level; //< of a log message, None for another type
+    string sourceFile;
+    uint line;
+    immutable(FibexPart)[] parts;
+}
+
+//! The messages of one or more FIBEX files
+final class Fibex
+{
+    private immutable(FibexMessage)[] _messages;
+    private size_t[uint] _byId; // the first message of each ID
+    private size_t[Key] _byKey;
+    private string[] _duplicates;
+
+    private static struct Key
     {
-        try
+        uint id;
+        char[4] appId = 0;
+        char[4] ctxId = 0;
+
+        this(uint id, scope const(char)[] appId, scope const(char)[] ctxId) pure nothrow @nogc @safe
         {
-            const string s = cast(string) std.file.read(path);
-
-            // Manual scanning for ID and Description mappings to avoid std.xml dependency
-            // We look for patterns like:
-            // ID="..." ... Text="..."
-            // or <ID>...</ID> with nearby <DESC>...</DESC>
-
-            size_t cursor = 0;
-            while (cursor < s.length)
-            {
-                // Find <message or <PDU or <FRAME or <ELEMENT
-                const ptrdiff_t startTag = s.indexOf("<", cursor);
-                if (startTag == -1)
-                    break;
-
-                cursor = startTag + 1;
-                const ptrdiff_t tagEnd = s.indexOf(">", startTag);
-                if (tagEnd == -1)
-                    break;
-
-                const string fullTag = s[startTag .. tagEnd + 1];
-
-                // Strategy: Find an ID, then find a description nearby.
-                // IDs can be in id="..." attribute OR <ID>...</ID> tag.
-
-                string idStr;
-                const ptrdiff_t idAttr = fullTag.indexOf("id=\"");
-                if (idAttr != -1)
-                {
-                    const size_t idValStart = idAttr + 4;
-                    const ptrdiff_t idValEnd = fullTag.indexOf("\"", idValStart);
-                    if (idValEnd != -1)
-                        idStr = fullTag[idValStart .. idValEnd];
-                }
-
-                if (idStr.empty)
-                {
-                    // Look for <ID> tag within 100 chars
-                    const ptrdiff_t idTag = s.indexOf("<ID>", startTag);
-                    if (idTag != -1 && idTag - startTag < 100)
-                    {
-                        const size_t start = idTag + 4;
-                        const ptrdiff_t end = s.indexOf("</ID>", start);
-                        if (end != -1)
-                            idStr = s[start .. end].strip();
-                    }
-                }
-
-                if (!idStr.empty)
-                {
-                    try
-                    {
-                        uint id;
-                        const string cleanId = idStr.strip().toLower();
-                        if (cleanId.startsWith("0x"))
-                            id = to!uint(cleanId[2 .. $], 16);
-                        else if (cleanId.startsWith("x"))
-                            id = to!uint(cleanId[1 .. $], 16);
-                        else
-                            id = to!uint(cleanId);
-
-                        // Find Description: text="..." OR <description> OR <DESC> OR <desc>
-                        string desc;
-                        const ptrdiff_t textAttr = fullTag.indexOf("text=\"");
-                        if (textAttr != -1)
-                        {
-                            const size_t txtStart = textAttr + 6;
-                            const ptrdiff_t txtEnd = fullTag.indexOf("\"", txtStart);
-                            if (txtEnd != -1)
-                                desc = fullTag[txtStart .. txtEnd];
-                        }
-
-                        if (desc.empty)
-                        {
-                            const string[] descTags = [
-                                "<description>", "<DESC>", "<desc>", "<LONG-NAME>"
-                            ];
-                            ptrdiff_t nearestPos = -1;
-                            string nearestTag;
-
-                            foreach (t; descTags)
-                            {
-                                const ptrdiff_t dPos = s.indexOf(t, startTag);
-                                if (dPos != -1 && dPos - startTag < 500)
-                                {
-                                    if (nearestPos == -1 || dPos < nearestPos)
-                                    {
-                                        nearestPos = dPos;
-                                        nearestTag = t;
-                                    }
-                                }
-                            }
-
-                            if (nearestPos != -1)
-                            {
-                                const size_t dStart = nearestPos + nearestTag.length;
-                                const string endT = "</" ~ nearestTag[1 .. $];
-                                const ptrdiff_t dEnd = s.indexOf(endT, dStart);
-                                if (dEnd != -1)
-                                {
-                                    desc = s[dStart .. dEnd].strip();
-                                    if (dEnd + endT.length > cursor)
-                                        cursor = dEnd + endT.length;
-                                }
-                            }
-                        }
-
-                        if (!desc.empty)
-                        {
-                            _idMap[id] = desc;
-                        }
-                    }
-                    catch (Exception e)
-                    {
-                    }
-                }
-
-                if (cursor <= tagEnd)
-                    cursor = tagEnd + 1;
-            }
-
-            writeln("FIBEX Loaded: ", _idMap.length, " IDs mapped.");
-        }
-        catch (Exception e)
-        {
-            writeln("Error loading FIBEX: ", e.msg);
+            this.id = id;
+            foreach (i, c; appId[0 .. appId.length < 4 ? appId.length : 4])
+                this.appId[i] = c;
+            foreach (i, c; ctxId[0 .. ctxId.length < 4 ? ctxId.length : 4])
+                this.ctxId[i] = c;
         }
     }
 
-    /// Get description for a message ID
-    string getDescription(uint id) const
+    private this()
     {
-        return _idMap.get(id, null);
     }
 
-    bool hasId(uint id) const pure nothrow @nogc
+    //! How many messages it describes
+    size_t length() const pure nothrow @nogc @safe
     {
-        return (id in _idMap) !is null;
+        return _messages.length;
+    }
+
+    //! The frames left out because one with their ID, AppId and CtxId came before, by the
+    //! ID of the frame ("ID_11"); the first one is kept
+    const(string)[] duplicates() const pure nothrow @nogc @safe
+    {
+        return _duplicates;
+    }
+
+    //! @brief The description of message `id`: of the ID, AppId and CtxId if the message has
+    //! both, otherwise the first one of the ID
+    //! @returns null if there is none
+    const(FibexMessage)* find(uint id, scope const(char)[] appId, scope const(char)[] ctxId)
+        const nothrow @nogc @trusted
+    {
+        const(size_t)* at = appId.length && ctxId.length
+            ? Key(id, appId, ctxId) in _byKey : id in _byId;
+        return at is null ? null : &_messages[*at];
+    }
+
+    // Adds `m` unless a message of its ID, AppId and CtxId is in already; `frameId` names it
+    // then
+    private void add(immutable FibexMessage m, string frameId)
+    {
+        const key = Key(m.id, m.appId, m.ctxId);
+        if (key in _byKey)
+        {
+            _duplicates ~= frameId;
+            return;
+        }
+        _byKey[key] = _messages.length;
+        if (m.id !in _byId)
+            _byId[m.id] = _messages.length;
+        _messages ~= m;
     }
 }
 
-@("FibexParser: descriptions by element, attribute and hex id")
-unittest
+//! @brief Reads the FIBEX file at `path`, or every `*.xml` of the folder at `path`
+//! @throws Exception if a file can't be read or isn't FIBEX
+Fibex loadFibex(string path)
 {
-    import std.file;
-    import std.path;
+    import std.algorithm : filter, map, sort;
+    import std.array : array;
+    import std.file : dirEntries, isDir, readText, SpanMode;
+    import std.path : extension;
+    import std.uni : toLower;
 
-    string content = q"{
-<FRAME>
-    <ID>123</ID> 
-    <DESC>Test Message</DESC>
-    <pdu id="456">
-        <description>Another Message</description>
-    </pdu>
-    <message id="789" text="Attribute Style" />
-    <element id="101">
-        <LONG-NAME>Long Name Style</LONG-NAME>
-    </element>
-    <message id="0xABC" text="Hex Style 1" />
-    <message id="xDEF" text="Hex Style 2" />
-</FRAME>
-    }";
-
-    string tempFile = buildPath(tempDir(), "log_tracy_fibex_test.xml");
-    std.file.write(tempFile, content);
-
-    scope (exit)
+    string[] files = [path];
+    if (isDir(path))
     {
-        if (exists(tempFile))
-            std.file.remove(tempFile);
+        files = dirEntries(path, SpanMode.shallow)
+            .filter!(e => e.isFile && e.name.extension.toLower == ".xml")
+            .map!(e => e.name)
+            .array;
+        sort(files);
+        if (!files.length)
+            throw new UiTextException(uiText("no FIBEX files (*.xml) in {folder}", "folder", path));
+    }
+    auto fibex = new Fibex;
+    foreach (file; files)
+    {
+        try
+            readInto(fibex, readText(file));
+        catch (Exception e)
+            throw new UiTextException(uiText("can't read the FIBEX file {file}: {reason}",
+                    "file", file, "reason", uiTextOf(e)));
+    }
+    return fibex;
+}
+
+//! @brief Reads FIBEX files from their texts; a PDU is referred to only from its own file, the
+//! frames of all of them are looked up together
+//! @throws Exception if one isn't FIBEX
+Fibex parseFibex(scope const(string)[] texts...)
+{
+    auto fibex = new Fibex;
+    foreach (text; texts)
+        readInto(fibex, text);
+    return fibex;
+}
+
+// A PDU as it is read, before a frame refers to it
+private struct PduDraft
+{
+    string id;
+    string text; // DESC
+    FibexValue value = FibexValue.unknown;
+    uint byteLength;
+}
+
+// A FRAME as it is read
+private struct FrameDraft
+{
+    string id;
+    string appId, ctxId;
+    MessageType type;
+    LogLevel level;
+    string sourceFile;
+    uint line;
+    string[] pduRefs;
+}
+
+// Adds the messages of the FIBEX `text` to `fibex`. An element is taken by its name wherever
+// it is, inside the PDU or the FRAME being read
+private void readInto(Fibex fibex, string text)
+{
+    import dxml.parser : EntityType, parseXML, simpleXML;
+
+    if (text.length >= 3 && text[0 .. 3] == "\uFEFF")
+        text = text[3 .. $];
+    auto entities = parseXML!simpleXML(text); // throws XMLParsingException
+    if (localName(entities.front.name) != "FIBEX")
+        throw new UiTextException(uiText("not a FIBEX file: its root is <{root}>",
+                "root", entities.front.name));
+
+    PduDraft[string] pdus;
+    FrameDraft[] frames;
+    PduDraft* pdu;
+    FrameDraft* frame;
+    for (; !entities.empty; entities.popFront())
+    {
+        const type = entities.front.type;
+        if (type != EntityType.elementStart && type != EntityType.elementEnd)
+            continue;
+        const name = localName(entities.front.name);
+        if (type == EntityType.elementEnd)
+        {
+            if (name == "PDU" && pdu !is null)
+            {
+                pdus[pdu.id] = *pdu;
+                pdu = null;
+            }
+            else if (name == "FRAME")
+                frame = null;
+            continue;
+        }
+        if (type != EntityType.elementStart)
+            continue;
+        switch (name)
+        {
+        case "PDU":
+            if (pdu is null)
+                pdu = new PduDraft(attribute(entities.front, "ID"));
+            break;
+        case "DESC":
+            if (pdu !is null)
+                pdu.text = textOf(entities);
+            break;
+        case "BYTE-LENGTH":
+            if (pdu !is null)
+                pdu.byteLength = numberOf(textOf(entities));
+            break;
+        case "SIGNAL-REF":
+            if (pdu !is null)
+                pdu.value = valueOfSignal(attribute(entities.front, "ID-REF"));
+            break;
+        case "FRAME":
+            if (frame is null)
+            {
+                frames ~= FrameDraft(attribute(entities.front, "ID"));
+                frame = &frames[$ - 1];
+            }
+            break;
+        case "MESSAGE_TYPE":
+            if (frame !is null)
+                frame.type = messageTypeOf(textOf(entities));
+            break;
+        case "MESSAGE_INFO":
+            if (frame !is null)
+                frame.level = levelOf(textOf(entities));
+            break;
+        case "APPLICATION_ID":
+            if (frame !is null)
+                frame.appId = textOf(entities);
+            break;
+        case "CONTEXT_ID":
+            if (frame !is null)
+                frame.ctxId = textOf(entities);
+            break;
+        case "MESSAGE_SOURCE_FILE":
+            if (frame !is null)
+                frame.sourceFile = textOf(entities);
+            break;
+        case "MESSAGE_LINE_NUMBER":
+            if (frame !is null)
+                frame.line = numberOf(textOf(entities));
+            break;
+        case "PDU-REF":
+            if (frame !is null)
+                frame.pduRefs ~= attribute(entities.front, "ID-REF");
+            break;
+        default:
+            break;
+        }
     }
 
-    FibexParser parser = new FibexParser();
-    parser.load(tempFile);
+    foreach (ref f; frames)
+    {
+        uint id;
+        if (!messageIdOf(f.id, id))
+            continue;
+        FibexPart[] parts;
+        foreach (ref_; f.pduRefs)
+            if (auto p = ref_ in pdus)
+                parts ~= p.text.length ? FibexPart(FibexValue.text, p.text)
+                    : FibexPart(p.value, null, p.byteLength);
+        fibex.add(immutable FibexMessage(id, f.appId, f.ctxId,
+                f.type, f.type == MessageType.Log ? f.level : LogLevel.None,
+                f.sourceFile, f.line, parts.idup), f.id);
+    }
+}
 
-    assert(parser.getDescription(123) == "Test Message");
-    assert(parser.getDescription(456) == "Another Message");
-    assert(parser.getDescription(789) == "Attribute Style");
-    assert(parser.getDescription(101) == "Long Name Style");
-    assert(parser.getDescription(0xABC) == "Hex Style 1");
-    assert(parser.getDescription(0xDEF) == "Hex Style 2");
+// The name of an element without its namespace prefix
+private string localName(string name) pure nothrow @nogc @safe
+{
+    foreach_reverse (i, c; name)
+        if (c == ':')
+            return name[i + 1 .. $];
+    return name;
+}
+
+// The value of attribute `name` of the element `entity`, decoded; empty if it has none
+private string attribute(Entity)(Entity entity, string name)
+{
+    import dxml.util : decodeXML;
+
+    foreach (a; entity.attributes)
+        if (localName(a.name) == name)
+            return decodeXML(a.value);
+    return null;
+}
+
+// The text of the element at the front of `entities`, decoded and stripped, the range left at
+// its end; the texts of the elements inside it are left out
+private string textOf(Entities)(ref Entities entities)
+{
+    import dxml.parser : EntityType;
+    import dxml.util : decodeXML;
+    import std.string : strip;
+
+    string text;
+    size_t depth = 0;
+    for (entities.popFront(); !entities.empty; entities.popFront())
+    {
+        final switch (entities.front.type)
+        {
+        case EntityType.elementStart:
+            depth++;
+            break;
+        case EntityType.elementEnd:
+            if (depth == 0)
+                return strip(text);
+            depth--;
+            break;
+        case EntityType.text:
+            if (depth == 0)
+                text ~= decodeXML(entities.front.text);
+            break;
+        case EntityType.cdata:
+            if (depth == 0)
+                text ~= entities.front.text;
+            break;
+        case EntityType.comment, EntityType.pi, EntityType.elementEmpty:
+            break;
+        }
+    }
+    return strip(text);
+}
+
+// `text` as a number, 0 if it isn't one
+private uint numberOf(string text) pure @safe
+{
+    import std.conv : ConvException, to;
+
+    try
+        return text.to!uint;
+    catch (ConvException)
+        return 0;
+}
+
+// The message ID of the frame `frameId` ("ID_<decimal>")
+private bool messageIdOf(string frameId, out uint id) pure @safe
+{
+    import std.algorithm : all, startsWith;
+    import std.ascii : isDigit;
+    import std.conv : ConvException, to;
+
+    if (!frameId.startsWith("ID_") || frameId.length == 3 || !frameId[3 .. $].all!isDigit)
+        return false;
+    try
+        id = frameId[3 .. $].to!uint;
+    catch (ConvException)
+        return false;
+    return true;
+}
+
+// The type of a value by the name of its signal, as the tools of DLT name them
+private FibexValue valueOfSignal(string signal) pure nothrow @nogc @safe
+{
+    switch (signal)
+    {
+    case "S_BOOL":
+        return FibexValue.boolean;
+    case "S_SINT8", "S_SINT16", "S_SINT32", "S_SINT64":
+        return FibexValue.signed;
+    case "S_UINT8", "S_UINT16", "S_UINT32", "S_UINT64":
+        return FibexValue.unsigned;
+    case "S_FLOA16", "S_FLOA32", "S_FLOA64":
+        return FibexValue.floating;
+    case "S_STRG_ASCII":
+        return FibexValue.ascii;
+    case "S_STRG_UTF8":
+        return FibexValue.utf8;
+    case "S_RAWD", "S_RAW":
+        return FibexValue.raw;
+    default:
+        return FibexValue.unknown;
+    }
+}
+
+// The type of a message by its name in MESSAGE_TYPE
+private MessageType messageTypeOf(string name) pure nothrow @nogc @safe
+{
+    switch (name)
+    {
+    case "DLT_TYPE_APP_TRACE":
+        return MessageType.AppTrace;
+    case "DLT_TYPE_NW_TRACE":
+        return MessageType.NwTrace;
+    case "DLT_TYPE_CONTROL":
+        return MessageType.Control;
+    default:
+        return MessageType.Log;
+    }
+}
+
+// The level of a log message by its name in MESSAGE_INFO
+private LogLevel levelOf(string name) pure nothrow @nogc @safe
+{
+    switch (name)
+    {
+    case "DLT_LOG_FATAL":
+        return LogLevel.Fatal;
+    case "DLT_LOG_ERROR":
+        return LogLevel.Error;
+    case "DLT_LOG_WARN":
+        return LogLevel.Warn;
+    case "DLT_LOG_INFO":
+        return LogLevel.Info;
+    case "DLT_LOG_DEBUG":
+        return LogLevel.Debug;
+    case "DLT_LOG_VERBOSE":
+        return LogLevel.Verbose;
+    default:
+        return LogLevel.None;
+    }
+}
+
+version (unittest)
+{
+    // A FIBEX of the usual layout: `pdus` and `frames` inside
+    private string fibexOf(string pdus, string frames)
+    {
+        return `<?xml version="1.0"?>
+<fx:FIBEX xmlns:fx="http://www.asam.net/xml/fbx" xmlns:ho="http://www.asam.net/xml" VERSION="3.1.0">
+  <!-- a comment -->
+  <fx:ELEMENTS>
+    <fx:PDUS>` ~ pdus ~ `</fx:PDUS>
+    <fx:FRAMES>` ~ frames ~ `</fx:FRAMES>
+  </fx:ELEMENTS>
+</fx:FIBEX>`;
+    }
+
+    private string textPdu(string id, string text)
+    {
+        return `<fx:PDU ID="` ~ id ~ `"><ho:SHORT-NAME>` ~ id ~ `</ho:SHORT-NAME><ho:DESC>` ~ text
+            ~ `</ho:DESC><fx:BYTE-LENGTH>0</fx:BYTE-LENGTH><fx:PDU-TYPE>OTHER</fx:PDU-TYPE></fx:PDU>`;
+    }
+
+    private string valuePdu(string id, string signal, uint byteLength)
+    {
+        import std.conv : to;
+
+        return `<fx:PDU ID="` ~ id ~ `"><ho:SHORT-NAME>` ~ id ~ `</ho:SHORT-NAME><fx:BYTE-LENGTH>`
+            ~ byteLength.to!string ~ `</fx:BYTE-LENGTH><fx:PDU-TYPE>OTHER</fx:PDU-TYPE>
+            <fx:SIGNAL-INSTANCES><fx:SIGNAL-INSTANCE ID="S_` ~ id ~ `">
+              <fx:SEQUENCE-NUMBER>0</fx:SEQUENCE-NUMBER><fx:SIGNAL-REF ID-REF="` ~ signal ~ `"/>
+            </fx:SIGNAL-INSTANCE></fx:SIGNAL-INSTANCES></fx:PDU>`;
+    }
+
+    private string frame(string id, string type, string info, string app, string ctx,
+        const(string)[] pdus...)
+    {
+        string refs;
+        foreach (pdu; pdus)
+            refs ~= `<fx:PDU-INSTANCE ID="P_` ~ pdu ~ `"><fx:PDU-REF ID-REF="` ~ pdu
+                ~ `"/><fx:SEQUENCE-NUMBER>0</fx:SEQUENCE-NUMBER></fx:PDU-INSTANCE>`;
+        return `<fx:FRAME ID="` ~ id ~ `"><ho:SHORT-NAME>` ~ id
+            ~ `</ho:SHORT-NAME><fx:BYTE-LENGTH>0</fx:BYTE-LENGTH><fx:FRAME-TYPE>OTHER</fx:FRAME-TYPE>
+            <fx:PDU-INSTANCES>` ~ refs ~ `</fx:PDU-INSTANCES>
+            <fx:MANUFACTURER-EXTENSION>
+              <MESSAGE_TYPE>` ~ type ~ `</MESSAGE_TYPE>
+              <MESSAGE_INFO>` ~ info ~ `</MESSAGE_INFO>
+              <APPLICATION_ID>` ~ app ~ `</APPLICATION_ID>
+              <CONTEXT_ID>` ~ ctx ~ `</CONTEXT_ID>
+              <MESSAGE_SOURCE_FILE>main.c</MESSAGE_SOURCE_FILE>
+              <MESSAGE_LINE_NUMBER>42</MESSAGE_LINE_NUMBER>
+            </fx:MANUFACTURER-EXTENSION></fx:FRAME>`;
+    }
+
+    private string logFrame(string id, string app, string ctx, const(string)[] pdus...)
+    {
+        return frame(id, "DLT_TYPE_LOG", "DLT_LOG_INFO", app, ctx, pdus);
+    }
+}
+
+@("parseFibex: a message of a static text, its header fields from the frame")
+unittest
+{
+    const fibex = parseFibex(fibexOf(textPdu("PDU_10_0", "Started."),
+            frame("ID_10", "DLT_TYPE_LOG", "DLT_LOG_WARN", "APP1", "CON1", "PDU_10_0")));
+    assert(fibex.length == 1, "one frame, one message");
+    const m = fibex.find(10, "APP1", "CON1");
+    assert(m !is null, "found by its ID, AppId and CtxId");
+    assert(m.id == 10 && m.appId == "APP1" && m.ctxId == "CON1");
+    assert(m.type == MessageType.Log && m.level == LogLevel.Warn);
+    assert(m.sourceFile == "main.c" && m.line == 42);
+    assert(m.parts == [FibexPart(FibexValue.text, "Started.")]);
+}
+
+@("parseFibex: the parts in the order of the PDU-REFs, a value of its BYTE-LENGTH")
+unittest
+{
+    const fibex = parseFibex(fibexOf(textPdu("PDU_11_0", "Free size:")
+            ~ valuePdu("PDU_11_1", "S_UINT16", 2) ~ textPdu("PDU_11_2", "bytes"),
+            logFrame("ID_11", "APP1", "CON1", "PDU_11_0", "PDU_11_1", "PDU_11_2")));
+    const m = fibex.find(11, "APP1", "CON1");
+    assert(m !is null);
+    assert(m.parts == [
+        FibexPart(FibexValue.text, "Free size:"),
+        FibexPart(FibexValue.unsigned, null, 2),
+        FibexPart(FibexValue.text, "bytes"),
+    ]);
+}
+
+@("parseFibex: the type of a value by the name of its signal, of an unknown one its bytes")
+unittest
+{
+    const FibexValue[string] kinds = [
+        "S_BOOL": FibexValue.boolean,
+        "S_SINT8": FibexValue.signed, "S_UINT8": FibexValue.unsigned,
+        "S_SINT16": FibexValue.signed, "S_UINT16": FibexValue.unsigned,
+        "S_SINT32": FibexValue.signed, "S_UINT32": FibexValue.unsigned,
+        "S_SINT64": FibexValue.signed, "S_UINT64": FibexValue.unsigned,
+        "S_FLOA16": FibexValue.floating, "S_FLOA32": FibexValue.floating,
+        "S_FLOA64": FibexValue.floating,
+        "S_STRG_ASCII": FibexValue.ascii, "S_STRG_UTF8": FibexValue.utf8,
+        "S_RAWD": FibexValue.raw, "S_RAW": FibexValue.raw,
+        "S_MY_STRUCT": FibexValue.unknown,
+    ];
+    foreach (signal, kind; kinds)
+    {
+        const fibex = parseFibex(fibexOf(valuePdu("PDU_1", signal, 3),
+                logFrame("ID_1", "APP1", "CON1", "PDU_1")));
+        const m = fibex.find(1, "APP1", "CON1");
+        assert(m !is null && m.parts.length == 1, signal);
+        assert(m.parts[0].value == kind && m.parts[0].byteLength == 3, signal);
+    }
+}
+
+@("parseFibex: the type and the level of a message by their names")
+unittest
+{
+    import std.typecons : tuple;
+
+    foreach (c; [
+        tuple("DLT_TYPE_LOG", "DLT_LOG_FATAL", MessageType.Log, LogLevel.Fatal),
+        tuple("DLT_TYPE_LOG", "DLT_LOG_ERROR", MessageType.Log, LogLevel.Error),
+        tuple("DLT_TYPE_LOG", "DLT_LOG_INFO", MessageType.Log, LogLevel.Info),
+        tuple("DLT_TYPE_LOG", "DLT_LOG_DEBUG", MessageType.Log, LogLevel.Debug),
+        tuple("DLT_TYPE_LOG", "DLT_LOG_VERBOSE", MessageType.Log, LogLevel.Verbose),
+        tuple("DLT_TYPE_LOG", "DLT_LOG_DEFAULT", MessageType.Log, LogLevel.None),
+        tuple("DLT_TYPE_LOG", "DLT_LOG_OFF", MessageType.Log, LogLevel.None),
+        tuple("DLT_TYPE_APP_TRACE", "DLT_TRACE_VARIABLE", MessageType.AppTrace, LogLevel.None),
+        tuple("DLT_TYPE_NW_TRACE", "", MessageType.NwTrace, LogLevel.None),
+    ])
+    {
+        const fibex = parseFibex(fibexOf(textPdu("PDU_1", "x"),
+                frame("ID_1", c[0], c[1], "APP1", "CON1", "PDU_1")));
+        const m = fibex.find(1, "APP1", "CON1");
+        assert(m !is null && m.type == c[2] && m.level == c[3], c[0] ~ " " ~ c[1]);
+    }
+}
+
+@("Fibex.find: by ID, AppId and CtxId if the message has both, otherwise by ID")
+unittest
+{
+    const fibex = parseFibex(fibexOf(textPdu("PDU_A", "of APP1") ~ textPdu("PDU_B", "of APP2"),
+            logFrame("ID_7", "APP1", "CON1", "PDU_A") ~ logFrame("ID_7", "APP2", "CON2", "PDU_B")));
+    assert(fibex.length == 2);
+    assert(fibex.find(7, "APP2", "CON2").parts[0].text == "of APP2");
+    assert(fibex.find(7, "APP1", "CON1").parts[0].text == "of APP1");
+    assert(fibex.find(7, "", "").parts[0].text == "of APP1", "the first one of the ID");
+    assert(fibex.find(7, "APP3", "CON1") is null, "an AppId and CtxId of no frame");
+    assert(fibex.find(8, "", "") is null, "an ID of no frame");
+}
+
+@("parseFibex: a frame of the ID, AppId and CtxId of an earlier one is left out and named")
+unittest
+{
+    const fibex = parseFibex(fibexOf(textPdu("PDU_A", "first") ~ textPdu("PDU_B", "second"),
+            logFrame("ID_7", "APP1", "CON1", "PDU_A") ~ logFrame("ID_7", "APP1", "CON1", "PDU_B")));
+    assert(fibex.length == 1);
+    assert(fibex.find(7, "APP1", "CON1").parts[0].text == "first");
+    assert(fibex.duplicates == ["ID_7"]);
+}
+
+@("parseFibex: a frame whose ID is not ID_<decimal> is not a message")
+unittest
+{
+    const fibex = parseFibex(fibexOf(textPdu("PDU_A", "x"),
+            logFrame("ID_x", "APP1", "CON1", "PDU_A") ~ logFrame("FRAME_3", "APP1", "CON1", "PDU_A")
+            ~ logFrame("ID_", "APP1", "CON1", "PDU_A") ~ logFrame("ID_99999999999", "APP1",
+            "CON1", "PDU_A")));
+    assert(fibex.length == 0);
+}
+
+@("parseFibex: PDUs after the frames, a reference to no PDU left out")
+unittest
+{
+    const xml = `<fx:FIBEX xmlns:fx="f" xmlns:ho="h"><fx:ELEMENTS><fx:FRAMES>`
+        ~ logFrame("ID_5", "APP1", "CON1", "PDU_1", "PDU_MISSING", "PDU_2")
+        ~ `</fx:FRAMES><fx:PDUS>` ~ textPdu("PDU_1", "one") ~ textPdu("PDU_2", "two")
+        ~ `</fx:PDUS></fx:ELEMENTS></fx:FIBEX>`;
+    const m = parseFibex(xml).find(5, "APP1", "CON1");
+    assert(m !is null);
+    assert(m.parts == [FibexPart(FibexValue.text, "one"), FibexPart(FibexValue.text, "two")]);
+}
+
+@("parseFibex: the entities of a text decoded, a byte order mark ignored")
+unittest
+{
+    const xml = "﻿" ~ fibexOf(textPdu("PDU_1", "a &lt; b &amp;&amp; c &#x41;"),
+            logFrame("ID_1", "APP1", "CON1", "PDU_1"));
+    assert(parseFibex(xml).find(1, "APP1", "CON1").parts[0].text == "a < b && c A");
+}
+
+@("parseFibex: several files, a PDU referred to only from its own file, the first frame kept")
+unittest
+{
+    const one = fibexOf(textPdu("PDU_1", "one"), logFrame("ID_1", "APP1", "CON1", "PDU_1"));
+    const two = fibexOf(textPdu("PDU_2", "two"),
+            logFrame("ID_2", "APP1", "CON1", "PDU_1", "PDU_2")
+            ~ logFrame("ID_1", "APP1", "CON1", "PDU_2"));
+    const fibex = parseFibex(one, two);
+    assert(fibex.length == 2);
+    assert(fibex.find(1, "APP1", "CON1").parts == [FibexPart(FibexValue.text, "one")]);
+    assert(fibex.find(2, "APP1", "CON1").parts == [FibexPart(FibexValue.text, "two")],
+        "PDU_1 is of the other file");
+    assert(fibex.duplicates == ["ID_1"]);
+}
+
+@("parseFibex: XML that isn't FIBEX or isn't XML is refused")
+unittest
+{
+    import std.exception : assertThrown;
+
+    assertThrown!UiTextException(parseFibex(`<dltfilter><filter/></dltfilter>`));
+    assertThrown!Exception(parseFibex(`<fx:FIBEX xmlns:fx="f"><fx:FRAMES>`));
+    assertThrown!Exception(parseFibex(`not xml`));
+}
+
+@("loadFibex: a file, or every *.xml of a folder")
+unittest
+{
+    import std.exception : assertThrown;
+    import std.file : mkdirRecurse, rmdirRecurse, tempDir, write;
+    import std.path : buildPath;
+
+    const folder = buildPath(tempDir(), "log_tracy_fibex_test");
+    mkdirRecurse(folder);
+    scope (exit)
+        rmdirRecurse(folder);
+    const one = buildPath(folder, "one.xml");
+    write(one, fibexOf(textPdu("PDU_1", "one"), logFrame("ID_1", "APP1", "CON1", "PDU_1")));
+    write(buildPath(folder, "two.XML"),
+        fibexOf(textPdu("PDU_2", "two"), logFrame("ID_2", "APP1", "CON1", "PDU_2")));
+    write(buildPath(folder, "notes.txt"), "not FIBEX");
+
+    assert(loadFibex(one).length == 1);
+    const all = loadFibex(folder);
+    assert(all.length == 2);
+    assert(all.find(2, "APP1", "CON1").parts[0].text == "two");
+    assertThrown!Exception(loadFibex(buildPath(folder, "none.xml")));
 }

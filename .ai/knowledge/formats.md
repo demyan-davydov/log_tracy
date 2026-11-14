@@ -57,8 +57,9 @@ Adding a format, step by step: `.ai/workflows/add-format.md`.
 - DLT records for unittests are built by `formats/dlt/testing_utils` (`BuildV1`, `BuildV2`,
   `buildDltMessage`, `VerboseArgs` for the arguments of a verbose record), also for the
   tests of other packages.
-- `.dlf` filter files: `formats/dlt/dlf`. FIBEX (non-verbose): `formats/dlt/fibex`,
-  not decoded yet (`docs/fibex.md`).
+- `.dlf` filter files: `formats/dlt/dlf`. FIBEX (non-verbose): `formats/dlt/fibex`
+  reads the descriptions (`loadFibex`, `Fibex.find`); `DltFormat` doesn't decode by them yet
+  (`docs/stories/fibex.md`).
 - Real logs for trying things are kept locally in `test_data/`, not in the repository (`*.dlt`
   is ignored): a fresh clone has none. Tests build their records instead; a whole log (big,
   broken on purpose) is written by the generator (below).
