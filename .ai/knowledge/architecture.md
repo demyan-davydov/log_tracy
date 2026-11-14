@@ -205,7 +205,7 @@ utils  ←  sciter  ←  ui
     may tell its end without more bytes: `LogIndex.behind` counts what is held then). An
     `append` that fails halfway leaves the store refusing every later one. A format that
     is a `TransferringFormat` (files its writers send in the log, the file transfer of
-    dlt-daemon) has them cataloged as their records are appended (`transfers`): `append`
+    DLT) has them cataloged as their records are appended (`transfers`): `append`
     asks `transferOf` of the records marked a transfer and gives the catalog the message
     with the number and offset of the record. The catalog keeps numbers only (the record
     that opened each transfer, the offsets of its packets in turn); `LogIndex.attachments`

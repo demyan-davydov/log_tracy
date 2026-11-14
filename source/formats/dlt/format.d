@@ -700,7 +700,7 @@ unittest
     assert(scanAll(streamed, stream) == [shortExtended.length - StorageHeader.sizeof]);
 }
 
-@("DltFormat columns: counter, session ID and message ID are shown like in dlt-viewer")
+@("DltFormat columns: counter, session ID and message ID are shown as DLT viewers commonly show them")
 unittest
 {
     import std.algorithm : map;
@@ -818,7 +818,7 @@ unittest
 
 version (unittest)
 {
-    import formats.dlt.testing_utils : BuildV2, dltViewerTestFile;
+    import formats.dlt.testing_utils : BuildV2, sampleV2Message;
 
     ubyte[] storageHeaderV2(const(char)[] ecuId)
     {
@@ -852,7 +852,7 @@ unittest
 {
     BuildV2 b;
     b.payload = [9];
-    auto data = dltViewerTestFile ~ b.bytes() ~ dltViewerTestFile;
+    auto data = sampleV2Message ~ b.bytes() ~ sampleV2Message;
     assert(scanAll(new DltFormat(false), data) == [0, 71, 71 + b.bytes().length]);
 }
 
@@ -879,9 +879,9 @@ unittest
 @("DltFormat.scanRecords: a version 2 record with reserved values is kept and shown as invalid")
 unittest
 {
-    auto reserved = dltViewerTestFile.dup;
+    auto reserved = sampleV2Message.dup;
     reserved[0] |= 0x03; // CNTI 3: the length is right, the content unknown
-    auto data = storageHeaderV2("S") ~ reserved ~ storageHeaderV2("S") ~ dltViewerTestFile;
+    auto data = storageHeaderV2("S") ~ reserved ~ storageHeaderV2("S") ~ sampleV2Message;
 
     auto format = new DltFormat();
     const first = storageHeaderV2("S").length + reserved.length;

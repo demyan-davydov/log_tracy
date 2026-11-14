@@ -1,7 +1,7 @@
-//! The filter files of dlt-viewer (.dlf): read as DlfFilters with all the
-//! fields of dlt-viewer, written in the layout of dlt-viewer, and turned into
-//! filter rules on the columns of DltFormat and back (fromDlf, toDlf). A filter becomes a rule with the same meaning as in
-//! dlt-viewer (qdlt/qdltfilter.cpp, QDltFilter::match):
+//! The DLT filter files (.dlf): read as DlfFilters with all their fields,
+//! written in their layout, and turned into filter rules on the columns of
+//! DltFormat and back (fromDlf, toDlf). A filter becomes a rule with the same
+//! meaning it has in a .dlf:
 //!   type 0/1/2         -> include / exclude / marker
 //!   filterColour       -> the color of the rows, if a marker or enableMarker
 //!   ecuid              -> ecu equals
@@ -31,9 +31,9 @@ bool canLoadDlf(const(LogFormat) format) pure nothrow @nogc
     return cast(const(DltFormat)) format !is null;
 }
 
-//! A filter of dlt-viewer as a .dlf holds it (QDltFilter): what the rule
-//! editor edits and what is written back. The defaults are those of
-//! dlt-viewer (QDltFilter::clear) but the name and the switch.
+//! A filter as a .dlf holds it: what the rule editor edits and what is
+//! written back. The defaults are those of a .dlf filter but the name and the
+//! switch.
 struct DlfFilter
 {
     int type; // 0 positive, 1 negative, 2 marker
@@ -161,7 +161,7 @@ private DlfFilter parseFilter(Entity)(Entity element)
     flag("enableregexp_Payload", f.regexPayload);
     flag("ignoreCase_Header", f.ignoreCaseHeader);
     flag("ignoreCase_Payload", f.ignoreCasePayload);
-    f.enabled = false; // a filter without the tag is off, as in dlt-viewer
+    f.enabled = false; // a filter without the tag is off
     flag("enablefilter", f.enabled);
     flag("enableecuid", f.enableEcu);
     flag("enableapplicationid", f.enableApp);
@@ -180,8 +180,7 @@ private DlfFilter parseFilter(Entity)(Entity element)
     return f;
 }
 
-//! The content of a .dlf of the filters, laid out as dlt-viewer writes it
-//! (QDltFilterList::SaveFilter, QDltFilter::SaveFilterItem)
+//! The content of a .dlf of the filters, in the layout of a .dlf
 string toDlfXml(const(DlfFilter)[] filters)
 {
     import dxml.util : encodeText;
@@ -279,7 +278,7 @@ DlfFilter[] toDlf(const(FilterRule)[] rules, ref UiText[] warnings)
         if (rule.color.length)
         {
             f.color = rule.color;
-            f.enableMarker = true; // dlt-viewer colors the rows with it, see toRule
+            f.enableMarker = true; // the rows are colored with it, see toRule
         }
 
         string[] taken; // a .dlf holds one condition per column
@@ -302,7 +301,7 @@ DlfFilter[] toDlf(const(FilterRule)[] rules, ref UiText[] warnings)
     return filters;
 }
 
-//! Puts a condition into a filter of dlt-viewer
+//! Puts a condition into a filter of a .dlf
 //! @returns false if a filter can't hold it
 private bool put(ref DlfFilter f, ref const(Condition) c)
 {
@@ -366,7 +365,7 @@ private bool put(ref DlfFilter f, ref const(Condition) c)
             return false;
         f.enableMessageId = true;
         f.messageIdMin = cast(uint) c.min;
-        f.messageIdMax = cast(uint)(c.max + 1); // dlt-viewer: min <= id < max
+        f.messageIdMax = cast(uint)(c.max + 1); // .dlf: min <= id < max
         return true;
     case "type":
         if (c.check != Check.Equals || c.text != "CTRL")
@@ -416,8 +415,8 @@ FilterRule toRule(ref const(DlfFilter) f)
     rule.name = f.name;
     rule.enabled = f.enabled;
     rule.kind = f.type == 1 ? RuleKind.Exclude : f.type == 2 ? RuleKind.Marker : RuleKind.Include;
-    // Every filter has a color: dlt-viewer colors the rows with it only for a
-    // marker or when asked (QDltFilter::isMarker)
+    // Every filter has a color: it colors the rows only for a marker or when
+    // asked
     if (rule.kind == RuleKind.Marker || f.enableMarker)
         rule.color = f.color;
 
@@ -448,7 +447,7 @@ FilterRule toRule(ref const(DlfFilter) f)
     }
     if (f.enableCtrl)
         add("type", Check.Equals, "CTRL");
-    // dlt-viewer checks the level of log messages only: those have a level
+    // A .dlf checks the level of log messages only: those have a level
     if (f.enableLevelMin || f.enableLevelMax)
         add("level", Check.Range, "",
             f.enableLevelMin ? max(f.levelMin, LogLevel.Fatal) : LogLevel.Fatal,
@@ -513,14 +512,14 @@ unittest
         assert(rule.conditions.length == 0);
 }
 
-@("toRule: a filter colors the rows as in dlt-viewer: a marker, or with enableMarker")
+@("toRule: a filter colors the rows if a marker, or with enableMarker")
 unittest
 {
     auto rules = rulesOf(dlf(
             "<type>0</type><name>Plain</name><filterColour>#ff0000</filterColour>",
             "<type>1</type><name>Marked</name><enableMarker>1</enableMarker><filterColour>#00ff00</filterColour>",
             "<type>2</type><name>Marker</name><filterColour>#0000ff</filterColour>"));
-    assert(rules[0].color == "", "every filter has a color, dlt-viewer uses it only if asked");
+    assert(rules[0].color == "", "every filter has a color, used only if asked");
     assert(rules[1].color == "#00ff00");
     assert(rules[2].color == "#0000ff", "a marker always colors");
 }
@@ -698,7 +697,7 @@ unittest
     UiText[] warnings;
     auto filters = toDlf([rule], warnings);
     assert(filters.length == 1 && filters[0].enableApp && filters[0].appId == "APP");
-    assert(!filters[0].enableCtx, "ctx equals: dlt-viewer only finds a part");
+    assert(!filters[0].enableCtx, "ctx equals: a .dlf only finds a part");
     assert(warnings.length == 2 && english(warnings[0]).canFind("Wide"));
 }
 
@@ -716,7 +715,7 @@ unittest
     assert(ruleError(new DltFormat().columns, rule).empty);
 }
 
-@("parseDlfFilters: a file of dlt-viewer (filters/error_fatal_messages.dlf)")
+@("parseDlfFilters: a real .dlf of error and fatal messages")
 unittest
 {
     auto rules = rulesOf(`<?xml version="1.0" encoding="UTF-8"?>
@@ -752,7 +751,7 @@ unittest
     assert(rule.conditions.length == 1 && rule.conditions[0].columnId == "level");
 }
 
-@("parseDlfFilters: a level range from 0 (dlt-viewer's default minimum) leaves out records without a level")
+@("parseDlfFilters: a level range from 0 (the default minimum of a .dlf) leaves out records without a level")
 unittest
 {
     auto levels = onlyCondition("<enableLogLevelMin>1</enableLogLevelMin><logLevelMin>0</logLevelMin>"
@@ -784,12 +783,12 @@ unittest
     f.levelMin = 2;
     f.levelMax = 5;
 
-    DlfFilter plain; // the defaults of dlt-viewer
+    DlfFilter plain; // the defaults of a .dlf
     const filters = [f, plain];
     assert(parseDlfFilters(toDlfXml(filters)) == filters);
 }
 
-@("toDlfXml: the layout of dlt-viewer, every tag of a filter in its order")
+@("toDlfXml: the layout of a .dlf, every tag of a filter in its order")
 unittest
 {
     import std.algorithm.searching : canFind, countUntil;
@@ -812,7 +811,7 @@ unittest
         assert(at > previous, tag);
         previous = at;
     }
-    assert(xml.canFind("<logLevelMax>6</logLevelMax>"), "the defaults of dlt-viewer");
+    assert(xml.canFind("<logLevelMax>6</logLevelMax>"), "the defaults of a .dlf");
 }
 
 @("writeDlf: a file written is read back the same")

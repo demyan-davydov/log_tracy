@@ -48,8 +48,7 @@ export function editRule(values, open, apply) {
 }
 
 // ── Filter files ─────────────────────────────────────────────────────────────
-// A filter file of Log Tracy (.logfilter) for any log, a .dlf of dlt-viewer
-// for a log that can take one (canDlf of the filters of the document).
+// A filter file of Log Tracy (.logfilter) for any log, a .dlf for a log that can take one (canDlf of the filters of the document).
 
 // The types of files the dialog to load a filter offers: [[name, patterns], ...]
 export function filterFilesToLoad(canDlf) {

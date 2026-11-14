@@ -1,4 +1,4 @@
-//! Filter rules of a log of any format, as in dlt-viewer: rules made of
+//! Filter rules of a log of any format: rules made of
 //! conditions on the columns of the format, grouped in sets (a set is what one
 //! filter file holds), and the filter of the main view compiled from them.
 //!
@@ -26,8 +26,8 @@ import utils.ui_text : english, uiText, uiTextOf, UiText, UiTextException;
 //! What a rule does with the records it matches
 enum RuleKind : ubyte
 {
-    Include, // shown (dlt-viewer: positive)
-    Exclude, // hidden (dlt-viewer: negative)
+    Include, // shown (.dlf: positive)
+    Exclude, // hidden (.dlf: negative)
     Marker, // highlighted, doesn't change what is shown
 }
 
@@ -492,8 +492,7 @@ struct RuleIdGenerator
     }
 }
 
-//! Finds the rule a record matches, for the table to show it by its color (as
-//! dlt-viewer colors the rows): the first one that matches among the enabled
+//! Finds the rule a record matches, for the table to show it by its color: the first one that matches among the enabled
 //! rules of the enabled sets that have a color, of any kind (an excluded
 //! record is seen when anchored). Rules with an error (see ruleError) and
 //! colors that aren't "#rrggbb" are skipped.

@@ -29,8 +29,8 @@ Written in D with the [Sciter](https://sciter.com) UI framework.
 - Opens binary DLT (protocol versions 1 and 2) and text logs: Android logcat, kernel log
   (dmesg), syslog, web server access logs, CAN traces (candump, Vector ASC), plain text. The
   format is detected by the content; see [docs/formats.md](docs/formats.md).
-- Filters by rules on any column, as in dlt-viewer, including `.dlf` filter files of
-  dlt-viewer; colors the rows the rules mark.
+- Filters by rules on any column, including `.dlf` filter files; colors the rows the rules
+  mark.
 - Searches by text and regular expressions, several queries at once, each in its own color.
 - A tab per open log, each with its own filters, search and selection; recent files remember
   their format and filters.

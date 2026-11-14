@@ -168,11 +168,11 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     filter and each of its rules can be switched on and off. Loaded filters are copied into the
     settings of the log, not referenced by path: a `.dlf` shared by two logs must not tie them
     together. The design allows filters for every format.
-33. **The filter editor is a modal window.** A rule is edited in a modal window (like Settings,
-    like dlt-viewer), not inline in the panel. Edits apply and are remembered at once (no
-    Save, no unsaved prompts); a set can be exported to a `.dlf` in dlt-viewer's layout. "New
+33. **The filter editor is a modal window.** A rule is edited in a modal window (like Settings),
+    not inline in the panel. Edits apply and are remembered at once (no
+    Save, no unsaved prompts); a set can be exported to a `.dlf`. "New
     Filter" creates an empty set without asking for a file and opens the editor of its first
-    rule. The DLT rule editor offers exactly the conditions of dlt-viewer.
+    rule. The DLT rule editor offers exactly the conditions a `.dlf` can hold.
 
 ## Recent Files
 

@@ -49,7 +49,7 @@ index joins them (`domain/index/part_joiner`); the format knows nothing of the w
 
 ## Files Sent in the Log
 
-When the writers of a format send files as records (the file transfer of dlt-daemon), the
+When the writers of a format send files as records (the file transfer of DLT), the
 format also implements `TransferringFormat`: `marksOf` sets `RecordMark.transfer` on the
 records that may be messages of a transfer, `transferOf` tells what one is (a start with the
 file, a packet with its bytes, the end, an error). The index catalogs them

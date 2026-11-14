@@ -1,7 +1,7 @@
 //! Builders of DLT records for the unittests of the DLT format and of the
 //! modules that need DLT data, and for the log generator (formats/generator):
-//! a record of version 1 or 2 built field by field, and a test file of
-//! dlt-viewer. Not in the program: only in unittests and with -d-version=LogGenerator.
+//! a record of version 1 or 2 built field by field, and a sample message of
+//! version 2. Not in the program: only in unittests and with -d-version=LogGenerator.
 module formats.dlt.testing_utils;
 
 version (unittest)
@@ -181,9 +181,9 @@ ubyte[] storageV2(const(char)[] ecuId, ulong seconds, uint nanoseconds)
     return bytes ~ cast(const(ubyte)[]) ecuId;
 }
 
-//! testfile.dlt of the dlt-viewer tests (qdlt/tests): a verbose message
+//! A sample message of version 2 from an open-source DLT test suite: verbose,
 //! without storage header, "Start logging after ECU startup"
-static immutable ubyte[] dltViewerTestFile = cast(immutable ubyte[]) x"
+static immutable ubyte[] sampleV2Message = cast(immutable ubyte[]) x"
     4C000000 01004741 01B41E87 AC000000
     00020445 43553104 6C6F6764 04524255
     46008200 00200053 74617274 206C6F67

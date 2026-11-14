@@ -203,7 +203,7 @@ bool parseDltItem(Char)(ref LogMessage!Char msg, const(ubyte)[] data, bool hasSt
 }
 
 //! Decodes a message of protocol version 2 (no storage header in `message`).
-//! Its payload is little-endian: dlt-viewer reads it so, the protocol doesn't say.
+//! Its payload is little-endian: DLT viewers commonly read it so, the protocol doesn't say.
 private bool decodeV2(Char)(ref LogMessage!Char msg, ref const StorageInfo storage,
     const(ubyte)[] message) nothrow @nogc
 {
@@ -229,8 +229,8 @@ private bool decodeV2(Char)(ref LogMessage!Char msg, ref const StorageInfo stora
             msg.setNumber(DltField.Timestamp, h.seconds * 10_000 + h.nanoseconds / 100_000);
         else if ((h.seconds != 0 || h.nanoseconds != 0) && toTimeNs(h.seconds, h.nanoseconds, utc))
         {
-            // The time of the message wins over the time it was stored, as in
-            // dlt-viewer; a logger that leaves it at zero keeps the stored time
+            // The time of the message wins over the time it was stored, as DLT
+            // viewers commonly do; a logger that leaves it at zero keeps the stored time
             msg.timeNs = utc;
             msg.timeKind = TimeKind.Absolute;
         }
@@ -274,7 +274,7 @@ private bool decodeV2(Char)(ref LogMessage!Char msg, ref const StorageInfo stora
     return true;
 }
 
-//! Appends the frame of a segmented version 2 message, as dlt-viewer shows it
+//! Appends the frame of a segmented version 2 message
 private void appendSegment(Builder)(ref Builder builder, ref const HeaderV2 h) nothrow @nogc
 {
     ShortText!64 text;
@@ -425,7 +425,7 @@ bool readArgument(ref const(ubyte)[] payload, bool msbf, out VerboseArgument arg
     if (!take(typeInfo))
         return false;
 
-    // The same priority as dlt-viewer when several type bits are set
+    // The priority DLT viewers commonly take when several type bits are set
     Kind kind;
     if (typeInfo & F.TypeString)
         kind = Kind.String;
@@ -922,7 +922,7 @@ private void decodeControl(Builder)(ref Builder builder, uint serviceId, ubyte c
 
 //! Appends the applications and contexts of a get_log_info response:
 //! "APP (description): CTX level=info trace=on (description), CTX2; APP2: ..."
-//! Its options (the status) say what a context has, as dlt-daemon writes it:
+//! Its options (the status) say what a context has, as the DLT daemon writes it:
 //! 4 the log level, 5 the trace status, 6 both, 7 both and the descriptions
 //! (an application has its own after its contexts). The communication
 //! interface may follow the applications ("remo"), it is not shown.
@@ -2041,7 +2041,7 @@ version (unittest)
 {
 private:
     import formats.dlt.header_v2 : ContentInfo, SegmentFrame;
-    import formats.dlt.testing_utils : BuildV2, dltViewerTestFile, storageV2;
+    import formats.dlt.testing_utils : BuildV2, sampleV2Message, storageV2;
 
     //! The decoded payload text of a version 2 message without storage header
     string payloadV2(const BuildV2 b)
@@ -2052,11 +2052,11 @@ private:
     }
 }
 
-@("parseDltItem v2: the test file of dlt-viewer")
+@("parseDltItem v2: a sample message of version 2")
 unittest
 {
     LogMessage!char msg;
-    assert(parseDltItem(msg, dltViewerTestFile, false));
+    assert(parseDltItem(msg, sampleV2Message, false));
     assert(msg.ecuId == "ECU1" && msg.appId == "logd" && msg.ctxId == "RBUF");
     assert(msg.type == MessageType.Log && msg.level == LogLevel.Info);
     assert(msg.counter == 1);
@@ -2072,7 +2072,7 @@ unittest
     LogMessage!char msg;
     const storage = storageV2("STOR", 1_700_000_000, 5_000);
 
-    assert(parseDltItem(msg, storage ~ dltViewerTestFile));
+    assert(parseDltItem(msg, storage ~ sampleV2Message));
     assert(msg.ecuId == "ECU1", "the ECU of the message wins");
     assert(msg.timeKind == TimeKind.Absolute);
     assert(msg.timeNs == 1_700_000_000_000_005_000);
@@ -2169,7 +2169,7 @@ unittest
 @("parseDltItem v2: an invalid header is shown as such")
 unittest
 {
-    auto bytes = dltViewerTestFile.dup;
+    auto bytes = sampleV2Message.dup;
     bytes[0] |= 0x03; // CNTI 3 is reserved
 
     LogMessage!char msg;
@@ -2234,12 +2234,12 @@ private:
     }
 }
 
-@("parseDltItem: get_log_info of dlt-daemon (the test of dlt-viewer)")
+@("parseDltItem: get_log_info of a real DLT daemon")
 unittest
 {
     import std.conv : hexString;
 
-    // Real payload of dlt-daemon, from qdlt/tests/test_dltctrlmsg.cpp
+    // A real payload of a DLT daemon, from an open-source DLT test suite
     enum payload = hexString!("030000000701005359530001004d475200ffff2200436f6e74657874206f66206d61696e"
         ~ "20646c742073797374656d206d616e616765721200444c542053797374656d204d616e6167657272656d6f");
     BuildV1 r = control(0, ControlType.Response, [], false);

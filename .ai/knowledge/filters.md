@@ -12,7 +12,7 @@
   more threads (`docs/experiments/2026-11-10-regex-matcher-cache.md`). `RegexSet` joins the
   regex chips of a search into one alternation, each with its case; the regex conditions of
   the rules are still tried by turns (`docs/backlog.md`).
-- The filters of the main view are rules, as in dlt-viewer, the same for every format
+- The filters of the main view are rules, the same for every format
   (`log_core/rule_filter`):
   - a `FilterRule` (include / exclude / marker) is a set of `Condition`s on **column ids** of
     the format; a condition on a column the log doesn't have makes the rule "not applied"
@@ -21,15 +21,15 @@
     from the enabled rules of the enabled sets (shown: an include rule matches, or there is
     none, and no exclude rule does; markers don't filter);
   - a rule has a `RuleId` while its document is open (given by `DocumentFilters`, not saved);
-    `RuleMatcher` finds the first rule *with a color* a record matches, of any kind, as
-    dlt-viewer colors the rows. It runs for every row shown on the UI thread: keep matching
+    `RuleMatcher` finds the first rule *with a color* a record matches, of any kind: it
+    colors the row. It runs for every row shown on the UI thread: keep matching
     cheap (the conditions of a rule are checked cheapest first, substrings by code units).
     A fallback idea if it gets slow is in `docs/backlog.md`.
 
 ## Filter Files
 
 - Our own JSON format (`log_core/filter_file`, `<name>.<format id>.logfilter`, the format is
-  also written inside) for any log; a `.dlf` of dlt-viewer (`formats/dlt/dlf`) for DLT logs
+  also written inside) for any log; a `.dlf` (`formats/dlt/dlf`) for DLT logs
   only, converted to rules and back (`fromDlf`, `toDlf`), naming what is lost.
 - `ui/filter_commands.DocumentFilters` holds the sets of a document and the panel commands. A
   set is a **copy**: a loaded file is copied into the settings of the log

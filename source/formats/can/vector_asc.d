@@ -1,4 +1,4 @@
-//! Vector ASC traces (CANoe, CANalyzer). The header says how to read the lines:
+//! Vector ASC traces. The header says how to read the lines:
 //!   date Tue Nov 3 02:22:01.123 pm 2026        the start: time = start + offset
 //!   base hex  timestamps absolute               ID and data in hex or dec
 //! then a record per line, after the offset in seconds:

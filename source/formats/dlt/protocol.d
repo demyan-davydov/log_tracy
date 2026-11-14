@@ -340,7 +340,6 @@ dlt_protocol.h
 #define DLT_SCOD_HEX        0x00010000
 #define DLT_SCOD_BIN        0x00018000
 
-// for parsing look at https://github.com/COVESA/dlt-viewer/blob/master/qdlt/dlt_common.c
  */
 
 enum Tyle : uint
@@ -420,8 +419,8 @@ enum ServiceResponseStatus : ubyte
     Ok = 0x00,
     NotSupported = 0x01,
     Error = 0x02,
-    PermissionDenied = 0x03, // dlt-daemon
-    Warning = 0x04, // dlt-daemon
+    PermissionDenied = 0x03, // of the DLT daemon
+    Warning = 0x04, // of the DLT daemon
     // get_log_info answers 3..7 (the options it was asked for) when it succeeds
     NoMatchingContextId = 0x08, // get_log_info
     Overflow = 0x09, // get_log_info

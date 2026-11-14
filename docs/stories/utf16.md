@@ -8,7 +8,7 @@
 
 UTF-16 встречается в логах Windows: Windows PowerShell 5 пишет `>` и `Out-File` в UTF-16LE с
 BOM, так же пишет `ERRORLOG` SQL Server и приложения .NET с `Encoding.Unicode`. Проверено на
-тестовых файлах Chipmunk (`development/resources/utf16`): десять строк с кириллицей, CJK, RTL,
+сторонних тестовых файлах: десять строк с кириллицей, CJK, RTL,
 суррогатными парами и символами, у которых один из байтов `0x0A` или `0x0D` (U+0A0A, U+0D0A…).
 
 ## Как устроено

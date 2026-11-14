@@ -1,5 +1,5 @@
 //! The header of a DLT message of protocol version 2 (AUTOSAR R20-11), read
-//! the way dlt-viewer reads it (QDltMsg::setMsg). Every field but the base
+//! as DLT viewers commonly read it. Every field but the base
 //! header is optional, the flags of HTYP2 say which are present:
 //!
 //! HTYP2 (4, little-endian) MCNT (1) LEN (2, big-endian)
@@ -290,15 +290,15 @@ HeaderV2Status readHeaderV2(const(ubyte)[] data, out HeaderV2 header) pure nothr
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
-version (unittest) import formats.dlt.testing_utils : BuildV2, dltViewerTestFile;
+version (unittest) import formats.dlt.testing_utils : BuildV2, sampleV2Message;
 
-@("readHeaderV2: the test file of dlt-viewer")
+@("readHeaderV2: a sample message of version 2")
 unittest
 {
     HeaderV2 h;
-    assert(readHeaderV2(dltViewerTestFile, h) == HeaderV2Status.ok);
-    assert(protocolVersion(dltViewerTestFile) == 2);
-    assert(messageLengthV2(dltViewerTestFile) == 71);
+    assert(readHeaderV2(sampleV2Message, h) == HeaderV2Status.ok);
+    assert(protocolVersion(sampleV2Message) == 2);
+    assert(messageLengthV2(sampleV2Message) == 71);
     assert(h.length == 71 && h.size == 33, "71 bytes, 38 of them payload");
     assert(h.counter == 1);
     assert(h.content == ContentInfo.Verbose);
@@ -399,10 +399,10 @@ unittest
 {
     HeaderV2 h;
     foreach (cut; 0 .. 33)
-        assert(readHeaderV2(dltViewerTestFile[0 .. cut], h) == HeaderV2Status.cut, "cut header");
-    assert(messageLengthV2(dltViewerTestFile[0 .. 6]) == 0);
+        assert(readHeaderV2(sampleV2Message[0 .. cut], h) == HeaderV2Status.cut, "cut header");
+    assert(messageLengthV2(sampleV2Message[0 .. 6]) == 0);
 
-    auto reserved = dltViewerTestFile.dup;
+    auto reserved = sampleV2Message.dup;
     reserved[0] |= 0x03; // CNTI 3
     assert(readHeaderV2(reserved, h) == HeaderV2Status.reserved);
 

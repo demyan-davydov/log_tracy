@@ -47,7 +47,7 @@ Adding a format, step by step: `.ai/workflows/add-format.md`.
   record: `formats/dlt/parts` tells a part (`dltPartOf`) and decodes the parts as one
   (`parseDltParts`); `DltFormat` is a `PartedFormat` through them. The joining itself is the
   index's (`.ai/knowledge/architecture.md`, Indexing and Threads).
-- A file sent in the log (the file transfer of dlt-daemon: FLST, FLDA, FLFI, FLER, verbose
+- A file sent in the log (the file transfer of DLT: FLST, FLDA, FLFI, FLER, verbose
   log messages whose first and last arguments are the marker) is told by
   `formats/dlt/file_transfer` (`dltTransferOf`); `DltFormat` is a `TransferringFormat`
   through it. Its `marksOf` walks the header once (`parser.findVerboseStart`, inlined for
@@ -57,7 +57,7 @@ Adding a format, step by step: `.ai/workflows/add-format.md`.
 - DLT records for unittests are built by `formats/dlt/testing_utils` (`BuildV1`, `BuildV2`,
   `buildDltMessage`, `VerboseArgs` for the arguments of a verbose record), also for the
   tests of other packages.
-- `.dlf` filter files of dlt-viewer: `formats/dlt/dlf`. FIBEX (non-verbose): `formats/dlt/fibex`,
+- `.dlf` filter files: `formats/dlt/dlf`. FIBEX (non-verbose): `formats/dlt/fibex`,
   not decoded yet (`docs/fibex.md`).
 - Real logs for trying things are kept locally in `test_data/`, not in the repository (`*.dlt`
   is ignored): a fresh clone has none. Tests build their records instead; a whole log (big,

@@ -61,7 +61,7 @@ ubyte[] dltRecord(in RecordContent r, long timeUs, bool v2)
     b.ctxId = context[];
     b.withSessionId = true;
     b.sessionId = r.app + 1;
-    b.payload = payload(r, false, true); // version 2 payloads are read little-endian, as dlt-viewer does
+    b.payload = payload(r, false, true); // version 2 payloads are read little-endian
     return storageV2(ecu[], seconds, microseconds * 1000) ~ b.bytes();
 }
 

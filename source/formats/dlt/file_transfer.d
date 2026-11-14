@@ -1,4 +1,4 @@
-//! The file transfer of dlt-daemon (COVESA, dlt_filetransfer.c): a file sent as verbose
+//! The file transfer of DLT: a file sent as verbose
 //! log messages whose first and last arguments are the same marker. FLST: the file (serial,
 //! name, size, date, packets, buffer size); FLDA: a packet of its bytes (serial, number,
 //! raw data); FLFI: the end (serial); FLER: an error (code, errno, then serial and the

@@ -1,7 +1,7 @@
 //! The filters of the main view of a document, apart from the window so they
 //! can be tested: the filter sets of the log, the commands that change them
 //! and their state for the filter panel. A set is a copy: a loaded file (a
-//! filter file of Log Tracy, or a .dlf of dlt-viewer for a DLT log) is
+//! filter file of Log Tracy, or a .dlf for a DLT log) is
 //! copied, edited in place, remembered in the settings of the log and can be
 //! exported to either kind of file; no file is referred to, so a file loaded
 //! for two logs doesn't tie them together.

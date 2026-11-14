@@ -14,6 +14,14 @@ Applies to comments, `docs/` and `.ai/`.
 - The story of a feature (`docs/stories/`, what and why), the experiments (`docs/experiments/`)
   and `docs/backlog.md` are in Russian.
 
+## Other Products
+
+- Comments, `docs/`, `.ai/` and the names of tests and identifiers don't name other products
+  (log viewers, their plugins and test suites, vendor tools) or point at their sources: a
+  behaviour is described as ours, or as what DLT tools commonly do. A product name stays
+  only where it names a file format (`.dlf`, Vector ASC) and in texts of the UI the user
+  decided to keep.
+
 ## Where Things Go
 
 - A finished feature has its story in `docs/stories/<feature>.md`: what was decided and why,

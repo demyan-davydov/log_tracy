@@ -182,7 +182,7 @@ struct TransferMessage
 }
 
 //! A LogFormat whose writers may send files as records of the log (the file transfer of
-//! dlt-daemon): the index keeps a catalog of them (domain/index/transfers). It marks the
+//! DLT): the index keeps a catalog of them (domain/index/transfers). It marks the
 //! records that may be messages of a transfer (MarkedFormat). Asked of a format by a
 //! cast; immutable like the LogFormat it is.
 interface TransferringFormat : MarkedFormat
