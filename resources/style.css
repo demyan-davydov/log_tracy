@@ -751,8 +751,37 @@ frameset {
     padding: 2pt 0;
     color: var(--text-main);
     overflow-wrap: break-word; /* a long path wraps instead of a scrollbar */
-    behavior: selectable; /* the values are selected and copied */
+}
+
+/* The values are selected and copied; not the buttons of the FIBEX row */
+.file-info dd:not(.descriptions),
+.file-info .descriptions-path,
+.file-info .descriptions-note {
+    behavior: selectable;
     cursor: text;
+}
+
+/* The FIBEX row: what decodes the log (muted: remembered, not decoded by), whether it
+   is a file or a folder, a note under it (a read going on, why one failed), its buttons */
+.file-info .descriptions-path.muted,
+.file-info .descriptions-kind,
+.file-info .descriptions-note {
+    color: var(--text-label);
+}
+
+.file-info .descriptions-kind {
+    margin-left: 4pt;
+    white-space: nowrap;
+}
+
+.file-info .descriptions-note.error {
+    color: var(--log-error);
+}
+
+.file-info .descriptions-buttons {
+    flow: horizontal;
+    border-spacing: 3pt;
+    margin-top: 3pt;
 }
 
 /* Settings Dialog */

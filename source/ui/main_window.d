@@ -295,8 +295,16 @@ class MainWindow : SciterWindow
             answer(_session.startChipSearch(docParam(), param!string(1)));
             return true;
         case "getDocumentInfo":
-            // getDocumentInfo(docId) -> {name, path, format, bytes, records}, null if not open
+            // getDocumentInfo(docId) -> {name, path, format, bytes, records, descriptions}, null if not open
             answer(_session.documentInfoJson(docParam()));
+            return true;
+        case "loadDescriptions":
+            // loadDescriptions(docId, path) -> error message, "" if asked (read in the background)
+            answer(_session.loadDescriptions(docParam(), normalizePath(param!string(1))));
+            return true;
+        case "unloadDescriptions":
+            // unloadDescriptions(docId) -> error message, "" if dropped
+            answer(_session.unloadDescriptions(docParam()));
             return true;
         case "getAttachments":
             // getAttachments(docId) -> [{id, name, ...}], see AppSession.attachmentsJson

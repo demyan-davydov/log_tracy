@@ -44,7 +44,8 @@ The repository has one way for each of these; a change that adds a parallel one 
 - the backend telling the script: a queued `callScript`, sent by `onIdle()`, never from inside
   an `xcall` or another thread;
 - background work: an operation of the `LogIndex` `BackgroundSlot`, reported as events of its
-  bus; a parallel scan through `utils/parallel_scan`;
+  bus; a parallel scan through `utils/parallel_scan`; the read of the descriptions of a
+  document (a FIBEX) on the second slot of `LogDocument`, its end an event of the same bus;
 - a status of a view: the state machines on `utils/fsm` (`ui/main_view_fsm`,
   `ui/search_view_fsm`), not flags spread over the window;
 - a request of the debug channel: a request kind of `ui/debug_protocol`, not a hook in the

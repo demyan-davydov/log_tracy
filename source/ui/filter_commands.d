@@ -25,7 +25,7 @@ import std.json : JSONValue;
 final class DocumentFilters
 {
     // What the filters need of the format of the log, not the format: a document may decode
-    // by another one later (Document.replaceFormat), of the same columns
+    // by another one later (Document.loadDescriptions), of the same columns
     private const(ColumnInfo)[] _columns;
     private bool _canDlf; // the log takes the filter files of DLT (canLoadDlf)
     private string _formatId; // FormatInfo.id of the log, written to the filter files

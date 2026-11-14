@@ -33,16 +33,20 @@ bool takesDescriptions(const(LogFormat) format) pure nothrow @nogc
 
 //! @brief `format` decoding by the file of descriptions at `path` (FormatChoice.descriptions),
 //! by none for an empty one: the same records, decoded another way
-//! @returns null if `format` takes no descriptions (takesDescriptions)
+//! @param stop - asked while the file is read: true gives the read up
+//! @returns null if `format` takes no descriptions (takesDescriptions) or `stop` gave the read up
 //! @throws UiTextException if the file can't be read or isn't one of descriptions
-LogFormat withDescriptions(const(LogFormat) format, string path)
+LogFormat withDescriptions(const(LogFormat) format, string path, scope bool delegate() nothrow stop = null)
 {
     import formats.dlt.fibex : loadFibex;
     import formats.dlt.format : withFibex;
 
     if (!takesDescriptions(format))
         return null;
-    return withFibex(format, path.length ? loadFibex(path) : null);
+    if (!path.length)
+        return withFibex(format, null);
+    auto fibex = loadFibex(path, stop);
+    return fibex is null ? null : withFibex(format, fibex);
 }
 
 //! Bytes from the start of the data the detectors look at
@@ -598,4 +602,20 @@ unittest
     assert((cast(DltFormat) withDescriptions(described, "")).fibex is null);
     assert(withDescriptions(new PlainTextFormat(), path) is null);
     assertThrown!UiTextException(withDescriptions(new DltFormat(), path ~ ".missing"));
+}
+
+@("withDescriptions: stopped, null without an error")
+unittest
+{
+    import formats.dlt.fibex : fibexOf, logFrame, textPdu;
+    import formats.dlt.format : DltFormat;
+    import std.file : remove, tempDir, write;
+    import std.path : buildPath;
+
+    const path = buildPath(tempDir(), "log_tracy_registry_fibex_stop_test.xml");
+    write(path, fibexOf(textPdu("P_T", "x"), logFrame("ID_1", "APP1", "CON1", "P_T")));
+    scope (exit)
+        remove(path);
+    assert(withDescriptions(new DltFormat(), path, () => true) is null);
+    assert(withDescriptions(new DltFormat(), path, () => false) !is null);
 }

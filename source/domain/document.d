@@ -1,7 +1,7 @@
-//! What the UI knows of an open log: the Document (its views, filter,
-//! search, anchors, its format and the choice to open it so again, which may be replaced
-//! by one of other descriptions, the files sent in it), the DocumentView (the rows of one
-//! view) and the events a document publishes.
+//! What the UI knows of an open log: the Document (its views, filter, search, anchors, its
+//! format and the choice to open it so again, the descriptions its records are decoded by,
+//! read in the background, the files sent in it), the DocumentView (the rows of one view) and
+//! the events a document publishes.
 module domain.document;
 
 import log_core.log_message;
@@ -23,6 +23,20 @@ enum AnchorRefusal
     none, /// not refused: the anchor is as asked
     busy, /// an operation is running (or the document can't change: its source is lost, no such message)
     limit, /// no room for another anchor (Anchors.MaxAnchors)
+}
+
+//! What the descriptions of a document's format are (Document.descriptions)
+struct DescriptionsState
+{
+    //! The descriptions the records are decoded by, empty for none; of a document that can't
+    //! be read, those it would be opened with again (formatChoice)
+    string taken;
+    bool folder; /// `taken` is a folder of them, not a file
+    //! The descriptions being read (loadDescriptions, the opening of a choice with them),
+    //! or that couldn't be; empty for none
+    string read;
+    bool reading; /// `read` is being read: until the format read is taken
+    UiText problem; /// why `read` couldn't be read
 }
 
 //! What Document.setAnchor did: true if the anchor is as asked now
@@ -97,21 +111,20 @@ interface Document
     //! way again; unset for a document without one
     FormatChoice formatChoice() const;
 
-    //! Why the descriptions of its format choice (FormatChoice.descriptions) were not taken
-    //! when the document was opened, empty if they were or there are none: the log is
-    //! decoded without them
-    UiText descriptionsProblem() const;
+    //! What the descriptions of its format are: those the records are decoded by, those being
+    //! read or that couldn't be (DescriptionsChanged tells a change)
+    DescriptionsState descriptions() const;
 
-    //! @brief Decodes the records by `format` from now on: the format of the document with
-    //! other descriptions (formats/registry: withDescriptions of `format` and `descriptions`),
-    //! so the same records decoded another way; a format of other records can't be asked
-    //! for here (formatChangeOf: a document opened again). The records, their numbers and
-    //! anchors stay; the filter and the search are built again. formatChoice takes
-    //! `descriptions` when the format is replaced; a document whose file is lost or that
-    //! failed keeps its format (it can't be read) and takes them at once. FormatReplaced
-    //! tells either
-    //! @param descriptions - the path `format` took its descriptions from, empty for none
-    void replaceFormat(LogFormat format, string descriptions);
+    //! @brief Decodes the records by the descriptions at `path` (a file or a folder of them),
+    //! read on a thread of their own: the log is shown meanwhile, decoded as before. Once
+    //! read, the format is replaced by the same records decoded another way: their numbers
+    //! and anchors stay, the filter and the search are built again, formatChoice takes
+    //! `path` (FormatReplaced). A read that fails changes nothing but `descriptions`. The
+    //! last request wins: a read asked before it is given up, its result dropped. The same
+    //! path again is read again. Nothing for a format that takes no descriptions
+    //! (formats/registry: takesDescriptions)
+    //! @param path - empty: decode without descriptions (at once, nothing to read)
+    void loadDescriptions(string path);
 
     //! The number of records of the log found so far: grows while the file
     //! loads, all of them once it is loaded
@@ -261,14 +274,22 @@ struct AttachmentsChanged
     enum isOverridable = true;
 }
 
-//! The format choice of the document took other descriptions (Document.replaceFormat):
-//! formatChoice and descriptionsProblem are other than told before
+//! The format choice of the document took other descriptions (Document.loadDescriptions):
+//! formatChoice is other than told before
 struct FormatReplaced
 {
     //! The records are decoded by another format from now on: the same records, other
-    //! values; the filter and the search are being built again. False for a document that
-    //! can't be read, which only took the choice
+    //! values; the filter and the search are being built again. False when they are not
+    //! decoded anew: a document that can't be read, or descriptions dropped that the records
+    //! weren't decoded by (remembered, not read)
     bool decodedAnew;
+}
+
+//! What Document.descriptions tells is other than told before: a read started, failed or
+//! was taken
+struct DescriptionsChanged
+{
+    enum isOverridable = true;
 }
 
 //! The file of the document can't be read any more (its disk was removed, a

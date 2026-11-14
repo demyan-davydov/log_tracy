@@ -108,6 +108,18 @@ RecentFile[] withFilters(const RecentFile[] list, string path, SavedFilter[] fil
     return result;
 }
 
+/// Returns the recent list with the format choice of `path` replaced, in place (descriptions
+/// loaded or dropped while it is open); a file not in the list isn't added
+RecentFile[] withFormat(const RecentFile[] list, string path, FormatChoice format)
+{
+    path = recentFilePath(path);
+    RecentFile[] result = copyOf(list);
+    foreach (ref file; result)
+        if (filenameCmp(file.path, path) == 0)
+            file.format = format;
+    return result;
+}
+
 /// Returns: the search history of `path`, the latest query first; null if it isn't in the list
 SearchChip[][] savedSearches(const RecentFile[] list, string path)
 {
@@ -658,6 +670,17 @@ unittest
     auto changed = withFilters(list, testPath("/a.log"), []);
     assert(changed[1].path == testPath("/a.log") && changed[1].filters.length == 0, "in place");
     assert(withFilters(list, testPath("/c.log"), filters.dup) == list, "a file not in the list isn't added");
+}
+
+@("withFormat: the format choice of a file replaced in place, a file not in the list isn't added")
+unittest
+{
+    auto list = [RecentFile(testPath("/b.log")), RecentFile(testPath("/a.dlt"), FormatChoice("dlt"), 100)];
+    const described = FormatChoice("dlt", 0, TextEncoding.utf8, testPath("/fibex/ecu.xml"));
+    auto changed = withFormat(list, testPath("/logs/../a.dlt"), described);
+    assert(changed[1].path == testPath("/a.dlt") && changed[1].format == described, "in place");
+    assert(changed[1].lastUsed == 100, "not used by it");
+    assert(withFormat(list, testPath("/c.dlt"), described) == list, "a file not in the list isn't added");
 }
 
 @("withSearch: the latest query on top, a repeated one moved up, searchHistoryMax at most; kept when the file is opened again")

@@ -135,11 +135,15 @@ utils  ←  sciter  ←  ui
   `doc(id)` each time. A Retry numbers the records anew: `DocumentStore.generation(id)` is one
   more after each `replace`, so a holder that keeps numbers of records compares it with the
   one they were taken in. A document may decode its records by another format of the same
-  records (`Document.replaceFormat`: a FIBEX loaded or dropped): the numbers, the anchors and
-  the generation stay, the values change; `FormatReplaced` tells any change of the choice
-  (`decodedAnew`: the records decoded anew, false for a document that can't be read), and
-  the filter and the search are built again (a request of its own, `LogDocument._pendingFormat`, given to the
-  index once no pass runs). What a holder computed from the values (AppId, text) is stale
+  records (`Document.loadDescriptions`: a FIBEX loaded or dropped, read in the background,
+  the last request winning): the numbers, the anchors and the generation stay, the values
+  change; `FormatReplaced` tells any change of the choice (`decodedAnew`: the records decoded
+  anew; false for a document that can't be read, or descriptions dropped that weren't
+  taken), and the filter and the search are built again (a request of its own,
+  `LogDocument._pendingFormat`, given to the index once no pass runs). `DescriptionsChanged`
+  tells a read started, failed or taken (`Document.descriptions`). The session writes the
+  choice to the recent list on `FormatReplaced` and tells the File Info page on both
+  (`onFileInfoChanged`). What a holder computed from the values (AppId, text) is stale
   then. A holder keeps what it needs of the format (`DocumentFilters`: its columns), not the
   format.
 - Environment variables for trying things, read in `main()` (`newSession` of `app.d`) and
@@ -164,6 +168,13 @@ utils  ←  sciter  ←  ui
 
 ## Indexing and Threads
 
+- A document reads its descriptions (a FIBEX: `Document.loadDescriptions`, the opening of a
+  choice with them too) on a `BackgroundSlot` of its own, `LogDocument._descriptionsSlot`:
+  the slot of the index is busy with its passes. The end of a read, whatever it was, is a
+  `DescriptionsLoaded` of the document's bus, published once the slot is idle; taken on the
+  UI thread if it is of the last request (`_descriptionsRequest`), else dropped and the read
+  asked after it started. A request gives the running read up (`withDescriptions`' `stop`),
+  so closing a document doesn't wait for a long read.
 - `LogIndex` runs one pass at a time in a `BackgroundSlot` (`runPass`). A pass brings the
   indexes up to date, each over the range it doesn't cover yet: the offset index over the new
   bytes of the source, the filter index over the new records, the search index over the new

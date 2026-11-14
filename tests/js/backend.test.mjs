@@ -111,3 +111,11 @@ test("the languages of the translations and the catalog a language takes", () =>
         { call: ["useLanguage", "ru-RU"], value: { locale: "ru", messages: {} } });
     assert.equal(callOf(() => backend.useLanguage("de"), undefined).value, null, "none: the english source");
 });
+
+test("a FIBEX is loaded and unloaded, the error for the user comes back", () => {
+    assert.deepEqual(callOf(() => backend.loadDescriptions(3, "/fibex/ecu.xml"), ""),
+        { call: ["loadDescriptions", 3, "/fibex/ecu.xml"], value: "" });
+    assert.equal(callOf(() => backend.loadDescriptions(3, "/fibex"), "not open").value, "not open");
+    assert.deepEqual(callOf(() => backend.unloadDescriptions(3), ""),
+        { call: ["unloadDescriptions", 3], value: "" });
+});

@@ -10,6 +10,8 @@
 // and anchors, and how each follows the other.
 
 import * as backend from "backend.js";
+import * as platform from "platform.js";
+import { allFiles, fileFilter } from "file-types.js";
 import { anchorRefusalText } from "pane-commands.js";
 import { SelectionFollower } from "row-selection.js";
 import { rowLookStep, keptRowStep, searchViewKey } from "pane-state.js";
@@ -251,6 +253,7 @@ export class DocumentPane {
         }
         this.filterPanel.languageChanged();
         for (const table of this.tables) table.renderTexts();
+        this.shownDescriptions = null; // its buttons in the new language too
         this.updateFileInfo();
     }
 
@@ -405,19 +408,55 @@ export class DocumentPane {
         if (!this.visible || this.bottomPage !== "file-info") return;
         const rows = fileInfoRows(backend.documentInfo(this.docId), this.main.view?.status);
         const list = this.root.$(".file-info");
-        const cells = rows.flatMap(({ label, value }) => [label, value]);
-        if (list.children.length !== cells.length) {
+        if (list.children.length !== rows.length * 2) {
             list.innerHTML = "";
-            for (const { label, value } of rows) {
-                list.append(<dt>{label}</dt>);
-                list.append(<dd>{value}</dd>);
+            this.shownDescriptions = null;
+            for (const row of rows) {
+                list.append(<dt>{row.label}</dt>);
+                list.append(row.descriptions ? <dd class="descriptions" /> : <dd>{row.value}</dd>);
             }
-            return;
         }
-        cells.forEach((text, i) => {
-            const cell = list.children[i];
-            if (cell.innerText !== text) cell.innerText = text;
+        rows.forEach((row, i) => {
+            const label = list.children[2 * i], value = list.children[2 * i + 1];
+            if (label.innerText !== row.label) label.innerText = row.label;
+            if (row.descriptions) this.renderDescriptions(value, row);
+            else if (value.innerText !== row.value) value.innerText = row.value;
         });
+    }
+
+    // The FIBEX row (fileInfoRows): what decodes the log, a note under it (a read
+    // going on, why one failed), its buttons. Rendered anew only when it changed:
+    // not by the progress of a load, a path being selected stays selected
+    renderDescriptions(cell, row) {
+        const key = JSON.stringify(row);
+        if (this.shownDescriptions === key) return;
+        this.shownDescriptions = key;
+        const d = row.descriptions;
+        // The button that had the keys keeps them: the buttons are made anew
+        const focused = document.$(":focus");
+        const focusedButton = focused && isInside(focused, cell) ? focused.className : null;
+        cell.innerHTML = "";
+        // JSX gives a description of the elements, not elements: built whole, then appended
+        cell.append(<div class="descriptions-value">
+            <span class={d.muted ? "descriptions-path muted" : "descriptions-path"}>{row.value}</span>
+            {d.kind ? <span class="descriptions-kind">{d.kind}</span> : []}
+        </div>);
+        if (d.note) cell.append(<div class={d.error ? "descriptions-note error" : "descriptions-note"}>{d.note}</div>);
+        cell.append(<div class="descriptions-buttons">
+            <button class="btn-fibex-file">{tr("Load File...")}</button>
+            <button class="btn-fibex-folder">{tr("Load Folder...")}</button>
+            <button class="btn-fibex-unload">{tr("Unload")}</button>
+        </div>);
+        cell.$(".btn-fibex-unload").state.disabled = !d.canUnload;
+        const refocus = focusedButton && cell.$("." + focusedButton.split(" ")[0]);
+        if (refocus && !refocus.state.disabled) refocus.state.focus = true;
+    }
+
+    // Asks the backend to read the FIBEX at `path` for the log: onFileInfoChanged
+    // tells how the read goes. Refused (a log that takes none): a notice by `button`
+    loadDescriptions(button, path) {
+        const error = backend.loadDescriptions(this.docId, path);
+        if (error) showNotice(button, error);
     }
 
     // The font size of the tables (Settings), % of the normal one
@@ -623,6 +662,21 @@ export class DocumentPane {
         });
 
         on("click", ".btn-lost-close", () => this.host.closeTab(this.docId));
+
+        // The FIBEX of the log (File Info): a file, or a folder of them. The system
+        // dialogs choose either files or folders, not both: a button each
+        on("click", ".btn-fibex-file", (evt, button) => {
+            const path = platform.chooseFileToOpen(fileFilter([[tr("FIBEX Files"), "*.xml"], allFiles()]));
+            if (path) this.loadDescriptions(button, path);
+        });
+        on("click", ".btn-fibex-folder", (evt, button) => {
+            const path = platform.chooseFolder();
+            if (path) this.loadDescriptions(button, path);
+        });
+        on("click", ".btn-fibex-unload", (evt, button) => {
+            const error = backend.unloadDescriptions(this.docId);
+            if (error) showNotice(button, error);
+        });
 
         on("click", ".btn-lost-retry", () => {
             // Reopens the file in the same tab; fails while the disk is still missing

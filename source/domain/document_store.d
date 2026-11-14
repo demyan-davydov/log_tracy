@@ -30,7 +30,7 @@ struct DocumentEvent(E)
 
 /// Document events that DocumentStore forwards as DocumentEvent!E
 alias ForwardedDocumentEvents = AliasSeq!(OperationStarted, OperationProgress, OperationFinished, ContentGrown,
-    SourceLost, AttachmentsChanged, FormatReplaced);
+    SourceLost, AttachmentsChanged, FormatReplaced, DescriptionsChanged);
 
 private class NullDocumentView : DocumentView
 {
@@ -86,12 +86,12 @@ private class NullDocument : Document
         return FormatChoice.init;
     }
 
-    override UiText descriptionsProblem() const
+    override DescriptionsState descriptions() const
     {
-        return UiText.init;
+        return DescriptionsState.init;
     }
 
-    override void replaceFormat(LogFormat format, string descriptions)
+    override void loadDescriptions(string path)
     {
     }
 

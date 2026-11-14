@@ -139,6 +139,11 @@ final class AppSession
                 ui.attachmentsChanged = false;
                 _scriptCalls ~= ScriptCall("onAttachmentsChanged", idOf(docId));
             }
+            if (ui.fileInfoChanged)
+            {
+                ui.fileInfoChanged = false;
+                _scriptCalls ~= ScriptCall("onFileInfoChanged", idOf(docId));
+            }
         }
         auto calls = _scriptCalls;
         _scriptCalls = null;
@@ -565,9 +570,12 @@ final class AppSession
     }
 
     /// What the File Info page shows of the document: {name, path, format,
-    /// bytes, records}, null if it isn't open
+    /// bytes, records, descriptions}, null if it isn't open. descriptions: null for a log that
+    /// takes none, else {taken, folder, choice, read, reading, problem} (Document.descriptions;
+    /// choice: those formatChoice names, problem translated), "" for none
     string documentInfoJson(DocumentId docId)
     {
+        import formats.registry : takesDescriptions;
         import std.path : baseName;
 
         const path = sourcePathOf(docId);
@@ -575,13 +583,49 @@ final class AppSession
             return "null";
         auto document = _documents.doc(docId);
         const format = document.format;
+        JSONValue descriptions = null;
+        if (takesDescriptions(format))
+        {
+            const d = document.descriptions;
+            descriptions = JSONValue([
+                "taken": JSONValue(d.taken),
+                "folder": JSONValue(d.folder),
+                "choice": JSONValue(document.formatChoice.descriptions),
+                "read": JSONValue(d.read),
+                "reading": JSONValue(d.reading),
+                "problem": JSONValue(d.problem.empty ? "" : _catalog.translate(d.problem))
+            ]);
+        }
         return JSONValue([
             "name": JSONValue(path.baseName),
             "path": JSONValue(path),
             "format": JSONValue(format is null ? "" : format.info.name),
             "records": JSONValue(document.messageCount),
-            "bytes": JSONValue(document.byteSize)
+            "bytes": JSONValue(document.byteSize),
+            "descriptions": descriptions
         ]).toString();
+    }
+
+    /// Reads the descriptions at `path` (a FIBEX file or folder) for the document, in the
+    /// background (Document.loadDescriptions): the File Info is told how the read goes.
+    /// Returns: "" or why it can't be (not open, a log that takes none)
+    string loadDescriptions(DocumentId docId, string path)
+    {
+        import formats.registry : takesDescriptions;
+
+        if (!sourcePathOf(docId).length)
+            return _catalog.translate(uiText("the document is not open"));
+        auto document = _documents.doc(docId);
+        if (!takesDescriptions(document.format))
+            return _catalog.translate(uiText("this log can't be decoded by a FIBEX"));
+        document.loadDescriptions(path);
+        return "";
+    }
+
+    /// Drops the descriptions of the document. Returns: "" or why it can't be
+    string unloadDescriptions(DocumentId docId)
+    {
+        return loadDescriptions(docId, "");
     }
 
     /// The files sent in the log of the document (Document.attachments): [{id, name, date,
@@ -820,6 +864,23 @@ final class AppSession
             if (auto ui = _documentUis.get(e.docId, null))
                 ui.attachmentsChanged = true;
         });
+        // The choice to open the file with again: written to the recent list, in place
+        events.subscribe((const DocumentEvent!FormatReplaced e) {
+            const path = _documents.sourcePath(e.docId);
+            const choice = _documents.doc(e.docId).formatChoice;
+            // The same choice taken again (a FIBEX read at the open, read anew): nothing to write
+            if (path.length && savedFormat(_settings.recentFiles, path) != choice)
+            {
+                _settings.recentFiles = withFormat(_settings.recentFiles, path, choice);
+                settingsChanged();
+            }
+            if (auto ui = _documentUis.get(e.docId, null))
+                ui.fileInfoChanged = true;
+        });
+        events.subscribe((const DocumentEvent!DescriptionsChanged e) {
+            if (auto ui = _documentUis.get(e.docId, null))
+                ui.fileInfoChanged = true;
+        });
         events.subscribe((const DocumentEvent!SourceLost e) {
             writeln("Source lost, doc ", e.docId.toInt(), ": ", _documents.sourcePath(e.docId));
             processDocumentEvent(e.docId, e.event);
@@ -994,7 +1055,8 @@ version (unittest)
         void dispatchEvents() { bus.dispatch(); }
         DocumentView mainView() { return view; }
         DocumentView searchView() { return view; }
-        const(LogFormat) format() { return plainText; }
+        LogFormat shown; // what format() tells: a plain text log if null
+        const(LogFormat) format() { return shown is null ? plainText : shown; }
         void applyViewFilter(LogFilter!wchar filter) {}
         void applySearchFilter(LogFilter!wchar filter) { searches ~= filter; current = filter; }
         // As LogDocument's: the search asked last, none once it is cancelled
@@ -1008,9 +1070,12 @@ version (unittest)
         void importAnchors(const(size_t[]) anchors) {}
         bool requestCancel(Operation operation) { cancelAsked = true; current = null; return true; }
         bool sourceLost() { return false; }
-        FormatChoice formatChoice() const { return FormatChoice("plain-text", 0); }
-        UiText descriptionsProblem() const { return UiText.init; }
-        void replaceFormat(LogFormat format, string descriptions) {}
+        FormatChoice choice = FormatChoice("plain-text", 0); // what formatChoice() tells
+        FormatChoice formatChoice() const { return choice; }
+        DescriptionsState described; // what descriptions() tells
+        string[] loads; // the paths loadDescriptions was asked
+        DescriptionsState descriptions() const { return described; }
+        void loadDescriptions(string path) { loads ~= path; }
         size_t messageCount() nothrow @nogc { return records; }
         ulong byteSize() nothrow @nogc { return bytes; }
         RecordsLease leaseRecords() { return RecordsLease.init; }
@@ -1332,6 +1397,95 @@ unittest
     assert(info["format"].str == "Plain text", info["format"].str);
     assert(info["records"].integer == 1234);
     assert(info["bytes"].integer == 5_000_000_000);
+}
+
+@("AppSession.loadDescriptions: a FIBEX asked of a DLT log, dropped by unloadDescriptions; refused for a text log")
+unittest
+{
+    import formats.dlt.format : DltFormat;
+
+    auto f = Fixture.make();
+    const dlt = f.session.openFile(testPath("/logs/a.dlt")).docId;
+    f.docOf(testPath("/logs/a.dlt")).shown = new DltFormat();
+    assert(f.session.loadDescriptions(dlt, testPath("/fibex/ecu.xml")) == "");
+    assert(f.session.unloadDescriptions(dlt) == "");
+    assert(f.docOf(testPath("/logs/a.dlt")).loads == [testPath("/fibex/ecu.xml"), ""]);
+
+    const text = f.session.openFile(testPath("/logs/b.log")).docId;
+    assert(f.session.loadDescriptions(text, testPath("/fibex/ecu.xml")).length, "a text log takes none");
+    assert(f.session.unloadDescriptions(text).length);
+    assert(f.docOf(testPath("/logs/b.log")).loads.length == 0);
+    assert(f.session.loadDescriptions(DocumentId.init, testPath("/fibex/ecu.xml")).length, "not open");
+}
+
+@("AppSession: the info of a document tells the descriptions of a DLT log, none for a text log")
+unittest
+{
+    import formats.dlt.format : DltFormat;
+    import utils.ui_text : uiText;
+
+    auto f = Fixture.make();
+    const text = f.session.openFile(testPath("/logs/b.log")).docId;
+    assert(parseJSON(f.session.documentInfoJson(text))["descriptions"].isNull, "no FIBEX row");
+
+    const id = f.session.openFile(testPath("/logs/a.dlt")).docId;
+    auto doc = f.docOf(testPath("/logs/a.dlt"));
+    doc.shown = new DltFormat();
+    auto none = parseJSON(f.session.documentInfoJson(id))["descriptions"];
+    assert(none["taken"].str == "" && none["choice"].str == "" && none["read"].str == "");
+    assert(!none["folder"].boolean && !none["reading"].boolean && none["problem"].str == "");
+
+    doc.choice = FormatChoice("dlt", 0);
+    doc.choice.descriptions = testPath("/fibex");
+    doc.described = DescriptionsState(testPath("/fibex"), true, testPath("/fibex/new.xml"), false,
+        uiText("no such file"));
+    auto d = parseJSON(f.session.documentInfoJson(id))["descriptions"];
+    assert(d["taken"].str == testPath("/fibex") && d["folder"].boolean && d["choice"].str == testPath("/fibex"));
+    assert(d["read"].str == testPath("/fibex/new.xml") && !d["reading"].boolean);
+    assert(d["problem"].str == "no such file", "the reason for the user");
+}
+
+@("AppSession: a format choice replaced is written to the recent list in place, the File Info told")
+unittest
+{
+    auto f = Fixture.make();
+    const id = f.session.openFile(testPath("/logs/a.dlt")).docId;
+    f.session.openFile(testPath("/logs/b.log"));
+    f.session.saveSettings("{}");
+    f.session.takeScriptCalls();
+    auto doc = f.docOf(testPath("/logs/a.dlt"));
+    doc.choice = FormatChoice("dlt", 0);
+    doc.choice.descriptions = testPath("/fibex/ecu.xml");
+    doc.bus.publish(FormatReplaced(true));
+    f.session.dispatchEvents();
+
+    assert(savedFormat(f.session.settings.recentFiles, testPath("/logs/a.dlt")) == doc.choice);
+    assert(pathsOf(f.session.settings.recentFiles) == [testPath("/logs/b.log"), testPath("/logs/a.dlt")],
+        "in place, not moved on top");
+    assert(f.session.settingsDue, "written by the next idle round");
+    const calls = f.session.takeScriptCalls();
+    assert(calls.canFind(ScriptCall("onFileInfoChanged", cast(int) id.toInt())));
+
+    f.session.saveSettings("{}");
+    doc.bus.publish(FormatReplaced(true)); // the same FIBEX read anew
+    f.session.dispatchEvents();
+    assert(!f.session.settingsDue, "the same choice: nothing to write");
+    assert(f.session.takeScriptCalls().canFind(ScriptCall("onFileInfoChanged", cast(int) id.toInt())));
+}
+
+@("AppSession: the script is told when the descriptions of a document change, once a change")
+unittest
+{
+    auto f = Fixture.make();
+    const id = f.session.openFile(testPath("/logs/a.dlt")).docId;
+    f.session.saveSettings("{}");
+    f.session.takeScriptCalls();
+    f.docOf(testPath("/logs/a.dlt")).bus.publish(DescriptionsChanged());
+    f.docOf(testPath("/logs/a.dlt")).bus.publish(DescriptionsChanged());
+    f.session.dispatchEvents();
+    assert(f.session.takeScriptCalls().canFind(ScriptCall("onFileInfoChanged", cast(int) id.toInt())));
+    assert(!namesOf(f.session.takeScriptCalls()).canFind("onFileInfoChanged"), "told once");
+    assert(!f.session.settingsDue, "the choice didn't change");
 }
 
 @("AppSession: the files sent in the log of a document, as the script lists them")

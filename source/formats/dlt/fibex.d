@@ -107,8 +107,10 @@ final class Fibex
 }
 
 //! @brief Reads the FIBEX file at `path`, or every `*.xml` of the folder at `path`
+//! @param stop - asked before each file and while one is read: true gives the read up
+//! @returns null if `stop` gave it up
 //! @throws Exception if a file can't be read or isn't FIBEX
-immutable(Fibex) loadFibex(string path)
+immutable(Fibex) loadFibex(string path, scope bool delegate() nothrow stop = null)
 {
     import std.algorithm : filter, map, sort;
     import std.array : array;
@@ -140,11 +142,16 @@ immutable(Fibex) loadFibex(string path)
     auto fibex = new Fibex;
     foreach (file; files)
     {
+        if (stop !is null && stop())
+            return null;
+        bool read;
         try
-            readInto(fibex, readText(file));
+            read = readInto(fibex, readText(file), stop);
         catch (Exception e)
             throw new UiTextException(uiText("can't read the FIBEX file {file}: {reason}",
                     "file", file, "reason", uiTextOf(e)));
+        if (!read)
+            return null;
     }
     return frozen(fibex);
 }
@@ -188,9 +195,12 @@ private struct FrameDraft
     string[] pduRefs;
 }
 
-// Adds the messages of the FIBEX `text` to `fibex`. An element is taken by its name wherever
-// it is, inside the PDU or the FRAME being read
-private void readInto(Fibex fibex, string text)
+// How many XML entities are read between two questions to `stop` (readInto)
+private enum size_t stopCheckEntities = 4096;
+
+// Adds the messages of the FIBEX `text` to `fibex`, false if `stop` gave it up. An element is
+// taken by its name wherever it is, inside the PDU or the FRAME being read
+private bool readInto(Fibex fibex, string text, scope bool delegate() nothrow stop = null)
 {
     import dxml.parser : EntityType, parseXML, simpleXML;
 
@@ -206,8 +216,15 @@ private void readInto(Fibex fibex, string text)
     PduDraft pdu;
     bool inPdu;
     FrameDraft* frame;
+    size_t untilStopCheck = stopCheckEntities;
     for (; !entities.empty; entities.popFront())
     {
+        if (stop !is null && --untilStopCheck == 0)
+        {
+            if (stop())
+                return false;
+            untilStopCheck = stopCheckEntities;
+        }
         const type = entities.front.type;
         if (type != EntityType.elementStart && type != EntityType.elementEnd)
             continue;
@@ -302,6 +319,7 @@ private void readInto(Fibex fibex, string text)
                 f.type, f.type == MessageType.Log ? f.level : LogLevel.None,
                 f.sourceFile, f.line, parts.idup), f.id);
     }
+    return true;
 }
 
 // The name of an element without its namespace prefix
@@ -747,6 +765,29 @@ unittest
     auto wrong = cast(UiTextException) collectException(loadFibex(filter));
     assert(wrong !is null && wrong.msg == "can't read the FIBEX file " ~ filter
         ~ ": its root element is <dltfilter>, not <FIBEX>", wrong.msg);
+}
+
+@("loadFibex: stopped, it gives up without an error: before a file, inside a long one")
+unittest
+{
+    import std.array : replicate;
+    import std.file : mkdirRecurse, rmdirRecurse, tempDir, write;
+    import std.path : buildPath;
+
+    const folder = buildPath(tempDir(), "log_tracy_fibex_stop_test");
+    mkdirRecurse(folder);
+    scope (exit)
+        rmdirRecurse(folder);
+    const frames = replicate(logFrame("ID_1", "APP1", "CON1", "P_T"), 5000);
+    write(buildPath(folder, "a.xml"), fibexOf(textPdu("P_T", "x"), frames));
+    write(buildPath(folder, "b.xml"), fibexOf(textPdu("P_T", "x"), frames));
+
+    assert(loadFibex(folder, () => true) is null, "stopped before the first file");
+    size_t asked;
+    assert(loadFibex(folder, () => ++asked > 1) is null, "stopped inside the first file");
+    assert(asked == 2, "asked again while the file is read");
+    assert(loadFibex(folder, () => false) !is null, "not stopped: read");
+    assert(loadFibex(folder) !is null);
 }
 
 @("loadFibex: a folder that can't be listed: a text for the user naming it")

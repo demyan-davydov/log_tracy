@@ -18,6 +18,9 @@ incident in logs of many gigabytes.
   glance, not scrolled sideways.
 - **Robust DLT.** A damaged record doesn't swallow the ones after it, and a message an
   application cut into numbered parts is joined back into one.
+- **Non-verbose DLT decoded.** Load the FIBEX of the firmware (a file or a folder of them)
+  on the File Info page: non-verbose messages get their AppId, CtxId, level and text, and
+  filters and search work on them. The FIBEX is remembered for the log.
 - **Many formats.** DLT, Android logcat, kernel log, syslog, web server access logs, CAN
   traces, plain text.
 - **Tabs.** Several logs open side by side, each with its own filters, search and anchors.
@@ -29,11 +32,13 @@ Written in D with the [Sciter](https://sciter.com) UI framework.
 - Opens binary DLT (protocol versions 1 and 2) and text logs: Android logcat, kernel log
   (dmesg), syslog, web server access logs, CAN traces (candump, Vector ASC), plain text. The
   format is detected by the content; see [docs/formats.md](docs/formats.md).
+- Decodes non-verbose DLT messages by a FIBEX file or a folder of them, loaded for a log on
+  its File Info page and read in the background while the log is already shown.
 - Filters by rules on any column, including `.dlf` filter files; colors the rows the rules
   mark.
 - Searches by text and regular expressions, several queries at once, each in its own color.
 - A tab per open log, each with its own filters, search and selection; recent files remember
-  their format and filters.
+  their format, FIBEX and filters.
 - Table columns arranged per format, light and dark themes, translations.
 
 ## Download
@@ -65,6 +70,8 @@ commands: [docs/building.md](docs/building.md).
 
 - [docs/building.md](docs/building.md): building, testing, distributions.
 - [docs/formats.md](docs/formats.md): the formats supported and planned.
+- [docs/fibex.md](docs/fibex.md): what FIBEX is, how non-verbose DLT is decoded, the options
+  considered (Russian).
 - [docs/ui-guidelines.md](docs/ui-guidelines.md): visual standards of the interface.
 - [docs/performance.md](docs/performance.md): measurements of indexing and table rendering.
 - [docs/stories/](docs/stories/): the story of each feature, what was decided and why
