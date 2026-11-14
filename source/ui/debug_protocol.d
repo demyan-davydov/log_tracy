@@ -434,7 +434,8 @@ struct LineReader
     }
 }
 
-unittest // requests
+@("parseRequest: the requests")
+unittest
 {
     DebugRequest request;
     string error;
@@ -450,7 +451,8 @@ unittest // requests
     }
 }
 
-unittest // the input requests
+@("parseRequest: the input requests")
+unittest
 {
     DebugRequest request;
     string error;
@@ -459,7 +461,8 @@ unittest // the input requests
     assert(parseRequest(`{"type": "abc"}`, request, error) && request == DebugRequest(RequestKind.type, "abc"));
 }
 
-unittest // the point of a hover: two numbers in the window
+@("parsePoint: the point of a hover is two numbers in the window")
+unittest
 {
     double x, y;
     string error;
@@ -472,7 +475,8 @@ unittest // the point of a hover: two numbers in the window
     }
 }
 
-unittest // the response of an input request: true, or why it wasn't handed to the window
+@("inputResponse: true, or why it wasn't handed to the window")
+unittest
 {
     import std.json : parseJSON;
 
@@ -480,7 +484,8 @@ unittest // the response of an input request: true, or why it wasn't handed to t
     assert(parseJSON(inputResponse(WindowRun("macOS only")))["error"].str == "macOS only");
 }
 
-unittest // the input of a request: the point of a hover, the keys of a key or a type
+@("parseInput: the point of a hover, the keys of a key or a type")
+unittest
 {
     import std.algorithm : canFind;
     import utils.keys : Modifier, NamedKey;
@@ -499,7 +504,8 @@ unittest // the input of a request: the point of a hover, the keys of a key or a
     assert(!parseInput(DebugRequest(RequestKind.eval, "1"), input, error) && error.length);
 }
 
-unittest // the input handed: the mouse or each key in order, stopping at the first refused
+@("sendInput: the mouse or each key in order, stopping at the first refused")
+unittest
 {
     import utils.keys : NamedKey;
 
@@ -536,7 +542,8 @@ unittest // the input handed: the mouse or each key in order, stopping at the fi
     assert(calls == ["press a", "press b"]);
 }
 
-unittest // the eval script: the wrapper called with the code as a JSON string
+@("evalScript: the wrapper called with the code as a JSON string")
+unittest
 {
     import std.algorithm : endsWith, startsWith;
 
@@ -545,7 +552,8 @@ unittest // the eval script: the wrapper called with the code as a JSON string
     assert(script.endsWith(`("a\n\"b\"")`), script);
 }
 
-unittest // the response of an eval: the value or what was thrown, as the protocol says them
+@("evalResponse: the value or what was thrown, as the protocol says them")
+unittest
 {
     import std.json : parseJSON;
 
@@ -609,7 +617,8 @@ version (unittest)
     private WindowRun textRun(string text) => WindowRun("", true, text);
 }
 
-unittest // the popup files of a shot: beside it, of its name, a number
+@("isPopupFileOf: beside the shot, of its name, a number")
+unittest
 {
     assert(isPopupFileOf("/s/a.png", "/s/a.popup-1.png"));
     assert(isPopupFileOf("/s/a.png", "/s/a.popup-12.png"));
@@ -619,7 +628,8 @@ unittest // the popup files of a shot: beside it, of its name, a number
         assert(!isPopupFileOf("/s/a.png", other), other);
 }
 
-unittest // the popup files of an earlier shot into the same path go: they show popups closed now
+@("shotResponse: the popup files of an earlier shot into the same path go, they show popups closed now")
+unittest
 {
     import std.json : parseJSON;
 
@@ -632,14 +642,16 @@ unittest // the popup files of an earlier shot into the same path go: they show 
     assert(fake.files == ["/s/a.png": png[], "/s/a.popup-x.png": old[], "/s/b.popup-1.png": old[]]);
 }
 
-unittest // the file of a popup is beside the shot's
+@("popupPath: the file of a popup is beside the shot's")
+unittest
 {
     assert(popupPath("/s/a.png", 1) == "/s/a.popup-1.png");
     assert(popupPath("/s/a.b.png", 12) == "/s/a.b.popup-12.png");
     assert(popupPath("/s/a", 2) == "/s/a.popup-2.png");
 }
 
-unittest // the script of a popup's image takes the popup of its number, at its border box
+@("popupShotScript: takes the popup of its number, at its border box")
+unittest
 {
     import std.algorithm : canFind;
     import std.json : parseJSON;
@@ -657,7 +669,8 @@ unittest // the script of a popup's image takes the popup of its number, at its 
     assert(popupShotScript(3, "menu", "", JSONValue.init).canFind("null")); // no box listed: not compared
 }
 
-unittest // a shot without popups: the window's image written, the response as it always was
+@("shotResponse: without popups the window's image is written, the response as it always was")
+unittest
 {
     import std.json : parseJSON;
 
@@ -668,7 +681,8 @@ unittest // a shot without popups: the window's image written, the response as i
     assert(fake.files == ["/s/a.png": png[]]);
 }
 
-unittest // a shot with popups: an image of each beside the window's, with its summary
+@("shotResponse: with popups an image of each beside the window's, with its summary")
+unittest
 {
     import std.json : parseJSON;
 
@@ -686,7 +700,8 @@ unittest // a shot with popups: an image of each beside the window's, with its s
     assert(fake.files == ["/s/a.png": png[], "/s/a.popup-1.png": menu[], "/s/a.popup-2.png": tip[]]);
 }
 
-unittest // the window's image failed: nothing written, why
+@("shotResponse: the window's image failed: nothing written, why")
+unittest
 {
     import std.json : parseJSON;
 
@@ -707,7 +722,8 @@ unittest // the window's image failed: nothing written, why
         == "can't write the shot to /s/a.png: read-only");
 }
 
-unittest // the popups can't be listed: said; one closed before its image: told as closed
+@("shotResponse: the popups can't be listed: said; one closed before its image: told as closed")
+unittest
 {
     import std.json : parseJSON;
 
@@ -729,7 +745,8 @@ unittest // the popups can't be listed: said; one closed before its image: told 
     assert(closed.files == ["/s/a.png": png[], "/s/a.popup-2.png": tip[]]);
 }
 
-unittest // responses
+@("resultLine: a result and an error (errorLine) as lines of the protocol")
+unittest
 {
     import std.json : parseJSON;
 
@@ -740,7 +757,8 @@ unittest // responses
     assert(line[$ - 1] != '\n');
 }
 
-unittest // ports
+@("parsePort: a port or not")
+unittest
 {
     ushort port;
     assert(parsePort("4567", port) && port == 4567);
@@ -749,7 +767,8 @@ unittest // ports
         assert(!parsePort(bad, port), bad);
 }
 
-unittest // lines come in parts
+@("LineReader: lines come in parts")
+unittest
 {
     LineReader reader;
     string line;

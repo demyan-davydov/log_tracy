@@ -617,37 +617,9 @@ unittest
     assert(getHeaderSize(msg.ptr) == 14);
 }
 
+@("peekMessageId: the id of a non-verbose message, with an extended header and without; 0 for a verbose one")
 unittest
 {
-    import std.stdio;
-
-    writeln("Running DLT Core Tests...");
-
-    // Test 1: Standard Header only
-    // HT: 001 (Use Extended) 0 (No) -> 0?
-    // Let's verify getHeaderSize
-
-    // Case A: Min Header (UEH=0)
-    // HT: 0
-    ubyte[] msgA = [0, 0, 0, 0];
-    StandardHeader* shA = cast(StandardHeader*) msgA.ptr;
-    shA.headerType = 0;
-    assert(getHeaderSize(msgA.ptr) == 4);
-
-    // Case B: With ECU ID (WEID=1) -> Bit 2? 
-    // StandardHeader.Type Enum: UseExtendedHeader = 1, WithEcuId = 4
-    ubyte[] msgB = [0, 0, 0, 0, 65, 66, 67, 68]; // +4 bytes ECU
-    StandardHeader* shB = cast(StandardHeader*) msgB.ptr;
-    shB.headerType = StandardHeader.Type.WithEcuId; // 4
-    assert(getHeaderSize(msgB.ptr) == 8);
-
-    // Case C: Extended Header
-    // HT: UseExtendedHeader (1)
-    ubyte[] msgC = new ubyte[4 + 10]; // 4 std + 10 ext
-    StandardHeader* shC = cast(StandardHeader*) msgC.ptr;
-    shC.headerType = StandardHeader.Type.UseExtendedHeader;
-    assert(getHeaderSize(msgC.ptr) == 14);
-
     // Test 2: peekMessageId
     // Need Extended Header + Verbose=0
     // HT = UseExtendedHeader
@@ -684,8 +656,6 @@ unittest
     msgF[6] = 0x56;
     msgF[7] = 0x78;
     assert(peekMessageId(msgF.ptr) == 0x12345678);
-
-    writeln("DLT Core Tests Passed.");
 }
 
 @("readStorageHeader: version 1")

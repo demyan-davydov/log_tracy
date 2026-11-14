@@ -510,7 +510,7 @@ void saveSettings(in AppSettings settings, string path = defaultSettingsPath())
     }
 }
 
-/// The recent list survives a save and a load
+@("settings: the recent list survives a save and a load")
 unittest
 {
     const path = buildPath(tempDir(), "log_tracy_settings_recent_test.json");
@@ -567,7 +567,7 @@ unittest
     assert(c == a);
 }
 
-/// Settings written before the recent list existed: its files seed the list
+@("loadSettings: settings written before the recent list existed seed it with their files")
 unittest
 {
     const path = buildPath(tempDir(), "log_tracy_settings_migration_test.json");
@@ -579,7 +579,7 @@ unittest
     assert(loadSettings(path).recentFiles.pathsOf == [recentFilePath("/b.dlt"), recentFilePath("/a.dlt")]);
 }
 
-/// A broken recent list doesn't cost the other settings
+@("loadSettings: a broken recent list doesn't cost the other settings")
 unittest
 {
     const path = buildPath(tempDir(), "log_tracy_settings_bad_recent_test.json");
@@ -605,7 +605,7 @@ unittest
     assert(settings.recentFiles == [RecentFile(testPath("/d.dlt"))]);
 }
 
-/// A loaded recent list is cleaned: no duplicates, no empty paths, not too long
+@("loadSettings: a loaded recent list is cleaned: no duplicates, no empty paths, not too long")
 unittest
 {
     const path = buildPath(tempDir(), "log_tracy_settings_dirty_recent_test.json");
@@ -621,7 +621,7 @@ unittest
     assert(list[0 .. 2].pathsOf == [testPath("/a.dlt"), testPath("/0")]);
 }
 
-/// The time a file was used survives a save and a load; a broken one is unknown
+@("settings: the time a file was used survives a save and a load; a broken one is unknown")
 unittest
 {
     const path = buildPath(tempDir(), "log_tracy_settings_last_used_test.json");
@@ -636,9 +636,7 @@ unittest
     assert(loadSettings(path).recentFiles == [RecentFile(testPath("/a.dlt")), RecentFile(testPath("/b.dlt"))]);
 }
 
-/// The filter sets of a file survive a save and a load with their rules;
-/// broken entries and rules are skipped, the entries of the DLT-only format
-/// written before ("filters") aren't read
+@("settings: the filter sets of a file survive a save and a load with their rules; broken entries are skipped, the old DLT-only filters aren't read")
 unittest
 {
     import log_core.rule_filter : Check, Condition, FilterRule, RuleKind;
@@ -676,7 +674,7 @@ unittest
     assert(loadSettings(path).recentFiles[0].filters.length == 0);
 }
 
-/// The search history survives a save and a load; a query that can't be read is skipped
+@("settings: the search history survives a save and a load; a query that can't be read is skipped")
 unittest
 {
     const path = buildPath(tempDir(), "log_tracy_settings_searches_test.json");
@@ -693,7 +691,7 @@ unittest
     assert(loadSettings(path).recentFiles[0].searches == [[SearchChip("ok")]]);
 }
 
-/// The layouts of the columns survive a save and a load; broken entries are skipped
+@("settings: the layouts of the columns survive a save and a load; broken entries are skipped")
 unittest
 {
     const path = buildPath(tempDir(), "log_tracy_settings_columns_test.json");
@@ -717,7 +715,7 @@ unittest
     assert(settings.theme == "dark" && settings.columnLayouts is null);
 }
 
-/// The layouts of the dialog replace those of their formats; a default one is dropped
+@("withColumnLayouts: the layouts of the dialog replace those of their formats; a default one is dropped")
 unittest
 {
     import formats.dlt.format : dltFormatInfo;
@@ -738,7 +736,7 @@ unittest
     assert(withColumnLayouts(layouts, "not json") == layouts);
 }
 
-/// The dialog gets the formats with columns to arrange, as their layouts arrange them
+@("columnSettingsJson: the formats with columns to arrange, as their layouts arrange them")
 unittest
 {
     import formats.logcat : logcatFormatInfo;

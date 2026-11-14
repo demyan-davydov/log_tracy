@@ -174,7 +174,8 @@ private uint modifierOf(string name)
     }
 }
 
-unittest // a key alone: a character as written, a named key
+@("parseKeyPress: a key alone, a character as written or a named key")
+unittest
 {
     KeyPress press;
     string error;
@@ -191,7 +192,8 @@ unittest // a key alone: a character as written, a named key
     assert(parseKeyPress("Delete", press, error) && press.named == NamedKey.delete_);
 }
 
-unittest // modifiers by their names, in any case and order
+@("parseKeyPress: modifiers by their names, in any case and order")
+unittest
 {
     KeyPress press;
     string error;
@@ -206,7 +208,8 @@ unittest // modifiers by their names, in any case and order
     assert(press == KeyPress(NamedKey.none, '1', Modifier.control | Modifier.command));
 }
 
-unittest // with modifiers a letter is the key, whatever its case: "Cmd+A" is Cmd and a, Shift is written
+@("parseKeyPress: with modifiers a letter is the key whatever its case, Shift is written")
+unittest
 {
     KeyPress press;
     string error;
@@ -218,7 +221,8 @@ unittest // with modifiers a letter is the key, whatever its case: "Cmd+A" is Cm
     assert(parseKeyPress("A", press, error) && press == KeyPress(NamedKey.none, 'A', 0));
 }
 
-unittest // the key "+": alone and after modifiers
+@("parseKeyPress: the key \"+\" alone and after modifiers")
+unittest
 {
     KeyPress press;
     string error;
@@ -228,7 +232,8 @@ unittest // the key "+": alone and after modifiers
     assert(press == KeyPress(NamedKey.none, '+', Modifier.command | Modifier.shift));
 }
 
-unittest // what names no key is an error that says what is known
+@("parseKeyPress: what names no key is an error that says what is known")
+unittest
 {
     import std.algorithm : canFind;
 
@@ -243,7 +248,8 @@ unittest // what names no key is an error that says what is known
     assert(!parseKeyPress("Hyper+a", press, error) && error.canFind("Hyper"), error);
 }
 
-unittest // a text: a press a character, Enter and Tab for their characters
+@("typingPresses: a press a character, Enter and Tab for their characters")
+unittest
 {
     assert(typingPresses("aB\n") == [KeyPress(NamedKey.none, 'a', 0), KeyPress(NamedKey.none, 'B', 0),
         KeyPress(NamedKey.enter, dchar.init, 0)]);

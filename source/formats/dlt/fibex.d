@@ -160,12 +160,11 @@ class FibexParser
     }
 }
 
+@("FibexParser: descriptions by element, attribute and hex id")
 unittest
 {
     import std.file;
     import std.path;
-
-    writeln("Running FIBEX Parser Tests...");
 
     string content = q"{
 <FRAME>
@@ -183,7 +182,7 @@ unittest
 </FRAME>
     }";
 
-    string tempFile = "temp_test.xml";
+    string tempFile = buildPath(tempDir(), "log_tracy_fibex_test.xml");
     std.file.write(tempFile, content);
 
     scope (exit)
@@ -201,6 +200,4 @@ unittest
     assert(parser.getDescription(101) == "Long Name Style");
     assert(parser.getDescription(0xABC) == "Hex Style 1");
     assert(parser.getDescription(0xDEF) == "Hex Style 2");
-
-    writeln("FIBEX Tests Passed.");
 }

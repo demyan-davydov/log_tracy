@@ -442,7 +442,7 @@ version (unittest)
     }
 }
 
-/// A file removed from the list takes what was kept for it along
+@("withoutRecentFile: a file removed from the list takes what was kept for it along")
 unittest
 {
     auto list = [RecentFile(testPath("/a.dlt"), FormatChoice("dlt"), 10), RecentFile(testPath("/b.dlt"), FormatChoice("logcat"), 20),
@@ -455,7 +455,7 @@ unittest
     assert(withoutRecentFile(list, testPath("/other.dlt")).pathsOf == [testPath("/a.dlt"), testPath("/b.dlt"), testPath("/c.dlt")], "not in the list");
 }
 
-/// Opening a file puts it on top of the recent list, without duplicates
+@("withRecentFile: opening a file puts it on top of the recent list, without duplicates")
 unittest
 {
     assert(withRecentFile([], testPath("/a.dlt")).pathsOf == [testPath("/a.dlt")]);
@@ -464,7 +464,7 @@ unittest
     assert(withRecentFile(recentList(testPath("/a.dlt")), "").pathsOf == [testPath("/a.dlt")]);
 }
 
-/// A file of the list that fails to open stays where it is, as it was
+@("withFailedFile: a file of the list that fails to open stays where it is, as it was")
 unittest
 {
     auto list = [RecentFile(testPath("/a.dlt"), FormatChoice("dlt"), 10), RecentFile(testPath("/b.dlt"), FormatChoice("logcat"), 20)];
@@ -474,13 +474,13 @@ unittest
     assert(withFailedFile(list, testPath("/logs/../b.dlt")).pathsOf == [testPath("/a.dlt"), testPath("/b.dlt")], "the same file spelled otherwise");
 }
 
-/// A file new to the list that fails to open goes on top, to be tried again
+@("withFailedFile: a file new to the list that fails to open goes on top, to be tried again")
 unittest
 {
     assert(withFailedFile(recentList(testPath("/a.dlt")), testPath("/new.dlt")).pathsOf == [testPath("/new.dlt"), testPath("/a.dlt")]);
 }
 
-/// The recent list keeps the newest recentFilesMax files
+@("withRecentFile: the recent list keeps the newest recentFilesMax files")
 unittest
 {
     RecentFile[] list;
@@ -490,7 +490,7 @@ unittest
     assert(list[0].path == testPath("/") ~ (recentFilesMax + 2).to!string);
 }
 
-/// Even an empty path leaves no more than recentFilesMax files
+@("withRecentFile: even an empty path leaves no more than recentFilesMax files")
 unittest
 {
     RecentFile[] list;
@@ -499,7 +499,7 @@ unittest
     assert(withRecentFile(list, "").length == recentFilesMax);
 }
 
-/// One file spelled in different ways is one entry
+@("withRecentFile: one file spelled in different ways is one entry")
 unittest
 {
     assert(withRecentFile(recentList(testPath("/logs/a.dlt")), testPath("/logs/./x/../a.dlt")).pathsOf == [testPath("/logs/a.dlt")]);
@@ -508,7 +508,7 @@ unittest
         assert(withRecentFile(recentList(`C:\logs\a.dlt`), "c:/logs/a.dlt").pathsOf == [`c:\logs\a.dlt`]);
 }
 
-/// The placeholder gets every recent file with a mark whether it still exists
+@("recentFilesJson: every recent file with a mark whether it still exists")
 unittest
 {
     const existing = buildPath(tempDir(), "log_tracy_recent_existing_test.dlt");
@@ -522,14 +522,14 @@ unittest
     assert(j[1]["path"].str == missing && !j[1]["exists"].boolean);
 }
 
-/// A path is stored in the recent list the way recentFilePath() spells it
+@("recentFilePath: a path is stored in the recent list the way it spells it")
 unittest
 {
     assert(recentFilePath(testPath("/logs/./x/../a.dlt")) == testPath("/logs/a.dlt"));
     assert(withRecentFile([], testPath("/logs/./x/../a.dlt")).pathsOf == [recentFilePath(testPath("/logs/./x/../a.dlt"))]);
 }
 
-/// A file opened again keeps the format it had, unless it was opened in another one
+@("withRecentFile: a file opened again keeps its format, unless it was opened in another one")
 unittest
 {
     const logcat = FormatChoice("logcat", 1);
@@ -545,8 +545,7 @@ unittest
     assert(!savedFormat(list, testPath("/c.log")).isSet);
 }
 
-/// The encoding of a text format is saved with it, UTF-8 left out; an encoding
-/// this build doesn't know has the format detected again
+@("recentFilesToJson: the encoding of a text format is saved, UTF-8 left out; an unknown one has the format detected again")
 unittest
 {
     import log_core.text_encoding : TextEncoding;
@@ -564,7 +563,7 @@ unittest
     assert(!savedFormat(recentFilesFromJson(unknown), testPath("/c.log")).isSet);
 }
 
-/// The placeholder gets the badge and the name of a file's format, if it is known
+@("recentFilesJson: the badge and the name of a file's format, if it is known")
 unittest
 {
     import formats.logcat : logcatFormatInfo;
@@ -577,7 +576,7 @@ unittest
     assert("format" !in j[2], "a format this build doesn't know: no badge");
 }
 
-/// A file that failed to open keeps the time it was used last
+@("withRecentFile: a file that failed to open keeps the time it was used last")
 unittest
 {
     auto list = withRecentFile([RecentFile(testPath("/b.log")), RecentFile(testPath("/a.log"), FormatChoice.init, 100)], testPath("/a.log"));
@@ -586,8 +585,7 @@ unittest
     assert(list[0].lastUsed == 200);
 }
 
-/// Closing the window marks the open files used now: they come on top in the
-/// order they had in the list (the tabs have an order of their own)
+@("withFilesUsed: closing the window puts the open files on top in the order they had in the list")
 unittest
 {
     const logcat = FormatChoice("logcat");
@@ -601,8 +599,7 @@ unittest
         "an open file the list lost (more tabs than its length) comes back");
 }
 
-/// Any save marks the open files used now, in place: the order of the list
-/// stays that of the files opened, failed and closed
+@("withFilesStamped: any save marks the open files used now, in place")
 unittest
 {
     auto list = [RecentFile(testPath("/b.log"), FormatChoice.init, 300), RecentFile(testPath("/a.log"), FormatChoice("dlt"), 200)];
@@ -610,7 +607,7 @@ unittest
             == [RecentFile(testPath("/b.log"), FormatChoice.init, 300), RecentFile(testPath("/a.log"), FormatChoice("dlt"), 1000)]);
 }
 
-/// The placeholder gets the time a file was used and whether it is open
+@("recentFilesJson: the time a file was used and whether it is open")
 unittest
 {
     auto j = parseJSON(recentFilesJson([RecentFile(testPath("/a.log"), FormatChoice.init, 1_762_250_000_123),
@@ -621,15 +618,14 @@ unittest
     assert(j[1]["opened"].boolean);
 }
 
-/// Now is counted from the Unix epoch in ms
+@("nowMs: counted from the Unix epoch in ms")
 unittest
 {
     assert(nowMs() > 1_762_000_000_000); // after Nov 2025
     assert(nowMs() < 4_102_444_800_000); // before 2100
 }
 
-/// Opening a file again or closing the window keeps its filters; they are
-/// changed in place, without reordering the list
+@("withFilters: a file's filters are kept when it is opened again or the window is closed, changed in place without reordering the list")
 unittest
 {
     auto filters = [SavedFilter("one.dlf", testPath("/f/one.dlf"))];
@@ -645,8 +641,7 @@ unittest
     assert(withFilters(list, testPath("/c.log"), filters.dup) == list, "a file not in the list isn't added");
 }
 
-/// The search history of a file: the latest query on top, a repeated one moved
-/// up, searchHistoryMax at most; kept when the file is opened again
+@("withSearch: the latest query on top, a repeated one moved up, searchHistoryMax at most; kept when the file is opened again")
 unittest
 {
     const a = [SearchChip("a")], b = [SearchChip("b", true, true)], c = [SearchChip("a"), SearchChip("c")];

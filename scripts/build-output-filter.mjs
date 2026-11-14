@@ -20,11 +20,15 @@ const summary = [
     /^Error (Program exited with code|\S+ failed with exit code)/, // dub
     /linker command failed|^collect2: error|^Error: .* failed with status/,
     /^ℹ (fail|cancelled) [1-9]/, // node --test
+    // unit-threaded's runner (dub test): a line per failed test, then its summary
+    /^Test '.*' failed\.$/,
+    /^\d+ test\(s\) run, [1-9]\d* failed\.$/,
 ];
-// the summary of druntime's runner: glued to a line of a test's own output at times
+// the summary of druntime's runner (test --module): glued to a line of a test's own output at times
 const failedModules = /\d+\/\d+ modules FAILED unittests/;
-// druntime's report of a failure, at the start of a line: core.exception.AssertError@source/a.d(12): message
-const exception = /^([\w.]*?)(\w*(?:Error|Exception|Throwable))@(.+?)\((\d+)\): (.*)$/;
+// the report of a failure, at the start of a line (unit-threaded indents all but the first by
+// four spaces): core.exception.AssertError@source/a.d(12): message
+const exception = /^(?: {4})?([\w.]*?)(\w*(?:Error|Exception|Throwable))@(.+?)\((\d+)\): (.*)$/;
 const stackSeparator = "----------------";
 const maxMessageLines = 5;
 const maxFrames = 4;
@@ -69,14 +73,18 @@ export function filterBuildOutput(text, { failed = false, root = "", log = "buil
 }
 
 /// Whether a line names a file of the project (`root`), as a path or as the file URL of node's
-/// frames, and the line with those prefixes cut off.
+/// frames, and the line with those prefixes cut off. A path that climbs out of the project
+/// (dub's packages: /p/dlt/../../.dub/...) is not the project's.
 function projectPaths(root) {
     if (root === "") return { isOurs: () => false, cut: (line) => line };
     // file:///p/dlt/ on macOS and Linux, file:///C:/p/dlt/ on Windows, spaces as %20
     const url = encodeURI(`file://${root.startsWith("/") ? "" : "/"}${root.replaceAll("\\", "/")}/`);
     const prefixes = [url, `${root}/`, `${root}\\`];
     return {
-        isOurs: (line) => prefixes.some((prefix) => line.includes(prefix)),
+        isOurs: (line) => prefixes.some((prefix) => {
+            const at = line.indexOf(prefix);
+            return at >= 0 && !line.startsWith("..", at + prefix.length);
+        }),
         cut: (line) => prefixes.reduce((cutLine, prefix) => cutLine.replaceAll(prefix, ""), line),
     };
 }

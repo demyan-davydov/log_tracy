@@ -125,7 +125,8 @@ private immutable MacNamedKey[NamedKey.max + 1] namedKeys = [
     NamedKey.f11: MacNamedKey("", 103), NamedKey.f12: MacNamedKey("", 111),
 ];
 
-unittest // a character key: its code, Shift when the character is typed with it
+@("macKeyEvent: a character key, its code, Shift when the character is typed with it")
+unittest
 {
     assert(macKeyEvent(KeyPress(NamedKey.none, 'a')) == MacKeyEvent("a", "a", 0, 0));
     assert(macKeyEvent(KeyPress(NamedKey.none, '5')) == MacKeyEvent("5", "5", 23, 0));
@@ -135,7 +136,8 @@ unittest // a character key: its code, Shift when the character is typed with it
     assert(macKeyEvent(KeyPress(NamedKey.none, '.')) == MacKeyEvent(".", ".", 47, 0));
 }
 
-unittest // the modifiers as the flags of NSEvent
+@("macKeyEvent: the modifiers as the flags of NSEvent")
+unittest
 {
     assert(macKeyEvent(KeyPress(NamedKey.none, 'z', Modifier.command | Modifier.shift))
         == MacKeyEvent("Z", "z", 6, nsCommandKeyMask | nsShiftKeyMask));
@@ -145,7 +147,8 @@ unittest // the modifiers as the flags of NSEvent
     assert(nsAlternateKeyMask == 0x80000 && nsCommandKeyMask == 0x100000);
 }
 
-unittest // a named key: its code and the character macOS gives it
+@("macKeyEvent: a named key, its code and the character macOS gives it")
+unittest
 {
     assert(macKeyEvent(KeyPress(NamedKey.enter)) == MacKeyEvent("\r", "\r", 36, 0));
     assert(macKeyEvent(KeyPress(NamedKey.escape)) == MacKeyEvent("\x1b", "\x1b", 53, 0));
@@ -155,7 +158,8 @@ unittest // a named key: its code and the character macOS gives it
     assert(macKeyEvent(KeyPress(NamedKey.space)) == MacKeyEvent(" ", " ", 49, 0));
 }
 
-unittest // the characters macOS gives with Control and with Shift+Tab
+@("macKeyEvent: the characters macOS gives with Control and with Shift+Tab")
+unittest
 {
     assert(macKeyEvent(KeyPress(NamedKey.none, 'a', Modifier.control))
         == MacKeyEvent("\x01", "a", 0, nsControlKeyMask));
@@ -165,7 +169,8 @@ unittest // the characters macOS gives with Control and with Shift+Tab
         == MacKeyEvent("\x19", "\t", 48, nsShiftKeyMask));
 }
 
-unittest // a character of no key of the US layout: typed by itself
+@("macKeyEvent: a character of no key of the US layout is typed by itself")
+unittest
 {
     assert(macKeyEvent(KeyPress(NamedKey.none, 'ы')) == MacKeyEvent("ы", "ы", unknownKeyCode, 0));
     assert(macKeyEvent(KeyPress(NamedKey.none, 'Я', Modifier.command))

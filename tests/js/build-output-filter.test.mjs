@@ -18,6 +18,11 @@ Error parsing the state of the script: Key not found: width
 Error opening file /refused.log: not a log of DLT or text
 Pattern with error: \`(\` <--HERE-- \`\`
 S62 modules passed unittests
+utils.ui_text.uiText: a template with no parameters is its english:
+Time taken: 5 secs, 527 ms, 108 μs, and 5 hnsecs
+858 test(s) run, 0 failed.
+
+OK!
 ✔ a request is one line of JSON (0.111625ms)
 ℹ tests 435
 ℹ fail 0
@@ -72,6 +77,48 @@ Error Program exited with code 1
         "source/utils/fsm.d(278): ArrayIndexError: index [5] is out of bounds for array of length 1",
         "    at source/utils/fsm.d:278 void utils.fsm.__unittest_L278_C1()",
         "2/62 modules FAILED unittests",
+        "Error Program exited with code 1",
+    ]);
+});
+
+test("failed unittests of unit-threaded: the exceptions, the frames of the project, the names, the summary", () => {
+    const output = `     Running build/osx-aarch64-unittest/log_tracy
+utils.ui_text.probe: passes after:
+-------------------------------
+
+core.exception.AssertError@source/utils/ui_text.d(197): one is not two
+----------------
+??:? _d_assert_msg [0x102f6cadb]
+/p/dlt/source/utils/ui_text.d:197 void utils.ui_text.__unittest_L197_C26() [0x102c1f097]
+
+
+    object.Exception@source/utils/ui_text.d(198): boom
+----------------
+/p/dlt/source/utils/ui_text.d:198 void utils.ui_text.__unittest_L198_C20() [0x102c1f123]
+/p/dlt/../../../.dub/packages/unit-threaded/2.2.6/unit-threaded/subpackages/runner/source/unit_threaded/runner/testcase.d:293 void unit_threaded.runner.testcase.FunctionTestCase.test() [0x102f2702b]
+/p/dlt/../../../.dub/packages/unit-threaded/2.2.6/unit-threaded/subpackages/runner/source/unit_threaded/runner/runner.d:22 _Dmain [0x102e668c7]
+
+
+
+Test 'utils.ui_text.probe: assert fails' failed.
+Test 'utils.ui_text.probe: throws' failed.
+
+
+Time taken: 582 ms, 580 μs, and 3 hnsecs
+10 test(s) run, 2 failed.
+
+Tests failed!
+
+Error Program exited with code 1
+`;
+    assert.deepEqual(filterBuildOutput(output, { failed: true, root }), [
+        "source/utils/ui_text.d(197): AssertError: one is not two",
+        "    at source/utils/ui_text.d:197 void utils.ui_text.__unittest_L197_C26()",
+        "source/utils/ui_text.d(198): Exception: boom",
+        "    at source/utils/ui_text.d:198 void utils.ui_text.__unittest_L198_C20()",
+        "Test 'utils.ui_text.probe: assert fails' failed.",
+        "Test 'utils.ui_text.probe: throws' failed.",
+        "10 test(s) run, 2 failed.",
         "Error Program exited with code 1",
     ]);
 });
@@ -206,6 +253,9 @@ next line of the test
     // inside a line it is a message of the program, not a failure of druntime's
     assert.deepEqual(filterBuildOutput("Error loading settings: std.json.JSONException@std/json.d(12): no\n",
         { failed: true, root }), ["Error loading settings: std.json.JSONException@std/json.d(12): no"]);
+    // only unit-threaded's indent of four spaces is a report: another one is a message too
+    assert.deepEqual(filterBuildOutput("  std.json.JSONException@std/json.d(12): no\nError Program exited with code 1\n",
+        { failed: true, root }), ["Error Program exited with code 1", "  std.json.JSONException@std/json.d(12): no"]);
 });
 
 test("the lines that go with a compile error: where a template was instantiated", () => {

@@ -245,6 +245,7 @@ version (unittest) private
     }
 }
 
+@("Fsm: transitions, an ignored event, a guard, the order of onEnter and onExit; what doesn't compile")
 unittest
 {
     Fsm!(Context, InitState, Focused) fsm;

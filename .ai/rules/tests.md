@@ -15,17 +15,32 @@ Applies to every fix and feature, D and script alike.
 
 ## Running
 
-- All tests: `node scripts/test.mjs` (= `build.mjs test`; D unittests, "N modules passed unittests", and
-  the JS tests). JS only: `node --test "tests/js/*.test.mjs"` (node 22 takes no folder).
-- The druntime test runner has no filter, and it stops a module's tests at the first failing
-  `unittest` block: when one module gets several new tests, check each of them separately.
-- One module that doesn't depend on Sciter: `node scripts/test.mjs --module <file.d>`.
-- An agent runs them with `--brief` (`build`, `test`, `test --module`, `dist`,
+- All tests: `node scripts/test.mjs` (= `build.mjs test`; D unittests, "N test(s) run, 0 failed.",
+  and the JS tests). JS only: `node --test "tests/js/*.test.mjs"` (node 22 takes no folder).
+- `dub test` runs unit-threaded's runner in one thread: each `unittest` block is a test of its
+  own, a failed one doesn't stop the ones after it.
+- Some D tests: `node scripts/test.mjs --filter <name>` (a module, `utils.fsm`, or a test's
+  full name; repeatable), the same as `dub test --compiler=ldc2 -- <name>`.
+- One module that doesn't depend on Sciter: `node scripts/test.mjs --module <file.d>`. It runs
+  druntime's runner: no filter, a module's tests stop at the first failing `unittest` block.
+- An agent runs them with `--brief` (`build`, `test`, `test --filter`, `test --module`, `dist`,
   `run.mjs`): one summary line when all pass, else the compile errors and
   failed tests with their places. The whole output is in `build/brief.log`: read it when the
   brief lines don't explain a failure.
 - `build.mjs test` also runs `scripts/utils/check-ai-context.mjs`: a name of `.ai/` the code lost
   fails it. Fix the name, or add a right one to the `allowed` list of the script.
+
+## Names and Output
+
+- Every D `unittest` has a name: `@("<subject>: <what it checks>")` on the line before it, the
+  subject the function or type tested (`parseKeyPress: modifiers by their names, in any case
+  and order`), one subject: `--filter` matches the start of the name. The runner reports a
+  failed test and filters by this name; a comment or a `///` above the test is no name, and a
+  test without one is `<module>.unittest_L<line>`. A JS test fails on an unnamed one
+  (`scripts/utils/d-test-names.mjs`).
+- A test prints nothing: no `writeln` of the test's name or of "finished", no values for a
+  look. The runner names the failed test; what a failure needs to explain goes into the
+  message of its `assert`.
 
 ## What Gets Tested
 

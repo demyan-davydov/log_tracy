@@ -78,7 +78,6 @@ public:
 
 version (unittest)
 {
-    import std.stdio : writeln;
     import std.conv : to;
 
     private void expectChainedExceptions(void delegate() dg, size_t expectedCount)
@@ -102,9 +101,9 @@ version (unittest)
     }
 }
 
-unittest  // PublishAndSubscribe (Sync)
+@("EventBusSync: publish and subscribe")
+unittest
 {
-    writeln("[Sync] PublishAndSubscribe");
     auto bus = new EventBusSync();
 
     int intCalls = 0, strCalls = 0;
@@ -123,10 +122,9 @@ unittest  // PublishAndSubscribe (Sync)
     bus.unsubscribe(t2);
 }
 
-unittest  // PublishAndSubscribeForComplexStructs (Sync)
+@("EventBusSync: complex structs")
+unittest
 {
-    writeln("[Sync] ComplexStructs");
-
     struct Complex
     {
         int a;
@@ -148,9 +146,9 @@ unittest  // PublishAndSubscribeForComplexStructs (Sync)
     assert(calls == 1);
 }
 
-unittest  // Unsubscribe (Sync)
+@("EventBusSync: unsubscribe")
+unittest
 {
-    writeln("[Sync] Unsubscribe");
     auto bus = new EventBusSync();
     int calls = 0;
 
@@ -166,9 +164,9 @@ unittest  // Unsubscribe (Sync)
     assert(bus.unsubscribe(t) == false); // already gone
 }
 
-unittest  // SubscribingFromCallback (Sync)
+@("EventBusSync: subscribing from a callback")
+unittest
 {
-    writeln("[Sync] SubscribingFromCallback");
     auto bus = new EventBusSync();
     int calls1 = 0, calls2 = 0;
 
@@ -186,9 +184,9 @@ unittest  // SubscribingFromCallback (Sync)
     assert(calls2 == 1);
 }
 
-unittest  // UnsubscribingFromCallback (Sync)
+@("EventBusSync: unsubscribing from a callback")
+unittest
 {
-    writeln("[Sync] UnsubscribingFromCallback");
     auto bus = new EventBusSync();
     int calls = 0;
     bool unsub = false;
@@ -204,9 +202,9 @@ unittest  // UnsubscribingFromCallback (Sync)
     assert(calls == 1); // already unsubscribed
 }
 
-unittest  // PostingFromCallback (Sync)
+@("EventBusSync: posting from a callback")
+unittest
 {
-    writeln("[Sync] PostingFromCallback");
     auto bus = new EventBusSync();
     int floats = 0, ints = 0;
 
@@ -219,9 +217,9 @@ unittest  // PostingFromCallback (Sync)
     assert(ints == 1);
 }
 
-unittest  // AccessFromDifferentThreads (Sync)
+@("EventBusSync: access from different threads")
+unittest
 {
-    writeln("[Sync] AccessFromDifferentThreads");
     import core.thread : Thread;
 
     auto bus = new EventBusSync();
@@ -243,9 +241,9 @@ unittest  // AccessFromDifferentThreads (Sync)
     assert(calls <= 4);
 }
 
-unittest  // ThrowingExceptionDoesNotPreventOtherSubscribers (Sync)
+@("EventBusSync: chained exceptions")
+unittest
 {
-    writeln("[Sync] ChainedExceptions");
     auto bus = new EventBusSync();
     int calls1 = 0, calls2 = 0;
 

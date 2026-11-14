@@ -165,7 +165,6 @@ public:
 
 version (unittest)
 {
-    import std.stdio : writeln;
     import std.conv : to;
 
     private void expectChainedExceptions(void delegate() dg, size_t expectedCount)
@@ -189,9 +188,9 @@ version (unittest)
     }
 }
 
-unittest  // PublishAndSubscribe (Async)
+@("EventBusAsync: publish and subscribe")
+unittest
 {
-    writeln("[Async] PublishAndSubscribe");
     auto bus = new EventBusAsync();
     int intCalls = 0, strCalls = 0, intCalls2 = 0;
 
@@ -213,9 +212,9 @@ unittest  // PublishAndSubscribe (Async)
     //bus.unsubscribe(t3);
 }
 
-unittest  // ComplexStructs (Async)
+@("EventBusAsync: complex structs")
+unittest
 {
-    writeln("[Async] ComplexStructs");
     struct Complex
     {
         int a;
@@ -238,9 +237,9 @@ unittest  // ComplexStructs (Async)
     assert(calls == 1);
 }
 
-unittest  // Unsubscribe (Async)
+@("EventBusAsync: unsubscribe")
+unittest
 {
-    writeln("[Async] Unsubscribe");
     auto bus = new EventBusAsync();
     int calls = 0;
 
@@ -258,9 +257,9 @@ unittest  // Unsubscribe (Async)
     assert(bus.unsubscribe(t) == false);
 }
 
-unittest  // SubscribingFromCallback (Async)
+@("EventBusAsync: subscribing from a callback")
+unittest
 {
-    writeln("[Async] SubscribingFromCallback");
     auto bus = new EventBusAsync();
     int calls1 = 0, calls2 = 0;
 
@@ -280,9 +279,9 @@ unittest  // SubscribingFromCallback (Async)
     assert(calls2 == 1);
 }
 
-unittest  // UnsubscribingFromCallback (Async)
+@("EventBusAsync: unsubscribing from a callback")
+unittest
 {
-    writeln("[Async] UnsubscribingFromCallback");
     auto bus = new EventBusAsync();
     int calls = 0;
     bool unsub = false;
@@ -299,9 +298,9 @@ unittest  // UnsubscribingFromCallback (Async)
     assert(calls == 1);
 }
 
-unittest  // PostingFromCallback (Async)
+@("EventBusAsync: posting from a callback")
+unittest
 {
-    writeln("[Async] PostingFromCallback");
     auto bus = new EventBusAsync();
     int floats = 0, ints = 0;
 
@@ -322,9 +321,9 @@ unittest  // PostingFromCallback (Async)
     assert(ints == 1);
 }
 
-unittest  // AccessFromDifferentThreads (Async)
+@("EventBusAsync: access from different threads")
+unittest
 {
-    writeln("[Async] AccessFromDifferentThreads");
     import core.thread : Thread;
 
     auto bus = new EventBusAsync();
@@ -347,9 +346,9 @@ unittest  // AccessFromDifferentThreads (Async)
     assert(calls <= 4);
 }
 
-unittest  // ThrowingExceptionDoesNotPreventOtherSubscribers (Async)
+@("EventBusAsync: chained exceptions")
+unittest
 {
-    writeln("[Async] ChainedExceptions");
     auto bus = new EventBusAsync();
     int calls1 = 0, calls2 = 0;
 
@@ -383,9 +382,9 @@ private struct OtherEvent
     int value;
 }
 
-unittest  // OverridableConsecutive
+@("EventBusAsync: of consecutive overridable messages only the last survives")
+unittest
 {
-    writeln("[Async][Override] Consecutive overridable messages — only last survives");
     auto bus = new EventBusAsync();
     int calls = 0;
     int last = -1;
@@ -403,9 +402,9 @@ unittest  // OverridableConsecutive
     assert(last == 3, "Expected last value 3, got " ~ last.to!string);
 }
 
-unittest  // OverridableInterleaved
+@("EventBusAsync: interleaved messages, no erasure in the middle of the queue")
+unittest
 {
-    writeln("[Async][Override] Interleaved messages — no mid-queue erasure");
     auto bus = new EventBusAsync();
     int pCalls = 0;
     int oCalls = 0;
@@ -425,9 +424,9 @@ unittest  // OverridableInterleaved
     assert(lastP == 2);
 }
 
-unittest  // NonOverridableConsecutive
+@("EventBusAsync: consecutive non-overridable messages all survive")
+unittest
 {
-    writeln("[Async][Override] Consecutive non-overridable messages — all survive");
     auto bus = new EventBusAsync();
     int calls = 0;
 
@@ -441,9 +440,9 @@ unittest  // NonOverridableConsecutive
     assert(calls == 3, "Expected 3 calls, got " ~ calls.to!string);
 }
 
-unittest  // OverridableMultipleRunsReset
+@("EventBusAsync: each dispatch cycle is independent")
+unittest
 {
-    writeln("[Async][Override] Each dispatch cycle is independent");
     auto bus = new EventBusAsync();
     int calls = 0;
     int last = -1;
@@ -464,10 +463,9 @@ unittest  // OverridableMultipleRunsReset
     assert(calls == 2 && last == 30);
 }
 
-unittest  // PublishRawMustCopyEvent
+@("EventBusAsync: publishRaw snapshots the event at publish time")
+unittest
 {
-    writeln("[Async] publishRaw must snapshot the event at publish time");
-
     // Async contract: the event is delivered later, in dispatch(), so the bus
     // must own a copy instead of keeping the caller's pointer.
     static struct RawEvent
@@ -490,10 +488,9 @@ unittest  // PublishRawMustCopyEvent
             ~ " instead of the published 1: the event was not copied");
 }
 
-unittest  // CopyAndDestroyThroughInterfaces
+@("EventBusAsync: typed wrappers via interfaces copy and destroy correctly")
+unittest
 {
-    writeln("[Async] typed wrappers via interfaces copy and destroy correctly");
-
     // Counts live instances: copy constructor and destructor must be paired.
     static int live;
     static struct Tracked

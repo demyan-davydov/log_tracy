@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseCommand, dubArgs, distArch, infoPlist, desktopEntry, sciterLibrary, sciterLibraries, sciterArchive, unpackLibrary,
     packLibrary, packLibs, isLfsPointer, lfsPullArgs, jsTestArgs,
-    compilerArgs, genLogArgs, moduleTestArgs, commands, buildUsage, runUsage, dmgName, debName, debControl, zipName, zipCommand,
+    compilerArgs, genLogArgs, moduleTestArgs, commands, buildUsage, runUsage, testUsage, dmgName, debName, debControl, zipName, zipCommand,
     makeDebRoot, signScript, dmgCommand } from "../../scripts/build.mjs";
 
 test("build in debug for the machine by default", () => {
@@ -274,6 +274,17 @@ test("test --module tests one D module, its path kept as given", () => {
     assert.throws(() => parseCommand(["--module", "source/utils/fsm.d"]), /--module/);
     assert.throws(() => parseCommand(["test", "--module", "source/utils/fsm.d", "--arch", "x64"]), /--arch/);
     assert.match(buildUsage, /--module/);
+});
+
+test("test --filter runs the D unittests whose names start with the ones given, through unit-threaded's runner", () => {
+    assert.deepEqual(parseCommand(["test", "--filter", "utils.fsm", "--filter=formats.dlt"]),
+        { command: "test", release: false, arch: null, filters: ["utils.fsm", "formats.dlt"] });
+    assert.deepEqual(dubArgs("test", { release: false, arch: null, filters: ["utils.fsm", "formats.dlt"] }),
+        ["test", "--compiler=ldc2", "--", "utils.fsm", "formats.dlt"]);
+    assert.throws(() => parseCommand(["test", "--filter"]), /--filter/);
+    assert.throws(() => parseCommand(["build", "--filter", "utils.fsm"]), /--filter/);
+    assert.throws(() => parseCommand(["test", "--filter", "utils.fsm", "--module", "source/utils/fsm.d"]), /--filter/);
+    for (const usage of [buildUsage, testUsage]) assert.match(usage, /--filter/);
 });
 
 test("one module is compiled with its unittests, a main and the flags of dub.sdl, into build/tools", () => {

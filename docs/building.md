@@ -132,7 +132,17 @@ JS needs a rebuild.
 ### Tests
 
 `node scripts/test.mjs` (the same as `node scripts/build.mjs test`) runs the D unittests (`dub test`) and the JS tests (`node --test "tests/js/*.test.mjs"`), the second
-even when the first fail, and tells the result of both. The JS tests also check that the
+even when the first fail, and tells the result of both.
+
+`dub test` builds the configuration `unittest` of `dub.sdl`: the runner of
+[unit-threaded](https://github.com/atilaneves/unit-threaded), whose `main` its `gen_ut_main`
+generates into `build/unittest/ut.d` before every build. It runs in one thread
+(`unitUnthreaded`), so tests that share a global state are safe. Every `unittest` block is a
+test of its own, named by its `@("...")` string: a failed one doesn't stop the ones after it,
+and the report lists every failed test by name. `test --filter <name>` runs only the D
+unittests whose names start with `<name>` (a module such as `utils.fsm`, or a test's full
+name; the option may be repeated), without the JS tests; it is `dub test --compiler=ldc2 --
+<name>`. The runner's own options: `dub test --compiler=ldc2 -- -h` (`-l` lists the tests). The JS tests also check that the
 translation catalogs are up to date with the code (`node scripts/utils/i18n-extract.mjs` updates
 them). Last, `scripts/utils/check-ai-context.mjs` looks up what `.ai/`, `AGENTS.md`, `CLAUDE.md` and
 `.claude/` name in backquotes (paths, identifiers, options) and lists those the code no longer
@@ -140,12 +150,13 @@ has; a name that is right though the code lacks it goes to the `allowed` list of
 
 `test --module <file.d>` builds the unittests of one D module and of the modules it imports
 with `ldc2` alone (the flags of `dub.sdl`, as `dub describe` gives them), into `build/tools/`:
-a quick check of a module that doesn't depend on Sciter. The test runner of druntime has no
-filter and leaves a module at its first failing `unittest`: the ones after it did not run.
+a quick check of a module that doesn't depend on Sciter. It runs druntime's test runner, not
+unit-threaded's: no filter, and a module is left at its first failing `unittest`, the ones after
+it did not run.
 
 ### Brief output
 
-`--brief` (with `build`, `test`, `test --module`, `dist`, and `run.mjs`)
+`--brief` (with `build`, `test`, `test --filter`, `test --module`, `dist`, and `run.mjs`)
 writes the whole output of every step to `build/brief.log`, rewritten on each run, and
 shows only what failed: the compile and link errors, the failed D unittests (the place, the
 exception, its message, the frames in the project's code), the failed JS tests (the place,
