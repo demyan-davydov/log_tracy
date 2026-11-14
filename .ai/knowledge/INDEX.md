@@ -12,7 +12,7 @@ Use this file to choose the next context file. Do not load every file by default
 
 - Build and test with ldc2 through `node scripts/build.mjs` (commands in `AGENTS.md`, for
   people in `docs/building.md`). `node scripts/build.mjs test` runs the D unittests, the JS
-  tests and `scripts/check-ai-context.mjs` (names of `.ai/` the code lost): run it before
+  tests and `scripts/utils/check-ai-context.mjs` (names of `.ai/` the code lost): run it before
   saying a change is done.
 - The packages and what each may import: `.ai/knowledge/architecture.md` (Packages).
 - The files of `resources/` are built into the executable: a JS/CSS/HTML change needs a rebuild.

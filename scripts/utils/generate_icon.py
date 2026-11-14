@@ -1,7 +1,7 @@
 import math
 import os
 
-os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))  # the project root
+os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))  # the project root
 
 width = 1024
 height = 1024

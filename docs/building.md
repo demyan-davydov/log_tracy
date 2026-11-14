@@ -86,19 +86,25 @@ pointers. A plain `dub build` doesn't fetch it: run a build of the script once f
 
 ## Commands
 
+`scripts/` holds what builds, runs and tests the program: `build.mjs`, `run.mjs`, `test.mjs`
+(`node scripts/build.mjs test` under a name that says so) and two helpers of the build.
+The tools of development are in `scripts/utils/`: screenshots, driving the app, the stacks of
+a hung app, benchmarks, the test log generator, the translation catalogs, the icons, the
+review lenses, the check of `.ai/`.
+
 The commands can be run from any folder: the script goes to the project root itself.
 
 ```sh
 node scripts/build.mjs                    # debug build for this machine
 node scripts/build.mjs --release          # release build
 node scripts/build.mjs --arch x64         # another architecture: x64 or arm64
-node scripts/build.mjs test               # the D unittests, the JS tests, the names of .ai/
-node scripts/build.mjs test --module <file.d>  # the unittests of one D module (see "Tests")
+node scripts/test.mjs                     # the D unittests, the JS tests, the names of .ai/
+node scripts/test.mjs --module <file.d>   # the unittests of one D module (see "Tests")
 node scripts/build.mjs dist               # a distribution
 node scripts/build.mjs check-windows      # compiles for Windows x64 from macOS or Linux
 node scripts/build.mjs gen-log <file> ... # a test log (see "A test log" below)
 node scripts/build.mjs bench [log] ...    # this tree against master (see "Measuring" below)
-node scripts/build.mjs test --brief       # only what failed (any command but gen-log and bench)
+node scripts/test.mjs --brief             # only what failed (any command but gen-log and bench)
 node scripts/build.mjs --help             # the commands and options
 ```
 
@@ -120,10 +126,10 @@ JS needs a rebuild.
 
 ### Tests
 
-`test` runs the D unittests (`dub test`) and the JS tests (`node --test "tests/js/*.test.mjs"`), the second
+`node scripts/test.mjs` (the same as `node scripts/build.mjs test`) runs the D unittests (`dub test`) and the JS tests (`node --test "tests/js/*.test.mjs"`), the second
 even when the first fail, and tells the result of both. The JS tests also check that the
-translation catalogs are up to date with the code (`node scripts/i18n-extract.mjs` updates
-them). Last, `scripts/check-ai-context.mjs` looks up what `.ai/`, `AGENTS.md`, `CLAUDE.md` and
+translation catalogs are up to date with the code (`node scripts/utils/i18n-extract.mjs` updates
+them). Last, `scripts/utils/check-ai-context.mjs` looks up what `.ai/`, `AGENTS.md`, `CLAUDE.md` and
 `.claude/` name in backquotes (paths, identifiers, options) and lists those the code no longer
 has; a name that is right though the code lacks it goes to the `allowed` list of the script.
 
@@ -181,7 +187,7 @@ Every other build (debug, `--release`) keeps them next to itself, as above.
   on the first start ("More info", then "Run anyway").
 
 The icons of the three systems are made of the logo, `resources/icons/logo.png` (a square of
-1024 px), by `node scripts/make-icons.mjs` on macOS (`sips`, `iconutil`): `app.icns` for the
+1024 px), by `node scripts/utils/make-icons.mjs` on macOS (`sips`, `iconutil`): `app.icns` for the
 bundle, `app.ico` for Windows (16 to 256 px), `app.png` for Linux and `png/icon-<size>.png`
 of every size from 16 to 1024. Run it after the logo changes and commit what it writes.
 
@@ -201,7 +207,7 @@ and the notes of the commits since the last one. It stops if the tag is not the 
 
 ### A screenshot of the window
 
-`node scripts/screenshot.mjs --open <log>` builds the program, starts a copy of it in a
+`node scripts/utils/screenshot.mjs --open <log>` builds the program, starts a copy of it in a
 temporary folder (with settings of its own: the build's `settings.json` stays as it is), opens
 the log, waits for it to load and captures the window of the program only, into
 `build/screenshot.png`. `--help` lists the options: several logs, the wait, a `settings.json`
@@ -219,19 +225,19 @@ Windows and Linux were not tried on those systems yet.
 
 ### Driving the app: the debug channel
 
-`node scripts/app.mjs` drives a running copy of a debug build through its debug channel
+`node scripts/utils/app.mjs` drives a running copy of a debug build through its debug channel
 (`SCITER_DEBUG_PORT`): it looks inside the window instead of guessing from a screenshot.
 
 ```sh
-node scripts/app.mjs start --open ~/logs/trace.dlt     # builds, starts a copy in build/app, keeps it running
-node scripts/app.mjs wait "document.$('table tbody tr') != null" --timeout 15
-node scripts/app.mjs eval "document.$('table tbody tr')" # {tag, class, text, box} of the element
-node scripts/app.mjs shot build/x.png                   # the window rendered by Sciter
-node scripts/app.mjs hover ".btn-chip-history"          # the mouse over an element (or "x y"), macOS
-node scripts/app.mjs key "Cmd+A"                        # a key in the focused element, macOS
-node scripts/app.mjs type "error 42"                    # a text, a key a character, macOS
-node scripts/app.mjs run steps.txt                      # eval/wait/shot/hover/key/type steps, one a line
-node scripts/app.mjs stop
+node scripts/utils/app.mjs start --open ~/logs/trace.dlt     # builds, starts a copy in build/app, keeps it running
+node scripts/utils/app.mjs wait "document.$('table tbody tr') != null" --timeout 15
+node scripts/utils/app.mjs eval "document.$('table tbody tr')" # {tag, class, text, box} of the element
+node scripts/utils/app.mjs shot build/x.png                   # the window rendered by Sciter
+node scripts/utils/app.mjs hover ".btn-chip-history"          # the mouse over an element (or "x y"), macOS
+node scripts/utils/app.mjs key "Cmd+A"                        # a key in the focused element, macOS
+node scripts/utils/app.mjs type "error 42"                    # a text, a key a character, macOS
+node scripts/utils/app.mjs run steps.txt                      # eval/wait/shot/hover/key/type steps, one a line
+node scripts/utils/app.mjs stop
 ```
 
 The copy has its own settings (`--settings` to start with a `settings.json`) and its output in
@@ -277,7 +283,7 @@ It is not in the program: its modules are compiled only for the unittests and wi
 ### Measuring
 
 `bench` measures this working tree against `master` (`--against` another ref) with
-`scripts/bench_rows.d` (scrolling, the default) or `--bench index` (`scripts/bench_index.d`,
+`scripts/utils/bench_rows.d` (scrolling, the default) or `--bench index` (`scripts/utils/bench_index.d`,
 building the indexes). It checks the ref out into a temporary worktree, puts this tree's
 benchmark into it, builds both sides alike, reads the log once into the page cache, runs the
 sides by turns, each going first in every other run (`--runs`, 3), and prints the median and
@@ -294,10 +300,10 @@ node scripts/build.mjs bench --help
 
 ### The stacks of a hung app
 
-`node scripts/backtrace.mjs [pid]` writes the stacks of every thread of a running Log
+`node scripts/utils/backtrace.mjs [pid]` writes the stacks of every thread of a running Log
 Tracy into `build/backtrace-<pid>.txt` (`--out` another file) with `lldb` on macOS or `gdb`
 on Linux, and leaves the process running. Without a pid it takes the copy of
-`scripts/app.mjs`, else the only running `log_tracy`.
+`scripts/utils/app.mjs`, else the only running `log_tracy`.
 
 ### Checking Windows from macOS or Linux
 
@@ -313,11 +319,11 @@ development; users don't need them. They are read at start, in `newSession` of
 
 | Variable | Values | What it does |
 |---|---|---|
-| `OPEN_AT_START` | `<log>`, several on lines of their own | Opens these logs at start, each in its tab. `scripts/screenshot.mjs` uses it. |
+| `OPEN_AT_START` | `<log>`, several on lines of their own | Opens these logs at start, each in its tab. `scripts/utils/screenshot.mjs` uses it. |
 | `MENU_BAR_PLATFORM` | `windows`, `linux` | Draws the menu bar of that system in the window, also on macOS: to try the menu of another system. |
 | `PSEUDO_LOCALE` | `1` | Offers the pseudo translation in Settings: every text accented and lengthened, so what stays plain English is not translated. |
 | `SCITER_DEBUG_MODE` | `1` | Turns the debug mode of Sciter on, for its inspector: start `inspector.app` of the Sciter SDK first, then Ctrl+Shift+I in the window connects to it (the DOM, the styles, a script console), Ctrl+Shift+click shows the element clicked. |
-| `SCITER_DEBUG_PORT` | `<port>`, `0` for any free one | Debug builds only: opens the debug channel on `127.0.0.1:<port>` (the port is written to the output), through which `scripts/app.mjs` runs JavaScript in the window and renders it. A release build ignores it and says so. |
+| `SCITER_DEBUG_PORT` | `<port>`, `0` for any free one | Debug builds only: opens the debug channel on `127.0.0.1:<port>` (the port is written to the output), through which `scripts/utils/app.mjs` runs JavaScript in the window and renders it. A release build ignores it and says so. |
 
 For example:
 

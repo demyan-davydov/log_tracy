@@ -25,7 +25,7 @@ Background: `.ai/knowledge/architecture.md` (Script ↔ Backend).
 
 - Add it to the list of `ui/app_resources` (a unittest fails until it is); the icons are not
   built in.
-- Its texts follow `.ai/knowledge/i18n.md`; run `node scripts/i18n-extract.mjs` to update the
+- Its texts follow `.ai/knowledge/i18n.md`; run `node scripts/utils/i18n-extract.mjs` to update the
   catalogs.
 - A pure module gets its tests in `tests/js/<name>.test.mjs`.
 - Rebuild to see it in the app.

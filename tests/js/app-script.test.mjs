@@ -1,9 +1,9 @@
-// The pure part of scripts/app.mjs: the command line, the steps of a scenario, the port the app
+// The pure part of scripts/utils/app.mjs: the command line, the steps of a scenario, the port the app
 // listens on, the request lines.
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseAppArgs, parseSteps, listeningPort, requestLine, waitVerdict, parseResponse, shotOutcome, hoverTarget, hoverPointOf } from "../../scripts/app.mjs";
+import { parseAppArgs, parseSteps, listeningPort, requestLine, waitVerdict, parseResponse, shotOutcome, hoverTarget, hoverPointOf } from "../../scripts/utils/app.mjs";
 
 test("start takes logs, settings, variables and the build", () => {
     assert.deepEqual(parseAppArgs(["start", "--open", "a.dlt", "--open=b.log", "--settings", "s.json",

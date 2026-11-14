@@ -47,10 +47,10 @@ jobs:
       # the unittests load Sciter: on Linux with a display, should it need one
       - name: Test
         if: runner.os != 'Linux'
-        run: node scripts/build.mjs test
+        run: node scripts/test.mjs
       - name: Test
         if: runner.os == 'Linux'
-        run: xvfb-run -a node scripts/build.mjs test
+        run: xvfb-run -a node scripts/test.mjs
       - name: Check the Windows compile
         if: runner.os == 'Linux'
         run: node scripts/build.mjs check-windows

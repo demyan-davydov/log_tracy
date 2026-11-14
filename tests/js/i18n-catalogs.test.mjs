@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
-import { scanSources, loadCatalogs, checkCatalog } from "../../scripts/i18n-extract.mjs";
+import { scanSources, loadCatalogs, checkCatalog } from "../../scripts/utils/i18n-extract.mjs";
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const { texts, errors } = scanSources(root);
@@ -18,7 +18,7 @@ test("there is a russian catalog", () => {
 });
 
 for (const { file, catalog } of loadCatalogs(root)) {
-    test(`${file} is up to the code (run node scripts/i18n-extract.mjs)`, () => {
+    test(`${file} is up to the code (run node scripts/utils/i18n-extract.mjs)`, () => {
         assert.deepEqual(checkCatalog(catalog, texts), []);
     });
 }

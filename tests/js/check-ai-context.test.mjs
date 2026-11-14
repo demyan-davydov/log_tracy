@@ -1,9 +1,9 @@
-// The pure part of scripts/check-ai-context.mjs: the names in backquotes of the shared context
+// The pure part of scripts/utils/check-ai-context.mjs: the names in backquotes of the shared context
 // and which of them the code no longer has.
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { codeSpans, classify, staleReason, indexCode, isContext } from "../../scripts/check-ai-context.mjs";
+import { codeSpans, classify, staleReason, indexCode, isContext } from "../../scripts/utils/check-ai-context.mjs";
 
 test("the spans in backquotes come with their line, the fenced blocks left out", () => {
     const text = "See `formats/dlt/fields` and `LogDocument`.\n```sh\nnode `x`\n```\nThen ``a `b` c`` and `--threads`.\n";
@@ -33,7 +33,7 @@ test("a span is a path, an identifier, an option or something else to leave alon
 
 test("a path is found in the repository, a D module by its name in source/, a bare file by its name anywhere", () => {
     const code = indexCode(["source/formats/dlt/fields.d", "source/ui/app_session.d", "scripts/build.mjs",
-        "resources/backend.js", ".ai/rules/ux.md", "scripts/bench_rows.d"], "");
+        "resources/backend.js", ".ai/rules/ux.md", "scripts/utils/bench_rows.d"], "");
     assert.equal(staleReason("formats/dlt/fields", code), null);
     assert.equal(staleReason("source/ui/app_session.d", code), null);
     assert.equal(staleReason("ui/app_session", code), null);

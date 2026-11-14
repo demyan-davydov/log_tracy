@@ -1,8 +1,8 @@
-// The pure part of scripts/review-lenses.mjs: which lenses of the review a change needs.
+// The pure part of scripts/utils/review-lenses.mjs: which lenses of the review a change needs.
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { lensesFor, lenses } from "../../scripts/review-lenses.mjs";
+import { lensesFor, lenses } from "../../scripts/utils/review-lenses.mjs";
 
 test("no change, no review", () => {
     assert.deepEqual(lensesFor([]), []);
@@ -16,7 +16,7 @@ test("the rules are checked for every change, docs only too", () => {
 test("performance and threads: the indexing, the formats, the filters, the hot rows", () => {
     for (const path of ["source/domain/log_index.d", "source/formats/dlt/parser.d",
         "source/log_core/rule_filter.d", "source/utils/parallel_scan.d", "source/ui/table_rows.d",
-        "source/ui/main_window.d", "source/ui/app_session.d", "scripts/bench_rows.d"])
+        "source/ui/main_window.d", "source/ui/app_session.d", "scripts/utils/bench_rows.d"])
         assert.deepEqual(lensesFor([path]), ["rules", "performance"], path);
 });
 

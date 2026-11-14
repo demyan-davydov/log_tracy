@@ -45,7 +45,7 @@ private AppSession newSession(AppSettings settings, DocumentStore documents, out
 	// PSEUDO_LOCALE=1: the pseudo translation among the languages of Settings
 	session.offerPseudoLocale(environment.get("PSEUDO_LOCALE", "") == "1");
 	// OPEN_AT_START=<path>[<new line><path>...]: files opened at start, to look at the app
-	// with a log (scripts/screenshot.mjs)
+	// with a log (scripts/utils/screenshot.mjs)
 	session.openAtStart(environment.get("OPEN_AT_START", ""));
 	// SCITER_DEBUG_MODE=1: the debug mode of Sciter, for its inspector (set on the window)
 	sciterDebugMode = environment.get("SCITER_DEBUG_MODE", "") == "1";
@@ -55,7 +55,7 @@ private AppSession newSession(AppSettings settings, DocumentStore documents, out
 int main()
 {
 	// Debug builds write a line out as soon as it ends, also when the output goes to a file or a
-	// pipe (scripts/screenshot.mjs keeps it in app.log, a redirected run): fully buffered there,
+	// pipe (scripts/utils/screenshot.mjs keeps it in app.log, a redirected run): fully buffered there,
 	// the lines still in the buffer are lost when the process is killed or crashes, and the log
 	// of a failure comes out empty. Windows has no line buffering (_IOLBF is full buffering in
 	// its C library): unbuffered there. Release builds keep the default. A stdout that can't be

@@ -1,6 +1,6 @@
 // Writes the stacks of every thread of a running Log Tracy into a file: for a hang of the
 // indexing or of the task pool, when its output doesn't tell who waits for whom. lldb on macOS,
-// gdb on Linux; the process keeps running. The options: `node scripts/backtrace.mjs --help`.
+// gdb on Linux; the process keeps running. The options: `node scripts/utils/backtrace.mjs --help`.
 // Tests: tests/js/backtrace-script.test.mjs.
 import { spawnSync } from "node:child_process";
 import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
@@ -11,9 +11,9 @@ import { alive, readState } from "./app.mjs";
 export const backtraceUsage = `Writes the stacks of every thread of a running Log Tracy into a file
 (lldb on macOS, gdb on Linux); the process keeps running.
 
-Usage: node scripts/backtrace.mjs [pid] [options]
+Usage: node scripts/utils/backtrace.mjs [pid] [options]
 
-  pid             the process; by default the copy of scripts/app.mjs while it runs,
+  pid             the process; by default the copy of scripts/utils/app.mjs while it runs,
                   else the only running log_tracy
   --out FILE      where to write (default build/backtrace-<pid>.txt)
   -h, --help      this help
@@ -80,7 +80,7 @@ export function countThreads(output, platform) {
     return (output.slice(from).match(/^\* ?thread #\d+|^  thread #\d+|^Thread \d+/gm) ?? []).length;
 }
 
-/// The pid of the copy scripts/app.mjs started, while that process is still the program, or null.
+/// The pid of the copy scripts/utils/app.mjs started, while that process is still the program, or null.
 function appCopy() {
     const state = readState();
     if (!state || !alive(state.pid)) return null;
@@ -119,7 +119,7 @@ function main(argv, cwd) {
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) {
     const cwd = process.cwd(); // --out is from here
-    process.chdir(fileURLToPath(new URL("..", import.meta.url))); // the project root: build/
+    process.chdir(fileURLToPath(new URL("../..", import.meta.url))); // the project root: build/
     try {
         main(process.argv.slice(2), cwd);
     } catch (e) {

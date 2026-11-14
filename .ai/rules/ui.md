@@ -16,7 +16,7 @@ many rows. Keep it cheap:
 - check cheap conditions first, compare substrings by code units (no auto-decoding);
 - no allocation per row where a reused buffer will do.
 
-Measure before and after optimizing (`scripts/bench_rows.d`, `docs/performance.md`, roughly
+Measure before and after optimizing (`scripts/utils/bench_rows.d`, `docs/performance.md`, roughly
 100–140 ns/row of per-row work against decode).
 
 ## Red Flag: Hiding a Log Table

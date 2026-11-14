@@ -4,14 +4,14 @@
 //! each step. Results on a reference log: docs/performance.md.
 //!
 //! ldc2 -O3 -release -enable-inlining -i -preview=in -preview=dip1000 -preview=dtorfields -Isource \
-//!     scripts/bench_rows.d -of=/tmp/bench_rows && /tmp/bench_rows <log> [word...]
+//!     scripts/utils/bench_rows.d -of=/tmp/bench_rows && /tmp/bench_rows <log> [word...]
 //! (each word is a search of one text chip that ignores case)
 //!
 //! Builds against older checkouts too: without DocumentItem.found (before the
 //! main view marked the rows the search found) the "rows + fragments" line of
 //! the main view is left out. Memory is read on macOS only.
 //!
-//! `node scripts/build.mjs bench` reads what this prints (scripts/bench.mjs, parseMetrics):
+//! `node scripts/build.mjs bench` reads what this prints (scripts/utils/bench.mjs, parseMetrics):
 //! a measure is a number with its unit (ms, ns/row, MB), named by its line up to the colon
 //! and its part between commas, semicolons and brackets; an indented line belongs to the
 //! unindented one above it. A number printed without its unit drops out of the comparison.

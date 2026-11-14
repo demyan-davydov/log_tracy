@@ -10,7 +10,7 @@ own.
 ## A Screenshot of the App
 
 ```sh
-node scripts/screenshot.mjs --open <log> [--open <log>] [--out build/x.png] [--wait 3]
+node scripts/utils/screenshot.mjs --open <log> [--open <log>] [--out build/x.png] [--wait 3]
     [--settings <settings.json>] [--env PSEUDO_LOCALE=1] [--release] [--no-build]
 ```
 
@@ -47,18 +47,18 @@ the named functions from a temporary copy of the page, then delete the copy.
 
 ## Driving the App
 
-`scripts/app.mjs` drives a running copy of a debug build through the debug channel
+`scripts/utils/app.mjs` drives a running copy of a debug build through the debug channel
 (`docs/building.md`, "Driving the app"): no temporary changes of the script any more.
 
 ```sh
-node scripts/app.mjs start --open <log> [--settings <settings.json>] [--env NAME=VALUE] [--no-build]
-node scripts/app.mjs wait "<js true when ready>" [--timeout 10]
-node scripts/app.mjs eval "<js>"          # the value of the last expression as JSON
-node scripts/app.mjs shot [build/x.png]   # then read the PNG; an open popup: x.popup-N.png too
-node scripts/app.mjs hover "<x> <y>"|"<selector>"   # the mouse there as a real event (macOS)
-node scripts/app.mjs key "Cmd+A" | type "<text>"     # keys in the focused element (macOS)
-node scripts/app.mjs run <steps file>     # eval | wait [<n>s] | shot | hover | key | type, a line each
-node scripts/app.mjs log | stop
+node scripts/utils/app.mjs start --open <log> [--settings <settings.json>] [--env NAME=VALUE] [--no-build]
+node scripts/utils/app.mjs wait "<js true when ready>" [--timeout 10]
+node scripts/utils/app.mjs eval "<js>"          # the value of the last expression as JSON
+node scripts/utils/app.mjs shot [build/x.png]   # then read the PNG; an open popup: x.popup-N.png too
+node scripts/utils/app.mjs hover "<x> <y>"|"<selector>"   # the mouse there as a real event (macOS)
+node scripts/utils/app.mjs key "Cmd+A" | type "<text>"     # keys in the focused element (macOS)
+node scripts/utils/app.mjs run <steps file>     # eval | wait [<n>s] | shot | hover | key | type, a line each
+node scripts/utils/app.mjs log | stop
 ```
 
 - Wait for a condition (`wait`), never a fixed pause: indexing and search run in the background.

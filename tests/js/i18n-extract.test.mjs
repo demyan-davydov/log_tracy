@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { extractTexts, mergeCatalog, checkCatalog, scanSources } from "../../scripts/i18n-extract.mjs";
+import { extractTexts, mergeCatalog, checkCatalog, scanSources } from "../../scripts/utils/i18n-extract.mjs";
 
 test("the texts of tr, trc and trn calls, keyed as in the catalog", () => {
     const source = `

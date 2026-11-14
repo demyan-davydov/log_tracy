@@ -4,13 +4,13 @@
 // adds new texts untranslated (""), moves the texts gone from the code to "obsolete" (and
 // back when they return), sorts the keys. A call or mark whose text is not a literal is an
 // error: it can't be found.
-//   node scripts/i18n-extract.mjs            update the catalogs
-//   node scripts/i18n-extract.mjs --check    only tell what is out of date (exit code 1)
+//   node scripts/utils/i18n-extract.mjs            update the catalogs
+//   node scripts/utils/i18n-extract.mjs --check    only tell what is out of date (exit code 1)
 // See resources/i18n/i18n.js for the calls and the catalog; tests: tests/js/i18n-*.test.mjs.
 import { readFileSync, writeFileSync, readdirSync, realpathSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { pluralCategories } from "../resources/i18n/plural.js";
+import { pluralCategories } from "../../resources/i18n/plural.js";
 
 const translationsDir = "resources/i18n/translations";
 // Where the calls are defined, not made.
@@ -412,7 +412,7 @@ export function loadCatalogs(root) {
 }
 
 function main(check) {
-    const root = fileURLToPath(new URL("..", import.meta.url));
+    const root = fileURLToPath(new URL("../..", import.meta.url));
     const { texts, errors } = scanSources(root);
     for (const e of errors)
         console.error(`${e.file}:${e.line}: not a literal text: ${e.call}`);

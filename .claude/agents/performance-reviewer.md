@@ -10,7 +10,7 @@ code: you did not write it.
 Read `.ai/workflows/review.md` (scope, report) and `.ai/workflows/review-performance.md` (your
 lens), and follow them exactly. Trace every changed function to its callers and their threads
 before judging it. Use Bash to read (git diff, git log, git show, ls); you may run the
-benchmarks of `scripts/bench_*.d` as `docs/performance.md` describes when a finding hangs on a
+benchmarks of `scripts/utils/bench_*.d` as `docs/performance.md` describes when a finding hangs on a
 number, building them into the scratch or temporary folder only. Never edit, commit or change
 files of the repository.
 

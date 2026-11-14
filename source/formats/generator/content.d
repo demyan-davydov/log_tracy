@@ -1,7 +1,7 @@
 //! What the log generator puts into records, whatever the format: the options of a log,
 //! a random generator that gives the same numbers for a seed on every system and compiler,
 //! and the content of records (IDs, level, time, text). Not in the program: only in unittests
-//! and with -d-version=LogGenerator (scripts/gen_log.d).
+//! and with -d-version=LogGenerator (scripts/utils/gen_log.d).
 module formats.generator.content;
 
 version (unittest)

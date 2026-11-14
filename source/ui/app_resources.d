@@ -76,7 +76,7 @@ private enum string[] builtIn = [
 ];
 
 /// The files of resources/ the interface doesn't use: the Windows resource script and every file
-/// of icons/ (the logo and the icons made of it by scripts/make-icons.mjs), taken by dist
+/// of icons/ (the logo and the icons made of it by scripts/utils/make-icons.mjs), taken by dist
 // debug-eval.js: evaluated by the debug channel (ui/debug_protocol), never served to the window
 private enum string[] notBuiltIn = ["app.rc", "debug-eval.js"];
 private enum notBuiltInFolder = "icons/";

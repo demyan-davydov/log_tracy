@@ -1,11 +1,11 @@
 // The pure part of `node scripts/build.mjs bench`, which measures the working tree against a
-// ref (master) with one benchmark of scripts/ (bench_rows.d, bench_index.d): its command line,
+// ref (master) with one benchmark of scripts/utils/ (bench_rows.d, bench_index.d): its command line,
 // the numbers read from what a benchmark prints, their comparison and its table. The running
 // (a worktree of the ref, the builds, the runs): benchAgainst in build.mjs.
 // Tests: tests/js/bench-script.test.mjs.
 
 /// What `bench --help` prints.
-export const benchUsage = `Measures this working tree against a ref (master) with one benchmark of scripts/:
+export const benchUsage = `Measures this working tree against a ref (master) with one benchmark of scripts/utils/:
 builds both sides alike, runs them by turns on the same log, prints the numbers of both.
 
 Usage: node scripts/build.mjs bench [log] [benchmark arguments] [options] [-- more arguments]
@@ -21,7 +21,7 @@ Usage: node scripts/build.mjs bench [log] [benchmark arguments] [options] [-- mo
 Options:
   --against REF   what to measure against (master): a branch, a tag, a commit
   --bench rows|index
-                  scripts/bench_rows.d (scrolling, the default) or scripts/bench_index.d
+                  scripts/utils/bench_rows.d (scrolling, the default) or scripts/utils/bench_index.d
                   (building the indexes); the working tree's file measures both sides
   --runs N        runs of each side (3), by turns: the median and the spread of each
   --json FILE     also writes the numbers of every run to FILE
@@ -208,7 +208,7 @@ export function formatComparison(rows, against) {
 /// the flags and import paths of dub.sdl as dub describes them in that side's tree: optimized
 /// as docs/performance.md measures, the program at `program`, its objects in `objects`.
 export function benchCompileArgs(dubFlags, bench, program, objects) {
-    return ["-O3", "-release", "-enable-inlining", "-i", ...dubFlags, `scripts/bench_${bench}.d`,
+    return ["-O3", "-release", "-enable-inlining", "-i", ...dubFlags, `scripts/utils/bench_${bench}.d`,
         `-of=${program}`, `-od=${objects}`, "-oq"];
 }
 

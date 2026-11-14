@@ -1,11 +1,11 @@
-// The pure part of scripts/screenshot.mjs: the command line, the environment of the app, which
+// The pure part of scripts/utils/screenshot.mjs: the command line, the environment of the app, which
 // window is captured.
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import { parseShotArgs, absolutePaths, appEnv, mainWindow, programName, systemEnv, windowList,
-    xdotoolIds, xdotoolWindow } from "../../scripts/screenshot.mjs";
+    xdotoolIds, xdotoolWindow } from "../../scripts/utils/screenshot.mjs";
 
 test("a debug build, no logs, the default file and wait", () => {
     assert.deepEqual(parseShotArgs([]), {

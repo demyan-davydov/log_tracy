@@ -85,7 +85,7 @@ utils  ←  sciter  ←  ui
   inside an `xcall`.
 - The resources are built into the executable (`ui/app_resources`, string imports) and served
   to Sciter at `this://app/<path>` (`SciterWindow.onLoadData`). The icons are not built in:
-  `resources/icons/`, made of its `logo.png` by `scripts/make-icons.mjs`, are taken by `dist`.
+  `resources/icons/`, made of its `logo.png` by `scripts/utils/make-icons.mjs`, are taken by `dist`.
 - The script's `console.log` goes to the app's stdout as `info [script]: ...` lines (errors as
   `error [script]: ...`), next to the backend's `writeln`.
 
@@ -153,7 +153,7 @@ utils  ←  sciter  ←  ui
   is a request kind of the protocol, not a hook in the window or the session: a member of
   `RequestKind` with its parsing, script and response in `ui/debug_protocol`, and its case of
   the `final switch` of `Server.answer` in `ui/debug_channel` (the compiler asks for it). Its
-  client is `scripts/app.mjs`.
+  client is `scripts/utils/app.mjs`.
 
 ## Indexing and Threads
 
@@ -275,4 +275,4 @@ utils  ←  sciter  ←  ui
   `domain/index/transfers` (the catalog), `domain/attachments`, `AppSession.attachmentsJson`
 - Backend texts for the user: `utils/ui_text`, `ui/translations` (see `.ai/knowledge/i18n.md`)
 - Looking inside the running app (debug builds): `ui/debug_channel`, `ui/debug_protocol`,
-  `resources/debug-eval.js`, the client `scripts/app.mjs` (`.ai/workflows/preview-ui.md`)
+  `resources/debug-eval.js`, the client `scripts/utils/app.mjs` (`.ai/workflows/preview-ui.md`)

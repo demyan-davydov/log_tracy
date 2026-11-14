@@ -8,7 +8,7 @@ the same machine and log, one right after the other: the absolute numbers depend
 `node scripts/build.mjs bench <log> failed value` does all of the below for a branch against
 `master` in one command (`docs/building.md`, "Measuring"); by hand:
 
-`scripts/bench_rows.d` loads a log, then fetches every row of the main view the way the table does
+`scripts/utils/bench_rows.d` loads a log, then fetches every row of the main view the way the table does
 when it scrolls. It does this without a search and with each search given on the command line,
 and it also fetches the rows of the search view. After each step it prints the memory of the
 process. It builds against older checkouts too, so the same file measures `master` (copy it into
@@ -16,7 +16,7 @@ a `master` worktree) and a branch:
 
 ```sh
 ldc2 -O3 -release -enable-inlining -i -preview=in -preview=dip1000 -preview=dtorfields -Isource \
-    scripts/bench_rows.d -of=/tmp/bench_rows
+    scripts/utils/bench_rows.d -of=/tmp/bench_rows
 /tmp/bench_rows <log> failed value
 ```
 
@@ -27,7 +27,7 @@ ldc2 -O3 -release -enable-inlining -i -preview=in -preview=dip1000 -preview=dtor
   clean pages of the mapped log. **Resident** includes those pages: about the size of the file
   once every row was read.
 - The script and Sciter are not measured: this is the backend's part of a row only.
-- `scripts/bench_index.d` measures how the indexes build (offset, filter, search) in more detail.
+- `scripts/utils/bench_index.d` measures how the indexes build (offset, filter, search) in more detail.
 
 ## master at 86a26ac (2026-11-09)
 

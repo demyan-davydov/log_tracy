@@ -1,7 +1,7 @@
 // Which lenses of the review (.ai/workflows/review.md) a change needs, by the files it touches:
 // the rules always, architecture for a change across packages (or of the composition root),
 // performance and threads for the indexing, the formats, the filters and the hot rows of the log
-// table, UX for what the user sees. `node scripts/review-lenses.mjs [base]`
+// table, UX for what the user sees. `node scripts/utils/review-lenses.mjs [base]`
 // prints { base, paths, lenses } as JSON for the change of the current branch against `base`
 // (default master) plus the uncommitted and untracked files; on `base` itself, the uncommitted
 // ones only.
@@ -46,7 +46,7 @@ const performancePaths = [
     /^source\/ui\/(table_rows|main_window|app_session)\.d$/,
     /^resources\/(virtual-dlt-view|cell-format|text-selection|row-selection|rule-colors|list-navigation|virtual-select)\.js$/,
     /^resources\/table\.css$/,
-    /^scripts\/bench_/
+    /^scripts\/utils\/bench_/
 ];
 
 // What the user sees and does: the pages, styles and scripts of the window, their texts, the menu
@@ -73,7 +73,7 @@ function changedPaths(base) {
 
 // run, not imported (by the tests)
 if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) {
-    process.chdir(fileURLToPath(new URL("..", import.meta.url))); // the project root
+    process.chdir(fileURLToPath(new URL("../..", import.meta.url))); // the project root
     const base = process.argv[2] ?? "master";
     const paths = changedPaths(base);
     console.log(JSON.stringify({ base, paths, lenses: lensesFor(paths) }, null, 2));

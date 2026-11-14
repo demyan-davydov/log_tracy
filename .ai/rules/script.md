@@ -19,7 +19,7 @@ hold as well.
 
 Every text the user sees goes through `tr` / `trc` / `trn` / `trParts` with a string literal,
 or `data-tr*` in markup built once. A variable or a concatenation can't be found by
-`scripts/i18n-extract.mjs`. Catalogs are brought up to date in the same change.
+`scripts/utils/i18n-extract.mjs`. Catalogs are brought up to date in the same change.
 
 ## Resources
 

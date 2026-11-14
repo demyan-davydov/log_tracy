@@ -2,7 +2,7 @@
 // png/icon-<size>.png of every size, app.ico (Windows, built in by resources/app.rc),
 // app.icns (the macOS bundle) and app.png (Linux, the .deb). Run it on macOS after the logo
 // changes and commit what it writes: it resizes with sips and packs the .icns with iconutil.
-// Run: node scripts/make-icons.mjs. Tests: tests/js/make-icons-script.test.mjs.
+// Run: node scripts/utils/make-icons.mjs. Tests: tests/js/make-icons-script.test.mjs.
 import { spawnSync } from "node:child_process";
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -57,7 +57,7 @@ function resize(source, size, out) {
 
 function main() {
     if (process.platform !== "darwin") throw new Error("the icons are made on macOS (sips, iconutil)");
-    const dir = resolve(fileURLToPath(new URL("../resources/icons", import.meta.url)));
+    const dir = resolve(fileURLToPath(new URL("../../resources/icons", import.meta.url)));
     const logo = join(dir, "logo.png");
     const dimensions = runOrFail("sips", ["-g", "pixelWidth", "-g", "pixelHeight", logo]);
     const [width, height] = [/pixelWidth: (\d+)/, /pixelHeight: (\d+)/].map((r) => Number(dimensions.match(r)?.[1]));

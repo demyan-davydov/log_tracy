@@ -2,19 +2,19 @@
 // builds only): starts a copy in a folder of its own (its own settings, its output in app.log)
 // that keeps running, runs JavaScript in its window, waits for a condition, renders the window
 // into a PNG, moves the mouse and presses keys (macOS), stops it. For agents and people
-// checking what the app does without guessing from a screenshot. `node scripts/app.mjs --help`
+// checking what the app does without guessing from a screenshot. `node scripts/utils/app.mjs --help`
 // for the commands.
 import { spawn } from "node:child_process";
 import { closeSync, existsSync, openSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createConnection } from "node:net";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { BuildError, build, targetPath } from "./build.mjs";
+import { BuildError, build, targetPath } from "../build.mjs";
 import { copyProgram, programName, systemEnv } from "./screenshot.mjs";
 
 export const appUsage = `Drives a copy of Log Tracy (a debug build) through its debug channel.
 
-  node scripts/app.mjs <command> [options]
+  node scripts/utils/app.mjs <command> [options]
 
   start                 builds the app, starts a copy of it with settings of its own (it keeps
                         running; a copy started before is stopped first)
@@ -198,7 +198,7 @@ export function requestLine(kind, text) {
 // ── Talking to the copy ───────────────────────────────────────────────────
 
 // The copy and its output: build/app of the project, wherever the command is run from
-const copyDir = fileURLToPath(new URL("../build/app", import.meta.url));
+const copyDir = fileURLToPath(new URL("../../build/app", import.meta.url));
 const stateFile = join(copyDir, "state.json");
 const logFile = join(copyDir, "app.log");
 const sleep = s => new Promise(done => setTimeout(done, s * 1000));
@@ -223,7 +223,7 @@ export function alive(pid) {
 // The connection to the copy: request() sends a line and gives the response
 async function connect() {
     const state = readState();
-    if (!state || !alive(state.pid)) throw new BuildError("No copy is running: node scripts/app.mjs start");
+    if (!state || !alive(state.pid)) throw new BuildError("No copy is running: node scripts/utils/app.mjs start");
     const socket = createConnection({ host: "127.0.0.1", port: state.port });
     await new Promise((done, fail) => {
         socket.once("connect", done);
@@ -367,7 +367,7 @@ async function main(options) {
         case "start": return start(options);
         case "stop": return stop();
         case "log":
-            if (!existsSync(logFile)) throw new BuildError("No copy was started: node scripts/app.mjs start");
+            if (!existsSync(logFile)) throw new BuildError("No copy was started: node scripts/utils/app.mjs start");
             return process.stdout.write(readFileSync(logFile, "utf8"));
     }
     const channel = await connect();
@@ -402,7 +402,7 @@ async function main(options) {
 // run, not imported (by the tests)
 if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) {
     const cwd = process.cwd(); // the paths given are from here
-    process.chdir(fileURLToPath(new URL("..", import.meta.url))); // the project root
+    process.chdir(fileURLToPath(new URL("../..", import.meta.url))); // the project root
     try {
         const options = parseAppArgs(process.argv.slice(2));
         options.open = options.open.map(log => resolve(cwd, log));

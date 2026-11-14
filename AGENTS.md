@@ -39,24 +39,24 @@ Build and test with **ldc2** (`--compiler=ldc2`); the scripts assume it too. One
 every system, `scripts/build.mjs` (for people: `docs/building.md`):
 
 ```sh
-node scripts/build.mjs                   # debug for this machine → build/osx-aarch64-debug/log_tracy
-node scripts/build.mjs --release         # release; --arch x64|arm64 for another architecture
-node scripts/run.mjs                     # builds as above (same options) and starts the app, its stdout here
-node scripts/build.mjs test              # D unittests ("N modules passed unittests"), JS tests, stale names of .ai/
-node scripts/build.mjs test --module source/log_core/text/text_format.d  # one Sciter-free module, no dub
-node scripts/build.mjs test --brief     # any build/test command: only what failed, the rest in build/brief.log
-node scripts/build.mjs dist              # release distribution in build/dist/<macos|linux|windows>/
-node scripts/build.mjs check-windows     # from macOS/Linux: compiles app + unittests for Windows x64, no link
-node scripts/build.mjs --help            # the commands and options (run.mjs --help too)
-dub build --compiler=ldc2                # the same build without the script; dub test likewise
-node --test "tests/js/*.test.mjs"        # JS unit tests only (pure modules such as resources/new-tab.js)
-node scripts/i18n-extract.mjs            # brings the translation catalogs up to the texts of the code
-node scripts/screenshot.mjs --open <log> # the app's window with a log → build/screenshot.png (--help)
-node scripts/app.mjs start --open <log>  # a running debug copy to drive: eval, wait, shot, run, stop (--help)
+node scripts/build.mjs                          # debug for this machine → build/osx-aarch64-debug/log_tracy
+node scripts/build.mjs --release                # release; --arch x64|arm64 for another architecture
+node scripts/run.mjs                            # builds as above (same options) and starts the app, its stdout here
+node scripts/test.mjs                           # D unittests ("N modules passed unittests"), JS tests, stale names of .ai/
+node scripts/test.mjs --module source/log_core/text/text_format.d  # one Sciter-free module, no dub
+node scripts/test.mjs --brief                   # any build/test command: only what failed, the rest in build/brief.log
+node scripts/build.mjs dist                     # release distribution in build/dist/<macos|linux|windows>/
+node scripts/build.mjs check-windows            # from macOS/Linux: compiles app + unittests for Windows x64, no link
+node scripts/build.mjs --help                   # the commands and options (run.mjs --help too)
+dub build --compiler=ldc2                       # the same build without the script; dub test likewise
+node --test "tests/js/*.test.mjs"               # JS unit tests only (pure modules such as resources/new-tab.js)
+node scripts/utils/i18n-extract.mjs             # brings the translation catalogs up to the texts of the code
+node scripts/utils/screenshot.mjs --open <log>  # the app's window with a log → build/screenshot.png (--help)
+node scripts/utils/app.mjs start --open <log>   # a running debug copy to drive: eval, wait, shot, run, stop (--help)
 node scripts/build.mjs gen-log <file> --format dlt|dlt-v2|text --size 1G  # a test log, same bytes per seed (--help)
 node scripts/build.mjs bench [log] [words] --against master  # bench_rows.d (--bench index) of both sides, a table (--help)
-node scripts/check-ai-context.mjs         # names in backquotes of .ai/, AGENTS.md, .claude/ the code no longer has
-node scripts/backtrace.mjs [pid]          # stacks of every thread of a running (hung) app → build/backtrace-<pid>.txt
+node scripts/utils/check-ai-context.mjs         # names in backquotes of .ai/, AGENTS.md, .claude/ the code no longer has
+node scripts/utils/backtrace.mjs [pid]          # stacks of every thread of a running (hung) app → build/backtrace-<pid>.txt
 ```
 
 - `dub.sdl` puts every build in `build/<platform>-<arch>-<build type>/` (`osx-aarch64-unittest`

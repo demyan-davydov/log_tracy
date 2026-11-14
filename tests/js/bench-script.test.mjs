@@ -1,10 +1,10 @@
-// The pure part of `node scripts/build.mjs bench` (scripts/bench.mjs): its command line, the
+// The pure part of `node scripts/build.mjs bench` (scripts/utils/bench.mjs): its command line, the
 // numbers read from the output of a benchmark, the table of both sides.
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseBenchArgs, parseMetrics, compareRuns, formatComparison, benchCompileArgs, benchUsage, runOrder }
-    from "../../scripts/bench.mjs";
+    from "../../scripts/utils/bench.mjs";
 
 test("bench measures bench_rows against master three times by default, on a generated log", () => {
     assert.deepEqual(parseBenchArgs([]),
@@ -91,10 +91,10 @@ test("a benchmark is compiled optimized with the flags of dub.sdl, each side in 
         "/p/build/tools/obj/bench_rows_master");
     assert.ok(args.includes("-O3") && args.includes("-release") && args.includes("-enable-inlining"));
     assert.ok(args.includes("-i") && args.includes("-preview=in") && args.includes("-I/w/source/"));
-    assert.ok(args.includes("scripts/bench_rows.d"));
+    assert.ok(args.includes("scripts/utils/bench_rows.d"));
     assert.ok(args.includes("-of=/p/build/tools/bench_rows_master"));
     assert.ok(args.includes("-od=/p/build/tools/obj/bench_rows_master"));
-    assert.ok(benchCompileArgs([], "index", "x", "y").includes("scripts/bench_index.d"));
+    assert.ok(benchCompileArgs([], "index", "x", "y").includes("scripts/utils/bench_index.d"));
 });
 
 test("the sides take turns going first, so neither always meets a cold cache or a cold machine", () => {

@@ -2,7 +2,7 @@
 //! a filter and a search with the given query over it, each a few rounds.
 //!
 //! ldc2 -O3 -release -enable-inlining -i -preview=in -preview=dip1000 -preview=dtorfields -Isource \
-//!     scripts/bench_index.d -of=/tmp/bench_index && /tmp/bench_index <log> [query] [text|regex] [ic|cs]
+//!     scripts/utils/bench_index.d -of=/tmp/bench_index && /tmp/bench_index <log> [query] [text|regex] [ic|cs]
 //! (the query is a text that ignores case by default)
 //!
 //! Options:
@@ -21,7 +21,7 @@
 //! nothing matches ("zzz"), gets slower round after round, or scales worse
 //! with --threads.
 //!
-//! `node scripts/build.mjs bench` reads what this prints (scripts/bench.mjs, parseMetrics):
+//! `node scripts/build.mjs bench` reads what this prints (scripts/utils/bench.mjs, parseMetrics):
 //! a measure is a number with its unit (ms, ns/row, MB), named by its line up to the colon
 //! and its part between commas, semicolons and brackets; an indented line belongs to the
 //! unindented one above it. A number printed without its unit drops out of the comparison.

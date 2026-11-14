@@ -2,19 +2,19 @@
 // app (as build.mjs does), starts a copy of it in a folder of its own, with settings of its own (the developer's
 // settings.json is never touched), opens the logs given (OPEN_AT_START), waits, captures that window
 // only (never the screen) and stops the copy. For people and agents checking what a change
-// looks like. `node scripts/screenshot.mjs --help` for the options.
+// looks like. `node scripts/utils/screenshot.mjs --help` for the options.
 import { spawn, spawnSync } from "node:child_process";
 import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync,
     realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { BuildError, build, targetPath } from "./build.mjs";
+import { BuildError, build, targetPath } from "../build.mjs";
 
 export const shotUsage = `Takes a screenshot of the Log Tracy window: macOS, Windows, Linux on X11
 (also XWayland; needs xdotool and ImageMagick).
 
-  node scripts/screenshot.mjs [options]
+  node scripts/utils/screenshot.mjs [options]
 
   --open <log>          open this log at start (repeat for several tabs)
   --out <file.png>      where to write the screenshot (default build/screenshot.png)
@@ -372,7 +372,7 @@ async function shoot(options) {
 // run, not imported (by the tests)
 if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) {
     const cwd = process.cwd(); // the paths given are from here
-    process.chdir(fileURLToPath(new URL("..", import.meta.url))); // the project root
+    process.chdir(fileURLToPath(new URL("../..", import.meta.url))); // the project root
     try {
         const options = absolutePaths(parseShotArgs(process.argv.slice(2)), cwd);
         if (options.help) process.stdout.write(shotUsage);

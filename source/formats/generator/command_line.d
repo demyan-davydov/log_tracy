@@ -1,4 +1,4 @@
-//! The command line of the log generator (scripts/gen_log.d): its help and the options it
+//! The command line of the log generator (scripts/utils/gen_log.d): its help and the options it
 //! turns into GenOptions. Not in the program: only in unittests and with -d-version=LogGenerator.
 module formats.generator.command_line;
 

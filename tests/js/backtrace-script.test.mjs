@@ -1,10 +1,10 @@
-// The pure part of scripts/backtrace.mjs: its command line, the debugger of each system and
+// The pure part of scripts/utils/backtrace.mjs: its command line, the debugger of each system and
 // the process it takes when no pid is given.
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseBacktraceArgs, debuggerCommand, pickProcess, backtraceUsage, countThreads, isAppCommand }
-    from "../../scripts/backtrace.mjs";
+    from "../../scripts/utils/backtrace.mjs";
 
 test("the pid is optional, --out names the file", () => {
     assert.deepEqual(parseBacktraceArgs([]), { pid: null, out: null, help: false });

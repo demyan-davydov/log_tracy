@@ -53,11 +53,13 @@ The latest release, for macOS (Apple silicon), Linux (x64) and Windows (x64):
 ```sh
 node scripts/build.mjs            # debug build for this machine (fetches its Sciter library from Git LFS)
 node scripts/run.mjs              # build and start
-node scripts/build.mjs test       # D and JS unit tests
+node scripts/test.mjs             # the tests: D unittests, JS tests
 node scripts/build.mjs dist       # the distribution of this system and its installer, in build/dist/
 ```
 
-Setting up the tools on each system and the other commands: [docs/building.md](docs/building.md).
+`scripts/` holds these three; the tools of development (screenshots, driving the app, benchmarks,
+translations, icons) are in `scripts/utils/`. Setting up the tools on each system and the other
+commands: [docs/building.md](docs/building.md).
 
 ## Documentation
 

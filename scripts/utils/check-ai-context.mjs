@@ -136,7 +136,7 @@ export function checkContext() {
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) {
-    process.chdir(fileURLToPath(new URL("..", import.meta.url))); // the project root
+    process.chdir(fileURLToPath(new URL("../..", import.meta.url))); // the project root
     const stale = checkContext();
     if (stale === null) {
         console.log("Not checked: no git checkout to list the files of.");
@@ -144,6 +144,6 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.a
     }
     for (const { file, line, span, reason } of stale) console.log(`${file}:${line}: \`${span}\`: ${reason}`);
     console.log(stale.length === 0 ? "The context of .ai/ names nothing the code lacks."
-        : `${stale.length} stale names: fix them, or add a right one to "allowed" of scripts/check-ai-context.mjs.`);
+        : `${stale.length} stale names: fix them, or add a right one to "allowed" of scripts/utils/check-ai-context.mjs.`);
     process.exitCode = stale.length === 0 ? 0 : 1;
 }

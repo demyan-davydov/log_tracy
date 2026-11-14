@@ -202,7 +202,7 @@ test("the generator is compiled optimized, with its version and the flags of dub
     const args = genLogArgs(["-preview=in", "-I/p/source/"], "darwin");
     assert.ok(args.includes("-O2") && args.includes("-i") && args.includes("-d-version=LogGenerator"));
     assert.ok(args.includes("-preview=in") && args.includes("-I/p/source/"));
-    assert.ok(args.includes("scripts/gen_log.d"));
+    assert.ok(args.includes("scripts/utils/gen_log.d"));
     assert.ok(args.includes("-of=build/tools/gen_log"));
     assert.ok(genLogArgs([], "win32").includes("-of=build/tools/gen_log.exe"));
 });
@@ -243,7 +243,7 @@ test("--brief: build, test, dist and check-windows tell only what failed", () =>
     for (const usage of [buildUsage, runUsage]) assert.match(usage, /--brief/);
 });
 
-test("bench passes everything after it to scripts/bench.mjs, its --help too", () => {
+test("bench passes everything after it to scripts/utils/bench.mjs, its --help too", () => {
     assert.deepEqual(parseCommand(["bench", "big.dlt", "--runs", "5"]),
         { command: "bench", release: false, arch: null, toolArgs: ["big.dlt", "--runs", "5"] });
     assert.deepEqual(parseCommand(["bench", "--help"]), { command: "bench", release: false, arch: null, toolArgs: ["--help"] });

@@ -1,7 +1,7 @@
 //! The debug channel of debug builds: with SCITER_DEBUG_PORT=<port> a server on 127.0.0.1
 //! answers the requests of ui/debug_protocol (code to run in the window, a shot of it, the
 //! mouse moved and keys pressed as events of the system), for agents and scripts looking
-//! inside the running app (scripts/app.mjs). A release build has no server and only says that
+//! inside the running app (scripts/utils/app.mjs). A release build has no server and only says that
 //! the variable is ignored.
 //!
 //! Kept apart from the rest of the app: main() starts and stops it, nothing else knows of it.
@@ -86,7 +86,7 @@ private final class Server
         _listener.setOption(SocketOptionLevel.SOCKET, SocketOption.REUSEADDR, true);
         _listener.bind(new InternetAddress("127.0.0.1", port));
         _listener.listen(1);
-        // scripts/app.mjs reads the port from this line (port 0 is any free one)
+        // scripts/utils/app.mjs reads the port from this line (port 0 is any free one)
         writeln("Debug channel: listening on 127.0.0.1:", _listener.localAddress.toPortString);
         auto thread = new Thread(&serve);
         thread.isDaemon = true; // the app exits whatever a client does

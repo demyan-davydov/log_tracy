@@ -12,7 +12,7 @@ import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { BenchError, benchCompileArgs, benchUsage, compareRuns, defaultBenchArgs, formatComparison,
-    parseBenchArgs, runOrder } from "./bench.mjs";
+    parseBenchArgs, runOrder } from "./utils/bench.mjs";
 import { filterBuildOutput } from "./build-output-filter.mjs";
 
 export const commands = ["build", "test", "dist", "check-windows", "gen-log", "bench"];
@@ -29,7 +29,7 @@ Commands:
   build           build the program (the default) into build/<platform>-<arch>-<type>/,
                   the Sciter library next to it
   test            the D unittests, the JS tests (tests/js) and the names of .ai/ the code
-                  no longer has (scripts/check-ai-context.mjs)
+                  no longer has (scripts/utils/check-ai-context.mjs)
   test --module <file.d>
                   the unittests of one D module and of the modules it imports, without
                   dub (one that doesn't depend on Sciter): built into build/tools/
@@ -40,11 +40,11 @@ Commands:
   check-windows   compile the program and its unittests for Windows x64 from macOS or
                   Linux, without linking
   gen-log <file> [options]
-                  generate a test log (scripts/gen_log.d, built into build/tools/):
+                  generate a test log (scripts/utils/gen_log.d, built into build/tools/):
                   everything after gen-log is its own, see gen-log --help
   bench [log] [options]
-                  measure this working tree against master with scripts/bench_rows.d
-                  or bench_index.d (scripts/bench.mjs), see bench --help
+                  measure this working tree against master with scripts/utils/bench_rows.d
+                  or bench_index.d (scripts/utils/bench.mjs), see bench --help
 
 Options:
   --release       a release build instead of debug (build; dist always is one)
@@ -70,6 +70,21 @@ Options:
                   another architecture than this machine's
   --brief         the build tells only what failed, its whole output in ${briefLogPath};
                   the program's output as always
+  -h, --help      this help
+`;
+/// What `node scripts/test.mjs --help` prints.
+export const testUsage = `Runs the tests of Log Tracy: the D unittests, the JS tests (tests/js) and the
+names of .ai/ the code no longer has; the same as node scripts/build.mjs test.
+
+Usage: node scripts/test.mjs [options]
+
+Options:
+  --module <file.d>
+                  the unittests of one D module and of the modules it imports, without
+                  dub (one that doesn't depend on Sciter)
+  --arch x64|arm64
+                  another architecture than this machine's
+  --brief         only what failed, the whole output in ${briefLogPath}
   -h, --help      this help
 `;
 const arches = ["x64", "arm64"];
@@ -444,7 +459,7 @@ function test(options) {
     const dub = run("dub", dubArgs("test", options)).status === 0;
     const js = run(process.execPath, jsTestArgs).status === 0;
     // the names of .ai/, AGENTS.md, CLAUDE.md and .claude/ the code no longer has
-    const context = run(process.execPath, ["scripts/check-ai-context.mjs"]).status === 0;
+    const context = run(process.execPath, ["scripts/utils/check-ai-context.mjs"]).status === 0;
     console.log(`D unittests: ${dub ? "OK" : "FAILED"}, JS tests: ${js ? "OK" : "FAILED"}, `
         + `context of .ai/: ${context ? "OK" : "STALE"}`);
     if (!dub || !js || !context) throw new BuildError("Tests failed.");
@@ -624,7 +639,7 @@ function checkWindows() {
 /// generator in (-d-version=LogGenerator), the program in build/tools/.
 export function genLogArgs(dubFlags, platform) {
     const program = `build/tools/gen_log${platform === "win32" ? ".exe" : ""}`;
-    return ["-O2", "-i", "-d-version=LogGenerator", ...dubFlags, "scripts/gen_log.d", `-of=${program}`,
+    return ["-O2", "-i", "-d-version=LogGenerator", ...dubFlags, "scripts/utils/gen_log.d", `-of=${program}`,
         "-od=build/tools/obj", "-oq"];
 }
 
@@ -684,7 +699,7 @@ function warmPageCache(file) {
 /// The log `bench` measures when none is given: written once by the generator.
 const benchLog = { path: "build/tools/bench-dlt-256M-seed1.dlt", args: ["--format", "dlt", "--size", "256M", "--seed", "1"] };
 
-/// Measures the working tree against a ref (scripts/bench.mjs): a temporary worktree of the
+/// Measures the working tree against a ref (scripts/utils/bench.mjs): a temporary worktree of the
 /// ref gets the working tree's benchmark, both sides are built alike and run by turns on one
 /// log, then the table of their numbers. The worktree is removed whatever happens.
 function benchAgainst(toolArgs, callerDir) {
@@ -706,7 +721,7 @@ function benchAgainst(toolArgs, callerDir) {
     if (commit.status !== 0) throw new BuildError(`no commit "${options.against}" in this repository`);
     const ref = commit.stdout.trim();
 
-    const benchFile = `scripts/bench_${options.bench}.d`;
+    const benchFile = `scripts/utils/bench_${options.bench}.d`;
     const sides = [{ name: options.against, tree: mkdtempSync(join(tmpdir(), "dlt-bench-")) },
         { name: "this tree", tree: process.cwd() }];
     const base = sides[0];
@@ -766,6 +781,20 @@ function benchAgainst(toolArgs, callerDir) {
     }
 }
 
+/// Runs a command line of build.mjs (`argv` without node and the script) the way the command
+/// line does: a BuildError or BenchError is told without a stack and exits with 1. test.mjs
+/// runs its tests through it.
+export function runCommandLine(argv) {
+    try {
+        main(argv);
+    } catch (e) {
+        if (!(e instanceof BuildError || e instanceof BenchError)) throw e;
+        console.error(e.message);
+        if (briefLog !== null) console.error(`The whole output: ${briefLog}`);
+        process.exit(1);
+    }
+}
+
 function main(argv) {
     const callerDir = process.cwd();
     process.chdir(fileURLToPath(new URL("..", import.meta.url))); // the project root
@@ -783,13 +812,5 @@ function main(argv) {
 
 // run, not imported (by the tests); the module's path has its symbolic links resolved, the
 // command line's may not
-if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) {
-    try {
-        main(process.argv.slice(2));
-    } catch (e) {
-        if (!(e instanceof BuildError || e instanceof BenchError)) throw e;
-        console.error(e.message);
-        if (briefLog !== null) console.error(`The whole output: ${briefLog}`);
-        process.exit(1);
-    }
-}
+if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.argv[1]))
+    runCommandLine(process.argv.slice(2));

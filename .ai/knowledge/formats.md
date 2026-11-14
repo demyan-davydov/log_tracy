@@ -69,7 +69,7 @@ Adding a format, step by step: `.ai/workflows/add-format.md`.
   the same bytes for a seed (its own SplitMix64 `Rng`, not Phobos'). `content` gives the content
   of a record whatever the format and the options (`GenOptions`, the kinds of `Corruption`),
   `dlt` and `text` write it, `generator.generateLog` drives them and breaks records,
-  `command_line` is the tool's options. The tool: `scripts/gen_log.d`, built and run by
+  `command_line` is the tool's options. The tool: `scripts/utils/gen_log.d`, built and run by
   `node scripts/build.mjs gen-log`.
 - Its modules and `formats/dlt/testing_utils` are under `version (unittest)` or
   `-d-version=LogGenerator`: not in the program. DLT records are built by the same `BuildV1`/`BuildV2`

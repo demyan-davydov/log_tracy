@@ -46,7 +46,7 @@ part of it; flag only what nothing there explains, and say what was checked.
 ## Looking at It
 
 When the change alters what is shown and the code alone can't tell how it looks, take **one**
-screenshot (`node scripts/screenshot.mjs --open <log> --out <scratch>/review.png`, a local log
+screenshot (`node scripts/utils/screenshot.mjs --open <log> --out <scratch>/review.png`, a local log
 of `test_data/` if any; `.ai/workflows/preview-ui.md`) and judge from it. Say what it showed;
 no rounds of retakes. Hover and an open popup are checked by driving the app (macOS:
 `app.mjs hover`, then `shot`, which writes each open popup beside the window; `/app`). What

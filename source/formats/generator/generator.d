@@ -1,7 +1,7 @@
 //! The log generator: writes a log of a format, size and content as the options ask
 //! (formats/generator/content), the same bytes for the same seed, with records broken on
 //! purpose if asked. For big files, edge cases and benchmarks on data everyone has; the tool
-//! is scripts/gen_log.d. Not in the program: only in unittests and with -d-version=LogGenerator.
+//! is scripts/utils/gen_log.d. Not in the program: only in unittests and with -d-version=LogGenerator.
 module formats.generator.generator;
 
 version (unittest)

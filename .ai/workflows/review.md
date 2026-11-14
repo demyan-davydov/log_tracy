@@ -14,7 +14,7 @@ fresh context: a narrow question is answered more deeply than "anything wrong?".
 | performance | `review-performance.md` | Is it fast enough for a 1 GB log, and safe across the threads? | the indexing, formats, filters, the rows of the log table |
 | ux | `review-ux.md` | Does it behave and look as the user's requirements say? | what the user sees and does |
 
-`node scripts/review-lenses.mjs [base]` names the lenses a change needs by its files (and lists
+`node scripts/utils/review-lenses.mjs [base]` names the lenses a change needs by its files (and lists
 the files). A lens can also be asked for by name.
 
 When: before the merge of a feature, and on request when a change touches the threads or the

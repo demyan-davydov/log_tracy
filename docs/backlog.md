@@ -154,7 +154,7 @@
 
 ## Отладочный канал: что осталось (история `debug-channel`)
 
-Канал и `scripts/app.mjs` сделаны (`docs/stories/debug-channel.md`); не сделано:
+Канал и `scripts/utils/app.mjs` сделаны (`docs/stories/debug-channel.md`); не сделано:
 
 - Нажатие кнопки мыши (`click x y`, `:focus` от мыши, перетаскивание): на macOS не дошло ни
   одним способом изнутри процесса (`.ai/knowledge/sciter.md`, «Events of the System»). Что ещё
@@ -256,7 +256,7 @@ D"},"VoiceBiometryUserID":{... "updated":false,
 
 ## Стеки зависшего приложения: проверить на Linux (история `dev-tools`)
 
-`scripts/backtrace.mjs` запускался только на macOS (`lldb`). На Linux он берёт
+`scripts/utils/backtrace.mjs` запускался только на macOS (`lldb`). На Linux он берёт
 `gdb -batch -p <pid> -ex "thread apply all bt" -ex detach`: не проверено, что `gdb` подключается
 при `ptrace_scope` = 1 (по умолчанию в Ubuntu нужен `sudo` или `ptrace_scope` = 0) и что
 счётчик потоков узнаёт его вывод (`Thread N`). На Windows отладчика по умолчанию нет — скрипт
@@ -264,7 +264,7 @@ D"},"VoiceBiometryUserID":{... "updated":false,
 
 ## Снимок окна: проверить на Linux и Windows (история `ai-context`)
 
-`scripts/screenshot.mjs` написан для трёх систем, но запускался только на macOS.
+`scripts/utils/screenshot.mjs` написан для трёх систем, но запускался только на macOS.
 
 - Windows: PowerShell с user32 (`EnumWindows`, `PrintWindow`) не проверен. Скорее всего
   `GetWindowRect` включает невидимую рамку DWM, и у снимка будут прозрачные поля: тогда брать

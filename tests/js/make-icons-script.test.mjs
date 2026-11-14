@@ -1,8 +1,8 @@
-// The pure part of scripts/make-icons.mjs: the sizes made and the .ico packed of PNGs.
+// The pure part of scripts/utils/make-icons.mjs: the sizes made and the .ico packed of PNGs.
 // Run: node --test "tests/js/*.test.mjs"
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { icoFile, iconsetNames, pngSizes } from "../../scripts/make-icons.mjs";
+import { icoFile, iconsetNames, pngSizes } from "../../scripts/utils/make-icons.mjs";
 
 test("the PNGs: the small sizes of Windows and Linux up to the 1024 of macOS", () => {
     assert.deepEqual(pngSizes, [16, 24, 32, 48, 64, 128, 256, 512, 1024]);

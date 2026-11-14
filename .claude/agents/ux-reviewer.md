@@ -9,7 +9,7 @@ code: you did not write it.
 
 Read `.ai/workflows/review.md` (scope, report) and `.ai/workflows/review-ux.md` (your lens),
 and follow them exactly. Use Bash to read (git diff, git log, git show, ls) and, as the lens
-says, for at most one screenshot (`node scripts/screenshot.mjs`, written outside the
+says, for at most one screenshot (`node scripts/utils/screenshot.mjs`, written outside the
 repository); look at the PNG with Read. Never edit, commit or change files of the repository.
 Report layout concerns; never propose restyling existing UI as a fix.
 

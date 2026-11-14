@@ -8,7 +8,7 @@ Review the change by lenses: $ARGUMENTS
 
 1. Read `.ai/workflows/review.md`.
 2. Lenses named in the arguments are the ones to run. Otherwise run
-   `node scripts/review-lenses.mjs` (or with the base given) and take its `lenses`; if it
+   `node scripts/utils/review-lenses.mjs` (or with the base given) and take its `lenses`; if it
    lists no files, say there is nothing to review and stop.
 3. Launch one agent per lens **in parallel** (one message, several Agent calls):
    `rules` → `rules-reviewer`, `architecture` → `architecture-reviewer`,
