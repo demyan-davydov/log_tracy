@@ -15,12 +15,15 @@ Applies to every fix and feature, D and script alike.
 
 ## Running
 
-- All tests: `node scripts/test.mjs` (= `build.mjs test`; D unittests, "N modules passed unittests", and
-  the JS tests). JS only: `node --test "tests/js/*.test.mjs"` (node 22 takes no folder).
-- The druntime test runner has no filter, and it stops a module's tests at the first failing
-  `unittest` block: when one module gets several new tests, check each of them separately.
-- One module that doesn't depend on Sciter: `node scripts/test.mjs --module <file.d>`.
-- An agent runs them with `--brief` (`build`, `test`, `test --module`, `dist`,
+- All tests: `node scripts/test.mjs` (= `build.mjs test`; D unittests, "N test(s) run, 0 failed.",
+  and the JS tests). JS only: `node --test "tests/js/*.test.mjs"` (node 22 takes no folder).
+- `dub test` runs unit-threaded's runner in one thread: each `unittest` block is a test of its
+  own (name it with a `@("...")` string), a failed one doesn't stop the ones after it.
+- Some D tests: `node scripts/test.mjs --filter <name>` (a module, `utils.fsm`, or a test's
+  full name; repeatable), the same as `dub test --compiler=ldc2 -- <name>`.
+- One module that doesn't depend on Sciter: `node scripts/test.mjs --module <file.d>`. It runs
+  druntime's runner: no filter, a module's tests stop at the first failing `unittest` block.
+- An agent runs them with `--brief` (`build`, `test`, `test --filter`, `test --module`, `dist`,
   `run.mjs`): one summary line when all pass, else the compile errors and
   failed tests with their places. The whole output is in `build/brief.log`: read it when the
   brief lines don't explain a failure.

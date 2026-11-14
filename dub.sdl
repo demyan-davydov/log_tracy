@@ -39,17 +39,27 @@ buildType "dist" {
 preBuildCommands "node \"$PACKAGE_DIR/scripts/windows-res.mjs\"" platform="windows"
 sourceFiles "build/windows/app.res" platform="windows"
 
-// The program (dub build, the first configuration) and the library dub test builds its runner
-// of the unittests from. Only the program is a window application of Windows: the runner
-// keeps the console its output goes to
+// The program (dub build, the first configuration) and the runner of the unittests (dub test
+// takes the configuration named unittest). Only the program is a window application of
+// Windows: the runner keeps the console its output goes to
 configuration "application" {
 	targetType "executable"
 	// ldc2 makes wmain of D's main on Windows: a window application starts there, not at
 	// WinMain (the default of /SUBSYSTEM:WINDOWS) nor main (mainCRTStartup)
 	lflags "/SUBSYSTEM:WINDOWS" "/ENTRY:wmainCRTStartup" platform="windows"
 }
-configuration "library" {
-	targetType "library"
-	excludedSourceFiles "source/app.d" // the program's main: dub test brings its own
+// unit-threaded's runner: every unittest block a test of its own (the ones after a failed one
+// still run), a filter by name (dub test -- <name>...), its options by -- -h. Its main is
+// generated before every build from the modules of the package (gen_ut_main). One thread
+// (unitUnthreaded): tests that share a global state are safe, and they run fast anyway. dub
+// runs the command in the package's folder and puts in $DUB and $DC itself (no shell's
+// variables: cmd.exe has none of that form); the generator is of the version the runner is
+configuration "unittest" {
+	targetType "executable"
+	dependency "unit-threaded" version="~>2.2.6"
+	versions "unitUnthreaded"
+	mainSourceFile "build/unittest/ut.d"
+	excludedSourceFiles "source/app.d" // the program's main
+	preBuildCommands "\"$DUB\" run --compiler=\"$DC\" unit-threaded@2.2.6 -c gen_ut_main -- -f build/unittest/ut.d -d \"$DUB\""
 }
 

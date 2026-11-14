@@ -36,6 +36,10 @@ Commands:
   test --module <file.d>
                   the unittests of one D module and of the modules it imports, without
                   dub (one that doesn't depend on Sciter): built into build/tools/
+  test --filter <name> [--filter <name>...]
+                  only the D unittests whose names start with one of these, by
+                  unit-threaded's runner: utils.fsm, or a test's own name (dub test -- -l
+                  lists them)
   dist            a distribution in build/dist/<macos|linux|windows>/: the release of an
                   installed program (build type dist), settings in the user's folder; with
                   its installer, a .dmg on macOS, a .deb on Linux (where dpkg-deb is), a
@@ -84,6 +88,9 @@ Options:
   --module <file.d>
                   the unittests of one D module and of the modules it imports, without
                   dub (one that doesn't depend on Sciter)
+  --filter <name>
+                  only the D unittests whose names start with it (a module, utils.fsm, or a
+                  test's own name), no JS tests; may be repeated
   --arch x64|arm64
                   another architecture than this machine's
   --brief         only what failed, the whole output in ${briefLogPath}
@@ -110,6 +117,7 @@ export function parseCommand(argv) {
     let release = false;
     let arch = null;
     let module = null;
+    const filters = [];
     let brief = false;
     for (let i = 0; i < argv.length; i++) {
         const arg = argv[i];
@@ -126,6 +134,10 @@ export function parseCommand(argv) {
             if (value === undefined || value.startsWith("-")) throw new BuildError("--module needs a file: --module source/utils/fsm.d");
             if (!value.endsWith(".d")) throw new BuildError(`--module takes a D file (.d), got "${value}"`);
             module = value;
+        } else if (arg === "--filter" || arg.startsWith("--filter=")) {
+            const value = arg === "--filter" ? argv[++i] : arg.slice("--filter=".length);
+            if (!value || value.startsWith("-")) throw new BuildError("--filter needs a name: --filter utils.fsm");
+            filters.push(value);
         } else if (arg.startsWith("-")) throw new BuildError(`unknown option ${arg}`);
         else if (command !== null) throw new BuildError(`one command only, got "${command}" and "${arg}"`);
         else if (!commands.includes(arg))
@@ -137,20 +149,27 @@ export function parseCommand(argv) {
     if (release && (command === "test" || command === "pack-libs"))
         throw new BuildError(`${command} takes no --release`);
     if (arch && command === "pack-libs") throw new BuildError("pack-libs packs every library, it takes no --arch");
+    if (filters.length > 0) {
+        if (command !== "test") throw new BuildError("--filter is an option of test: node scripts/build.mjs test --filter <name>");
+        if (module !== null) throw new BuildError("--filter is for dub test, --module runs druntime's runner: one of them");
+    }
     if (module !== null) {
         if (command !== "test") throw new BuildError("--module is an option of test: node scripts/build.mjs test --module <file.d>");
         if (arch) throw new BuildError("test --module builds for this machine only, it takes no --arch");
         return { command, release: false, arch: null, module, ...(brief && { brief }) };
     }
-    return { command, release: release || command === "dist", arch, ...(brief && { brief }) };
+    return { command, release: release || command === "dist", arch, ...(filters.length > 0 && { filters }),
+        ...(brief && { brief }) };
 }
 
-/// The arguments of dub for `build` or `test` (whose build type is always unittest).
-export function dubArgs(command, { release, installed, arch }) {
+/// The arguments of dub for `build` or `test` (whose build type is always unittest); `filters`
+/// go to unit-threaded's runner of `test`.
+export function dubArgs(command, { release, installed, arch, filters = [] }) {
     const args = [command, "--compiler=ldc2"];
     // dist: the release of an installed program, settings in the user's folder (dub.sdl)
     if (command === "build") args.push(`--build=${installed ? "dist" : release ? "release" : "debug"}`);
     if (arch) args.push(`--arch=${dubArchOf[arch]}`);
+    if (filters.length > 0) args.push("--", ...filters);
     return args;
 }
 
@@ -542,6 +561,12 @@ export function targetPath(options) {
 function test(options) {
     checkSciterLibrary(options.arch ?? process.arch);
     const dub = run("dub", dubArgs("test", options)).status === 0;
+    // a filter asks for some D tests: the rest would only be in the way
+    if (options.filters) {
+        console.log(`D unittests: ${dub ? "OK" : "FAILED"}`);
+        if (!dub) throw new BuildError("Tests failed.");
+        return;
+    }
     const js = run(process.execPath, jsTestArgs).status === 0;
     // the names of .ai/, AGENTS.md, CLAUDE.md and .claude/ the code no longer has
     const context = run(process.execPath, ["scripts/utils/check-ai-context.mjs"]).status === 0;
@@ -713,12 +738,14 @@ export function moduleTestArgs(dubFlags, file, platform) {
 /// The flags and import paths of dub.sdl, as dub describes them for a build in `cwd`. dub
 /// checks the files of copyFiles even to describe: here the Sciter library is unpacked as for
 /// a build; another tree (the base of bench, its LFS files not fetched) gets an empty file in
-/// its place, which nothing there loads.
-function dubCompilerFlags(cwd) {
+/// its place, which nothing there loads. `configuration`: the one of dub.sdl to describe, the
+/// program's when not given.
+function dubCompilerFlags(cwd, configuration) {
     const library = sciterLibrary(process.platform, process.arch);
     if (cwd === undefined || resolve(cwd) === process.cwd()) checkSciterLibrary(process.arch);
     else if (!existsSync(join(cwd, library))) writeFileSync(join(cwd, library), "");
-    const described = run("dub", ["describe", "--compiler=ldc2", "--data=dflags,import-paths", "--data-0"],
+    const described = run("dub", ["describe", "--compiler=ldc2", ...(configuration ? [`--config=${configuration}`] : []),
+        "--data=dflags,import-paths", "--data-0"],
         { capture: true, cwd });
     if (described.status !== 0) throw new BuildError(`dub describe failed:\n${described.stderr}`);
     return compilerArgs(described.stdout);
@@ -729,7 +756,8 @@ function dubCompilerFlags(cwd) {
 function testModule(file, callerDir) {
     const path = [resolve(callerDir, file), resolve(file)].find((candidate) => existsSync(candidate));
     if (!path) throw new BuildError(`no file ${file}`);
-    const args = moduleTestArgs(dubCompilerFlags(), relative(process.cwd(), path), process.platform);
+    // the configuration of the tests: unit-threaded's import paths, for tests that use its asserts
+    const args = moduleTestArgs(dubCompilerFlags(undefined, "unittest"), relative(process.cwd(), path), process.platform);
     runOrFail("ldc2", args, "Building the unittests of the module failed.");
     const program = resolve(args.find((arg) => arg.startsWith("-of=")).slice("-of=".length));
     const status = run(program, [], { echo: false }).status;
@@ -865,14 +893,14 @@ export function runCommandLine(argv) {
 function main(argv) {
     const callerDir = process.cwd();
     process.chdir(fileURLToPath(new URL("..", import.meta.url))); // the project root
-    const { command, release, arch, toolArgs, module, brief } = parseCommand(argv);
+    const { command, release, arch, toolArgs, module, filters, brief } = parseCommand(argv);
     if (brief) startBrief();
     if (command === "gen-log") genLog(toolArgs, callerDir);
     else if (command === "bench") benchAgainst(toolArgs, callerDir);
     else if (command === "help") process.stdout.write(buildUsage);
     else if (command === "build") console.log(`Built: ${build({ release, arch })}`);
     else if (command === "test" && module) testModule(module, callerDir);
-    else if (command === "test") test({ arch });
+    else if (command === "test") test({ arch, filters });
     else if (command === "dist") dist(arch);
     else if (command === "pack-libs") return packLibs();
     else throw new Error(`no branch of main for the command "${command}"`);

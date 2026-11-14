@@ -42,7 +42,8 @@ every system, `scripts/build.mjs` (for people: `docs/building.md`):
 node scripts/build.mjs                          # debug for this machine → build/osx-aarch64-debug/log_tracy
 node scripts/build.mjs --release                # release; --arch x64|arm64 for another architecture
 node scripts/run.mjs                            # builds as above (same options) and starts the app, its stdout here
-node scripts/test.mjs                           # D unittests ("N modules passed unittests"), JS tests, stale names of .ai/
+node scripts/test.mjs                           # D unittests ("N test(s) run, 0 failed."), JS tests, stale names of .ai/
+node scripts/test.mjs --filter utils.fsm        # only the D unittests whose names start with it (repeatable), no JS tests
 node scripts/test.mjs --module source/log_core/text/text_format.d  # one Sciter-free module, no dub
 node scripts/test.mjs --brief                   # any build/test command: only what failed, the rest in build/brief.log
 node scripts/build.mjs dist                     # release distribution in build/dist/<macos|linux|windows>/
@@ -65,8 +66,11 @@ node scripts/utils/backtrace.mjs [pid]          # stacks of every thread of a ru
   (`<library>.br`) in Git LFS and a clone fetches none of them (`.lfsconfig`):
   `scripts/build.mjs` fetches the one archive a build needs and unpacks it next to itself
   (ignored by git), while a plain `dub build` on a fresh clone finds no library. The Sciter version is in `libs/SCITER_VERSION`; the app's version is `VERSION`.
-- `test --module` compiles one module and what it imports with the flags of `dub.sdl`: the
-  druntime runner has no filter and stops a module at its first failing `unittest`.
+- `dub test` runs unit-threaded's runner (`dub.sdl`, configuration `unittest`, one thread):
+  every `unittest` block is a test of its own, named by its `@("...")` string, and the ones
+  after a failed one still run. `test --module` compiles one module and what it imports with
+  the flags of `dub.sdl` and druntime's runner: no filter, a module stops at its first failing
+  `unittest`.
 - Keep the `-preview=in/dip1000/dtorfields` flags of `dub.sdl` when compiling by hand.
 - The files of `resources/` are built into the executable: a JS/CSS/HTML change needs a
   rebuild, a new file is added to `ui/app_resources`.
