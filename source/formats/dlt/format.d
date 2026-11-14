@@ -20,6 +20,21 @@ import std.algorithm.comparison : max, min;
 //! How the user and the settings know DltFormat
 enum FormatInfo dltFormatInfo = FormatInfo("dlt", "DLT", "DLT");
 
+//! @returns true if the records of `format` can be decoded by a FIBEX (withFibex)
+bool takesFibex(const(LogFormat) format) pure nothrow @nogc
+{
+    return cast(const(DltFormat)) format !is null;
+}
+
+//! @brief `format` decoding by `fibex` (none for null): the same records, the bytes split the
+//! same way, non-verbose messages decoded another way
+//! @returns null if `format` takes no FIBEX (takesFibex)
+LogFormat withFibex(const(LogFormat) format, immutable Fibex fibex) pure nothrow
+{
+    const dlt = cast(const(DltFormat)) format;
+    return dlt is null ? null : new DltFormat(dlt.hasStorageHeader, fibex);
+}
+
 //! DLT messages, with a storage header (DLT files) or without one (streams).
 //! Record layout: [ Storage Header ] Standard Header [ ... ] where the
 //! standard header holds the length of the message without the storage header.
@@ -30,16 +45,22 @@ enum FormatInfo dltFormatInfo = FormatInfo("dlt", "DLT", "DLT");
 final class DltFormat : LogFormat, PartedFormat, TransferringFormat
 {
     private immutable bool _hasStorageHeader;
-    private const Fibex _fibex; // read concurrently, never changed
+    private immutable Fibex _fibex; // read concurrently: never changed
 
     //! The most bytes scanRecords() skips looking for a storage header before
     //! returning control to the caller
     enum size_t maxHeaderScan = 1024 * 1024;
 
-    this(bool hasStorageHeader = true, const Fibex fibex = null) pure nothrow @nogc @safe
+    this(bool hasStorageHeader = true, immutable Fibex fibex = null) pure nothrow @nogc @safe
     {
         _hasStorageHeader = hasStorageHeader;
         _fibex = fibex;
+    }
+
+    //! The FIBEX non-verbose messages are decoded by, null if none
+    immutable(Fibex) fibex() const pure nothrow @nogc
+    {
+        return _fibex;
     }
 
     bool hasStorageHeader() const pure nothrow @nogc @property
@@ -974,4 +995,31 @@ unittest
     // A regression guard: a format without FIBEX shows the message as before
     assert(new DltFormat().decode(msg, record));
     assert(msg.payloadText == "[11] 002A |.*"w, "no FIBEX: the ID and the bytes");
+}
+
+@("withFibex: the same storage header choice, decoding by the FIBEX given or by none")
+unittest
+{
+    import formats.dlt.fibex : fibexOf, logFrame, parseFibex, textPdu;
+    import formats.dlt.testing_utils : BuildV1, bytesOf;
+    import formats.plain_text : PlainTextFormat;
+
+    const fibex = parseFibex(fibexOf(textPdu("P_T", "Started"), logFrame("ID_3", "APP1", "CON1", "P_T")));
+    BuildV1 r;
+    r.extended = false;
+    r.payload = bytesOf(3u);
+    const record = r.bytes();
+
+    assert(takesFibex(new DltFormat()) && !takesFibex(new PlainTextFormat()));
+    auto described = cast(DltFormat) withFibex(new DltFormat(true), fibex);
+    assert(described !is null && described.hasStorageHeader && described.fibex is fibex);
+    LogMessage!wchar msg;
+    assert(described.decode(msg, record) && msg.payloadText == "Started"w);
+
+    auto stream = cast(DltFormat) withFibex(new DltFormat(false), fibex);
+    assert(!stream.hasStorageHeader, "a stream stays a stream: the records are split the same way");
+
+    auto plain = cast(DltFormat) withFibex(described, null);
+    assert(plain.fibex is null && plain.decode(msg, record) && msg.payloadText == "[3]"w);
+    assert(withFibex(new PlainTextFormat(), fibex) is null, "a format that takes no FIBEX");
 }

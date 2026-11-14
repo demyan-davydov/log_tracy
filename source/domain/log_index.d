@@ -139,6 +139,16 @@ struct LogIndex
         return _store.format;
     }
 
+    //! @brief Decodes the records by `format` from now on: a format of the same records
+    //! (RecordStore.replaceFormat). The filter and search indexes, built by the format of
+    //! before, are the caller's to build again. Asked while no pass runs
+    void replaceFormat(LogFormat format)
+    {
+        assert(!busy, "a pass is running");
+        synchronized (mutex)
+            _store.replaceFormat(format);
+    }
+
     //! Asks the running pass to stop: it ends as cancelled, and what it brought
     //! up to date stays, so the next pass goes on from there
     void cancelCurrentOperation()

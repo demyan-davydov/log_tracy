@@ -108,7 +108,7 @@ final class Fibex
 
 //! @brief Reads the FIBEX file at `path`, or every `*.xml` of the folder at `path`
 //! @throws Exception if a file can't be read or isn't FIBEX
-Fibex loadFibex(string path)
+immutable(Fibex) loadFibex(string path)
 {
     import std.algorithm : filter, map, sort;
     import std.array : array;
@@ -125,10 +125,14 @@ Fibex loadFibex(string path)
                 "file", path, "reason", uiTextOf(e)));
     if (folder)
     {
-        files = dirEntries(path, SpanMode.shallow)
-            .filter!(e => e.isFile && e.name.extension.toLower == ".xml")
-            .map!(e => e.name)
-            .array;
+        try
+            files = dirEntries(path, SpanMode.shallow)
+                .filter!(e => e.isFile && e.name.extension.toLower == ".xml")
+                .map!(e => e.name)
+                .array;
+        catch (Exception e)
+            throw new UiTextException(uiText("can't read the FIBEX folder {folder}: {reason}",
+                    "folder", path, "reason", uiTextOf(e)));
         sort(files);
         if (!files.length)
             throw new UiTextException(uiText("no FIBEX files (*.xml) in {folder}", "folder", path));
@@ -142,18 +146,24 @@ Fibex loadFibex(string path)
             throw new UiTextException(uiText("can't read the FIBEX file {file}: {reason}",
                     "file", file, "reason", uiTextOf(e)));
     }
-    return fibex;
+    return frozen(fibex);
 }
 
 //! @brief Reads FIBEX files from their texts; a PDU is referred to only from its own file, the
 //! frames of all of them are looked up together
 //! @throws Exception if one isn't FIBEX
-Fibex parseFibex(scope const(string)[] texts...)
+immutable(Fibex) parseFibex(scope const(string)[] texts...)
 {
     auto fibex = new Fibex;
     foreach (text; texts)
         readInto(fibex, text);
-    return fibex;
+    return frozen(fibex);
+}
+
+// `fibex` once read, never changed again: nothing else refers to it
+private immutable(Fibex) frozen(Fibex fibex) pure nothrow @nogc @trusted
+{
+    return cast(immutable) fibex;
 }
 
 // A PDU as it is read, before a frame refers to it
@@ -460,9 +470,11 @@ private LogLevel levelOf(string name) pure nothrow @nogc @safe
 
 version (unittest)
 {
-    // A FIBEX of the usual layout: `pdus` and `frames` inside; also for the tests of the
-    // decoding (formats/dlt/parser)
-    package string fibexOf(string pdus, string frames)
+    import std.conv : octal;
+
+    // A FIBEX of the usual layout: `pdus` and `frames` inside; also for the tests of the decoding,
+    // the registry and the documents
+    string fibexOf(string pdus, string frames)
     {
         return `<?xml version="1.0"?>
 <fx:FIBEX xmlns:fx="http://www.asam.net/xml/fbx" xmlns:ho="http://www.asam.net/xml" VERSION="3.1.0">
@@ -474,13 +486,13 @@ version (unittest)
 </fx:FIBEX>`;
     }
 
-    package string textPdu(string id, string text)
+    string textPdu(string id, string text)
     {
         return `<fx:PDU ID="` ~ id ~ `"><ho:SHORT-NAME>` ~ id ~ `</ho:SHORT-NAME><ho:DESC>` ~ text
             ~ `</ho:DESC><fx:BYTE-LENGTH>0</fx:BYTE-LENGTH><fx:PDU-TYPE>OTHER</fx:PDU-TYPE></fx:PDU>`;
     }
 
-    package string valuePdu(string id, string signal, uint byteLength)
+    string valuePdu(string id, string signal, uint byteLength)
     {
         import std.conv : to;
 
@@ -491,7 +503,7 @@ version (unittest)
             </fx:SIGNAL-INSTANCE></fx:SIGNAL-INSTANCES></fx:PDU>`;
     }
 
-    package string frame(string id, string type, string info, string app, string ctx,
+    string frame(string id, string type, string info, string app, string ctx,
         const(string)[] pdus...)
     {
         string refs;
@@ -511,7 +523,7 @@ version (unittest)
             </fx:MANUFACTURER-EXTENSION></fx:FRAME>`;
     }
 
-    package string logFrame(string id, string app, string ctx, const(string)[] pdus...)
+    string logFrame(string id, string app, string ctx, const(string)[] pdus...)
     {
         return frame(id, "DLT_TYPE_LOG", "DLT_LOG_INFO", app, ctx, pdus);
     }
@@ -735,6 +747,37 @@ unittest
     auto wrong = cast(UiTextException) collectException(loadFibex(filter));
     assert(wrong !is null && wrong.msg == "can't read the FIBEX file " ~ filter
         ~ ": its root element is <dltfilter>, not <FIBEX>", wrong.msg);
+}
+
+@("loadFibex: a folder that can't be listed: a text for the user naming it")
+unittest
+{
+    version (Posix)
+    {
+        import core.sys.posix.sys.stat : chmod;
+        import std.algorithm : canFind;
+        import std.exception : collectException;
+        import std.file : mkdirRecurse, rmdirRecurse, tempDir;
+        import std.path : buildPath;
+        import std.string : toStringz;
+
+        const folder = buildPath(tempDir(), "log_tracy_fibex_unlisted_test");
+        mkdirRecurse(folder);
+        scope (exit)
+        {
+            chmod(folder.toStringz, octal!755);
+            rmdirRecurse(folder);
+        }
+        import core.sys.posix.unistd : geteuid;
+
+        if (geteuid() == 0)
+            return; // the superuser lists a folder of no permissions: nothing to check
+        chmod(folder.toStringz, 0);
+        auto e = cast(UiTextException) collectException(loadFibex(folder));
+        assert(e !is null && e.text.text == "can't read the FIBEX folder {folder}: {reason}",
+            e is null ? "listed: run as a user the permissions stop" : e.msg);
+        assert(e.msg.canFind(folder));
+    }
 }
 
 @("loadFibex: a file, or every *.xml of a folder")

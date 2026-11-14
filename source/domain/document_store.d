@@ -16,7 +16,7 @@ import log_core.log_format : FormatChoice, LogFormat;
 
 import utils.event_bus.event_bus_interface : SignalConsumer, SubscriptionToken;
 import utils.event_bus.event_bus_sync : EventBusSync;
-import utils.ui_text : uiText, UiTextException;
+import utils.ui_text : uiText, UiText, UiTextException;
 
 import std.algorithm : countUntil, remove;
 import std.meta : AliasSeq;
@@ -30,7 +30,7 @@ struct DocumentEvent(E)
 
 /// Document events that DocumentStore forwards as DocumentEvent!E
 alias ForwardedDocumentEvents = AliasSeq!(OperationStarted, OperationProgress, OperationFinished, ContentGrown,
-    SourceLost, AttachmentsChanged);
+    SourceLost, AttachmentsChanged, FormatReplaced);
 
 private class NullDocumentView : DocumentView
 {
@@ -84,6 +84,15 @@ private class NullDocument : Document
     override FormatChoice formatChoice() const
     {
         return FormatChoice.init;
+    }
+
+    override UiText descriptionsProblem() const
+    {
+        return UiText.init;
+    }
+
+    override void replaceFormat(LogFormat format, string descriptions)
+    {
     }
 
     override size_t messageCount() nothrow @nogc

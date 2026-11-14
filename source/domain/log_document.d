@@ -1,7 +1,8 @@
-//! LogDocument: a log file opened in a format (chosen before or detected), its
-//! main and search views over its indexes, the filter and search requests given
-//! to the passes of the index, the operations they run as its events tell
-//! them, and its anchors.
+//! LogDocument: a log file opened in a format (chosen before or detected) with the
+//! descriptions of the choice if it takes them, its main and search views over its
+//! indexes, the filter, search and format requests given to the passes of the index (a
+//! format replaced keeps the records and builds the views again), the operations they
+//! run as its events tell them, and its anchors.
 module domain.log_document;
 
 import domain.document;
@@ -15,15 +16,15 @@ import domain.anchors;
 import domain.attachments : Attachment, AttachmentState;
 import domain.log_index;
 import domain.index.record_store : RecordsLease;
-import formats.registry : createFormat, detectFormat;
+import formats.registry : createFormat, detectFormat, takesDescriptions, withDescriptions;
 import log_core.byte_source;
-import log_core.log_format : LogFormat, ColumnInfo, FormatChoice;
+import log_core.log_format : ColumnInfo, FormatChoice, LogFormat;
 
 import utils.lock_guard;
 
 import utils.event_bus.event_bus_async : EventBusAsync;
 import utils.event_bus.event_bus_interface : SignalConsumer;
-import utils.ui_text : UiText;
+import utils.ui_text : UiText, uiTextOf;
 
 //! A log document: a log of any format with its main and search views
 class LogDocument : Document
@@ -36,6 +37,11 @@ class LogDocument : Document
     private Anchors _anchors;
 
     private FormatChoice _formatChoice;
+    private UiText _descriptionsProblem; // why the descriptions of the choice weren't taken
+    // A format asked for (replaceFormat), given to the index once no pass runs: a request of
+    // its own, which a cancel of the filter or the search doesn't drop
+    private LogFormat _pendingFormat;
+    private FormatChoice _pendingChoice; // of the format asked for: told with it
 
     private EventBusAsync _events; // must outlive _index: its worker publishes here
     private LogIndex _index;
@@ -86,15 +92,55 @@ class LogDocument : Document
             catch (Exception)
                 format = null;
         }
+        const descriptions = choice.descriptions;
         if (format is null)
             format = detectFormat(path, source.data, choice);
+        choice.descriptions = descriptions; // not detected: kept for the format detected too
+        // Descriptions a format takes but that can't be read leave the log decoded without
+        // them, the choice keeps them so the next open tries again; a format that takes none
+        // (a log detected anew) isn't named descriptions
+        UiText problem;
+        if (descriptions.length && !takesDescriptions(format))
+            choice.descriptions = null;
+        else if (descriptions.length)
+        {
+            try
+                format = withDescriptions(format, descriptions);
+            catch (Exception e)
+                problem = uiTextOf(e);
+        }
         this(source, format);
         _formatChoice = choice;
+        _descriptionsProblem = problem;
     }
 
     override FormatChoice formatChoice() const pure nothrow @nogc
     {
         return _formatChoice;
+    }
+
+    override UiText descriptionsProblem() const
+    {
+        return _descriptionsProblem;
+    }
+
+    override void replaceFormat(LogFormat format, string descriptions)
+    {
+        FormatChoice choice = _formatChoice;
+        choice.descriptions = descriptions;
+        if (sourceLost || _failed)
+        {
+            // Nothing to decode: a Retry opens the file by the choice
+            _formatChoice = choice;
+            _descriptionsProblem = UiText.init;
+            _events.publish(FormatReplaced(false));
+            return;
+        }
+        // The choice goes with the format, once it is replaced: formatChoice never names
+        // descriptions the records aren't decoded by
+        _pendingFormat = format;
+        _pendingChoice = choice;
+        applyPending();
     }
 
     //! @param source - owned by the document from now on
@@ -128,6 +174,7 @@ class LogDocument : Document
             _sourceLost = true;
             _pendingViewFilter = PendingRequest.init;
             _pendingSearch = PendingRequest.init;
+            dropPendingFormat();
             _events.publish(SourceLost());
         }
         _events.dispatch();
@@ -225,12 +272,24 @@ class LogDocument : Document
     //! While a pass runs it is only asked to stop: its PassFinished comes here.
     private void applyPending()
     {
-        if (!_pendingViewFilter.requested && !_pendingSearch.requested)
+        if (!_pendingViewFilter.requested && !_pendingSearch.requested && _pendingFormat is null)
             return;
         if (_passRunning)
         {
             _index.cancelCurrentOperation();
             return;
+        }
+
+        // The format first: the views are built again by it, in this same call, so that no
+        // cancel of the filter comes between and leaves them built by the format of before
+        if (_pendingFormat !is null)
+        {
+            _index.replaceFormat(_pendingFormat);
+            _pendingFormat = null;
+            _formatChoice = _pendingChoice;
+            _descriptionsProblem = UiText.init; // asked for: not those of the open any more
+            rebuildViews(true);
+            _events.publish(FormatReplaced(true));
         }
 
         if (_pendingViewFilter.requested)
@@ -370,6 +429,7 @@ class LogDocument : Document
             _failure = error;
             _pendingViewFilter = PendingRequest.init;
             _pendingSearch = PendingRequest.init;
+            dropPendingFormat();
             finish(Operation.BuildOffsetIndex, Result.Failed, error);
             dropSearch(Result.Failed, error);
             if (_filtering)
@@ -421,11 +481,34 @@ class LogDocument : Document
         _anchors.importAnchors(anchors);
         if (sourceLost || _failed)
             return;
-        if (_viewFilter !is null)
+        rebuildViews(false);
+        applyPending();
+    }
+
+    //! The file can't be read any more: a format asked for has nothing to decode, its choice
+    //! is taken at once, as replaceFormat does for a document lost before, so a Retry opens
+    //! the file by it
+    private void dropPendingFormat()
+    {
+        if (_pendingFormat is null)
+            return;
+        _pendingFormat = null;
+        _formatChoice = _pendingChoice;
+        _descriptionsProblem = UiText.init;
+        _events.publish(FormatReplaced(false));
+    }
+
+    //! @brief Asks for the views to be built again as they are: the filter (and the search it
+    //! repeats), or the search only. A filter asked for already builds both
+    //! @param main - the main view too when it has no filter: its rows are read anew
+    private void rebuildViews(bool main)
+    {
+        if (_pendingViewFilter.requested)
+            return;
+        if (main || _viewFilter !is null)
             _pendingViewFilter = PendingRequest(_viewFilter, true);
         else if (!_pendingSearch.requested)
             _pendingSearch = PendingRequest(_searchFilter, true);
-        applyPending();
     }
 
     override bool requestCancel(Operation operation)
@@ -2115,4 +2198,250 @@ unittest
     dispatchUntil(doc, () => views.mainReady);
     waitIdle(doc);
     assert(changed == 0 && doc.attachments.length == 0);
+}
+
+@("LogDocument: decodes by the descriptions of its format choice, opens without them if they can't be read")
+unittest
+{
+    import formats.dlt.fibex : Fibex, fibexOf, logFrame, textPdu;
+    import formats.dlt.format : DltFormat, dltFormatInfo;
+    import log_core.text_encoding : TextEncoding;
+    import std.file : remove, tempDir, write;
+    import std.path : buildPath;
+
+    auto path = writeTestDlt("dlt_document_descriptions.dlt", 3);
+    scope (exit)
+        remove(path);
+    const fibexPath = buildPath(tempDir(), "dlt_document_descriptions.xml");
+    write(fibexPath, fibexOf(textPdu("P_T", "x"), logFrame("ID_1", "APP1", "CON1", "P_T")));
+    scope (exit)
+        remove(fibexPath);
+
+    const choice = FormatChoice(dltFormatInfo.id, 0, TextEncoding.utf8, fibexPath);
+    auto described = new LogDocument(path, choice);
+    scope (exit)
+        described.destroy();
+    assert((cast(const(DltFormat)) described.format).fibex !is null, "decoded by the FIBEX");
+    assert(described.formatChoice == choice && described.descriptionsProblem.empty);
+
+    const missing = FormatChoice(dltFormatInfo.id, 0, TextEncoding.utf8, fibexPath ~ ".missing");
+    auto without = new LogDocument(path, missing);
+    scope (exit)
+        without.destroy();
+    assert((cast(const(DltFormat)) without.format).fibex is null, "opened without it");
+    assert(without.formatChoice == missing, "kept: the next open tries again");
+    assert(!without.descriptionsProblem.empty, "told why");
+
+    // A choice this build can't make is detected again, its descriptions kept
+    const unknown = FormatChoice("no-such-format", 0, TextEncoding.utf8, fibexPath);
+    auto detected = new LogDocument(path, unknown);
+    scope (exit)
+        detected.destroy();
+    assert((cast(const(DltFormat)) detected.format).fibex !is null);
+    assert(detected.formatChoice.descriptions == fibexPath);
+}
+
+version (unittest)
+{
+    //! A DLT log of `count` non-verbose messages of ID 3 without extended header, written
+    private string writeNonVerboseDlt(string name, size_t count)
+    {
+        import formats.dlt.testing_utils : BuildV1, bytesOf;
+        import std.file : tempDir, write;
+        import std.path : buildPath;
+
+        BuildV1 r;
+        r.extended = false;
+        r.payload = bytesOf(3u);
+        ubyte[] data;
+        foreach (_; 0 .. count)
+            data ~= r.bytes();
+        auto path = buildPath(tempDir(), name);
+        write(path, data);
+        return path;
+    }
+
+    //! Filter of the main view by the AppId of DLT messages
+    private LogFilter!wchar appFilter(string appId)
+    {
+        import formats.dlt.format : DltFormat;
+        import log_core.rule_filter : Check, Condition, FilterRule, FilterSet, RuleFilter;
+
+        FilterSet set;
+        set.rules = [FilterRule("", FilterRule.init.kind, true, "", [Condition("app", Check.Equals, appId)])];
+        return RuleFilter.compile(new DltFormat().columns, [set]);
+    }
+
+    //! The format of `doc` decoding by a FIBEX that describes message 3 as "Started" of APP1
+    private LogFormat describedFormat(LogDocument doc)
+    {
+        import formats.dlt.fibex : fibexOf, logFrame, parseFibex, textPdu;
+        import formats.dlt.format : withFibex;
+
+        return withFibex(doc.format, parseFibex(fibexOf(textPdu("P_T", "Started"),
+                logFrame("ID_3", "APP1", "CON1", "P_T"))));
+    }
+}
+
+@("LogDocument.replaceFormat: the records decoded by the new format, the filter built again, the records kept")
+unittest
+{
+    import std.file : remove;
+
+    auto path = writeNonVerboseDlt("dlt_document_replace_format.dlt", 4);
+    scope (exit)
+        remove(path);
+    auto doc = new LogDocument(path);
+    scope (exit)
+        doc.destroy();
+    auto views = new Views(doc);
+    dispatchUntil(doc, () => views.mainReady);
+    runAndWait(doc, () => doc.applyViewFilter(appFilter("APP1")));
+    assert(doc.mainView.itemsCount == 0, "no AppId before the FIBEX");
+
+    FormatReplaced[] replaced;
+    doc.events.subscribe((const FormatReplaced e) { replaced ~= e; });
+    auto choice = doc.formatChoice;
+    choice.descriptions = "/fibex/ecu.xml";
+    auto described = describedFormat(doc);
+    runAndWait(doc, () => doc.replaceFormat(described, choice.descriptions));
+
+    assert(replaced == [FormatReplaced(true)], "told once, the records decoded anew");
+    assert(doc.format is described && doc.formatChoice == choice, "the rest of the choice kept");
+    assert(doc.messageCount == 4, "the records stay");
+    assert(doc.mainView.itemsCount == 4, "the filter built again by the new decoding");
+    DocumentItem item;
+    assert(doc.mainView.fetchItem(0, item) && item._message.payloadText == "Started"w);
+}
+
+@("LogDocument.replaceFormat: asked while a filter runs and then cancelled, the format is replaced and the views built again")
+unittest
+{
+    import std.file : remove;
+
+    auto path = writeNonVerboseDlt("dlt_document_replace_running.dlt", 4);
+    scope (exit)
+        remove(path);
+    auto doc = new LogDocument(path);
+    scope (exit)
+        doc.destroy();
+    auto views = new Views(doc);
+    dispatchUntil(doc, () => views.mainReady);
+
+    auto gate = new GateFilter(0);
+    doc.applyViewFilter(gate);
+    dispatchUntil(doc, () => gate.reached);
+    auto described = describedFormat(doc);
+    auto choice = doc.formatChoice;
+    choice.descriptions = "/fibex/ecu.xml";
+    doc.replaceFormat(described, choice.descriptions); // waits for the pass
+    assert(doc.formatChoice.descriptions.length == 0 && doc.format !is described,
+        "the choice goes with the format: not before it is replaced");
+    doc.requestCancel(Document.Operation.BuildFilterIndex);
+    gate.open();
+    waitIdle(doc);
+
+    assert(doc.format is described && doc.formatChoice == choice, "the format is replaced all the same");
+    DocumentItem item;
+    assert(doc.mainView.fetchItem(0, item) && item._message.payloadText == "Started"w,
+        "the rows are those of the new format");
+}
+
+@("LogDocument.replaceFormat: a document whose file is lost keeps its format, takes the choice")
+unittest
+{
+    import formats.dlt.format : DltFormat;
+
+    auto source = new MemorySource(testDlt(3));
+    source.isLost = true;
+    auto lost = new LogDocument(source, new DltFormat());
+    scope (exit)
+        destroy(lost);
+    auto views = new Views(lost);
+    dispatchUntil(lost, () => views.main == Views.State.Failed);
+
+    FormatReplaced[] replaced;
+    lost.events.subscribe((const FormatReplaced e) { replaced ~= e; });
+    const before = lost.format;
+    lost.replaceFormat(describedFormat(lost), "/fibex/ecu.xml");
+    lost.dispatchEvents();
+    assert(lost.format is before, "can't be read: nothing to decode");
+    assert(lost.formatChoice.descriptions == "/fibex/ecu.xml", "a Retry opens it so");
+    assert(replaced == [FormatReplaced(false)], "told: the choice changed, the records not decoded anew");
+}
+
+@("LogDocument.replaceFormat: with no filter the main view is read anew, a search is repeated by the new format")
+unittest
+{
+    import formats.dlt.format : DltFormat;
+    import log_core.rule_filter : Check, Condition, FilterRule, FilterSet, RuleFilter;
+    import std.algorithm : canFind;
+    import std.file : remove;
+
+    auto path = writeNonVerboseDlt("dlt_document_replace_search.dlt", 4);
+    scope (exit)
+        remove(path);
+    auto doc = new LogDocument(path);
+    scope (exit)
+        doc.destroy();
+    auto views = new Views(doc);
+    dispatchUntil(doc, () => views.mainReady);
+    FilterSet set;
+    set.rules = [FilterRule("", FilterRule.init.kind, true, "", [Condition("payload", Check.Contains, "Started")])];
+    runAndWait(doc, () => doc.applySearchFilter(RuleFilter.compile(new DltFormat().columns, [set])));
+    assert(doc.searchView.itemsCount == 0, "nothing found before the FIBEX");
+
+    auto started = recordStarted(doc);
+    runAndWait(doc, () => doc.replaceFormat(describedFormat(doc), "/fibex/ecu.xml"));
+    assert(started.operations.canFind(Document.Operation.BuildFilterIndex),
+        "the main view without a filter is built again: its rows, and those of the search view, read anew");
+    assert(doc.searchView.itemsCount == 4, "the search repeated by the new decoding");
+}
+
+@("LogDocument.replaceFormat: a file lost while the format waits for the pass keeps the choice for a Retry")
+unittest
+{
+    import formats.dlt.format : DltFormat;
+
+    auto source = new MemorySource(testDlt(3));
+    auto doc = new LogDocument(source, new DltFormat());
+    scope (exit)
+        destroy(doc);
+    auto views = new Views(doc);
+    dispatchUntil(doc, () => views.mainReady);
+    auto gate = new GateFilter(0);
+    doc.applyViewFilter(gate);
+    dispatchUntil(doc, () => gate.reached);
+
+    FormatReplaced[] replaced;
+    doc.events.subscribe((const FormatReplaced e) { replaced ~= e; });
+    const before = doc.format;
+    doc.replaceFormat(describedFormat(doc), "/fibex/ecu.xml"); // waits for the pass
+    source.isLost = true;
+    gate.open();
+    dispatchUntil(doc, () => views.main == Views.State.Failed);
+    doc.dispatchEvents();
+    assert(doc.format is before, "lost: nothing to decode");
+    assert(doc.formatChoice.descriptions == "/fibex/ecu.xml", "a Retry opens it with the FIBEX");
+    assert(replaced == [FormatReplaced(false)], "told: the choice changed, the records not decoded anew");
+}
+
+@("LogDocument: descriptions of a choice whose format takes none are dropped")
+unittest
+{
+    import formats.plain_text : plainTextFormatInfo;
+    import std.file : remove, tempDir, write;
+    import std.path : buildPath;
+
+    auto path = buildPath(tempDir(), "dlt_document_foreign_descriptions.log");
+    write(path, "one\ntwo\n");
+    scope (exit)
+        remove(path);
+    auto choice = FormatChoice(plainTextFormatInfo.id);
+    choice.descriptions = "/fibex/ecu.xml";
+    auto doc = new LogDocument(path, choice);
+    scope (exit)
+        doc.destroy();
+    assert(doc.formatChoice.descriptions.length == 0, "a text log takes no FIBEX: not named for it");
+    assert(doc.descriptionsProblem.empty);
 }

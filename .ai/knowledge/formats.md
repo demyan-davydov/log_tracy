@@ -9,7 +9,8 @@
 - Plain text is the low-score fallback; data no detector accepts is refused.
 - A `.dlt` extension alone only decides for binary data.
 - A recent file remembers the format it was opened with (`FormatChoice`: `FormatInfo.id`, the
-  variant and the text encoding) and opens in it again through `createFormat`, without
+  variant, the text encoding and the file of descriptions; the descriptions are taken apart
+  from `createFormat` and detection, by the document, and dropped for a format of none) and opens in it again through `createFormat`, without
   detection; a file with no saved format, one this build can't create (unknown id, invalid
   variant) or whose data is not in the saved encoding (a UTF-16 mark or look) is detected.
   Never change a format's `id`: settings refer to it.
@@ -18,7 +19,18 @@
   with no `FormatChoice`. `FormatChoice` is only how to open a file the same way again.
 - A format instance is created per document (it may hold a variant) and must stay immutable:
   the UI thread, the indexing thread (`scanRecords`) and the threads of a filter or a search
-  call it concurrently.
+  call it concurrently. A document may replace its format by another instance of the same
+  records (`Document.replaceFormat`); the instance itself never changes.
+- What a change of the format choice asks of a document is told by the choices, not the
+  format objects (`log_core/log_format.formatChangeOf`): the id, variant and encoding decide
+  the records (`FormatChange.records`: the file read anew), the descriptions only the
+  decoding (`FormatChange.decoding`: `replaceFormat`). No format knows another; a format that
+  takes descriptions must keep its records, parts and transfers the same whatever they are.
+- A format may decode by a file of descriptions (`FormatChoice.descriptions`, a FIBEX for DLT):
+  `formats/registry.takesDescriptions` and `withDescriptions` are what the other packages ask,
+  never a cast to the concrete format; `formats/dlt/format.takesFibex`/`withFibex` behind them.
+  A document opened with a choice of descriptions takes them, or opens without them and tells
+  why (`Document.descriptionsProblem`), the choice kept.
 - `formats/registry.formatColumns` gives the columns of all variants of a format (a column
   layout is one per format id).
 
@@ -59,8 +71,8 @@ Adding a format, step by step: `.ai/workflows/add-format.md`.
   tests of other packages.
 - `.dlf` filter files: `formats/dlt/dlf`. FIBEX (non-verbose): `formats/dlt/fibex`
   reads the descriptions (`loadFibex`, `Fibex.find`); a `DltFormat` created with a `Fibex`
-  decodes non-verbose messages by it (`parser.decodeByFibex`). Nothing gives a document's
-  format one yet (`docs/stories/fibex.md`).
+  decodes non-verbose messages by it (`parser.decodeByFibex`); a `Fibex` is `immutable`
+  once read (`docs/stories/fibex.md`).
 - Real logs for trying things are kept locally in `test_data/`, not in the repository (`*.dlt`
   is ignored): a fresh clone has none. Tests build their records instead; a whole log (big,
   broken on purpose) is written by the generator (below).

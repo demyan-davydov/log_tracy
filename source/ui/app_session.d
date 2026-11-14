@@ -17,7 +17,7 @@ import domain.document;
 import domain.document_id;
 import domain.document_item : DocumentItem;
 import domain.document_store;
-import log_core.log_format : ColumnInfo, FormatChoice;
+import log_core.log_format : ColumnInfo, FormatChoice, LogFormat;
 import log_core.rule_filter : RuleId;
 import log_core.search_filter : MatchBuffer, MatchRange, SearchFilter;
 import ui.app_menu : hostMenuPlatform, MenuItem, MenuPlatform, WindowMenu, windowMenu;
@@ -1009,6 +1009,8 @@ version (unittest)
         bool requestCancel(Operation operation) { cancelAsked = true; current = null; return true; }
         bool sourceLost() { return false; }
         FormatChoice formatChoice() const { return FormatChoice("plain-text", 0); }
+        UiText descriptionsProblem() const { return UiText.init; }
+        void replaceFormat(LogFormat format, string descriptions) {}
         size_t messageCount() nothrow @nogc { return records; }
         ulong byteSize() nothrow @nogc { return bytes; }
         RecordsLease leaseRecords() { return RecordsLease.init; }

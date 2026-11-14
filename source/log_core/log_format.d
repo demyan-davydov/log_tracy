@@ -216,11 +216,35 @@ struct FormatChoice
     string id; // empty: none, the format is to be detected
     int variant;
     TextEncoding encoding; // of a text format; utf8 for a binary one
+    // The file (or folder) of the descriptions the records are decoded by, empty for none:
+    // a FIBEX for DLT (formats/registry: withDescriptions)
+    string descriptions;
 
     bool isSet() const pure nothrow @nogc @safe
     {
         return id.length != 0;
     }
+}
+
+//! What a change of the format choice of a document asks of it (formatChangeOf)
+enum FormatChange : ubyte
+{
+    none, //< the same choice
+    decoding, //< the same records, decoded another way: the views are built again
+    records, //< other records: the file is read anew, its records numbered anew
+}
+
+//! @brief What changing the format choice of a document `from` to `to` asks of it. The records
+//! a format splits the data into, joins the parts of and catalogs the files of are told by its
+//! id, variant and encoding; its descriptions change the decoding only (a format that takes
+//! them must keep its records so: formats/registry, withDescriptions). The descriptions are
+//! compared by their path: `none` doesn't tell their content is the same (a FIBEX written
+//! again at its path), so loading descriptions again replaces the format all the same
+FormatChange formatChangeOf(const FormatChoice from, const FormatChoice to) pure nothrow @nogc @safe
+{
+    if (!from.isSet || from.id != to.id || from.variant != to.variant || from.encoding != to.encoding)
+        return FormatChange.records;
+    return from.descriptions == to.descriptions ? FormatChange.none : FormatChange.decoding;
 }
 
 //! Recognises one log format by the start of the data
@@ -239,4 +263,27 @@ interface FormatDetector
     //! Every variant create() takes: the columns of a format are those of
     //! all its variants (the layout of the columns is kept per format)
     const(int)[] variants() const pure nothrow;
+}
+
+@("formatChangeOf: the descriptions change the decoding only, the id, variant or encoding the records")
+unittest
+{
+    const dlt = FormatChoice("dlt");
+    FormatChoice described = dlt;
+    described.descriptions = "/fibex/ecu.xml";
+    FormatChoice other = described;
+    other.descriptions = "/fibex/other.xml";
+
+    assert(formatChangeOf(dlt, dlt) == FormatChange.none);
+    assert(formatChangeOf(described, described) == FormatChange.none);
+    assert(formatChangeOf(dlt, described) == FormatChange.decoding, "a FIBEX loaded");
+    assert(formatChangeOf(described, dlt) == FormatChange.decoding, "a FIBEX dropped");
+    assert(formatChangeOf(described, other) == FormatChange.decoding, "another FIBEX");
+
+    assert(formatChangeOf(dlt, FormatChoice("text")) == FormatChange.records, "another format");
+    assert(formatChangeOf(FormatChoice("logcat", 0), FormatChoice("logcat", 1)) == FormatChange.records,
+        "another variant");
+    assert(formatChangeOf(FormatChoice("text"), FormatChoice("text", 0, TextEncoding.utf16le))
+        == FormatChange.records, "another encoding: other bytes per line");
+    assert(formatChangeOf(FormatChoice.init, dlt) == FormatChange.records, "a format chosen for none");
 }
