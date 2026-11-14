@@ -82,7 +82,7 @@ function nestedCommentEnd(source, i) {
 // `source` with its comments blanked: lines and positions stay. Strings are skipped so that
 // "//" in a string starts no comment. A regex literal is not known: a quote in one ends at
 // the end of its line.
-function withoutComments(source, language) {
+export function withoutComments(source, language) {
     let out = "", i = 0;
     while (i < source.length) {
         const c = source[i], two = source.slice(i, i + 2);

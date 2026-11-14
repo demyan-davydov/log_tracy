@@ -917,11 +917,8 @@ struct AsMapView
 @("SciterValue")
 unittest
 {
-    import std.stdio : writeln;
-
     // Test default constructor
     {
-        writeln("Test default constructor");
         SciterValue v; // static initialized to .init (all zeros)
         assert(v.isUndefined());
 
@@ -935,11 +932,6 @@ unittest
     // 
 
     {
-        writeln("Test int");
-        scope (success)
-        {
-            writeln("Test int finished");
-        }
 
         SciterValue v = SciterValue(42);
         assert(v.isInt());
@@ -950,11 +942,6 @@ unittest
     }
 
     {
-        writeln("Test bool");
-        scope (success)
-        {
-            writeln("Test bool finished");
-        }
 
         SciterValue v = SciterValue(true);
         assert(v.isBool());
@@ -965,11 +952,6 @@ unittest
     }
 
     {
-        writeln("Test float");
-        scope (success)
-        {
-            writeln("Test float finished");
-        }
 
         SciterValue v = SciterValue(3.14f);
         assert(v.isFloat());
@@ -986,11 +968,6 @@ unittest
 
     // Test strings
     {
-        writeln("Test string");
-        scope (success)
-        {
-            writeln("Test string finished");
-        }
 
         SciterValue v = SciterValue("Hello Sciter");
         assert(v.isString());
@@ -1007,11 +984,6 @@ unittest
 
     // Test binary data
     {
-        writeln("Test binary data");
-        scope (success)
-        {
-            writeln("Test binary data finished");
-        }
 
         ubyte[] data = [1, 2, 3, 4];
         SciterValue v = SciterValue(data);
@@ -1024,11 +996,6 @@ unittest
 
     // Test null/nothing
     {
-        writeln("Test null/nothing");
-        scope (success)
-        {
-            writeln("Test null/nothing finished");
-        }
 
         SciterValue vUndef = SciterValue.makeUndefined(); // Default is Undefined
         SciterValue vNull = SciterValue.makeNull();
@@ -1041,11 +1008,6 @@ unittest
 
     // Test comparison operators (ints)
     {
-        writeln("Test comparison operators (ints)");
-        scope (success)
-        {
-            writeln("Test comparison operators (ints) finished");
-        }
 
         SciterValue v1 = SciterValue(10);
         SciterValue v2 = SciterValue(20);
@@ -1058,11 +1020,6 @@ unittest
 
     // Test comparison operators (strings)
     {
-        writeln("Test comparison operators (strings)");
-        scope (success)
-        {
-            writeln("Test comparison operators (strings) finished");
-        }
 
         SciterValue s1 = SciterValue("abc");
         SciterValue s2 = SciterValue("def");
@@ -1075,11 +1032,6 @@ unittest
 
     // Test comparison operators (different types)
     {
-        writeln("Test comparison operators (different types)");
-        scope (success)
-        {
-            writeln("Test comparison operators (different types) finished");
-        }
 
         SciterValue s1 = SciterValue("10");
         SciterValue s2 = SciterValue(10);
@@ -1092,11 +1044,6 @@ unittest
 
     // Test special values (null, undefined, nothing)
     {
-        writeln("Test special values (null, undefined, nothing)");
-        scope (success)
-        {
-            writeln("Test special values (null, undefined, nothing) finished");
-        }
 
         SciterValue vUndef = SciterValue.makeUndefined(); // Default is Undefined
         SciterValue vNull = SciterValue.makeNull();
@@ -1125,7 +1072,6 @@ unittest
         assert(vInt != vNothing);
 
         // Test lvalue assignment independence
-        writeln("Test lvalue assignment independence");
         SciterValue vOrig = SciterValue(100);
         SciterValue vCopy = SciterValue.makeUndefined();
         vCopy = vOrig; // lvalue assignment
@@ -1140,7 +1086,6 @@ unittest
 
     // Test views interoperability
     {
-        writeln("Test views interoperability");
         SciterValue vOrig = SciterValue(500);
 
         // Construction from SciterValueView
@@ -1210,11 +1155,6 @@ unittest
 
     // Test AsArrayView and enumerate
     {
-        writeln("Test AsArrayView and enumerate");
-        scope (success)
-        {
-            writeln("Test AsArrayView and enumerate finished");
-        }
 
         SciterValue v = SciterValue.makeArray(10, "abc", true);
         assert(v.isArray());
@@ -1268,11 +1208,6 @@ unittest
 
     // Test toString memory safety (dangling pointer check)
     {
-        writeln("Test toString memory safety (dangling pointer check)");
-        scope (success)
-        {
-            writeln("Test toString memory safety (dangling pointer check) finished");
-        }
 
         SciterValue v_unsafe = SciterValue.makeArray(1, 2, 3);
         const(wchar)[] s_unsafe = v_unsafe.toString(VALUE_STRING_CVT_TYPE.CVT_JSON_LITERAL);
@@ -1287,7 +1222,6 @@ unittest
         import std.conv : to;
 
         string result = to!string(s_unsafe);
-        writeln("String after temporary destruction: ", result);
         assert(result == "[1,2,3]", "toString() returned a dangling pointer! Result: " ~ result);
     }
 }

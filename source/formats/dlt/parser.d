@@ -1321,7 +1321,6 @@ unittest
 
     LogMessage!char msg;
     assert(parseDltItem(msg, data));
-    writefln("msg: %s (%d) msgId: %x", msg.payloadText, msg.payloadText.length, msg.messageId);
     assert(msg.messageId == 0xDEAD);
     import std.string : startsWith;
 }
@@ -1607,7 +1606,6 @@ unittest
     assert(msg.appId == "DA1");
     assert(msg.ctxId == "DC1");
     assert(msg.type == MessageType.Control);
-    writeln("msg.messageId: ", msg.messageId);
     assert(msg.messageId == 0x13);
 
     // Relative timestamp: 0x0012D390 = 1233808 × 0.1ms ≈ 123380.8ms → stored as-is

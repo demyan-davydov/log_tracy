@@ -49,21 +49,20 @@ void showInFolder(string path)
     spawnProcess(showInFolderCommand(hostOs(), path), null, Config.detached | Config.suppressConsole);
 }
 
-/// Finder selects the file in its folder
+@("showInFolderCommand: Finder selects the file in its folder")
 unittest
 {
     assert(showInFolderCommand(DesktopOs.macOS, "/logs/a b.dlt") == ["open", "-R", "/logs/a b.dlt"]);
 }
 
-/// Explorer selects it too: the path an argument of its own after "/select,",
-/// so it is quoted as one (no shell between, which would expand %NAME% in it)
+@("showInFolderCommand: Explorer selects it too, the path quoted as one argument after /select, (no shell to expand %NAME%)")
 unittest
 {
     assert(showInFolderCommand(DesktopOs.windows, `C:\logs\a %b%.dlt`)
         == ["explorer.exe", "/select,", `C:\logs\a %b%.dlt`]);
 }
 
-/// Linux opens the folder of the file
+@("showInFolderCommand: Linux opens the folder of the file")
 unittest
 {
     assert(showInFolderCommand(DesktopOs.linux, "/logs/a b.dlt") == ["xdg-open", "/logs"]);

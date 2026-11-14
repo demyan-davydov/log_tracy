@@ -18,7 +18,7 @@ Applies to every fix and feature, D and script alike.
 - All tests: `node scripts/test.mjs` (= `build.mjs test`; D unittests, "N test(s) run, 0 failed.",
   and the JS tests). JS only: `node --test "tests/js/*.test.mjs"` (node 22 takes no folder).
 - `dub test` runs unit-threaded's runner in one thread: each `unittest` block is a test of its
-  own (name it with a `@("...")` string), a failed one doesn't stop the ones after it.
+  own, a failed one doesn't stop the ones after it.
 - Some D tests: `node scripts/test.mjs --filter <name>` (a module, `utils.fsm`, or a test's
   full name; repeatable), the same as `dub test --compiler=ldc2 -- <name>`.
 - One module that doesn't depend on Sciter: `node scripts/test.mjs --module <file.d>`. It runs
@@ -29,6 +29,18 @@ Applies to every fix and feature, D and script alike.
   brief lines don't explain a failure.
 - `build.mjs test` also runs `scripts/utils/check-ai-context.mjs`: a name of `.ai/` the code lost
   fails it. Fix the name, or add a right one to the `allowed` list of the script.
+
+## Names and Output
+
+- Every D `unittest` has a name: `@("<subject>: <what it checks>")` on the line before it, the
+  subject the function or type tested (`parseKeyPress: modifiers by their names, in any case
+  and order`), one subject: `--filter` matches the start of the name. The runner reports a
+  failed test and filters by this name; a comment or a `///` above the test is no name, and a
+  test without one is `<module>.unittest_L<line>`. A JS test fails on an unnamed one
+  (`scripts/utils/d-test-names.mjs`).
+- A test prints nothing: no `writeln` of the test's name or of "finished", no values for a
+  look. The runner names the failed test; what a failure needs to explain goes into the
+  message of its `assert`.
 
 ## What Gets Tested
 
