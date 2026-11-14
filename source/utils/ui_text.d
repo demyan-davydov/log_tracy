@@ -3,7 +3,7 @@
 //! "column", id)`, translated where it is shown (ui/translations.Catalog); its english is for
 //! the log and the tests. A parameter is a text of its own (a reason in a reason) or a plain
 //! string put in as it is (a name, a path, the message of the OS). The template is always a
-//! literal: scripts/i18n-extract finds the texts by it.
+//! literal: scripts/utils/i18n-extract finds the texts by it.
 module utils.ui_text;
 
 /// A text for the user: a template with its parameters, or a plain string put in as it is.

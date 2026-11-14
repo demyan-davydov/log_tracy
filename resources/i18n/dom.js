@@ -4,7 +4,7 @@
 //   <header data-tr="Filters" />               its text
 //   <button data-tr-title="New Tab">+</button> its title (data-tr-placeholder: its placeholder)
 //   <span data-tr="Search" data-tr-context="noun" /> its text in a context, as of trc
-// The source is a literal: scripts/i18n-extract finds the texts by it. Texts rendered anew
+// The source is a literal: scripts/utils/i18n-extract finds the texts by it. Texts rendered anew
 // call tr() themselves instead. An element marked with data-tr has its text replaced: mark
 // one that holds only text (a <span> of its own inside, not a header with an icon in it).
 // Free of Sciter but for the DOM (querySelectorAll, attributes, textContent); tests:

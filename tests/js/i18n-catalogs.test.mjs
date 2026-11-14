@@ -1,4 +1,4 @@
-// The catalogs of resources/i18n/translations against the texts of the code: scripts/i18n-extract
+// The catalogs of resources/i18n/translations against the texts of the code: scripts/utils/i18n-extract
 // was run after the texts changed, and the translations keep the parameters of the source.
 // Run: node --test tests/js
 import { test } from "node:test";

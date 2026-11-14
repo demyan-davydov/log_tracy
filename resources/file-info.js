@@ -14,7 +14,7 @@ export function groupDigits(n) {
 export function sizeText(bytes) {
     if (bytes < 1024)
         return trn("{count} byte", "{count} bytes", bytes, { count: groupDigits(bytes) });
-    // Each a literal for scripts/i18n-extract
+    // Each a literal for scripts/utils/i18n-extract
     const units = [
         (size) => tr("{size} KB", { size }),
         (size) => tr("{size} MB", { size }),

@@ -1,6 +1,6 @@
 // The filter of a file dialog ("Name (*.a;*.b)|*.a;*.b|..." as Sciter takes it) from the types
 // of files it offers: [name, patterns], the name in the language of the interface (tr() by
-// the caller: a literal for scripts/i18n-extract), the patterns as they are.
+// the caller: a literal for scripts/utils/i18n-extract), the patterns as they are.
 // Sciter-free; tests: tests/js/file-types.test.mjs.
 import { tr } from "./i18n/i18n.js";
 

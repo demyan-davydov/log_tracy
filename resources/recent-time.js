@@ -6,7 +6,7 @@ const minuteMs = 60 * 1000;
 const hourMs = 60 * minuteMs;
 const dayMs = 24 * hourMs;
 // The short name of a month (0: January) in the language now; each a literal for
-// scripts/i18n-extract
+// scripts/utils/i18n-extract
 const monthName = (month) => [
     trc("month", "Jan"), trc("month", "Feb"), trc("month", "Mar"), trc("month", "Apr"),
     trc("month", "May"), trc("month", "Jun"), trc("month", "Jul"), trc("month", "Aug"),

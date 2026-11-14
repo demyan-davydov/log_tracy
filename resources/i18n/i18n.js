@@ -5,7 +5,7 @@
 //   trn("{n} match", "{n} matches", n)       the plural form of the language; n goes in as {n},
 //   trParts("{open} a log", { open: <button/> })  parts to render, elements put in.
 // Elements built once are marked instead (data-tr="Filters"): see dom.js.
-// The argument is always a string literal: scripts/i18n-extract finds the texts by it.
+// The argument is always a string literal: scripts/utils/i18n-extract finds the texts by it.
 // A catalog is a file of resources/i18n/translations ({locale, name, messages}); the key of a
 // text with a context is "text|context", a plural text is keyed by its singular and
 // translated by the forms of its language ({one, few, many}); "" is not translated yet.
