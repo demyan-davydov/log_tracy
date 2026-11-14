@@ -14,8 +14,9 @@ didn't stops the build: a new Sciter not packed yet.
    the archives (`<library>.br`) with the bumped `libs/SCITER_VERSION`: the binding
    (`source/sciter/capi`) is written for the API of that version.
 3. Compare the SDK's C headers with `source/sciter/capi` for changed signatures or structures.
-4. `node scripts/build.mjs test`, `node scripts/build.mjs check-windows`, run the app and go
+4. `node scripts/build.mjs test`, run the app and go
    through the table (fast scroll, scrollbar drag), popups, the menu and the text selection:
    the behaviours of `.ai/knowledge/sciter.md` may change between versions. Update that file
-   for what changed.
+   for what changed. Code of Windows only (`version (Windows)` in `source/sciter/capi`) is
+   compiled only by the Windows job of CI: push the branch and wait for it before the merge.
 5. Update `docs/building.md` if the steps for people changed.

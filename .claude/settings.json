@@ -8,7 +8,6 @@
       "Bash(node scripts/build.mjs test)",
       "Bash(dub test)",
       "Bash(dub build)",
-      "Bash(node scripts/build.mjs check-windows)",
       "Bash(dub describe *)",
       "Bash(git check-ignore *)",
       "mcp__terminal__read_terminal"

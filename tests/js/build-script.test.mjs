@@ -20,7 +20,6 @@ test("a command, release and an architecture", () => {
     assert.deepEqual(parseCommand(["--arch=arm64"]), { command: "build", release: false, arch: "arm64" });
     assert.deepEqual(parseCommand(["test"]), { command: "test", release: false, arch: null });
     assert.deepEqual(parseCommand(["dist"]), { command: "dist", release: true, arch: null });
-    assert.deepEqual(parseCommand(["check-windows"]), { command: "check-windows", release: false, arch: null });
     assert.deepEqual(parseCommand(["pack-libs"]), { command: "pack-libs", release: false, arch: null });
 });
 
@@ -31,12 +30,11 @@ test("what isn't understood is refused, naming it", () => {
     assert.throws(() => parseCommand(["--arch"]), /--arch/);
     assert.throws(() => parseCommand(["build", "test"]), /test/);
     assert.throws(() => parseCommand(["run"]), /run/);
+    assert.throws(() => parseCommand(["check-windows"]), /check-windows/); // gone: CI builds on Windows
 });
 
 test("an option the command would ignore is refused", () => {
     assert.throws(() => parseCommand(["test", "--release"]), /--release/);
-    assert.throws(() => parseCommand(["check-windows", "--release"]), /--release/);
-    assert.throws(() => parseCommand(["check-windows", "--arch", "arm64"]), /--arch/);
     assert.throws(() => parseCommand(["pack-libs", "--release"]), /--release/);
     assert.throws(() => parseCommand(["pack-libs", "--arch", "x64"]), /--arch/);
 });
@@ -222,11 +220,9 @@ test("the JS tests are named by a pattern: node 22 takes no folder", () => {
     assert.deepEqual(jsTestArgs, ["--test", "--test-reporter=spec", "tests/js/*.test.mjs"]);
 });
 
-test("the compiler arguments dub describes, separated by zeros, without the resources of Windows", () => {
-    const described = "-I/p/source/\0-I/d/source/\0\0-J/p/resources/\0\0-preview=in\0-mtriple=x86_64-windows-msvc"
-        + "\0\0/p/source/app.d\0/p/build/windows/app.res\0/p/source/ui/x.d";
-    assert.deepEqual(compilerArgs(described), ["-I/p/source/", "-I/d/source/", "-J/p/resources/",
-        "-preview=in", "-mtriple=x86_64-windows-msvc", "/p/source/app.d", "/p/source/ui/x.d"]);
+test("the compiler arguments dub describes, separated by zeros", () => {
+    const described = "-preview=in\0-preview=dip1000\0\0-I/p/source/\0-I/d/source/\0\0";
+    assert.deepEqual(compilerArgs(described), ["-preview=in", "-preview=dip1000", "-I/p/source/", "-I/d/source/"]);
 });
 
 test("--help or -h asks for the help, whatever else is given", () => {
@@ -290,12 +286,10 @@ test("one module is compiled with its unittests, a main and the flags of dub.sdl
     assert.ok(moduleTestArgs([], "source/utils/fsm.d", "win32").includes("-of=build/tools/test_fsm.exe"));
 });
 
-test("--brief: build, test, dist and check-windows tell only what failed", () => {
+test("--brief: build, test and dist tell only what failed", () => {
     assert.deepEqual(parseCommand(["test", "--brief"]), { command: "test", release: false, arch: null, brief: true });
     assert.deepEqual(parseCommand(["--brief", "--release"]), { command: "build", release: true, arch: null, brief: true });
     assert.deepEqual(parseCommand(["dist", "--brief"]), { command: "dist", release: true, arch: null, brief: true });
-    assert.deepEqual(parseCommand(["check-windows", "--brief"]),
-        { command: "check-windows", release: false, arch: null, brief: true });
     assert.deepEqual(parseCommand(["test", "--module", "source/utils/fsm.d", "--brief"]),
         { command: "test", release: false, arch: null, module: "source/utils/fsm.d", brief: true });
     // gen-log and bench take their own options: --brief is theirs to refuse

@@ -104,7 +104,6 @@ node scripts/build.mjs --arch x64         # another architecture: x64 or arm64
 node scripts/test.mjs                     # the D unittests, the JS tests, the names of .ai/
 node scripts/test.mjs --module <file.d>   # the unittests of one D module (see "Tests")
 node scripts/build.mjs dist               # a distribution
-node scripts/build.mjs check-windows      # compiles for Windows x64 from macOS or Linux
 node scripts/build.mjs gen-log <file> ... # a test log (see "A test log" below)
 node scripts/build.mjs bench [log] ...    # this tree against master (see "Measuring" below)
 node scripts/build.mjs pack-libs          # the Sciter libraries into their archives (see below)
@@ -146,7 +145,7 @@ filter and leaves a module at its first failing `unittest`: the ones after it di
 
 ### Brief output
 
-`--brief` (with `build`, `test`, `test --module`, `dist`, `check-windows`, and `run.mjs`)
+`--brief` (with `build`, `test`, `test --module`, `dist`, and `run.mjs`)
 writes the whole output of every step to `build/brief.log`, rewritten on each run, and
 shows only what failed: the compile and link errors, the failed D unittests (the place, the
 exception, its message, the frames in the project's code), the failed JS tests (the place,
@@ -310,12 +309,6 @@ node scripts/build.mjs bench --help
 Tracy into `build/backtrace-<pid>.txt` (`--out` another file) with `lldb` on macOS or `gdb`
 on Linux, and leaves the process running. Without a pid it takes the copy of
 `scripts/utils/app.mjs`, else the only running `log_tracy`.
-
-### Checking Windows from macOS or Linux
-
-A Windows program can only be linked on Windows. From macOS or Linux, `check-windows`
-compiles the program and its unittests for Windows x64 without linking: enough to catch code
-that doesn't compile on Windows.
 
 ## Environment variables for development
 

@@ -584,7 +584,7 @@ druntime вместе, несколько шагов, а не одна ветк�
 ## CI
 
 `.github/workflows/build.yml` (история `build`): матрица macOS, Linux, Windows — `test` и `dist`
-через `scripts/build.mjs`, `check-windows` на Linux, дистрибутивы — артефакты; библиотеки LFS
+через `scripts/build.mjs`, дистрибутивы — артефакты (`check-windows` убран, история `build`); библиотеки LFS
 кешируются по списку объектов. Ни разу не запускался: у репозитория нет remote. При первом
 запуске проверить: версию LDC в `setup-dlang` (`ldc-1.43.0`), GTK на Linux, `dub test` на
 Windows (программа собирается с `/SUBSYSTEM:WINDOWS`: виден ли вывод тестов), кеш LFS, нужен

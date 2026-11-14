@@ -51,9 +51,6 @@ jobs:
       - name: Test
         if: runner.os == 'Linux'
         run: xvfb-run -a node scripts/test.mjs
-      - name: Check the Windows compile
-        if: runner.os == 'Linux'
-        run: node scripts/build.mjs check-windows
       - name: Distribution
         run: node scripts/build.mjs dist
 

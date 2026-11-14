@@ -46,7 +46,6 @@ node scripts/test.mjs                           # D unittests ("N modules passed
 node scripts/test.mjs --module source/log_core/text/text_format.d  # one Sciter-free module, no dub
 node scripts/test.mjs --brief                   # any build/test command: only what failed, the rest in build/brief.log
 node scripts/build.mjs dist                     # release distribution in build/dist/<macos|linux|windows>/
-node scripts/build.mjs check-windows            # from macOS/Linux: compiles app + unittests for Windows x64, no link
 node scripts/build.mjs --help                   # the commands and options (run.mjs --help too)
 dub build --compiler=ldc2                       # the same build without the script; dub test likewise
 node --test "tests/js/*.test.mjs"               # JS unit tests only (pure modules such as resources/new-tab.js)

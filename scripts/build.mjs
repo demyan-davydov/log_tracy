@@ -18,7 +18,7 @@ import { BenchError, benchCompileArgs, benchUsage, compareRuns, defaultBenchArgs
     parseBenchArgs, runOrder } from "./utils/bench.mjs";
 import { filterBuildOutput } from "./build-output-filter.mjs";
 
-export const commands = ["build", "test", "dist", "check-windows", "gen-log", "bench", "pack-libs"];
+export const commands = ["build", "test", "dist", "gen-log", "bench", "pack-libs"];
 
 /// Where `--brief` puts the whole output of the steps of the last run, relative to the root.
 export const briefLogPath = "build/brief.log";
@@ -40,8 +40,6 @@ Commands:
                   installed program (build type dist), settings in the user's folder; with
                   its installer, a .dmg on macOS, a .deb on Linux (where dpkg-deb is), a
                   .zip on Windows
-  check-windows   compile the program and its unittests for Windows x64 from macOS or
-                  Linux, without linking
   gen-log <file> [options]
                   generate a test log (scripts/utils/gen_log.d, built into build/tools/):
                   everything after gen-log is its own, see gen-log --help
@@ -56,8 +54,7 @@ Options:
   --arch x64|arm64
                   another architecture than this machine's (build, test, dist)
   --brief         only what failed: compile errors, failed tests with their places and the
-                  summary; the whole output goes to ${briefLogPath} (build, test, dist,
-                  check-windows)
+                  summary; the whole output goes to ${briefLogPath} (build, test, dist)
   -h, --help      this help
 
 Build and start the program: node scripts/run.mjs (see its --help).
@@ -137,10 +134,8 @@ export function parseCommand(argv) {
     }
     command ??= "build";
     // an option the command doesn't take is refused rather than silently ignored
-    if (release && (command === "test" || command === "check-windows" || command === "pack-libs"))
+    if (release && (command === "test" || command === "pack-libs"))
         throw new BuildError(`${command} takes no --release`);
-    if (arch && command === "check-windows")
-        throw new BuildError("check-windows checks Windows x64 only, it takes no --arch");
     if (arch && command === "pack-libs") throw new BuildError("pack-libs packs every library, it takes no --arch");
     if (module !== null) {
         if (command !== "test") throw new BuildError("--module is an option of test: node scripts/build.mjs test --module <file.d>");
@@ -260,9 +255,9 @@ export function lfsPullArgs(file) {
 }
 
 /// The compiler arguments of `dub describe --data-0` (each argument ends with a zero, a list
-/// with one more), without the resources of Windows (app.res): ldc2 -c compiles D only.
+/// with one more).
 export function compilerArgs(described) {
-    return described.split("\0").filter((arg) => arg !== "" && !arg.endsWith(".res"));
+    return described.split("\0").filter((arg) => arg !== "");
 }
 
 /// The Info.plist of the macOS bundle. macOS draws its own dialogs and items in the language
@@ -697,33 +692,6 @@ function dist(arch) {
     console.log(`Log Tracy ${version} (${distArchitecture}): ${dir}`);
 }
 
-/// Compiles the app and its unittests for Windows x64 with the arguments dub would give,
-/// without linking: the libraries of Windows aren't here. A full check needs Windows (`test`).
-/// dub describes the build for the Windows triple, so what dub.sdl declares for Windows only
-/// is in; the arguments carry the triple.
-function checkWindows() {
-    const described = run("dub", ["describe", "--compiler=ldc2", "--arch=x86_64-windows-msvc",
-        "--data=dflags,versions,import-paths,string-import-paths,source-files", "--data-0"], { capture: true });
-    if (described.status !== 0) throw new BuildError(`dub describe failed:\n${described.stderr}`);
-    const args = compilerArgs(described.stdout);
-    const out = mkdtempSync(join(tmpdir(), "dlt-check-windows-"));
-    let ok = true;
-    try {
-        for (const mode of ["app", "unittest"]) {
-            // the errors straight to the terminal: there may be more than a captured output holds.
-            // The program with version Installed too: the code of the distribution (dist) along
-            // with that of debug, which a dist build would leave out
-            const passed = run("ldc2", ["-c", ...(mode === "unittest" ? ["-unittest"] : ["-d-version=Installed"]), "-oq",
-                `-od=${join(out, mode)}`, ...args], { echo: false }).status === 0;
-            console.log(`Windows compile (${mode}): ${passed ? "OK" : "FAILED"}`);
-            ok &&= passed;
-        }
-    } finally {
-        rmSync(out, { recursive: true, force: true });
-    }
-    if (!ok) throw new BuildError("Windows compile failed.");
-}
-
 /// The arguments of ldc2 for the log generator, `dubFlags` the flags and import paths of
 /// dub.sdl as dub describes them: optimized (a gigabyte takes a while), the code of the
 /// generator in (-d-version=LogGenerator), the program in build/tools/.
@@ -742,8 +710,14 @@ export function moduleTestArgs(dubFlags, file, platform) {
         `-od=build/tools/obj/${name}`, "-oq"];
 }
 
-/// The flags and import paths of dub.sdl, as dub describes them for a build in `cwd`.
+/// The flags and import paths of dub.sdl, as dub describes them for a build in `cwd`. dub
+/// checks the files of copyFiles even to describe: here the Sciter library is unpacked as for
+/// a build; another tree (the base of bench, its LFS files not fetched) gets an empty file in
+/// its place, which nothing there loads.
 function dubCompilerFlags(cwd) {
+    const library = sciterLibrary(process.platform, process.arch);
+    if (cwd === undefined || resolve(cwd) === process.cwd()) checkSciterLibrary(process.arch);
+    else if (!existsSync(join(cwd, library))) writeFileSync(join(cwd, library), "");
     const described = run("dub", ["describe", "--compiler=ldc2", "--data=dflags,import-paths", "--data-0"],
         { capture: true, cwd });
     if (described.status !== 0) throw new BuildError(`dub describe failed:\n${described.stderr}`);
@@ -901,7 +875,7 @@ function main(argv) {
     else if (command === "test") test({ arch });
     else if (command === "dist") dist(arch);
     else if (command === "pack-libs") return packLibs();
-    else checkWindows();
+    else throw new Error(`no branch of main for the command "${command}"`);
 }
 
 // run, not imported (by the tests); the module's path has its symbolic links resolved, the
