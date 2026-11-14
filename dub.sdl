@@ -58,8 +58,9 @@ configuration "unittest" {
 	targetType "executable"
 	dependency "unit-threaded" version="~>2.2.6"
 	versions "unitUnthreaded"
+	// source/app.d is compiled too, its main left out by version (unittest): excluding the file
+	// left its module in the list gen_ut_main makes on Windows, and the build failed
 	mainSourceFile "build/unittest/ut.d"
-	excludedSourceFiles "source/app.d" // the program's main
 	preBuildCommands "\"$DUB\" run --compiler=\"$DC\" unit-threaded@2.2.6 -c gen_ut_main -- -f build/unittest/ut.d -d \"$DUB\""
 }
 
