@@ -3,6 +3,7 @@
 module formats.dlt.format;
 
 import formats.dlt.protocol;
+import formats.dlt.fibex : Fibex;
 import formats.dlt.parser : parseDltItem;
 import formats.dlt.file_transfer : dltMayBeTransferAt, dltTransferOf;
 import formats.dlt.parser : VerboseStart, findVerboseStart, storageSizeOf;
@@ -24,18 +25,21 @@ enum FormatInfo dltFormatInfo = FormatInfo("dlt", "DLT", "DLT");
 //! standard header holds the length of the message without the storage header.
 //! Both versions of the protocol and of the storage header, mixed in any way.
 //! A message its writer cut into numbered parts is one record (formats/dlt/parts); the
-//! messages of a file sent in the log are told (formats/dlt/file_transfer).
+//! messages of a file sent in the log are told (formats/dlt/file_transfer). Non-verbose
+//! messages are decoded by the FIBEX of the format, if it has one (formats/dlt/fibex).
 final class DltFormat : LogFormat, PartedFormat, TransferringFormat
 {
     private immutable bool _hasStorageHeader;
+    private const Fibex _fibex; // read concurrently, never changed
 
     //! The most bytes scanRecords() skips looking for a storage header before
     //! returning control to the caller
     enum size_t maxHeaderScan = 1024 * 1024;
 
-    this(bool hasStorageHeader = true) pure nothrow @nogc @safe
+    this(bool hasStorageHeader = true, const Fibex fibex = null) pure nothrow @nogc @safe
     {
         _hasStorageHeader = hasStorageHeader;
+        _fibex = fibex;
     }
 
     bool hasStorageHeader() const pure nothrow @nogc @property
@@ -150,7 +154,7 @@ final class DltFormat : LogFormat, PartedFormat, TransferringFormat
 
     override bool decode(ref LogMessage!wchar msg, const(ubyte)[] record) const nothrow @nogc
     {
-        return parseDltItem!wchar(msg, record, _hasStorageHeader);
+        return parseDltItem!wchar(msg, record, _hasStorageHeader, _fibex);
     }
 
     override ubyte marksOf(const(ubyte)[] data, size_t offset) const nothrow @nogc
@@ -949,4 +953,25 @@ unittest
     transfer.numberOfArguments = 3;
     transfer.payload = VerboseArgs(false).str("FLFI").u32(7).str("FLFI").bytes;
     assert(marks(storageV2("ECU1", 1, 0) ~ transfer.bytes()) == RecordMark.transfer, "version 2");
+}
+
+@("DltFormat: non-verbose messages decoded by the FIBEX of the format, if it has one")
+unittest
+{
+    import formats.dlt.fibex : fibexOf, logFrame, parseFibex, textPdu, valuePdu;
+    import formats.dlt.testing_utils : BuildV1, bytesOf;
+
+    const fibex = parseFibex(fibexOf(textPdu("P_T", "Free size:") ~ valuePdu("P_U16", "S_UINT16", 2),
+            logFrame("ID_11", "APP1", "CON1", "P_T", "P_U16")));
+    BuildV1 r;
+    r.extended = false;
+    r.payload = bytesOf(11u) ~ bytesOf(cast(ushort) 42);
+    const record = r.bytes();
+
+    LogMessage!wchar msg;
+    assert(new DltFormat(true, fibex).decode(msg, record));
+    assert(msg.payloadText == "Free size: 42"w, "described by the FIBEX");
+    // A regression guard: a format without FIBEX shows the message as before
+    assert(new DltFormat().decode(msg, record));
+    assert(msg.payloadText == "[11] 002A |.*"w, "no FIBEX: the ID and the bytes");
 }

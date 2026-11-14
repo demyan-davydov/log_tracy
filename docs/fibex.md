@@ -51,4 +51,4 @@ FIBEX привязан к **версии прошивки**: после пере
 
 ## Текущее состояние кода
 
-`source/formats/dlt/fibex.d` переписан (2026-11-14): читает описания сообщений (`loadFibex`, `Fibex.find`). Декодирование по ним — следующий этап, `docs/stories/fibex.md`.
+`source/formats/dlt/fibex.d` переписан (2026-11-14): читает описания сообщений (`loadFibex`, `Fibex.find`). `DltFormat`, созданный с `Fibex`, декодирует по ним non-verbose сообщения; подключение FIBEX к документу — в работе, `docs/stories/fibex.md`.

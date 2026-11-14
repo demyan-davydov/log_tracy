@@ -58,8 +58,9 @@ Adding a format, step by step: `.ai/workflows/add-format.md`.
   `buildDltMessage`, `VerboseArgs` for the arguments of a verbose record), also for the
   tests of other packages.
 - `.dlf` filter files: `formats/dlt/dlf`. FIBEX (non-verbose): `formats/dlt/fibex`
-  reads the descriptions (`loadFibex`, `Fibex.find`); `DltFormat` doesn't decode by them yet
-  (`docs/stories/fibex.md`).
+  reads the descriptions (`loadFibex`, `Fibex.find`); a `DltFormat` created with a `Fibex`
+  decodes non-verbose messages by it (`parser.decodeByFibex`). Nothing gives a document's
+  format one yet (`docs/stories/fibex.md`).
 - Real logs for trying things are kept locally in `test_data/`, not in the repository (`*.dlt`
   is ignored): a fresh clone has none. Tests build their records instead; a whole log (big,
   broken on purpose) is written by the generator (below).
