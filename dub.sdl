@@ -34,16 +34,16 @@ buildType "dist" {
 	versions "Installed"
 }
 
-// The icon of the program on Windows: ldc2 links a .res, not a .rc, so app.rc is compiled
-// into build/windows/app.res before every build (scripts/windows-res.mjs, rc.exe)
-preBuildCommands "node \"$PACKAGE_DIR/scripts/windows-res.mjs\"" platform="windows"
-sourceFiles "build/windows/app.res" platform="windows"
-
 // The program (dub build, the first configuration) and the runner of the unittests (dub test
 // takes the configuration named unittest). Only the program is a window application of
 // Windows: the runner keeps the console its output goes to
 configuration "application" {
 	targetType "executable"
+	// The icon of the program on Windows: ldc2 links a .res, not a .rc, so app.rc is compiled
+	// into build/windows/app.res before every build (scripts/windows-res.mjs, rc.exe). Not in
+	// the runner of the unittests: gen_ut_main takes every file dub lists for a module of D
+	preBuildCommands "node \"$PACKAGE_DIR/scripts/windows-res.mjs\"" platform="windows"
+	sourceFiles "build/windows/app.res" platform="windows"
 	// ldc2 makes wmain of D's main on Windows: a window application starts there, not at
 	// WinMain (the default of /SUBSYSTEM:WINDOWS) nor main (mainCRTStartup)
 	lflags "/SUBSYSTEM:WINDOWS" "/ENTRY:wmainCRTStartup" platform="windows"
@@ -58,9 +58,8 @@ configuration "unittest" {
 	targetType "executable"
 	dependency "unit-threaded" version="~>2.2.6"
 	versions "unitUnthreaded"
-	// source/app.d is compiled too, its main left out by version (unittest): excluding the file
-	// left its module in the list gen_ut_main makes on Windows, and the build failed
 	mainSourceFile "build/unittest/ut.d"
+	excludedSourceFiles "source/app.d" // the program's main
 	preBuildCommands "\"$DUB\" run --compiler=\"$DC\" unit-threaded@2.2.6 -c gen_ut_main -- -f build/unittest/ut.d -d \"$DUB\""
 }
 

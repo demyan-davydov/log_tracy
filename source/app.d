@@ -52,9 +52,6 @@ private AppSession newSession(AppSettings settings, DocumentStore documents, out
 	return session;
 }
 
-// The runner of the unittests has its own main (dub.sdl, configuration unittest): this module
-// is compiled there too, so the generator of that main finds every module on every system
-version (unittest) {} else
 int main()
 {
 	// Debug builds write a line out as soon as it ends, also when the output goes to a file or a
