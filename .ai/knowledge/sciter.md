@@ -146,6 +146,16 @@ agent can't drive it. In scapp a plain
   `role="cancel-button"` on Escape (an open list of a select takes the first Escape). Their
   `click` handlers close the dialog. Driving it: `app.mjs key` reaches only the main window,
   a key of the system (`osascript ... key code 53`) reaches the dialog.
+- macOS (6.0.5.5, 2026-11-14): a dialog of `Window.this.modal` drags with a lag (the window
+  catches up with the mouse later), the system file dialog doesn't. Not the graphics layer:
+  the same on ANGLE, Metal, CoreGraphics and Skia raster. Sciter makes the dialog a child
+  window of its parent (`[parent childWindows]` holds it, it moves with the parent), and
+  AppKit drags a child window on the app's main thread, busy with the modal loop and the
+  repaints of the main window, instead of in the window server. Removing it from the parent
+  (`removeChildWindow:`, tried with a timer after `modal`) makes the drag smooth, but the
+  dialog is then no longer kept above the parent: a click on the parent hides it under it.
+  Not acceptable as is; a fix has to keep it on top (not tried: a higher `level` of the
+  dialog, ordering it above the parent on the parent's activation).
 
 - Text cut with `text-overflow: ellipsis/path-ellipsis` gets an automatic tooltip
   `popup[role=overflow-tooltip]` (besides `title` → `popup[role=tooltip]`). Tooltip popups
