@@ -51,7 +51,7 @@ The latest release, for macOS (Apple silicon), Linux (x64) and Windows (x64):
 ## Building
 
 ```sh
-node scripts/build.mjs            # debug build for this machine (fetches its Sciter library from Git LFS)
+node scripts/build.mjs            # debug build for this machine (fetches and unpacks its Sciter library from Git LFS)
 node scripts/run.mjs              # build and start
 node scripts/test.mjs             # the tests: D unittests, JS tests
 node scripts/build.mjs dist       # the distribution of this system and its installer, in build/dist/

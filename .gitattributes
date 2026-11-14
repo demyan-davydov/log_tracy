@@ -1,7 +1,6 @@
 # Text files with \n on every system, Windows too: the tests read the sources (backend-calls)
 * text=auto eol=lf
 
-# The Sciter libraries of libs/ are kept in Git LFS: the repository holds a pointer, LFS the file
-libs/**/*.dylib filter=lfs diff=lfs merge=lfs -text
-libs/**/*.so filter=lfs diff=lfs merge=lfs -text
-libs/**/*.dll filter=lfs diff=lfs merge=lfs -text
+# The Sciter libraries of libs/ are kept in Git LFS packed by brotli (<library>.br): the
+# repository holds a pointer, LFS the archive; scripts/build.mjs unpacks it next to itself
+libs/**/*.br filter=lfs diff=lfs merge=lfs -text

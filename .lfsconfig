@@ -1,4 +1,4 @@
-# The Sciter libraries of libs/ (Git LFS) are fetched by none of git's commands: scripts/build.mjs
-# fetches the one a build needs, on demand (`git lfs pull --include=<library> --exclude=`)
+# The archives of the Sciter libraries of libs/ (Git LFS) are fetched by none of git's commands:
+# scripts/build.mjs fetches the one a build needs, on demand (`git lfs pull --include=<archive> --exclude=`)
 [lfs]
 	fetchexclude = libs/**

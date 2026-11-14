@@ -18,7 +18,7 @@
   `i18n: add the core of translations`. A side branch of a feature (`i18n-simplify`) takes the
   feature's name. Commits straight on `master` have no prefix; merge commits read
   `merge <branch>: <what the feature does>`.
-- A Sciter update replaces `libs/` and `libs/SCITER_VERSION` in one commit
+- A Sciter update replaces the archives of `libs/` and `libs/SCITER_VERSION` in one commit
   (`.ai/workflows/update-sciter.md`).
 
 ## A Feature, End to End

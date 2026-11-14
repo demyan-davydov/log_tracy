@@ -11,7 +11,7 @@ You need:
   ldc2 only. It is developed with LDC 1.43.
 - **dub**, the D build tool.
 - **Node.js** 22 or newer: the build script, the JS tests, the translation tools.
-- **Git LFS**: the Sciter libraries in `libs/` are kept in it.
+- **Git LFS**: the Sciter libraries in `libs/` are kept in it, packed.
 - A C toolchain for linking (below, per system).
 
 ### macOS
@@ -79,10 +79,13 @@ cd <the folder of the clone>
 git lfs install    # once per machine
 ```
 
-A clone fetches none of the Sciter libraries of `libs/` (`.lfsconfig`): there are five of them,
-one per system and architecture, 20 to 50 MB each. The first build fetches the one it needs
-(`node scripts/build.mjs` runs `git lfs pull --include=<library> --exclude=`), the others stay
-pointers. A plain `dub build` doesn't fetch it: run a build of the script once first.
+The Sciter libraries of `libs/` are kept packed by brotli, a quarter of their size: five
+archives, one per system and architecture (`libsciter.dylib.br`, `sciter.dll.br`, ...), 5 to
+13 MB each. A clone fetches none of them (`.lfsconfig`). The first build fetches the one it
+needs (`node scripts/build.mjs` runs `git lfs pull --include=<archive> --exclude=`) and unpacks
+it next to itself, the others stay pointers. The unpacked library is ignored by git; a build
+unpacks it again when the archive changes (a checkout, an update of Sciter). A plain
+`dub build` doesn't fetch nor unpack it: run a build of the script once first.
 
 ## Commands
 
@@ -104,6 +107,7 @@ node scripts/build.mjs dist               # a distribution
 node scripts/build.mjs check-windows      # compiles for Windows x64 from macOS or Linux
 node scripts/build.mjs gen-log <file> ... # a test log (see "A test log" below)
 node scripts/build.mjs bench [log] ...    # this tree against master (see "Measuring" below)
+node scripts/build.mjs pack-libs          # the Sciter libraries into their archives (see below)
 node scripts/test.mjs --brief             # only what failed (any command but gen-log and bench)
 node scripts/build.mjs --help             # the commands and options
 ```
@@ -116,7 +120,9 @@ starts the program from its build folder; its output goes to the same terminal.
 Every build has its own folder, `build/<platform>-<architecture>-<type>/`: for example
 `build/osx-aarch64-debug/`, `build/linux-x86_64-release/`, `build/windows-x86_64-unittest/`
 (the tests). dub puts the Sciter library of `libs/` next to the program, so it runs from
-there as it is. Plain `dub build --compiler=ldc2` and `dub test --compiler=ldc2` do the same.
+there as it is. Plain `dub build --compiler=ldc2` and `dub test --compiler=ldc2` do the same
+once a build of the script has unpacked the library; they don't fetch nor unpack it themselves,
+so after a checkout that changes the archive build with the script first.
 
 The program keeps its settings (`settings.json`) next to itself, so every build has its own.
 Only a distribution keeps them in the user's folder (see "Distribution" below).
@@ -335,6 +341,9 @@ A new variable goes into this table.
 
 ## The Sciter libraries
 
-`libs/<system>/[<architecture>/]` holds the Sciter libraries of every platform; their version
-is in `libs/SCITER_VERSION`. To update Sciter, replace the files and `libs/SCITER_VERSION` in one commit: the
-binding (`source/sciter/capi`) is written for the API of that version.
+`libs/<system>/[<architecture>/]` holds the Sciter libraries of every platform, each packed by
+brotli into `<library>.br`; their version is in `libs/SCITER_VERSION`. To update Sciter, put
+the new libraries in `libs/`, run `node scripts/build.mjs pack-libs` (a couple of minutes) and
+commit the archives with `libs/SCITER_VERSION` in one commit: the binding (`source/sciter/capi`)
+is written for the API of that version. The libraries themselves are ignored by git; until
+they are packed, a build stops on a library that doesn't match its archive.

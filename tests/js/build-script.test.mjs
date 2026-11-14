@@ -2,10 +2,11 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseCommand, dubArgs, distArch, infoPlist, desktopEntry, sciterLibrary, isLfsPointer, lfsPullArgs, jsTestArgs,
+import { parseCommand, dubArgs, distArch, infoPlist, desktopEntry, sciterLibrary, sciterLibraries, sciterArchive, unpackLibrary,
+    packLibrary, packLibs, isLfsPointer, lfsPullArgs, jsTestArgs,
     compilerArgs, genLogArgs, moduleTestArgs, commands, buildUsage, runUsage, dmgName, debName, debControl, zipName, zipCommand,
     makeDebRoot, signScript, dmgCommand } from "../../scripts/build.mjs";
 
@@ -20,6 +21,7 @@ test("a command, release and an architecture", () => {
     assert.deepEqual(parseCommand(["test"]), { command: "test", release: false, arch: null });
     assert.deepEqual(parseCommand(["dist"]), { command: "dist", release: true, arch: null });
     assert.deepEqual(parseCommand(["check-windows"]), { command: "check-windows", release: false, arch: null });
+    assert.deepEqual(parseCommand(["pack-libs"]), { command: "pack-libs", release: false, arch: null });
 });
 
 test("what isn't understood is refused, naming it", () => {
@@ -35,6 +37,8 @@ test("an option the command would ignore is refused", () => {
     assert.throws(() => parseCommand(["test", "--release"]), /--release/);
     assert.throws(() => parseCommand(["check-windows", "--release"]), /--release/);
     assert.throws(() => parseCommand(["check-windows", "--arch", "arm64"]), /--arch/);
+    assert.throws(() => parseCommand(["pack-libs", "--release"]), /--release/);
+    assert.throws(() => parseCommand(["pack-libs", "--arch", "x64"]), /--arch/);
 });
 
 test("the dub calls: ldc2 always, the build type, the architecture as dub names it", () => {
@@ -142,6 +146,62 @@ test("the Sciter library of a system and an architecture", () => {
     assert.equal(sciterLibrary("darwin", "x64"), "libs/macosx/libsciter.dylib"); // universal
     assert.equal(sciterLibrary("linux", "x64"), "libs/linux/x64/libsciter.so");
     assert.equal(sciterLibrary("win32", "arm64"), "libs/windows/arm64/sciter.dll");
+});
+
+test("a Sciter library is kept as its archive of brotli next to it", () => {
+    assert.equal(sciterArchive("libs/windows/x64/sciter.dll"), "libs/windows/x64/sciter.dll.br");
+});
+
+test("pack-libs packs the libraries dub copies, every one", () => {
+    const copied = [...readFileSync(new URL("../../dub.sdl", import.meta.url), "utf8").matchAll(/^copyFiles "([^"]+)"/gm)].map((m) => m[1]);
+    assert.deepEqual([...sciterLibraries].sort(), copied.sort());
+    for (const library of sciterLibraries) assert.ok(sciterLibraries.includes(sciterLibrary(...platformOf(library))));
+});
+
+function platformOf(library) {
+    const [, system, arch = "arm64"] = library.split("/");
+    return [{ macosx: "darwin", windows: "win32", linux: "linux" }[system], arch];
+}
+
+test("a library is unpacked from its archive once, and again when the archive changes", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "libs-"));
+    try {
+        const library = join(dir, "libsciter.so");
+        writeFileSync(library, "version 1 ".repeat(1000));
+        await packLibrary(library);
+        rmSync(library);
+        assert.equal(unpackLibrary(library), true);
+        assert.equal(readFileSync(library, "utf8"), "version 1 ".repeat(1000));
+        assert.equal(unpackLibrary(library), false); // already the one of the archive
+
+        writeFileSync(library, "version 2 ".repeat(1000));
+        await packLibrary(library); // a checkout brings another archive
+        writeFileSync(library, "stale");
+        assert.equal(unpackLibrary(library), true);
+        assert.equal(readFileSync(library, "utf8"), "version 2 ".repeat(1000));
+
+        // the library changed, the archive didn't: a new Sciter put by hand, not packed yet
+        writeFileSync(library, "new Sciter");
+        assert.throws(() => unpackLibrary(library), /pack-libs/);
+        assert.equal(readFileSync(library, "utf8"), "new Sciter"); // kept
+        rmSync(library); // deleted: unpacked again
+        assert.equal(unpackLibrary(library), true);
+        assert.equal(readFileSync(library, "utf8"), "version 2 ".repeat(1000));
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test("pack-libs packs nothing when a library is missing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "libs-"));
+    try {
+        const present = join(dir, "sciter.dll");
+        writeFileSync(present, "library");
+        await assert.rejects(packLibs([present, join(dir, "libsciter.so")]), /libsciter\.so/);
+        assert.equal(existsSync(sciterArchive(present)), false);
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
 });
 
 test("a file Git LFS hasn't fetched is a pointer, a library is not", () => {
