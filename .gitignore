@@ -10,6 +10,12 @@ docs/experiments/*
 .dub
 /build/
 .DS_Store
+# the Sciter libraries unpacked from their archives of libs/ by scripts/build.mjs
+/libs/**/*.dylib
+/libs/**/*.so
+/libs/**/*.dll
+/libs/**/*.unpacked
+/libs/**/*.unpacking
 .vscode
 ai-spec.md
 

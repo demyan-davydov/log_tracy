@@ -54,6 +54,7 @@ node scripts/utils/i18n-extract.mjs             # brings the translation catalog
 node scripts/utils/screenshot.mjs --open <log>  # the app's window with a log → build/screenshot.png (--help)
 node scripts/utils/app.mjs start --open <log>   # a running debug copy to drive: eval, wait, shot, run, stop (--help)
 node scripts/build.mjs gen-log <file> --format dlt|dlt-v2|text --size 1G  # a test log, same bytes per seed (--help)
+node scripts/build.mjs pack-libs                # the Sciter libraries of libs/ into their archives of LFS, after an update
 node scripts/build.mjs bench [log] [words] --against master  # bench_rows.d (--bench index) of both sides, a table (--help)
 node scripts/utils/check-ai-context.mjs         # names in backquotes of .ai/, AGENTS.md, .claude/ the code no longer has
 node scripts/utils/backtrace.mjs [pid]          # stacks of every thread of a running (hung) app → build/backtrace-<pid>.txt
@@ -61,9 +62,10 @@ node scripts/utils/backtrace.mjs [pid]          # stacks of every thread of a ru
 
 - `dub.sdl` puts every build in `build/<platform>-<arch>-<build type>/` (`osx-aarch64-unittest`
   for `dub test`) and copies the Sciter library of `libs/` next to it (`copyFiles`): a build
-  runs from there, in a fresh worktree too. `libs/` is in Git LFS and a clone fetches none
-  of it (`.lfsconfig`): `scripts/build.mjs` fetches the one library a build needs, while a
-  plain `dub build` copies the pointer. The Sciter version is in `libs/SCITER_VERSION`; the app's version is `VERSION`.
+  runs from there, in a fresh worktree too. `libs/` keeps each library packed by brotli
+  (`<library>.br`) in Git LFS and a clone fetches none of them (`.lfsconfig`):
+  `scripts/build.mjs` fetches the one archive a build needs and unpacks it next to itself
+  (ignored by git), while a plain `dub build` on a fresh clone finds no library. The Sciter version is in `libs/SCITER_VERSION`; the app's version is `VERSION`.
 - `test --module` compiles one module and what it imports with the flags of `dub.sdl`: the
   druntime runner has no filter and stops a module at its first failing `unittest`.
 - Keep the `-preview=in/dip1000/dtorfields` flags of `dub.sdl` when compiling by hand.

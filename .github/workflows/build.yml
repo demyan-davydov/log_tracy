@@ -13,17 +13,17 @@ jobs:
       matrix:
         include:
           - os: macos-latest # arm64
-            sciter: libs/macosx/libsciter.dylib
+            sciter: libs/macosx/libsciter.dylib.br
           - os: ubuntu-latest
-            sciter: libs/linux/x64/libsciter.so
+            sciter: libs/linux/x64/libsciter.so.br
           - os: windows-latest
-            sciter: libs/windows/x64/sciter.dll
+            sciter: libs/windows/x64/sciter.dll.br
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
-      # The Sciter libraries of libs/ are in Git LFS: scripts/build.mjs fetches only the one of
-      # this system, on the first build. Cached by its LFS object, so a run downloads it only
+      # The Sciter libraries of libs/ are in Git LFS, packed (<library>.br): scripts/build.mjs
+      # fetches and unpacks only the one of this system, on the first build. Cached by its LFS object, so a run downloads it only
       # when it changes
       - name: The LFS object of the Sciter library
         shell: bash
