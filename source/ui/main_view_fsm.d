@@ -24,7 +24,6 @@ import std.sumtype : SumType, match;
 struct LoadingFileView
 {
     enum status = "loadingFile";
-    enum canCancel = true; // cancelling closes the document
     float progress = 0; // 0..1
     /// The content the view is being filled with, see ReadyView.dataVersion:
     /// the records found so far are shown, those a filter asked for meanwhile
@@ -96,10 +95,6 @@ interface MainViewCommands
 {
     /// Cancels the running filter. Returns: true if it was asked to stop
     bool cancelOperation();
-
-    /// Closes the document. The machine is destroyed with it, so the
-    /// implementation must defer the closing until the event is processed.
-    void closeDocument();
 }
 
 /// Serializes the view for JS: {"status": "<name>", "canCancel": bool, <fields of the view>}
@@ -217,12 +212,6 @@ struct Loading
         }
         c.error = e.error; // loading can't be cancelled: Cancelled is a failure as well
         return To!LoadFailed;
-    }
-
-    /// Loading can't be stopped half way: cancelling it closes the document
-    void on(in CancelPressed e, ref MainViewContext c)
-    {
-        c.commands.closeDocument();
     }
 
     Transition on(in SourceLost e, ref MainViewContext c)
@@ -385,17 +374,11 @@ version (unittest) private
     class CommandsMock : MainViewCommands
     {
         int cancelCalls;
-        int closeCalls;
 
         bool cancelOperation()
         {
             ++cancelCalls;
             return true;
-        }
-
-        void closeDocument()
-        {
-            ++closeCalls;
         }
     }
 
@@ -551,17 +534,18 @@ unittest
     f.start(filterOperation);
     f.process(CancelPressed());
     assert(f.sink.shown.length == shownCount, "a failed document ignores everything but SourceLost");
-    assert(f.commands.closeCalls == 0 && f.commands.cancelCalls == 0);
+    assert(f.commands.cancelCalls == 0);
 }
 
-@("MainViewFsm: cancelling the load closes the document")
+@("MainViewFsm: cancel is ignored while the file loads")
 unittest
 {
     auto f = Fixture.started();
     f.start(loadOperation);
+    const shownCount = f.sink.shown.length;
     f.process(CancelPressed());
-    assert(f.commands.closeCalls == 1);
-    assert(f.commands.cancelCalls == 0, "loading the file is not cancellable");
+    assert(f.sink.shown.length == shownCount);
+    assert(f.commands.cancelCalls == 0, "loading the file is not cancellable: closing its tab stops it");
 }
 
 @("MainViewFsm: a completed filter shows the new content of the view")
@@ -583,7 +567,6 @@ unittest
     auto f = Fixture.filtering();
     f.process(CancelPressed());
     assert(f.commands.cancelCalls == 1);
-    assert(f.commands.closeCalls == 0);
     assert(f.sink.last == MainViewModel(FilteringView(0, 2)), "the filter is still running");
 
     f.finish(filterOperation, Result.Cancelled);
@@ -655,7 +638,7 @@ unittest
         f.process(CancelPressed());
         f.process(SourceLost());
         assert(f.sink.shown.length == shownCount, "a lost document ignores everything");
-        assert(f.commands.cancelCalls == cancelCalls && f.commands.closeCalls == 0);
+        assert(f.commands.cancelCalls == cancelCalls);
     }
 }
 
@@ -664,7 +647,7 @@ unittest
 {
     auto f = Fixture.ready();
     f.process(CancelPressed());
-    assert(f.commands.cancelCalls == 0 && f.commands.closeCalls == 0);
+    assert(f.commands.cancelCalls == 0);
 }
 
 @("MainViewModel: serializes the status, canCancel and the fields of each view")
@@ -678,7 +661,7 @@ unittest
         assert(actual == parseJSON(expected), View.stringof ~ ": " ~ actual.toString);
     }
 
-    check(LoadingFileView(0.5, 1), `{"status": "loadingFile", "canCancel": true, "progress": 0.5, "dataVersion": 1}`);
+    check(LoadingFileView(0.5, 1), `{"status": "loadingFile", "canCancel": false, "progress": 0.5, "dataVersion": 1}`);
     check(LoadFailedView(plainText("e")), `{"status": "loadFailed", "canCancel": false, "error": "e"}`);
     check(ReadyView(3), `{"status": "ready", "canCancel": false, "dataVersion": 3}`);
     check(FilteringView(0.25, 2), `{"status": "filtering", "canCancel": true, "progress": 0.25, "dataVersion": 2}`);

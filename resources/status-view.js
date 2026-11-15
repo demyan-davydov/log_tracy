@@ -15,7 +15,6 @@ export function percent(progress) {
 // table and the lost file
 export const mainViewStatus = {
     texts: {
-        loadingFile: (vm) => tr("Loading file... {percent}%", { percent: percent(vm.progress) }),
         loadFailed: () => tr("Failed to load the file"),
         filtering: (vm) => tr("Filtering... {percent}%", { percent: percent(vm.progress) }),
         filterCancelled: () => tr("Filter cancelled"),
@@ -23,7 +22,6 @@ export const mainViewStatus = {
     },
     // What the user can do, or the error
     details: {
-        loadingFile: () => tr("Cancel closes the file"),
         loadFailed: (vm) => vm.error || "",
         filterCancelled: () => tr("Change or clear the filters to show messages again"),
         filterFailed: (vm) => vm.error || "",

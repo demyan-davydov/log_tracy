@@ -671,14 +671,6 @@ globalThis.onDocumentOpened = function (docId) {
     refreshTabs(); // the table reloads when the file is loaded
 };
 
-// Native: the document was closed on request of its main view (e.g. Cancel
-// while the file was loading)
-globalThis.onDocumentClosed = function (docId) {
-    console.log("Native: onDocumentClosed", docId);
-    win = documentClosed(win);
-    refreshTabs();
-};
-
 globalThis.getAppState = function () {
     // Left out (the saved one kept) while the window isn't shown normally
     const windowRect = platform.windowFrame() ?? undefined;

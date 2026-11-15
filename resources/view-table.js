@@ -55,7 +55,7 @@ export class ViewTable {
         this.running = null; // the view the progress under the table shows, null: none
         this.focusCovered = false; // a status view took the focus from the table
         // Cancel of the status view and of the progress: what it means is decided by the
-        // machine of the view (stop the filter or the search, close a loading document)
+        // machine of the view (stop the filter or the search)
         for (const button of [status.$(".btn-cancel"), progress.$(".btn-cancel")])
             button.on("click", () => this.cancel());
     }

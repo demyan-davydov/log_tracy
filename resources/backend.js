@@ -5,8 +5,8 @@
 // functions named ...Json give the text as it is. Messages for the user are ""
 // when there is none. The backend tells the script
 // what changed by calling the global functions of script.js (onDocumentOpened,
-// onDocumentClosed, onMainViewChanged, onSearchViewChanged, onAttachmentsChanged,
-// onFileInfoChanged, getAppState),
+// onMainViewChanged, onSearchViewChanged, onAttachmentsChanged, onFileInfoChanged,
+// getAppState),
 // never from inside one of these calls. Kept free of Sciter but for Window:
 // tests/js.
 

@@ -99,8 +99,8 @@ final class AppSession
 
     // ── Script calls and settings, for the idle loop of the window ──────────
 
-    /// Delivers the events of the documents to their views, carries out what
-    /// the views asked for, and queues the views that changed
+    /// Delivers the events of the documents to their views and queues the
+    /// views that changed
     void dispatchEvents()
     {
         import std.stdio : writeln;
@@ -112,11 +112,10 @@ final class AppSession
             for (Throwable t = e; t !is null; t = t.next)
                 writeln("Document event handler failed: ", t.msg);
         }
-        applyDocumentCommands();
     }
 
     /// The calls of the script queued since the last time, in order: the
-    /// documents opened and closed, then the views that changed
+    /// documents opened, then the views that changed
     ScriptCall[] takeScriptCalls()
     {
 
@@ -507,7 +506,7 @@ final class AppSession
     }
 
     /// Cancel pressed in the main view of the document: its machine decides
-    /// what it means (closing a loading document happens in dispatchEvents)
+    /// what it means
     void cancelMainView(DocumentId docId)
     {
         if (auto ui = _documentUis.get(docId, null))
@@ -898,25 +897,6 @@ final class AppSession
             ui.process(e);
     }
 
-    /// Carries out what the machines asked for. Not called from their handlers:
-    /// a document must not be destroyed while its events are being dispatched.
-    private void applyDocumentCommands()
-    {
-        import std.stdio : writeln;
-
-        DocumentId[] toClose;
-        foreach (docId, ui; _documentUis)
-            if (ui.closeRequested)
-                toClose ~= docId;
-
-        foreach (docId; toClose)
-        {
-            writeln("Closing document ", docId.toInt(), " on request of its view");
-            closeDocument(docId);
-            _scriptCalls ~= ScriptCall("onDocumentClosed", idOf(docId));
-        }
-    }
-
     private void addDocumentUi(DocumentId docId)
     {
         _documentUis[docId] = new DocumentUi(_documents, docId);
@@ -1227,20 +1207,6 @@ unittest
     assert(calls[1].docId == id.toInt());
 }
 
-@("AppSession: Cancel while a file loads closes its document from the idle loop")
-unittest
-{
-    auto f = Fixture.make();
-    const id = f.session.openFile(testPath("/logs/a.log")).docId;
-    f.session.takeScriptCalls();
-
-    f.session.cancelMainView(id);
-    assert(f.session.findDocument(cast(int) id.toInt()).isValid, "not closed during the call");
-    f.session.dispatchEvents();
-    assert(!f.session.findDocument(cast(int) id.toInt()).isValid);
-    assert(f.session.takeScriptCalls() == [ScriptCall("onDocumentClosed", cast(int) id.toInt())]);
-}
-
 @("AppSession: a tab closed by the user goes away at once, its file marked used")
 unittest
 {
@@ -1326,7 +1292,7 @@ unittest
     f.session.saveOnClose(`{}`);
     assert(f.session.closing);
 
-    f.session.cancelMainView(id); // the loading document closes itself
+    f.session.closeTab(cast(int) id.toInt());
     f.session.dispatchEvents();
     assert(!f.session.settingsDue, "no getAppState() of a closing window");
 
@@ -1798,7 +1764,7 @@ unittest
     const id = f.session.openFile(testPath("/logs/a.log")).docId;
     f.session.saveOnClose(`{"theme": "dark", "tableFontSize": 130}`);
 
-    f.session.cancelMainView(id); // closes after the window did: a write without the script
+    f.session.closeTab(cast(int) id.toInt()); // after the window closed: a write without the script
     f.session.dispatchEvents();
     f.session.finish();
     assert(f.writes.length == 2);

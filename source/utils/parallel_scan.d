@@ -39,9 +39,10 @@ struct ScanStop
 //! valid during the call only: its memory is reused for a later block. It
 //! returns false to stop the scan: no block after it is delivered then, and
 //! the blocks no thread has started are dropped.
-//! A few blocks per thread are in flight: a delivered block makes room for
-//! the next one, so results held don't depend on `length`, and no thread
-//! waits for another while there are blocks left.
+//! A few blocks per thread are in flight, no more than the scan has: a
+//! delivered block makes room for the next one, so results held don't grow
+//! with `length` past them, and no thread waits for another while there are
+//! blocks left.
 //! @return false if `deliver` stopped the scan
 bool parallelScan(T)(size_t length, size_t blockLength,
     scope size_t delegate(size_t lo, size_t hi, T[] found, ScanStop stop) scan,
@@ -49,28 +50,30 @@ bool parallelScan(T)(size_t length, size_t blockLength,
     TaskPool pool = null)
 {
     import core.memory : GC;
+    import std.algorithm.comparison : min;
     import std.array : uninitializedArray;
 
     assert(blockLength > 0);
     if (pool is null)
         pool = taskPool;
 
-    const inFlight = inFlightOn(pool);
-    // The room of a slot, reused by its blocks. Nothing reads what a block didn't
-    // write: no need to clear it
-    auto room = uninitializedArray!(T[])(inFlight * blockLength);
+    const inFlight = inFlightOn(pool, length, blockLength);
+    // The room of a slot, reused by its blocks: of the longest block, a scan shorter
+    // than a block needs less. Nothing reads what a block didn't write: no need to clear it
+    const slotLength = min(blockLength, length);
+    auto room = uninitializedArray!(T[])(inFlight * slotLength);
     // After the blocks: none uses the room once scanBlocks returns, and it may be megabytes
     scope (exit)
         GC.free(room.ptr);
 
     return scanBlocks!size_t(length, blockLength, inFlight,
         (size_t slot, size_t lo, size_t hi, ScanStop stop) {
-            auto slotRoom = room[slot * blockLength .. slot * blockLength + (hi - lo)];
+            auto slotRoom = room[slot * slotLength .. slot * slotLength + (hi - lo)];
             const n = scan(lo, hi, slotRoom, stop);
             assert(n <= slotRoom.length, "more results than positions");
             return n;
         },
-        (size_t done, size_t slot, ref size_t n) => deliver(done, room[slot * blockLength .. slot * blockLength + n]),
+        (size_t done, size_t slot, ref size_t n) => deliver(done, room[slot * slotLength .. slot * slotLength + n]),
         pool);
 }
 
@@ -96,7 +99,7 @@ bool parallelFold(A)(size_t length, size_t blockLength,
     assert(blockLength > 0);
     if (pool is null)
         pool = taskPool;
-    return scanBlocks!A(length, blockLength, inFlightOn(pool),
+    return scanBlocks!A(length, blockLength, inFlightOn(pool, length, blockLength),
         (size_t slot, size_t lo, size_t hi, ScanStop stop) => fold(lo, hi, stop),
         (size_t done, size_t slot, ref A folded) => merge(done, folded),
         pool);
@@ -106,10 +109,19 @@ bool parallelFold(A)(size_t length, size_t blockLength,
 private enum blocksPerThread = 4;
 
 //! The blocks in flight on `pool`: several per thread, so a slow block doesn't leave the
-//! others idle; the calling thread works too
-private size_t inFlightOn(TaskPool pool)
+//! others idle; the calling thread works too. No more than the blocks of [0, length):
+//! a short scan holds the room and the results of its own blocks only
+private size_t inFlightOn(TaskPool pool, size_t length, size_t blockLength)
 {
-    return (pool.size + 1) * blocksPerThread;
+    import std.algorithm.comparison : max, min;
+
+    return max(1, min((pool.size + 1) * blocksPerThread, blockCountOf(length, blockLength)));
+}
+
+//! The blocks of `blockLength` positions [0, length) is cut into, the last one maybe shorter
+private size_t blockCountOf(size_t length, size_t blockLength)
+{
+    return (length + blockLength - 1) / blockLength;
 }
 
 //! @brief Scans [0, length) in blocks on `pool`, `inFlight` of them at most at a time,
@@ -126,7 +138,7 @@ private bool scanBlocks(R)(size_t length, size_t blockLength, size_t inFlight,
     import std.algorithm.comparison : min;
     import std.parallelism : task;
 
-    const blockCount = (length + blockLength - 1) / blockLength;
+    const blockCount = blockCountOf(length, blockLength);
     auto results = new R[inFlight]; // what the last block of each slot gave
     // What a block threw, rethrown on delivery. A task must not throw: an
     // Error of a task run by yieldForce on the waiting thread leaves the task
@@ -246,6 +258,34 @@ unittest
         },
         (size_t done, const(size_t)[] found) { all ~= found; return true; });
     assert(all == iota(0, 1000, 10).array);
+}
+
+@("parallelScan: the room taken is of the blocks of the scan, not of all the blocks a pool could hold")
+unittest
+{
+    import core.memory : GC;
+
+    auto pool = new TaskPool(4); // 20 blocks in flight
+    scope (exit)
+        pool.finish(true);
+
+    // The bytes of the memory the blocks were given room in
+    size_t roomTaken(size_t length, size_t blockLength)
+    {
+        size_t bytes;
+        parallelScan!size_t(length, blockLength,
+            (size_t lo, size_t hi, size_t[] found, ScanStop stop) {
+                if (lo == 0)
+                    bytes = GC.sizeOf(GC.addrOf(found.ptr));
+                return 0;
+            },
+            (size_t done, const(size_t)[] found) => true, pool);
+        return bytes;
+    }
+
+    // The GC rounds a size up, to twice it at most
+    assert(roomTaken(30, 10) <= 2 * 30 * size_t.sizeof, "3 blocks: room for 3");
+    assert(roomTaken(5, 100) <= 2 * 5 * size_t.sizeof, "a block shorter than blockLength: room for its positions");
 }
 
 @("parallelScan: deliver returning false stops the scan")

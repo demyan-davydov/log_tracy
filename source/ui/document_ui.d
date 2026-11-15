@@ -26,7 +26,6 @@ final class DocumentUi : MainViewSink, MainViewCommands, SearchViewSink, SearchV
     bool mainViewChanged; // shown since it was last sent to JS
     SearchViewModel searchViewShown; // likewise for the search view
     bool searchViewChanged;
-    bool closeRequested; // the machine asked to close the document
     bool attachmentsChanged; // the files sent in the log changed since it was last told to JS
     bool fileInfoChanged; // its descriptions or format choice changed since it was last told to JS
 
@@ -97,10 +96,5 @@ final class DocumentUi : MainViewSink, MainViewCommands, SearchViewSink, SearchV
     bool cancelSearch()
     {
         return _documents.doc(_docId).requestCancel(Document.Operation.BuildSearchIndex);
-    }
-
-    void closeDocument()
-    {
-        closeRequested = true; // done by AppSession.dispatchEvents(), outside the handlers of the events
     }
 }

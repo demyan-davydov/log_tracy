@@ -47,7 +47,7 @@ test("a failure instead of the table: the table is reloaded when it comes back",
 });
 
 test("a file being loaded shows the records found so far, from the top, and grows", () => {
-    const loading = { status: "loadingFile", canCancel: true, progress: 0, dataVersion: 1 };
+    const loading = { status: "loadingFile", canCancel: false, progress: 0, dataVersion: 1 };
     const first = tableStep(noTable, loading, none);
     assert.equal(first.table, true, "even before the first record");
     assert.equal(first.reload, "start");
