@@ -20,7 +20,8 @@ import std.sumtype : SumType, match;
 
 // ─── Output ────────────────────────────────────────────────────────────────
 
-/// The main view is being built (the file loads or a filter runs): no result yet
+/// The main view was left incomplete (a cancelled or failed load or filter): no result
+/// until the next filter
 struct SearchWaitingView
 {
     enum status = "waitingForView";
@@ -117,10 +118,11 @@ struct SearchViewContext
     SearchViewSink view;
     SearchViewCommands commands;
     uint dataVersion; // see SearchResultsView.dataVersion
+    bool filterRuns; // the main view is built by a filter, not only by the load
     UiText error; // of the failed search, set before the transition to SearchFailed
 }
 
-alias SearchViewFsm = Fsm!(SearchViewContext, WaitingForView, ShowingResults, Searching,
+alias SearchViewFsm = Fsm!(SearchViewContext, ListingAnchors, WaitingForView, ShowingResults, Searching,
     SearchCancelled, SearchFailed, SearchLost);
 
 /// Creates the machine of a document whose file is being loaded; call start() on it.
@@ -140,17 +142,65 @@ private void show(View)(ref SearchViewContext c, View v)
 
 /// Transitions shared by the states that show a search outcome: a new search
 /// starts over, a new filter makes the result obsolete
-private Transition onSearchOrFilterStarted(in OperationStarted e)
+private Transition onSearchOrFilterStarted(in OperationStarted e, ref SearchViewContext c)
 {
     if (e.operation == searchOperation)
         return To!Searching;
     if (e.operation == filterOperation)
-        return To!WaitingForView;
+    {
+        c.filterRuns = true;
+        return To!ListingAnchors;
+    }
     return NoTransition;
 }
 
-/// Initial state: the main view is being built. A cancelled or failed load or
-/// filter leaves it incomplete, so the view keeps waiting for the next filter.
+/// Initial state: the main view is being built (the file loads, a filter runs) and
+/// nothing is searched. The view lists the anchors of the rows the main view has so
+/// far, as they come; complete once the main view is. A cancelled or failed load or
+/// filter stops the listing: the view waits for the next filter.
+struct ListingAnchors
+{
+    void onEnter(ref SearchViewContext c)
+    {
+        ++c.dataVersion; // the results shown before are gone with the main view
+        c.show(SearchResultsView(c.dataVersion));
+    }
+
+    Transition on(in OperationStarted e, ref SearchViewContext c)
+    {
+        return onSearchOrFilterStarted(e, c); // another filter: the main view is built anew
+    }
+
+    /// An anchor was listed: the table counts it
+    void on(in ContentGrown e, ref SearchViewContext c)
+    {
+        c.show(SearchResultsView(c.dataVersion));
+    }
+
+    Transition on(in OperationFinished e, ref SearchViewContext c)
+    {
+        if (e.operation == filterOperation)
+        {
+            c.filterRuns = false;
+            // Cancelled: replaced by another filter, which starts at once, or stopped
+            // with the search: the main view is left incomplete
+            return e.result == OperationFinished.Result.Completed ? To!ShowingResults : To!WaitingForView;
+        }
+        if (e.operation != loadOperation)
+            return NoTransition;
+        if (e.result != OperationFinished.Result.Completed)
+            return To!WaitingForView;
+        return c.filterRuns ? NoTransition : To!ShowingResults; // the filter goes on with the view
+    }
+
+    Transition on(in SourceLost e, ref SearchViewContext c)
+    {
+        return To!SearchLost;
+    }
+}
+
+/// The main view was left incomplete (a cancelled or failed load or filter) and the
+/// search stopped with it: nothing is listed until the next filter or search.
 struct WaitingForView
 {
     void onEnter(ref SearchViewContext c)
@@ -159,16 +209,11 @@ struct WaitingForView
         c.show(SearchWaitingView());
     }
 
+    /// The end of the load doesn't complete a main view left by a failed filter: only
+    /// the next filter or search does
     Transition on(in OperationStarted e, ref SearchViewContext c)
     {
-        return e.operation == searchOperation ? To!Searching : NoTransition;
-    }
-
-    Transition on(in OperationFinished e, ref SearchViewContext c)
-    {
-        const bool mainViewBuilt = (e.operation == loadOperation || e.operation == filterOperation)
-            && e.result == OperationFinished.Result.Completed;
-        return mainViewBuilt ? To!ShowingResults : NoTransition;
+        return onSearchOrFilterStarted(e, c);
     }
 
     Transition on(in SourceLost e, ref SearchViewContext c)
@@ -187,7 +232,7 @@ struct ShowingResults
 
     Transition on(in OperationStarted e, ref SearchViewContext c)
     {
-        return onSearchOrFilterStarted(e);
+        return onSearchOrFilterStarted(e, c);
     }
 
     /// The source of the document got more: the view may show more rows
@@ -254,7 +299,7 @@ struct SearchCancelled
 
     Transition on(in OperationStarted e, ref SearchViewContext c)
     {
-        return onSearchOrFilterStarted(e);
+        return onSearchOrFilterStarted(e, c);
     }
 
     Transition on(in SourceLost e, ref SearchViewContext c)
@@ -272,7 +317,7 @@ struct SearchFailed
 
     Transition on(in OperationStarted e, ref SearchViewContext c)
     {
-        return onSearchOrFilterStarted(e);
+        return onSearchOrFilterStarted(e, c);
     }
 
     Transition on(in SourceLost e, ref SearchViewContext c)
@@ -388,18 +433,33 @@ version (unittest) private
     }
 }
 
-@("SearchViewFsm: waits for the file, then shows the empty result")
+@("SearchViewFsm: lists the anchors while the file loads, then shows them complete")
 unittest
 {
     auto f = Fixture.started();
-    assert(f.sink.shown == [vm(SearchWaitingView())]);
+    assert(f.sink.shown == [vm(SearchResultsView(1))], "the anchors found so far, none yet");
 
     f.start(loadOperation);
     f.progress(loadOperation, 0.5);
     assert(f.shownCount == 1, "the load progress is shown by the main view");
+    f.process(ContentGrown());
+    assert(f.shownCount == 2 && f.sink.last == vm(SearchResultsView(1)), "an anchor listed: the table counts it");
 
     f.finish(loadOperation, Result.Completed);
-    assert(f.sink.last == vm(SearchResultsView(1)));
+    assert(f.sink.last == vm(SearchResultsView(1)), "the same content, complete: the table isn't reloaded");
+}
+
+@("SearchViewFsm: the anchors listed with a filter that runs with the load are complete with the filter")
+unittest
+{
+    auto f = Fixture.started();
+    f.start(filterOperation);
+    assert(f.sink.last == vm(SearchResultsView(2)), "the main view is built anew: so are its anchors");
+    const count = f.shownCount;
+    f.finish(loadOperation, Result.Completed);
+    assert(f.shownCount == count, "the filter still builds the main view");
+    f.finish(filterOperation, Result.Completed);
+    assert(f.shownCount == count + 1 && f.sink.last == vm(SearchResultsView(2)));
 }
 
 @("SearchViewFsm: a search requested while loading starts after the load")
@@ -442,7 +502,22 @@ unittest
 {
     auto f = Fixture.started();
     f.finish(loadOperation, Result.Failed, "bad file");
-    assert(f.sink.shown == [vm(SearchWaitingView())]);
+    assert(f.sink.last == vm(SearchWaitingView()));
+}
+
+@("SearchViewFsm: a filter failed while the file loads leaves the view waiting past the load")
+unittest
+{
+    auto f = Fixture.started();
+    f.start(filterOperation);
+    f.finish(filterOperation, Result.Failed, "bad regex");
+    assert(f.sink.last == vm(SearchWaitingView()), "the search stopped with the filter");
+    f.finish(loadOperation, Result.Completed);
+    assert(f.sink.last == vm(SearchWaitingView()), "the main view is still incomplete: nothing listed");
+
+    f.start(filterOperation);
+    f.finish(filterOperation, Result.Completed);
+    assert(f.sink.last == vm(SearchResultsView(4)), "the next filter lists the anchors again");
 }
 
 @("SearchViewFsm: shows the search progress, then the result")
@@ -483,16 +558,17 @@ unittest
     assert(f.sink.last == vm(SearchResultsView(3)));
 }
 
-@("SearchViewFsm: a new filter waits for the view, then shows the repeated search")
+@("SearchViewFsm: a new filter lists the anchors of the view it builds, then shows the repeated search")
 unittest
 {
     auto f = Fixture.ready();
     f.start(filterOperation);
-    assert(f.sink.last == vm(SearchWaitingView()));
+    assert(f.sink.last == vm(SearchResultsView(2)), "new content: the table reloads");
 
+    const count = f.shownCount;
     f.progress(filterOperation, 0.5);
     f.process(SearchCancelPressed());
-    assert(f.sink.last == vm(SearchWaitingView()), "the filter progress is shown by the main view");
+    assert(f.shownCount == count, "the filter progress is shown by the main view");
     assert(f.commands.cancelCalls == 0, "no search to cancel while the view is built");
 
     // The document repeats the search right after the filter
@@ -511,19 +587,19 @@ unittest
     assert(f.sink.last == vm(SearchResultsView(2)), "the results of before are gone: the table reloads");
 }
 
-@("SearchViewFsm: a filter replacing a running search waits for the view")
+@("SearchViewFsm: a filter replacing a running search lists the anchors of the view it builds")
 unittest
 {
     // The document cancels the search before it starts the filter
     auto f = Fixture.searching();
     f.finish(searchOperation, Result.Cancelled);
     f.start(filterOperation);
-    assert(f.sink.last == vm(SearchWaitingView()));
+    assert(f.sink.last == vm(SearchResultsView(3)));
 
     auto failed = Fixture.searching();
     failed.finish(searchOperation, Result.Failed, "x");
     failed.start(filterOperation);
-    assert(failed.sink.last == vm(SearchWaitingView()));
+    assert(failed.sink.last == vm(SearchResultsView(3)));
 }
 
 @("SearchViewFsm: a cancelled or failed filter leaves the view waiting")
@@ -534,11 +610,11 @@ unittest
         auto f = Fixture.ready();
         f.start(filterOperation);
         f.finish(filterOperation, result);
-        assert(f.sink.last == vm(SearchWaitingView()));
+        assert(f.sink.last == vm(SearchWaitingView()), "the search stopped with the filter: no anchor listed");
 
         f.start(filterOperation);
         f.finish(filterOperation, Result.Completed);
-        assert(f.sink.last == vm(SearchResultsView(2)), "the next filter completes the view");
+        assert(f.sink.last == vm(SearchResultsView(4)), "the next filter completes the view");
     }
 
     // The document doesn't repeat the search after a cancelled filter, but the
@@ -547,7 +623,7 @@ unittest
     f.start(filterOperation);
     f.finish(filterOperation, Result.Cancelled);
     f.start(searchOperation);
-    assert(f.sink.last == vm(SearchingView(0, 3)));
+    assert(f.sink.last == vm(SearchingView(0, 4)));
 }
 
 @("SearchViewFsm: cancel is ignored unless a search is running")

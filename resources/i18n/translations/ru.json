@@ -98,7 +98,6 @@
     "No searches in this file yet": "В этом файле еще ничего не искали",
     "None": "Нет",
     "Not applied: {error}": "Не применяется: {error}",
-    "Not while searching or filtering": "Не во время поиска или фильтрации",
     "Nov|month": "ноя",
     "Numbers: an empty \"to\" is a single value; hex columns take hex digits. Regular expressions are found anywhere in the text.": "Числа: пустое «до» — одно значение; в шестнадцатеричных колонках — шестнадцатеричные цифры. Регулярное выражение ищется в любом месте текста.",
     "OK": "ОК",
@@ -253,6 +252,7 @@
     "Load FIBEX": "Загрузить FIBEX",
     "Loading file... {percent}%": "Загрузка файла... {percent}%",
     "Log table font size": "Размер шрифта таблицы журнала",
+    "Not while searching or filtering": "Не во время поиска или фильтрации",
     "Search in payload: | starts the next condition (Enter)": "Поиск в тексте сообщения: | начинает следующее условие (Enter)",
     "Settings...": "Настройки...",
     "XML Files": "Файлы XML"

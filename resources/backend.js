@@ -5,8 +5,8 @@
 // functions named ...Json give the text as it is. Messages for the user are ""
 // when there is none. The backend tells the script
 // what changed by calling the global functions of script.js (onDocumentOpened,
-// onMainViewChanged, onSearchViewChanged, onAttachmentsChanged, onFileInfoChanged,
-// getAppState),
+// onMainViewChanged, onSearchViewChanged, onAnchorApplied, onAttachmentsChanged,
+// onFileInfoChanged, getAppState),
 // never from inside one of these calls. Kept free of Sciter but for Window:
 // tests/js.
 
@@ -95,11 +95,14 @@ export const mainViewNearestPosition = (docId, messageIndex) => xcall("getMainVi
 export const tableColumnsJson = docId => xcall("getTableColumns", docId) || "[]";
 // All the columns of the document (the rules may test any of them)
 export const columns = docId => parsed(xcall("getColumns", docId), []);
-// Sets or clears the anchor of a message: { refused, max, full }, refused:
-// "limit" | "busy" (nothing changed then), null if done; max: the anchor limit;
-// full: no room for another anchor (the text: anchorRefusalText in pane-commands.js)
+// Sets or clears the anchor of a message: { refused, max, full, pending, rows },
+// refused: "limit" | "unavailable" (nothing changed then), null if done; max: the
+// anchor limit; full: no room for another anchor (the text: anchorRefusalText in
+// pane-commands.js); pending: taken while a pass runs, onAnchorApplied tells its
+// rows later; rows: the rows it changed now, { message, anchored, main, search },
+// null if refused, pending or no row came or went
 export const setAnchor = (docId, messageIndex, value) =>
-    parsed(xcall("setAnchor", docId, messageIndex, value), { refused: null, max: 0, full: false });
+    parsed(xcall("setAnchor", docId, messageIndex, value), { refused: null, max: 0, full: false, pending: false, rows: null });
 export const cancelMainView = docId => xcall("cancelMainView", docId);
 export const cancelSearchView = docId => xcall("cancelSearchView", docId);
 

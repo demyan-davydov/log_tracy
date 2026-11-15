@@ -23,8 +23,8 @@ import domain.attachments : Attachment, attachmentOf, writePackets = writeAttach
 import domain.index.transfers : InTurn, Transfer;
 import utils.background_slot;
 import domain.document_item;
-import domain.document : AttachmentsChanged, ContentGrown, Document, DocumentState, OperationProgress,
-    OperationFinished;
+import domain.document : AnchorRows, AttachmentsChanged, ContentGrown, Document, DocumentState,
+    OperationProgress, OperationFinished;
 
 import utils.event_bus.event_bus_interface : SignalProducer;
 
@@ -241,13 +241,16 @@ struct LogIndex
     //! setSearchFilter), each over the range it doesn't cover yet: the offset
     //! index over the new bytes, the filter index over the new records, the
     //! search index over the new rows of the main view. A stage takes a part
-    //! at a time while another follows it, so every view grows as the pass
-    //! goes; a rebuild is the same pass from zero. Reports OperationProgress*
-    //! (of the load until the end of the source was reached once, of a filter
-    //! and a search asked for until they cover what they are built over),
-    //! StageFinished when the load or the filter has nothing left while the
-    //! pass goes on, ContentGrown when a source that was loaded got more, then
-    //! PassFinished, after the slot is idle.
+    //! at a time while another follows it (partOf), so the views grow as the
+    //! pass goes: the filter and a search follow the load, a search follows the
+    //! filter, and the anchors with no search follow the load but not a filter
+    //! alone, listed at its end; a rebuild is the same pass from zero. Reports
+    //! OperationProgress* (of the load until the end of the source was reached
+    //! once, of a filter and a search asked for until they cover what they are
+    //! built over), StageFinished when the load or the filter has nothing left
+    //! while the pass goes on, ContentGrown when a view got rows no operation
+    //! tells of (a source that was loaded got more, anchors listed with no
+    //! search), then PassFinished, after the slot is idle.
     //! A pass that was cancelled leaves what it did: the next one goes on.
     //! @return false if a pass is running
     bool runPass()
@@ -424,29 +427,74 @@ struct LogIndex
 
     //! @brief Updates the filter and search indexes in place after an anchor
     //! change, without rebuilding them. An anchored message is listed in both;
-    //! an un-anchored one stays only where it matches by itself.
+    //! an un-anchored one stays only where it matches by itself. Only where an
+    //! index covers the message: a pass lists it, or not, when it gets there,
+    //! by `anchors`. The positions the search covers follow the rows of the
+    //! main view it moved.
     //! Must be called from the UI thread while no pass is running.
     //! @param anchors - the anchors after the change: a later pass reads them
-    void updateAnchor(size_t msgIndex, bool anchored, Anchors anchors)
+    //! @return the views whose rows changed
+    AnchorRows updateAnchor(size_t msgIndex, bool anchored, Anchors anchors)
     {
         assert(!_backgroundSlot.busy(), "indexes are being built");
 
         _anchors = anchors;
-        if (anchored)
+        auto rows = AnchorRows(msgIndex, anchored);
+        // Of an anchor cleared: whether the message stays in each view by its own match.
+        // Worked out before the lock: it decodes
+        bool inView = true, inSearch = false;
+        if (!anchored)
         {
-            synchronized (mutex)
-                _views.listAnchor(msgIndex, !_search.stopped);
-            return;
+            // The search runs over the main view: a message hidden by the view filter
+            // is not a search result either
+            inView = !_views.mainFiltered || (_view.filter !is null && messageMatches(_view.filter, msgIndex));
+            inSearch = inView && _search.filter !is null && messageMatches(_search.filter, msgIndex);
         }
 
-        // The search runs over the main view: a message hidden by the view filter
-        // is not a search result either
-        const bool inView = !_views.mainFiltered
-            || (_view.filter !is null && messageMatches(_view.filter, msgIndex));
-        const bool inSearch = inView && _search.filter !is null && messageMatches(_search.filter, msgIndex);
-
         synchronized (mutex)
-            _views.unlistAnchor(msgIndex, inView, inSearch);
+        {
+            size_t position = msgIndex; // of the message in the main view
+            // The filter lists the message, or a pass decides when it gets there. A
+            // stopped filter is left as it is: no pass adds to it
+            const covered = !_views.mainFiltered || _view.stopped || _view.covers(msgIndex);
+            if (covered && _views.mainFiltered)
+            {
+                if (anchored)
+                    rows.main = _views.listMain(msgIndex, position);
+                else if (!inView)
+                    rows.main = _views.unlistMain(msgIndex, position);
+                else
+                    _views.mainPositionOf(msgIndex, _store.length, position);
+            }
+            // A stopped search lists nothing; one that hasn't got to the row lists it, or
+            // not, when it gets there
+            const searched = covered && _search.covers(position);
+            if (rows.main)
+                _search.moved(position, anchored); // it covers the same rows as before
+            if (searched && anchored)
+                rows.search = _views.listSearch(msgIndex);
+            else if (searched && !inSearch)
+                rows.search = _views.unlistSearch(msgIndex);
+            // The row the search takes next: an anchor is listed whatever it finds, so it
+            // is taken now, as the pass would
+            else if (covered && anchored && _search.takeNext(position))
+                rows.search = _views.listSearch(msgIndex);
+        }
+        return rows;
+    }
+
+    //! @brief The records a stage of a pass takes at a time: a part while a stage after it
+    //! gets its rows as it goes (followRecords), else all of them. The search does with a
+    //! search of its own; without one it lists the anchors as the load goes, so the search
+    //! view shows them before the end of the file, but not as a filter goes: a filter cut
+    //! into parts scans slower, for at most a few rows a little sooner. For the worker, or
+    //! while no pass runs
+    private size_t partOf(Operation stage) const pure nothrow @nogc
+    {
+        const load = stage == Operation.BuildOffsetIndex;
+        // live: the search stage lists the anchors when it has no search
+        const follows = _search.wantsRows || load && (_view.wantsRows || _anchors.length > 0 && _search.live);
+        return follows ? followRecords : size_t.max;
     }
 
     private bool messageMatches(const(Filter) filter, size_t msgIndex)
@@ -521,7 +569,7 @@ struct LogIndex
             {
                 const before = _store.length;
                 // All of them at once unless a stage follows
-                const part = _view.wantsRows || _search.wantsRows ? followRecords : size_t.max;
+                const part = partOf(Operation.BuildOffsetIndex);
                 if (!scanOffsets(ctx, bytes, part, told))
                     return false;
                 worked = true;
@@ -541,7 +589,7 @@ struct LogIndex
             if (_view.behind(records))
             {
                 stage = Operation.BuildFilterIndex;
-                const part = _search.wantsRows ? followRecords : size_t.max;
+                const part = partOf(Operation.BuildFilterIndex);
                 const from = _view.scanned;
                 const to = records - from > part ? from + part : records;
                 if (!collectMatches(ctx, false, from, to, (size_t position) => position, _view.filter,
@@ -1262,6 +1310,96 @@ unittest
     // The search view is shown as ready once the filter is done: what it
     // lists after that must be told, or its table never counts it
     assert(told.countUntil("grown") > told.countUntil("filter done"), format("%s", told));
+}
+
+@("LogIndex: an anchor in indexes a stopped pass left half built goes only where they cover it")
+unittest
+{
+    import utils.event_bus.event_bus_async : EventBusAsync;
+    import formats.plain_text : PlainTextFormat;
+    import log_core.search_filter : SearchChip, SearchFilter;
+    import std.file : remove;
+    import std.format : format;
+
+    const path = writeLines("log_index_anchor_partial", 100, (size_t i) => format("line %s", i));
+    scope (exit)
+        remove(path);
+    auto events = new EventBusAsync();
+    auto index = LogIndex(new FileSource(path), new PlainTextFormat(), events);
+    waitForOperation(index, () => true);
+
+    // As a pass stopped half way leaves them: the filter (the lines with a 0: 0, 10 ... 90)
+    // got to record 50, the search (every line) to row 3 of the main view
+    auto zeros = SearchFilter.fromChips([SearchChip("0")]);
+    auto every = SearchFilter.fromChips([SearchChip("line")]);
+    index.setViewFilter(zeros, Anchors.init);
+    index.setSearchFilter(every, Anchors.init);
+    synchronized (index.mutex)
+        assert(index._views.appendMain([0u, 10, 20, 30, 40]) && index._views.appendSearch([0u, 10, 20]));
+    index._view.scanned = 50;
+    index._search.scanned = 3;
+
+    Anchors anchors;
+    AnchorRows anchor(size_t message, bool value)
+    {
+        anchors.set(message, value);
+        return index.updateAnchor(message, value, Anchors(anchors));
+    }
+    size_t[] mainRows() { size_t[] r; foreach (i; 0 .. index._views.mainLength(100)) r ~= index._views.mainRecordAt(i); return r; }
+    size_t[] searchRows() { size_t[] r; foreach (i; 0 .. index._views.searchLength) r ~= index._views.searchRecordAt(i); return r; }
+
+    assert(anchor(65, true) == AnchorRows(65, true, false, false), "past the filter: the pass lists it");
+    assert(mainRows == [0, 10, 20, 30, 40] && index._search.scanned == 3);
+
+    assert(anchor(15, true) == AnchorRows(15, true, true, true), "in both, searched");
+    assert(mainRows == [0, 10, 15, 20, 30, 40] && searchRows == [0, 10, 15, 20]);
+    assert(index._search.scanned == 4, "the rows the search covered moved down");
+
+    assert(anchor(45, true) == AnchorRows(45, true, true, false), "past the search: the pass lists it");
+    assert(index._search.scanned == 4);
+
+    assert(anchor(25, true) == AnchorRows(25, true, true, true), "the row the search takes next");
+    assert(searchRows == [0, 10, 15, 20, 25] && index._search.scanned == 5);
+
+    assert(anchor(15, false) == AnchorRows(15, false, true, true), "it matches neither");
+    assert(mainRows == [0, 10, 20, 25, 30, 40, 45] && searchRows == [0, 10, 20, 25]);
+    assert(index._search.scanned == 4, "the rows the search covered moved up");
+
+    // The pass goes on from there: the views are those of a pass with these anchors
+    waitForOperation(index, () => index.runPass());
+    assert(mainRows == [0, 10, 20, 25, 30, 40, 45, 50, 60, 65, 70, 80, 90]);
+    assert(searchRows == mainRows, "every row once");
+}
+
+@("LogIndex: a stage takes a part at a time while one after it lists as it goes")
+unittest
+{
+    import utils.event_bus.event_bus_async : EventBusAsync;
+    import formats.plain_text : PlainTextFormat;
+    import log_core.search_filter : SearchChip, SearchFilter;
+    import std.file : remove;
+    import std.format : format;
+
+    const path = writeLines("log_index_parts", 10, (size_t i) => format("line %s", i));
+    scope (exit)
+        remove(path);
+    auto events = new EventBusAsync();
+    auto index = LogIndex(new FileSource(path), new PlainTextFormat(), events);
+    waitForOperation(index, () => true);
+    enum all = size_t.max, load = LogIndex.Operation.BuildOffsetIndex, filter = LogIndex.Operation.BuildFilterIndex;
+    auto chips = SearchFilter.fromChips([SearchChip("line")]);
+
+    assert(index.partOf(load) == all && index.partOf(filter) == all, "nothing follows");
+    Anchors anchors;
+    anchors.set(3, true);
+    index.updateAnchor(3, true, Anchors(anchors));
+    assert(index.partOf(load) == LogIndex.followRecords, "the search view lists the anchors as the file loads");
+    assert(index.partOf(filter) == all, "a filter alone goes at full speed");
+    index.setViewFilter(chips, Anchors(anchors));
+    assert(index.partOf(load) == LogIndex.followRecords && index.partOf(filter) == all);
+    index.setSearchFilter(chips, Anchors(anchors));
+    assert(index.partOf(load) == LogIndex.followRecords && index.partOf(filter) == LogIndex.followRecords,
+        "the search finds as they go");
 }
 
 @("LogIndex: a pass that was cancelled leaves what it did, the next one goes on from there")

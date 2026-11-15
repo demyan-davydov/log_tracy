@@ -179,6 +179,9 @@ export class DocumentPane {
         this.appliedColumns = null; // JSON of the columns the tables show
         this.lastFocus = null; // focused in the panel last (focusin): it gets the keys again when shown
         this.textsStale = false; // the language changed while hidden: rendered again on show
+        // What an anchor left to do while hidden, done on show: table -> "rebuild" (it
+        // moved its rows) or "repaint" (its rows show the anchor)
+        this.staleTables = new Map();
         this.bottomPage = "search"; // the page of the bottom panel shown (data-page)
         // How the rows look (Settings): { fontSize (%), singleLine }, as asked
         // and as the tables have it (null: not yet), see applyRowLook()
@@ -273,6 +276,15 @@ export class DocumentPane {
             this.textsStale = false;
             this.filterPanel.invalidate();
         }
+        for (const [table, todo] of this.staleTables) { // of an anchor applied while hidden
+            if (todo === "repaint") {
+                table.list.refreshVisibleRows();
+                continue;
+            }
+            table.list.resetSelection();
+            table.list.componentUpdate();
+        }
+        this.staleTables.clear();
         this.refresh();
         this.takeKeys();
     }
@@ -608,6 +620,28 @@ export class DocumentPane {
         for (const table of this.tables) if (this.shows(table)) table.list.refreshVisibleRows();
     }
 
+    // Follows the rows an anchor changed (backend: { message, anchored, main,
+    // search }): a table whose view gained or lost the row of the message
+    // edits its rows in place, so the rows on screen stay where they are; the
+    // other one repaints its rows, the row shows the new anchor
+    // A hidden panel does it when shown (its rows can't be measured now): it
+    // rebuilds the list of such a table, the other one keeps its rows and selection
+    followAnchorRows(rows) {
+        for (const [table, changed] of [[this.main, rows.main], [this.search, rows.search]]) {
+            const list = table.list;
+            if (!this.visible) {
+                if (changed || !this.staleTables.has(table)) this.staleTables.set(table, changed ? "rebuild" : "repaint");
+                continue;
+            }
+            if (!changed) {
+                list.refreshVisibleRows();
+                continue;
+            }
+            list.resetSelection(); // the selected positions show other rows now
+            if (!list.followAnchor(rows.message, rows.anchored)) list.componentUpdate();
+        }
+    }
+
     // No room for another anchor (`full`): the empty anchor cells of both
     // tables show on hover that none can be set (anchors-full in table.css)
     markAnchorsFull(full) {
@@ -630,29 +664,19 @@ export class DocumentPane {
         root.on("focusin", keysCame);
 
         // Anchor column: toggles the anchor of the message in both views. Refused
-        // by the backend while an operation runs or at the anchor limit: a notice
+        // by the backend at the anchor limit or for a file that is gone: a notice
         // by the cell says why. At the limit the tables are marked anchors-full:
-        // their empty anchor cells show on hover that no anchor can be set.
+        // their empty anchor cells show on hover that no anchor can be set. Taken
+        // while a load, a filter or a search runs, the views list it a moment
+        // later (onAnchorApplied): the rows on screen show the anchor at once.
         on("click", "table.log-table td.anchor", (evt, cell) => {
             const index = Number(cell.getAttribute("msg-index"));
             const anchored = cell.parentElement.getAttribute("has-anchor") === "true";
-            const counts = this.lists.map(list => list.totalItems());
             const answer = backend.setAnchor(this.docId, index, !anchored);
             this.markAnchorsFull(answer.full);
             if (answer.refused) showNotice(cell, anchorRefusalText(answer), { at: "right", ms: 2500, untilLeave: true });
-            else {
-                for (const [i, list] of this.lists.entries()) {
-                    const count = list.totalItems();
-                    if (count === counts[i]) {
-                        list.refreshVisibleRows(); // the row was in the view, and shows the new anchor
-                        continue;
-                    }
-                    // The view gained or lost the row: the selected positions show other rows
-                    list.resetSelection();
-                    // In place, so the rows on screen stay where they are
-                    if (!list.followAnchor(index, count > counts[i])) list.componentUpdate();
-                }
-            }
+            else if (answer.rows) this.followAnchorRows(answer.rows);
+            else for (const list of this.lists) list.refreshVisibleRows();
             return true; // don't change the row selection
         });
 

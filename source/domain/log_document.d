@@ -75,6 +75,9 @@ class LogDocument : Document
 
     private PendingRequest _pendingViewFilter;
     private PendingRequest _pendingSearch;
+    // The messages whose anchor was set or cleared while a pass ran: _anchors has them
+    // already, the index gets them once the pass stops (applyPending), each once
+    private size_t[] _pendingAnchors;
     // A pass of the index runs, as seen from the UI thread: cleared when its
     // PassFinished is dispatched (the slot is idle by then)
     private bool _passRunning;
@@ -315,6 +318,7 @@ class LogDocument : Document
             _sourceLost = true;
             _pendingViewFilter = PendingRequest.init;
             _pendingSearch = PendingRequest.init;
+            _pendingAnchors = null;
             dropPendingFormat();
             _events.publish(SourceLost());
         }
@@ -413,7 +417,8 @@ class LogDocument : Document
     //! While a pass runs it is only asked to stop: its PassFinished comes here.
     private void applyPending()
     {
-        if (!_pendingViewFilter.requested && !_pendingSearch.requested && _pendingFormat is null)
+        if (!_pendingViewFilter.requested && !_pendingSearch.requested && _pendingFormat is null
+            && _pendingAnchors.length == 0)
             return;
         if (_passRunning)
         {
@@ -435,6 +440,7 @@ class LogDocument : Document
             endRead(_descriptions.taken);
         }
 
+        applyPendingAnchors();
         if (_pendingViewFilter.requested)
         {
             auto filter = _pendingViewFilter.filter;
@@ -466,6 +472,26 @@ class LogDocument : Document
         {
             finish(Operation.BuildFilterIndex, OperationFinished.Result.Completed);
             finish(Operation.BuildSearchIndex, OperationFinished.Result.Completed);
+        }
+    }
+
+    //! @brief Gives the index the anchors set or cleared while a pass ran (no pass runs
+    //! now) and tells the rows they changed. A main view built anew (a filter or a format
+    //! asked for) takes them all from _anchors: nothing to give then, no row to tell; the
+    //! rows of a search asked for go with its old results
+    private void applyPendingAnchors()
+    {
+        auto messages = _pendingAnchors;
+        _pendingAnchors = null;
+        if (_pendingViewFilter.requested)
+            return;
+        foreach (message; messages)
+        {
+            auto rows = _index.updateAnchor(message, _anchors.has(message), Anchors(_anchors));
+            if (_pendingSearch.requested)
+                rows.search = false;
+            if (rows.moved)
+                _events.publish(AnchorApplied(rows));
         }
     }
 
@@ -572,6 +598,7 @@ class LogDocument : Document
             _failure = error;
             _pendingViewFilter = PendingRequest.init;
             _pendingSearch = PendingRequest.init;
+            _pendingAnchors = null;
             dropPendingFormat();
             finish(Operation.BuildOffsetIndex, Result.Failed, error);
             dropSearch(Result.Failed, error);
@@ -589,23 +616,36 @@ class LogDocument : Document
 
     //! @brief Sets or clears the anchor of a message. An anchored message is
     //! always listed in the main view and in the search results; the views are
-    //! updated in place.
+    //! updated in place. While a pass runs it builds the indexes by a snapshot
+    //! of the anchors: the change is taken at once (anchored rows show it), the
+    //! pass is stopped and the views take it before the pass goes on, as with a
+    //! filter asked for (AnchorChange.pending, AnchorApplied).
     //! @param index - message index in the file (DocumentItem.realIndex)
-    //! @return true if done; refused (nothing changed) as busy while an
-    //! operation is running, since the operation works on a snapshot of the
-    //! anchors and is building the indexes, and when the source is lost or the
-    //! index is out of range; as limit when there is no room for another anchor
+    //! @return true if done; refused (nothing changed) as unavailable when the
+    //! document can't change (its source is lost, the index is out of range);
+    //! as limit when there is no room for another anchor
     override AnchorChange setAnchor(size_t index, bool value)
     {
-        if (_passRunning || sourceLost || index >= _index.messageCount)
-            return AnchorChange(AnchorRefusal.busy);
+        import std.algorithm : canFind;
+
+        if (sourceLost || index >= _index.messageCount)
+            return AnchorChange(AnchorRefusal.unavailable);
         if (_anchors.has(index) == value)
             return AnchorChange.init;
         if (!_anchors.set(index, value))
             return AnchorChange(AnchorRefusal.limit);
 
-        _index.updateAnchor(index, value, Anchors(_anchors));
-        return AnchorChange.init;
+        AnchorChange change;
+        if (!_passRunning)
+        {
+            change.rows = _index.updateAnchor(index, value, Anchors(_anchors));
+            return change;
+        }
+        if (!_pendingAnchors.canFind(index))
+            _pendingAnchors ~= index;
+        change.pending = true;
+        applyPending(); // stops the pass: its PassFinished gives the index the change
+        return change;
     }
 
     override bool anchorsFull() const
@@ -1014,6 +1054,42 @@ version (unittest)
         LogFilter!wchar dup() const pure
         {
             return new ConstFilter(_result);
+        }
+    }
+
+    /// Accepts the messages (of writeTestDlt: its seconds are its index) whose index is a
+    /// multiple of `step`
+    private final class EveryFilter : LogFilter!wchar
+    {
+        import std.typecons : Nullable;
+
+        private size_t _step;
+
+        this(size_t step) pure
+        {
+            _step = step;
+        }
+
+        bool matches(scope ref const(LogMessage!wchar) item) const
+        {
+            import formats.dlt.fields : timestampSeconds;
+
+            return item.timestampSeconds % _step == 0;
+        }
+
+        Nullable!uint matchIndex(scope ref const(LogMessage!wchar) item) const
+        {
+            return matches(item) ? Nullable!uint(0) : Nullable!uint.init;
+        }
+
+        immutable(LogFilter!wchar) idup() const pure
+        {
+            return cast(immutable) new EveryFilter(_step);
+        }
+
+        LogFilter!wchar dup() const pure
+        {
+            return new EveryFilter(_step);
         }
     }
 
@@ -1723,6 +1799,34 @@ unittest
     assert(doc.mainView.itemsCount == messageCount);
 }
 
+@("LogDocument anchors: an anchor shown by the filtered view leaves the search over it complete")
+unittest
+{
+    import std.algorithm : uniq;
+    import std.array : array;
+    import std.file : remove;
+
+    string path;
+    auto doc = openLoaded("dlt_document_anchors_search_shift.dlt", 100, path);
+    scope (exit)
+        remove(path);
+
+    runAndWait(doc, () => doc.applyViewFilter(new EveryFilter(2)));
+    runAndWait(doc, () => doc.applySearchFilter(new ConstFilter(true)));
+    assert(doc.searchView.itemsCount == 50);
+
+    // Hidden by the filter: its row moves the rows after it, the search has them already
+    assert(doc.setAnchor(51, true));
+    waitIdle(doc);
+    const found = realIndexes(doc.searchView);
+    assert(found == found.uniq.array, "a row found twice");
+    assert(found == realIndexes(doc.mainView), "the search finds every row of the view");
+
+    assert(doc.setAnchor(51, false));
+    waitIdle(doc);
+    assert(realIndexes(doc.searchView) == realIndexes(doc.mainView));
+}
+
 @("LogDocument anchors: a new filter keeps the anchors in both views")
 unittest
 {
@@ -1856,32 +1960,133 @@ unittest
     assert(doc.searchView.itemsCount == doc.mainView.itemsCount);
 }
 
-@("LogDocument anchors: can't be changed while an operation runs")
+version (unittest) private
+{
+    /// A loaded document of 2000 messages whose main view shows the even ones, a search
+    /// held at the message `held` (GateFilter): its pass runs until the gate opens
+    LogDocument searchHeld(string name, size_t held, out string path, out GateFilter gate)
+    {
+        auto doc = openLoaded(name, 2000, path);
+        runAndWait(doc, () => doc.applyViewFilter(new EveryFilter(2)));
+        gate = new GateFilter(held);
+        doc.applySearchFilter(gate);
+        dispatchUntil(doc, () => gate.reached);
+        assert(gate.reached && doc._passRunning, "the search runs");
+        return doc;
+    }
+
+    /// The anchors the document told it applied later (AnchorApplied)
+    final class AppliedLog
+    {
+        AnchorRows[] rows;
+    }
+
+    AppliedLog recordApplied(LogDocument doc)
+    {
+        auto log = new AppliedLog;
+        doc.events.subscribe((const AnchorApplied e) { log.rows ~= e.rows; });
+        return log;
+    }
+}
+
+@("LogDocument anchors: set while a pass runs, listed once it stops for them")
+unittest
+{
+    import std.algorithm : canFind, uniq;
+    import std.array : array;
+    import std.file : remove;
+
+    string path;
+    GateFilter gate;
+    auto doc = searchHeld("dlt_document_anchors_pass.dlt", 500, path, gate);
+    scope (exit)
+        remove(path);
+    scope (exit)
+        gate.open(); // a failed check mustn't leave the pass held: the document joins it
+    auto applied = recordApplied(doc);
+
+    const change = doc.setAnchor(51, true); // hidden by the filter
+    assert(change && change.pending, "taken, the views list it later");
+    assert(doc.exportAnchors == [51], "the row shows its anchor at once");
+
+    gate.open();
+    waitIdle(doc);
+    const main = realIndexes(doc.mainView);
+    assert(main.canFind(51), "the filtered view lists it");
+    const found = realIndexes(doc.searchView);
+    assert(found == found.uniq.array, "a row found twice");
+    assert(found == main, "the search, which finds every row, lists it too");
+    assert(applied.rows.length == 1 && applied.rows[0].message == 51 && applied.rows[0].anchored
+        && applied.rows[0].main, "the row the main view got is told");
+}
+
+@("LogDocument anchors: set and cleared while a pass runs leaves the views as they were")
+unittest
+{
+    import std.algorithm : canFind;
+    import std.file : remove;
+
+    string path;
+    GateFilter gate;
+    auto doc = searchHeld("dlt_document_anchors_toggle.dlt", 500, path, gate);
+    scope (exit)
+        remove(path);
+    scope (exit)
+        gate.open(); // a failed check mustn't leave the pass held: the document joins it
+    auto applied = recordApplied(doc);
+
+    assert(doc.setAnchor(51, true).pending && doc.setAnchor(51, false).pending);
+    assert(doc.exportAnchors.length == 0);
+    gate.open();
+    waitIdle(doc);
+    assert(!realIndexes(doc.mainView).canFind(51) && !realIndexes(doc.searchView).canFind(51));
+    assert(applied.rows.length == 0, "no row came or went");
+}
+
+@("LogDocument anchors: set while a pass runs and a filter waits, the new view lists it")
+unittest
+{
+    import std.algorithm : canFind;
+    import std.file : remove;
+
+    string path;
+    GateFilter gate;
+    auto doc = searchHeld("dlt_document_anchors_refilter_pending.dlt", 500, path, gate);
+    scope (exit)
+        remove(path);
+    scope (exit)
+        gate.open(); // a failed check mustn't leave the pass held: the document joins it
+    auto applied = recordApplied(doc);
+
+    assert(doc.setAnchor(53, true).pending); // matches neither filter
+    doc.applyViewFilter(new EveryFilter(3));
+    gate.open();
+    waitIdle(doc);
+    assert(realIndexes(doc.mainView).canFind(53));
+    assert(applied.rows.length == 0, "the view is built anew: no row to follow");
+}
+
+@("LogDocument anchors: set while the view is idle, the rows that changed are told at once")
 unittest
 {
     import std.file : remove;
 
-    auto path = writeTestDlt("dlt_document_anchors_busy.dlt", 200_000);
+    string path;
+    auto doc = openLoaded("dlt_document_anchors_rows.dlt", 100, path);
     scope (exit)
         remove(path);
+    runAndWait(doc, () => doc.applyViewFilter(new EveryFilter(2)));
 
-    auto doc = new LogDocument(path);
-
-    auto views = new Views(doc);
-    assert(!doc.setAnchor(1, true), "not while the file loads");
-    dispatchUntil(doc, () => views.mainReady);
-
-    bool searched;
-    doc.events.subscribe((const OperationFinished e) { searched = true; });
-    doc.applySearchFilter(new ConstFilter(true));
-    assert(!doc.setAnchor(1, true), "not while searching");
-    assert(doc.exportAnchors.length == 0, "a refused change leaves the anchors as they were");
-
-    dispatchUntil(doc, () => searched);
-    assert(doc.setAnchor(1, true), "allowed again once the search is done");
+    auto change = doc.setAnchor(51, true);
+    assert(change && !change.pending);
+    assert(change.rows == AnchorRows(51, true, true, true), "the main view and the search (its anchors) got it");
+    change = doc.setAnchor(50, true);
+    assert(change.rows == AnchorRows(50, true, false, true), "shown by the filter already");
+    change = doc.setAnchor(51, false);
+    assert(change.rows == AnchorRows(51, false, true, true));
 }
 
-@("LogDocument anchors: a refusal tells why; a running operation comes before the limit")
+@("LogDocument anchors: a refusal tells why: no such message, or the limit")
 unittest
 {
     import domain.anchors : Anchors;
@@ -1893,20 +2098,16 @@ unittest
 
     auto doc = new LogDocument(path);
     auto views = new Views(doc);
-    assert(doc.setAnchor(1, true).refusal == AnchorRefusal.busy, "the file loads");
-    dispatchUntil(doc, () => views.mainReady);
-
+    assert(doc.setAnchor(1_000_000, true).refusal == AnchorRefusal.unavailable, "no such message");
+    dispatchUntil(doc, () => doc.messageCount > Anchors.MaxAnchors);
+    // Taken while the file loads, as when it is loaded
     foreach (i; 0 .. Anchors.MaxAnchors)
         assert(doc.setAnchor(i, true).refusal == AnchorRefusal.none);
     assert(doc.setAnchor(100, true).refusal == AnchorRefusal.limit);
-
-    doc.applySearchFilter(new ConstFilter(true));
-    assert(doc.setAnchor(100, true).refusal == AnchorRefusal.busy,
-        "full and searching: the search refuses it, removing one wouldn't help");
-    assert(doc.setAnchor(0, false).refusal == AnchorRefusal.busy);
-    assert(doc.setAnchor(1_000_000, true).refusal == AnchorRefusal.busy, "out of range");
-    assert(doc.requestCancel(Document.Operation.BuildSearchIndex));
+    assert(doc.setAnchor(0, false).refusal == AnchorRefusal.none, "room for another one");
+    dispatchUntil(doc, () => views.mainReady);
     waitIdle(doc);
+    assert(realIndexes(doc.searchView).length == Anchors.MaxAnchors - 1, "the search view lists them");
 }
 
 @("LogDocument anchors: the limit is enforced silently")
