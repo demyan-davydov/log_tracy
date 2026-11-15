@@ -4,7 +4,7 @@
 //!
 //! Not thread-safe: its holder (LogIndex) synchronizes it. The entries of an index don't
 //! move while it only grows (utils/chunked_array); clearing an index and the in-place
-//! changes for an anchor (listAnchor, unlistAnchor) move or drop them.
+//! changes for an anchor (listMain, unlistMain, listSearch, unlistSearch) move or drop them.
 module domain.index.views;
 
 import domain.index.filter_index : FilterIndex;
@@ -128,26 +128,43 @@ struct ViewIndexes
         return true;
     }
 
-    //! @brief An anchored record is listed in place: in the main view if it is filtered,
-    //! in the search view if `search`
-    void listAnchor(size_t record, bool search) nothrow @nogc
+    //! @brief Lists `record` in place in the filtered main view (an anchor): the rows after
+    //! it move down by one
+    //! @param position - where the view shows it, also when it was shown already
+    //! @return true if the view didn't show it and does now
+    bool listMain(size_t record, out size_t position) nothrow @nogc
     {
-        const value = cast(SearchIndex.Type) record;
-        if (_filtered)
-            _filterIndex.insertSorted(value);
-        if (search)
-            _searchIndex.insertSorted(value);
+        assert(_filtered, "every record is shown");
+        if (record > FilterIndex.Type.max || sortedPositionOf(_filterIndex, record, position))
+            return false;
+        return _filterIndex.insertSorted(cast(FilterIndex.Type) record);
     }
 
-    //! @brief A record no longer anchored leaves in place the views it doesn't match by
-    //! itself: the main view unless `inMain`, the search view unless `inSearch`
-    void unlistAnchor(size_t record, bool inMain, bool inSearch) nothrow @nogc
+    //! @brief Takes `record` out of the filtered main view in place: the rows after it move
+    //! up by one
+    //! @param position - where the view showed it
+    //! @return true if the view showed it
+    bool unlistMain(size_t record, out size_t position) nothrow @nogc
     {
-        const value = cast(SearchIndex.Type) record;
-        if (!inMain)
-            _filterIndex.removeSorted(value);
-        if (!inSearch)
-            _searchIndex.removeSorted(value);
+        assert(_filtered, "every record is shown");
+        if (!sortedPositionOf(_filterIndex, record, position))
+            return false;
+        return _filterIndex.removeSorted(cast(FilterIndex.Type) record);
+    }
+
+    //! Lists `record` in place in the search view. @return true if it wasn't listed
+    bool listSearch(size_t record) nothrow @nogc
+    {
+        size_t position;
+        if (record > SearchIndex.Type.max || sortedPositionOf(_searchIndex, record, position))
+            return false;
+        return _searchIndex.insertSorted(cast(SearchIndex.Type) record);
+    }
+
+    //! Takes `record` out of the search view in place. @return true if it was listed
+    bool unlistSearch(size_t record) nothrow @nogc
+    {
+        return record <= SearchIndex.Type.max && _searchIndex.removeSorted(cast(SearchIndex.Type) record);
     }
 
     //! Memory the indexes have taken, in bytes
@@ -225,16 +242,21 @@ unittest
     assert(listed && views.searchLength == 2 && views.searchRecordAt(1) == 9);
 }
 
-@("ViewIndexes: an anchor is listed and unlisted in place")
+@("ViewIndexes: a record is listed and unlisted in place, telling whether its row came or went")
 unittest
 {
     ViewIndexes views;
     views.filterMain(true);
     assert(views.appendMain([2u, 8]) && views.appendSearch([8u]));
-    views.listAnchor(5, true);
+    size_t position;
+    assert(views.listMain(5, position) && position == 1);
     assert(views.mainLength(10) == 3 && views.mainRecordAt(1) == 5);
-    assert(views.searchLength == 2 && views.searchRecordAt(0) == 5);
-    views.unlistAnchor(5, false, true);
-    assert(views.mainLength(10) == 2, "it doesn't match the filter");
-    assert(views.searchLength == 2, "it matches the search");
+    assert(!views.listMain(8, position) && position == 2, "shown already: where it is");
+    assert(views.listSearch(5) && views.searchRecordAt(0) == 5);
+    assert(!views.listSearch(8));
+
+    assert(views.unlistMain(5, position) && position == 1 && views.mainLength(10) == 2);
+    assert(!views.unlistMain(5, position), "not shown");
+    assert(views.unlistSearch(5) && !views.unlistSearch(5));
+    assert(views.searchLength == 1);
 }

@@ -75,9 +75,9 @@ export function filterExportDialog(canDlf, fileName) {
 // ── Anchors ──────────────────────────────────────────────────────────────────
 
 // What the user is told when the backend refused an anchor: its answer
-// { refused: "limit" | "busy" | null, max }; "" if it wasn't refused
+// { refused: "limit" | "unavailable" | null, max }; "" if it wasn't refused
 export function anchorRefusalText(answer) {
     if (answer.refused === "limit") return trn("{n} anchor at most", "{n} anchors at most", answer.max);
-    if (answer.refused === "busy") return tr("Not while searching or filtering");
+    if (answer.refused === "unavailable") return tr("The file is no longer available");
     return "";
 }

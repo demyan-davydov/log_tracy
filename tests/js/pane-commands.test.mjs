@@ -79,8 +79,8 @@ test("an anchor refused at the limit says the limit, in the plural form of its n
     }
 });
 
-test("an anchor refused while an operation runs says so", () => {
-    assert.equal(anchorRefusalText({ refused: "busy", max: 16 }), "Not while searching or filtering");
+test("an anchor refused by a document that can't change says why", () => {
+    assert.equal(anchorRefusalText({ refused: "unavailable", max: 16 }), "The file is no longer available");
 });
 
 const native = ["Log Tracy Filters", "*.logfilter"];

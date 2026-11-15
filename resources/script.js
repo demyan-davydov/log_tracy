@@ -663,6 +663,12 @@ globalThis.onFileInfoChanged = function (docId) {
     panes.get(docId)?.updateFileInfo();
 };
 
+// Native: an anchor taken while a load, a filter or a search ran is in the views
+// now. json: the rows it changed, { message, anchored, main, search }
+globalThis.onAnchorApplied = function (docId, json) {
+    panes.get(docId)?.followAnchorRows(JSON.parse(json));
+};
+
 // Native: a file was opened, in a new document or in the one that had it open
 // already (then that one is the current document again)
 globalThis.onDocumentOpened = function (docId) {

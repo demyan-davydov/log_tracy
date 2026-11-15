@@ -30,7 +30,7 @@ struct DocumentEvent(E)
 
 /// Document events that DocumentStore forwards as DocumentEvent!E
 alias ForwardedDocumentEvents = AliasSeq!(OperationStarted, OperationProgress, OperationFinished, ContentGrown,
-    SourceLost, AttachmentsChanged, FormatReplaced, DescriptionsChanged);
+    SourceLost, AttachmentsChanged, FormatReplaced, DescriptionsChanged, AnchorApplied);
 
 private class NullDocumentView : DocumentView
 {
@@ -140,7 +140,7 @@ private class NullDocument : Document
 
     override AnchorChange setAnchor(size_t index, bool value)
     {
-        return AnchorChange(AnchorRefusal.busy);
+        return AnchorChange(AnchorRefusal.unavailable);
     }
 
     override bool anchorsFull() const

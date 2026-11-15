@@ -21,7 +21,7 @@ import utils.event_bus.event_bus_interface : SignalConsumer;
 enum AnchorRefusal
 {
     none, /// not refused: the anchor is as asked
-    busy, /// an operation is running (or the document can't change: its source is lost, no such message)
+    unavailable, /// the document can't change: its source is lost, or there is no such message
     limit, /// no room for another anchor (Anchors.MaxAnchors)
 }
 
@@ -39,10 +39,31 @@ struct DescriptionsState
     UiText problem; /// why `read` couldn't be read
 }
 
+//! The views whose rows an anchor changed: the row of its message came into the view (an
+//! anchor set) or left it (an anchor cleared). A view that showed the message already, by its
+//! filter or its search, keeps its rows as they were
+struct AnchorRows
+{
+    size_t message; /// the message of the anchor (DocumentItem.realIndex)
+    bool anchored; /// set, or cleared
+    bool main; /// the row changed in the main view
+    bool search; /// the row changed in the search view
+
+    //! A row came or went in a view: the tables follow it, else they only repaint their rows
+    bool moved() const pure nothrow @nogc @safe
+    {
+        return main || search;
+    }
+}
+
 //! What Document.setAnchor did: true if the anchor is as asked now
 struct AnchorChange
 {
     AnchorRefusal refusal;
+    //! Taken while a pass of the index runs: the views list it, or not, once the pass stops
+    //! for it, AnchorApplied tells the rows that changed then
+    bool pending;
+    AnchorRows rows; /// the rows that changed, of a change applied at once (not pending)
 
     bool opCast(T : bool)() const pure nothrow @nogc @safe
     {
@@ -290,6 +311,14 @@ struct FormatReplaced
 struct DescriptionsChanged
 {
     enum isOverridable = true;
+}
+
+//! An anchor taken while a pass ran (AnchorChange.pending) is in the views now: the rows
+//! it changed. Not published when no row came or went, nor when the views were built anew
+//! (a filter or a format asked for meanwhile): they are shown from the top then
+struct AnchorApplied
+{
+    AnchorRows rows;
 }
 
 //! The file of the document can't be read any more (its disk was removed, a

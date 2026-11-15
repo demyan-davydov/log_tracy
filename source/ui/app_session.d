@@ -115,7 +115,10 @@ final class AppSession
     }
 
     /// The calls of the script queued since the last time, in order: the
-    /// documents opened, then the views that changed
+    /// documents opened and the anchors applied (onAnchorApplied), as they
+    /// came, then the views that changed. An anchor comes before the views of
+    /// its round: the table edits the row of the anchor in place before it
+    /// counts the rows its view grew by, which take that row in already
     ScriptCall[] takeScriptCalls()
     {
 
@@ -483,23 +486,29 @@ final class AppSession
     }
 
     /// Sets or clears the anchor of a message.
-    /// Returns: JSON `{"refused": null | "limit" | "busy", "max": <the anchor
-    /// limit>, "full": <no room for another anchor now>}`; nothing changes when
-    /// refused: at the anchor limit, or while an operation is running. The
-    /// script writes the text (plural forms of the limit: trn).
+    /// Returns: JSON `{"refused": null | "limit" | "unavailable", "max": <the
+    /// anchor limit>, "full": <no room for another anchor now>, "pending": <the
+    /// views take it later, onAnchorApplied tells its rows then>, "rows": <the
+    /// rows it changed (anchorRowsJson), null if refused, pending or none came
+    /// or went>}`; nothing
+    /// changes when refused: at the anchor limit, or when the document can't
+    /// change (its file is lost). The script writes the text (plural forms of
+    /// the limit: trn).
     string setAnchor(DocumentId docId, int messageIndex, bool value)
     {
         import domain.anchors : Anchors;
 
         auto doc = _documents.doc(docId);
-        const change = messageIndex < 0 ? AnchorChange(AnchorRefusal.busy)
+        const change = messageIndex < 0 ? AnchorChange(AnchorRefusal.unavailable)
             : doc.setAnchor(cast(size_t) messageIndex, value);
         JSONValue json = ["full": doc.anchorsFull];
         json["max"] = Anchors.MaxAnchors;
+        json["pending"] = change.pending;
+        json["rows"] = change.rows.moved ? anchorRowsJson(change.rows) : JSONValue(null);
         final switch (change.refusal)
         {
         case AnchorRefusal.none: json["refused"] = null; break;
-        case AnchorRefusal.busy: json["refused"] = "busy"; break;
+        case AnchorRefusal.unavailable: json["refused"] = "unavailable"; break;
         case AnchorRefusal.limit: json["refused"] = "limit"; break;
         }
         return json.toString;
@@ -859,6 +868,10 @@ final class AppSession
         events.subscribe((const DocumentEvent!ContentGrown e) {
             processDocumentEvent(e.docId, e.event);
         });
+        // An anchor taken while a pass ran: the tables follow the rows it changed
+        events.subscribe((const DocumentEvent!AnchorApplied e) {
+            _scriptCalls ~= ScriptCall("onAnchorApplied", idOf(e.docId), anchorRowsJson(e.event.rows).toString);
+        });
         events.subscribe((const DocumentEvent!AttachmentsChanged e) {
             if (auto ui = _documentUis.get(e.docId, null))
                 ui.attachmentsChanged = true;
@@ -889,6 +902,16 @@ final class AppSession
                 e.event.error.empty ? "" : ": " ~ english(e.event.error));
             processDocumentEvent(e.docId, e.event);
         });
+    }
+
+    /// The rows an anchor changed, for the script: {"message", "anchored", "main", "search"}
+    private static JSONValue anchorRowsJson(in AnchorRows rows)
+    {
+        JSONValue json = ["message": JSONValue(rows.message)];
+        json["anchored"] = rows.anchored;
+        json["main"] = rows.main;
+        json["search"] = rows.search;
+        return json;
     }
 
     private void processDocumentEvent(E)(DocumentId docId, in E e)
@@ -986,7 +1009,8 @@ version (unittest)
     import utils.event_bus.event_bus_async : EventBusAsync;
     import utils.event_bus.event_bus_interface : SignalConsumer;
     import core.time : msecs;
-    import std.algorithm : canFind;
+    import std.algorithm : canFind, filter;
+    import std.array : array;
     import std.json : parseJSON;
 
     /// Dispatches the events of `session` until the script is told that the view
@@ -1842,13 +1866,70 @@ unittest
     answer = parseJSON(f.session.setAnchor(id, 4, true));
     assert(answer["refused"].str == "limit" && answer["full"].boolean);
 
-    doc.anchorChange = AnchorChange(AnchorRefusal.busy);
+    doc.anchorChange = AnchorChange(AnchorRefusal.unavailable);
     answer = parseJSON(f.session.setAnchor(id, 4, true));
-    assert(answer["refused"].str == "busy" && answer["full"].boolean,
+    assert(answer["refused"].str == "unavailable" && answer["full"].boolean,
         "the reason of the document, though the anchors are full");
 
     doc.anchorChange = AnchorChange.init;
-    assert(parseJSON(f.session.setAnchor(id, -1, true))["refused"].str == "busy", "no such message");
+    assert(parseJSON(f.session.setAnchor(id, -1, true))["refused"].str == "unavailable", "no such message");
+}
+
+@("AppSession: setAnchor tells the rows the anchor changed, or that the views take it later")
+unittest
+{
+    auto f = Fixture.make();
+    const id = f.session.openFile(testPath("/logs/a.log")).docId;
+    auto doc = f.docOf(testPath("/logs/a.log"));
+
+    AnchorChange applied;
+    applied.rows = AnchorRows(4, true, true, false);
+    doc.anchorChange = applied;
+    auto answer = parseJSON(f.session.setAnchor(id, 4, true));
+    assert(!answer["pending"].boolean);
+    assert(answer["rows"] == parseJSON(`{"message": 4, "anchored": true, "main": true, "search": false}`));
+
+    AnchorChange pending;
+    pending.pending = true;
+    doc.anchorChange = pending;
+    answer = parseJSON(f.session.setAnchor(id, 4, true));
+    assert(answer["pending"].boolean && answer["rows"].isNull);
+
+    doc.anchorChange = AnchorChange.init; // as asked already, or no view moved
+    answer = parseJSON(f.session.setAnchor(id, 4, true));
+    assert(!answer["pending"].boolean && answer["rows"].isNull, "no row came or went");
+}
+
+@("AppSession: the script is told the rows of an anchor the views took later")
+unittest
+{
+    auto f = Fixture.make();
+    const id = f.session.openFile(testPath("/logs/a.log")).docId;
+    f.session.takeScriptCalls();
+
+    f.docOf(testPath("/logs/a.log")).bus.publish(AnchorApplied(AnchorRows(7, false, false, true)));
+    f.session.dispatchEvents();
+    const calls = f.session.takeScriptCalls().filter!(c => c.name == "onAnchorApplied").array;
+    assert(calls.length == 1 && calls[0].docId == id.toInt());
+    assert(parseJSON(calls[0].json) == parseJSON(`{"message": 7, "anchored": false, "main": false, "search": true}`));
+}
+
+@("AppSession: an anchor applied is told before the views that changed in the same round")
+unittest
+{
+    import std.algorithm : countUntil;
+
+    auto f = Fixture.make();
+    f.session.openFile(testPath("/logs/a.log"));
+    f.session.takeScriptCalls();
+
+    auto bus = f.docOf(testPath("/logs/a.log")).bus;
+    bus.publish(OperationProgress(Document.Operation.BuildOffsetIndex, 0.5f)); // the view grew
+    bus.publish(AnchorApplied(AnchorRows(7, true, true, false)));
+    f.session.dispatchEvents();
+    const names = namesOf(f.session.takeScriptCalls());
+    const anchor = names.countUntil("onAnchorApplied"), view = names.countUntil("onMainViewChanged");
+    assert(anchor >= 0 && view >= 0 && anchor < view, "the row of the anchor would be counted as grown");
 }
 
 @("AppSession: the pseudo locale is offered only when asked for (PSEUDO_LOCALE)")

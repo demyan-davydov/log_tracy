@@ -184,6 +184,16 @@ utils  ←  sciter  ←  ui
   a request that comes while one runs stops it and the next pass goes on, so a filter and a
   search asked for while the file loads run with the load. Don't add an operation that builds
   an index whole, apart from a pass.
+- An anchor is taken while a pass runs too, as a request: `LogDocument.setAnchor` changes
+  `_anchors` at once (the rows show the mark), queues the message (`_pendingAnchors`), stops
+  the pass and gives the change to the index when it ends (`applyPendingAnchors`); the views
+  built anew by a filter or a format asked for meanwhile take every anchor anyway.
+  `LogIndex.updateAnchor` lists or unlists a message only where an index covers it (the
+  `scanned` of its `MatchStage`): the pass lists the rest by its snapshot of the anchors. A
+  row it adds or takes out of the filtered main view moves the positions the search covers
+  with it. It tells the rows it changed (`AnchorRows`): in the answer of `setAnchor` when no
+  pass ran, by `AnchorApplied` (the script's `onAnchorApplied`) when it was pending, so the
+  tables edit their rows by what changed, not by counting rows that grow meanwhile.
 - The operations the views see (`OperationStarted / Progress / Finished` of the load, the
   filter, the search) overlap. `LogDocument` tells them on the UI thread from the index's
   `StageFinished` and `PassFinished`; `OperationProgress` carries all of them in one event
@@ -275,7 +285,12 @@ utils  ←  sciter  ←  ui
   under one version the content only grows, rows appended in order, none moved, so the table
   keeps its rows, scroll and selection and counts the new ones. The end of an operation keeps
   the version. The script grows a table on any view event of the same version, `ready` too:
-  meant for sources that never end (story: `docs/stories/live-results.md`).
+  meant for sources that never end (story: `docs/stories/live-results.md`). One exception:
+  an anchor adds or takes out the row of its message in place under the same version, while
+  the view grows too. The script learns it from the answer of `setAnchor` (`rows`) or from
+  `onAnchorApplied`, which the session queues before the view events of the same round
+  (`AppSession.takeScriptCalls`): the table edits that row (`followAnchor`) before it counts
+  the rows the view grew by.
 
 ## If You Need X, Start Here (backend)
 

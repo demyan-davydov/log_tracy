@@ -279,7 +279,7 @@ class MainWindow : SciterWindow
             answer(columnsJson(_session.tableColumns(document), document.formatInfo.id));
             return true;
         case "setAnchor":
-            // setAnchor(docId, messageIndex, value) -> {"refused": null | "limit" | "busy", "max": int, "full": bool}
+            // setAnchor(docId, messageIndex, value) -> {"refused", "max", "full", "pending", "rows"}: AppSession.setAnchor
             answer(_session.setAnchor(docParam(), param!int(1), param!bool(2)));
             return true;
         case "cancelMainView":
