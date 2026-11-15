@@ -15,7 +15,7 @@ import log_core.byte_source;
 import domain.index.match_scan : scanMatches;
 static import match_scan = domain.index.match_scan;
 import domain.index.match_stage : MatchStage;
-import domain.index.progress : ProgressReporter;
+import domain.index.progress : PassProgress, ProgressReporter;
 import domain.index.record_store : Records, RecordsLease, RecordStore;
 import domain.index.views : ViewIndexes;
 import domain.anchors;
@@ -23,8 +23,7 @@ import domain.attachments : Attachment, attachmentOf, writePackets = writeAttach
 import domain.index.transfers : InTurn, Transfer;
 import utils.background_slot;
 import domain.document_item;
-import domain.document : AnchorRows, AttachmentsChanged, ContentGrown, Document, DocumentState,
-    OperationProgress, OperationFinished;
+import domain.document : AnchorRows, AttachmentsChanged, Document, DocumentState, OperationFinished;
 
 import utils.event_bus.event_bus_interface : SignalProducer;
 
@@ -37,12 +36,14 @@ import core.sync.mutex : Mutex;
 alias Filter = LogFilter!wchar;
 alias Message = LogMessage!wchar;
 
-//! An operation of the running pass of LogIndex has nothing left to do, while
-//! the pass goes on with the ones after it: the file is loaded to its end, or
-//! the filter covers it. Published from the worker thread, before PassFinished.
-struct StageFinished
+//! A pass of LogIndex added rows its positions (PassProgress) don't tell of, after every
+//! stage of a round added its own: the document tells the views that no operation running
+//! counts them (ContentGrown). Published from the worker thread. Not overridable: of two in
+//! a row, each tells its own rows
+struct IndexGrown
 {
-    Document.Operation operation;
+    bool records; // a source loaded to its end once got more records
+    bool anchors; // the search view listed anchors, with no search filter
 }
 
 //! A pass of LogIndex ended (see LogIndex.runPass). Published from the worker
@@ -92,7 +93,7 @@ struct LogIndex
     private size_t _seenBytes; // the bytes the source had when a pass last caught up with it
     private bool _loaded; // a pass reached the end of the source once: the load is over
     private Anchors _anchors; // as they were when last told: the worker reads them
-    private bool _grownUntold; // rows no operation tells of were added, ContentGrown is to be published
+    private IndexGrown _grown; // rows its positions don't tell of were added, to be published
     private size_t _toldAttachments; // attachmentsState() AttachmentsChanged last told: of the worker
 
     private BackgroundSlot _backgroundSlot;
@@ -175,7 +176,7 @@ struct LogIndex
         synchronized (mutex)
             _views.filterMain(filter !is null);
         _view.restart(filter);
-        _search.restart(null, false); // the search asked for went with the view it ran over
+        _search.restart(null); // the search asked for went with the view it ran over
         _anchors = anchors;
     }
 
@@ -245,12 +246,11 @@ struct LogIndex
     //! pass goes: the filter and a search follow the load, a search follows the
     //! filter, and the anchors with no search follow the load but not a filter
     //! alone, listed at its end; a rebuild is the same pass from zero. Reports
-    //! OperationProgress* (of the load until the end of the source was reached
-    //! once, of a filter and a search asked for until they cover what they are
-    //! built over), StageFinished when the load or the filter has nothing left
-    //! while the pass goes on, ContentGrown when a view got rows no operation
-    //! tells of (a source that was loaded got more, anchors listed with no
-    //! search), then PassFinished, after the slot is idle.
+    //! its own facts only, which operations they are of is the document's to say:
+    //! PassProgress* (how far it got: throttled, and every time the load reaches the end
+    //! of its bytes or the filter covers the records after it), IndexGrown when it added
+    //! rows its positions don't tell of (a source that was loaded got more, anchors
+    //! listed with no search), then PassFinished, after the slot is idle.
     //! A pass that was cancelled leaves what it did: the next one goes on.
     //! @return false if a pass is running
     bool runPass()
@@ -267,11 +267,11 @@ struct LogIndex
         auto events = _events;
 
         const bool started = _backgroundSlot.runTask((BackgroundSlot.Ctx* ctx) {
-            auto progress = ProgressReporter(events, ctx);
+            auto progress = ProgressReporter(events);
             Operation stage = Operation.None; // the one the pass is at
             try
             {
-                finished.result = pass(progress, stage)
+                finished.result = pass(ctx, progress, stage)
                     ? OperationFinished.Result.Completed : OperationFinished.Result.Cancelled;
                 finished.error = UiText.init;
             }
@@ -512,28 +512,23 @@ struct LogIndex
     {
         const(ubyte)[] data; // the bytes of this pass: a source that grows meanwhile is taken by the next one
         bool final_; // no more bytes will come
-        bool loading; // the load is reported until it is over
+        bool loading; // the end of the source wasn't reached yet
         bool grows; // a source that was loaded got more
         bool tailWaits; // the last bytes are the start of a record still to come
     }
 
-    //! Reports the progress of the stages of a pass: a stage is as far as the one it
-    //! follows, while that one has more to give
-    private void report(ref ProgressReporter progress, ref const PassBytes bytes)
+    //! How far a pass has got, by its positions
+    private PassProgress positions(ref const PassBytes bytes) const pure nothrow @nogc
     {
-        const records = _store.length;
-        const float load = bytes.data.length ? cast(float) _store.scannedBytes / bytes.data.length : 1.0f;
-        const bool loadBehind = _store.scannedBytes < bytes.data.length && !bytes.tailWaits;
-        float filter = float.nan, search = float.nan;
-        if (_view.report)
-            filter = loadBehind ? load : _view.live && records ? cast(float) _view.scanned / records : 1.0f;
-        if (_search.report)
-        {
-            const positions = viewLength();
-            search = loadBehind ? load : _view.behind(records) ? filter
-                : positions ? cast(float) _search.scanned / positions : 1.0f;
-        }
-        progress.report(bytes.loading ? load : float.nan, filter, search);
+        PassProgress p;
+        p.loadedBytes = _store.scannedBytes;
+        p.bytes = bytes.data.length;
+        p.loadBehind = _store.scannedBytes < bytes.data.length && !bytes.tailWaits;
+        p.records = _store.length;
+        p.filtered = _view.live ? _view.scanned : p.records;
+        p.rows = viewLength();
+        p.searched = _search.live ? _search.scanned : p.rows;
+        return p;
     }
 
     //! @brief Brings the indexes up to date, see runPass: a stage after
@@ -542,9 +537,8 @@ struct LogIndex
     //! @param stage - set to the filter or the search while the pass is at it,
     //!   None otherwise: tells which one a failure is of
     //! @return false if it was cancelled
-    private bool pass(ref ProgressReporter progress, ref Operation stage)
+    private bool pass(BackgroundSlot.Ctx* ctx, ref ProgressReporter progress, ref Operation stage)
     {
-        auto ctx = progress.ctx;
         // Its end is asked first: asked after the bytes, a source that got its
         // last ones in between would have the record cut by the end of `data`
         // taken for a whole one
@@ -553,7 +547,10 @@ struct LogIndex
         bytes.data = _store.data;
         bytes.loading = !_loaded;
         bytes.grows = _loaded;
-        scope void delegate() told = () { report(progress, bytes); };
+        scope void delegate() told = () { progress.report(positions(bytes)); };
+        // Whatever it moved: the document decides the end of a stage by it
+        scope void delegate() toldNow = () { progress.report(positions(bytes), true); };
+        bool coveringTold = false; // the filter covers the records found: told since it last grew
 
         for (;;)
         {
@@ -573,15 +570,14 @@ struct LogIndex
                 if (!scanOffsets(ctx, bytes, part, told))
                     return false;
                 worked = true;
-                _grownUntold |= bytes.grows && _store.length != before;
+                _grown.records |= bytes.grows && _store.length != before;
             }
             // The load is over, whatever follows it: told at once
             if (bytes.loading && (_store.scannedBytes == bytes.data.length || bytes.tailWaits))
             {
-                told();
+                toldNow();
                 bytes.loading = false;
                 _loaded = true;
-                _events.publish(StageFinished(Operation.BuildOffsetIndex));
             }
 
             // The filter index: over the records it doesn't cover
@@ -597,14 +593,14 @@ struct LogIndex
                         uiText("the filter index can't grow: too many records or not enough memory")))
                     return false;
                 worked = true;
+                coveringTold = false;
                 stage = Operation.None;
             }
-            // The filter covers the file, while a search may go on over its view
-            if (_view.report && !bytes.loading && !_view.behind(records))
+            // The filter covers the file, while a search may go on over its view: told at once
+            if (!bytes.loading && !_view.behind(records) && !coveringTold)
             {
-                told();
-                _view.report = false;
-                _events.publish(StageFinished(Operation.BuildFilterIndex));
+                toldNow();
+                coveringTold = true;
             }
 
             // The search index: over the rows of the main view it doesn't cover
@@ -615,8 +611,8 @@ struct LogIndex
                 const from = _search.scanned;
                 const full = uiText("the search index can't grow: too many records or not enough memory");
                 if (_search.filter is null)
-                    // With no search to tell its progress, the view may be shown as ready by now
-                    _grownUntold |= listAnchors(from, positions, full) && !_search.report;
+                    // A view shown as ready by now counts them by IndexGrown
+                    _grown.anchors |= listAnchors(from, positions, full);
                 else if (!collectMatches(ctx, true, from, positions, (size_t position) => _views.mainRecordAt(position),
                         _search.filter, (size_t done) { _search.scanned = done; told(); }, full))
                     return false;
@@ -624,13 +620,13 @@ struct LogIndex
                 stage = Operation.None;
             }
 
-            // Rows no operation tells of, after every stage has added its own:
+            // Rows the positions don't tell of, after every stage has added its own:
             // a view shown as ready counts them on this. Kept for the next
             // pass if this one is stopped before
-            if (_grownUntold)
+            if (_grown != IndexGrown.init)
             {
-                _grownUntold = false;
-                _events.publish(ContentGrown());
+                _events.publish(_grown);
+                _grown = IndexGrown.init;
             }
             const attachments = attachmentsState;
             if (attachments != _toldAttachments)
@@ -644,10 +640,9 @@ struct LogIndex
 
         enforceSourceAvailable(); // the last step may have read zeros
         _seenBytes = bytes.data.length;
-        // The search is complete: the stages before it told their end above
-        assert(!bytes.loading && !_view.report);
-        progress.report(float.nan, float.nan, _search.report ? 1.0f : float.nan);
-        _search.report = false;
+        // Every index covers what it is built over
+        assert(!bytes.loading);
+        toldNow();
         return true;
     }
 
@@ -899,16 +894,15 @@ version (unittest)
         return path;
     }
 
-    //! How a pass ended, and an operation of it, by their events
+    //! How a pass ended, by its events
     private struct Ending
     {
         OperationFinished.Result result;
-        float lastProgress = 0; // the last progress it reported (an event that overrides the earlier ones)
+        PassProgress last; // the last positions it reported (an event that overrides the earlier ones)
     }
 
-    //! @return how the last pass the events of `events` tell of ended, with the
-    //! progress of its operation `op`
-    private Ending endingOf(EventBusAsync)(EventBusAsync events, Document.Operation op)
+    //! @return how the last pass the events of `events` tell of ended, with its last positions
+    private Ending endingOf(EventBusAsync)(EventBusAsync events)
     {
         import core.thread : Thread;
         import core.time : msecs, MonoTime;
@@ -919,10 +913,7 @@ version (unittest)
             ending.result = e.result;
             seen = true;
         });
-        auto progress = events.subscribe((const OperationProgress e) {
-            if (e.has(op))
-                ending.lastProgress = e.of(op);
-        });
+        auto progress = events.subscribe((const PassProgress e) { ending.last = e; });
         scope (exit)
         {
             events.unsubscribe(finished);
@@ -1206,7 +1197,10 @@ unittest
     source.write("one seven\ntwo\nthree seven five\nfo");
     auto events = new EventBusAsync();
     size_t grown;
-    events.subscribe((const ContentGrown e) { ++grown; });
+    events.subscribe((const IndexGrown e) {
+        assert(!e.anchors);
+        grown += e.records;
+    });
 
     auto index = LogIndex(source, new PlainTextFormat(), events);
     Anchors anchors;
@@ -1279,13 +1273,13 @@ unittest
     assert(index.records.decode(2, msg) && msg.payloadText.to!string == "1/2: cut");
 }
 
-@("LogIndex: the anchors listed after the end of a filter are told: a view shown by then counts them")
+@("LogIndex: the anchors listed after the filter covers the records are told after it: a view shown by then counts them")
 unittest
 {
     import utils.event_bus.event_bus_async : EventBusAsync;
     import formats.plain_text : PlainTextFormat;
     import log_core.search_filter : SearchChip, SearchFilter;
-    import std.algorithm : countUntil;
+    import std.algorithm : canFind, countUntil;
     import std.file : remove;
     import std.format : format;
 
@@ -1299,8 +1293,14 @@ unittest
     events.dispatch();
 
     string[] told;
-    events.subscribe((const StageFinished e) { told ~= "filter done"; });
-    events.subscribe((const ContentGrown e) { told ~= "grown"; });
+    events.subscribe((const PassProgress e) {
+        if (!e.loadBehind && e.filtered == e.records && !told.canFind("filter done"))
+            told ~= "filter done";
+    });
+    events.subscribe((const IndexGrown e) {
+        if (e.anchors)
+            told ~= "grown";
+    });
     Anchors anchors;
     anchors.set(5, true);
     auto every = SearchFilter.fromChips([SearchChip("line")]);
@@ -1425,12 +1425,12 @@ unittest
     auto every = SearchFilter.fromChips([SearchChip("line")]);
     auto filter = new CountingFilter(() { indexPtr.cancelCurrentOperation(); });
     waitForOperation(index, () => index.runBuildFilterIndex(filter, Anchors.init));
-    assert(endingOf(events, Document.Operation.BuildFilterIndex).result == OperationFinished.Result.Cancelled);
+    assert(endingOf(events).result == OperationFinished.Result.Cancelled);
     assert(index.behind, "the filter doesn't cover the file");
 
     // A search is asked for meanwhile: the pass goes on with both
     waitForOperation(index, () => index.runBuildSearchIndex(every, Anchors.init));
-    assert(endingOf(events, Document.Operation.BuildSearchIndex).result == OperationFinished.Result.Completed);
+    assert(endingOf(events).result == OperationFinished.Result.Completed);
     assert(index.mainViewItemsCount == 0 && index.searchViewItemsCount == 0, "the filter matches nothing");
     assert(index._view.scanned == lines && !index.behind);
 }
@@ -1458,7 +1458,7 @@ unittest
         auto filter = new CountingFilter(() { indexPtr.cancelCurrentOperation(); });
         waitForOperation(index, () => index.runBuildFilterIndex(filter, Anchors.init));
         assert(filter.mostCallsAfterStop < LogIndex.stopCheckRecords * 2, "a cancelled block goes on");
-        assert(endingOf(events, Document.Operation.BuildFilterIndex).result == OperationFinished.Result.Cancelled);
+        assert(endingOf(events).result == OperationFinished.Result.Cancelled);
     }
     {
         auto events = new EventBusAsync();
@@ -1467,9 +1467,9 @@ unittest
         auto filter = new CountingFilter(() { atomicStore(source.isLost, true); });
         waitForOperation(index, () => index.runBuildSearchIndex(filter, Anchors.init));
         assert(filter.mostCallsAfterStop < LogIndex.stopCheckRecords * 2, "a block of a lost file goes on");
-        const ending = endingOf(events, Document.Operation.BuildSearchIndex);
+        const ending = endingOf(events);
         assert(ending.result == OperationFinished.Result.Failed);
-        assert(ending.lastProgress == 0, "blocks are delivered after the file is lost");
+        assert(ending.last.searched == 0, "blocks are delivered after the file is lost");
     }
 }
 
@@ -1495,5 +1495,5 @@ unittest
         atomicStore(source.isLost, true);
     });
     waitForOperation(index, () => index.runBuildFilterIndex(filter, Anchors.init));
-    assert(endingOf(events, Document.Operation.BuildFilterIndex).result == OperationFinished.Result.Cancelled);
+    assert(endingOf(events).result == OperationFinished.Result.Cancelled);
 }
