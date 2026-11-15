@@ -193,7 +193,10 @@ utils  ←  sciter  ←  ui
   row it adds or takes out of the filtered main view moves the positions the search covers
   with it. It tells the rows it changed (`AnchorRows`): in the answer of `setAnchor` when no
   pass ran, by `AnchorApplied` (the script's `onAnchorApplied`) when it was pending, so the
-  tables edit their rows by what changed, not by counting rows that grow meanwhile.
+  tables edit their rows by what changed, not by counting rows that grow meanwhile. With
+  anchors and no search the search stage still follows the load (`LogIndex.partOf`), not a
+  filter alone, which would scan slower in parts: the search view
+  lists them while the file loads (the machine's `ListingAnchors`).
 - The operations the views see (`OperationStarted / Progress / Finished` of the load, the
   filter, the search) overlap. `LogDocument` tells them on the UI thread from the index's
   `StageFinished` and `PassFinished`; `OperationProgress` carries all of them in one event

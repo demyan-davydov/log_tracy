@@ -241,13 +241,16 @@ struct LogIndex
     //! setSearchFilter), each over the range it doesn't cover yet: the offset
     //! index over the new bytes, the filter index over the new records, the
     //! search index over the new rows of the main view. A stage takes a part
-    //! at a time while another follows it, so every view grows as the pass
-    //! goes; a rebuild is the same pass from zero. Reports OperationProgress*
-    //! (of the load until the end of the source was reached once, of a filter
-    //! and a search asked for until they cover what they are built over),
-    //! StageFinished when the load or the filter has nothing left while the
-    //! pass goes on, ContentGrown when a source that was loaded got more, then
-    //! PassFinished, after the slot is idle.
+    //! at a time while another follows it (partOf), so the views grow as the
+    //! pass goes: the filter and a search follow the load, a search follows the
+    //! filter, and the anchors with no search follow the load but not a filter
+    //! alone, listed at its end; a rebuild is the same pass from zero. Reports
+    //! OperationProgress* (of the load until the end of the source was reached
+    //! once, of a filter and a search asked for until they cover what they are
+    //! built over), StageFinished when the load or the filter has nothing left
+    //! while the pass goes on, ContentGrown when a view got rows no operation
+    //! tells of (a source that was loaded got more, anchors listed with no
+    //! search), then PassFinished, after the slot is idle.
     //! A pass that was cancelled leaves what it did: the next one goes on.
     //! @return false if a pass is running
     bool runPass()
@@ -480,6 +483,20 @@ struct LogIndex
         return rows;
     }
 
+    //! @brief The records a stage of a pass takes at a time: a part while a stage after it
+    //! gets its rows as it goes (followRecords), else all of them. The search does with a
+    //! search of its own; without one it lists the anchors as the load goes, so the search
+    //! view shows them before the end of the file, but not as a filter goes: a filter cut
+    //! into parts scans slower, for at most a few rows a little sooner. For the worker, or
+    //! while no pass runs
+    private size_t partOf(Operation stage) const pure nothrow @nogc
+    {
+        const load = stage == Operation.BuildOffsetIndex;
+        // live: the search stage lists the anchors when it has no search
+        const follows = _search.wantsRows || load && (_view.wantsRows || _anchors.length > 0 && _search.live);
+        return follows ? followRecords : size_t.max;
+    }
+
     private bool messageMatches(const(Filter) filter, size_t msgIndex)
     {
         Message msg;
@@ -552,7 +569,7 @@ struct LogIndex
             {
                 const before = _store.length;
                 // All of them at once unless a stage follows
-                const part = _view.wantsRows || _search.wantsRows ? followRecords : size_t.max;
+                const part = partOf(Operation.BuildOffsetIndex);
                 if (!scanOffsets(ctx, bytes, part, told))
                     return false;
                 worked = true;
@@ -572,7 +589,7 @@ struct LogIndex
             if (_view.behind(records))
             {
                 stage = Operation.BuildFilterIndex;
-                const part = _search.wantsRows ? followRecords : size_t.max;
+                const part = partOf(Operation.BuildFilterIndex);
                 const from = _view.scanned;
                 const to = records - from > part ? from + part : records;
                 if (!collectMatches(ctx, false, from, to, (size_t position) => position, _view.filter,
@@ -1352,6 +1369,37 @@ unittest
     waitForOperation(index, () => index.runPass());
     assert(mainRows == [0, 10, 20, 25, 30, 40, 45, 50, 60, 65, 70, 80, 90]);
     assert(searchRows == mainRows, "every row once");
+}
+
+@("LogIndex: a stage takes a part at a time while one after it lists as it goes")
+unittest
+{
+    import utils.event_bus.event_bus_async : EventBusAsync;
+    import formats.plain_text : PlainTextFormat;
+    import log_core.search_filter : SearchChip, SearchFilter;
+    import std.file : remove;
+    import std.format : format;
+
+    const path = writeLines("log_index_parts", 10, (size_t i) => format("line %s", i));
+    scope (exit)
+        remove(path);
+    auto events = new EventBusAsync();
+    auto index = LogIndex(new FileSource(path), new PlainTextFormat(), events);
+    waitForOperation(index, () => true);
+    enum all = size_t.max, load = LogIndex.Operation.BuildOffsetIndex, filter = LogIndex.Operation.BuildFilterIndex;
+    auto chips = SearchFilter.fromChips([SearchChip("line")]);
+
+    assert(index.partOf(load) == all && index.partOf(filter) == all, "nothing follows");
+    Anchors anchors;
+    anchors.set(3, true);
+    index.updateAnchor(3, true, Anchors(anchors));
+    assert(index.partOf(load) == LogIndex.followRecords, "the search view lists the anchors as the file loads");
+    assert(index.partOf(filter) == all, "a filter alone goes at full speed");
+    index.setViewFilter(chips, Anchors(anchors));
+    assert(index.partOf(load) == LogIndex.followRecords && index.partOf(filter) == all);
+    index.setSearchFilter(chips, Anchors(anchors));
+    assert(index.partOf(load) == LogIndex.followRecords && index.partOf(filter) == LogIndex.followRecords,
+        "the search finds as they go");
 }
 
 @("LogIndex: a pass that was cancelled leaves what it did, the next one goes on from there")

@@ -278,10 +278,11 @@ struct OperationProgress
     }
 }
 
-//! A document that was loaded got more records (its source grows: a file
-//! being written, a stream): its views show more rows of the same content.
-//! Rows that no operation running tells of: a view an operation fills counts
-//! its rows by the progress of that operation.
+//! A view got rows of the same content that no operation running tells of: a
+//! document that was loaded got more records (its source grows: a file being
+//! written, a stream), or the search view listed anchors with no search, the
+//! load or a filter going on. A view an operation fills counts its rows by the
+//! progress of that operation.
 struct ContentGrown
 {
     enum isOverridable = true;
