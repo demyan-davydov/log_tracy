@@ -27,7 +27,9 @@ module domain.index.record_store;
 import domain.index.offset_index : OffsetIndex, OffsetIndexItem;
 import domain.index.part_joiner : PartJoiner, StepKind;
 import domain.index.transfers : Transfers;
-import log_core.byte_source : ByteSource;
+import log_core.byte_source : ByteSource, PolledSource;
+
+import core.time : MonoTime;
 import log_core.log_format : LogFormat, MarkedFormat, PartedFormat, RecordMark, RecordPart, ScanResult,
     TransferringFormat;
 import log_core.log_message : LogMessage;
@@ -134,6 +136,21 @@ final class RecordStore
         return _source.data;
     }
 
+    //! Asks a source that learns of its bytes when asked (PolledSource) for those written
+    //! since: while nothing scans its data
+    void poll(MonoTime now)
+    {
+        if (auto polled = cast(PolledSource) _source)
+            polled.poll(now);
+    }
+
+    //! The source got shorter than its data (PolledSource.truncated)
+    bool truncated() const nothrow @nogc
+    {
+        auto polled = cast(const PolledSource) _source;
+        return polled !is null && polled.truncated;
+    }
+
     //! No more bytes will come (ByteSource.complete): asked before data(), see there
     bool complete() const nothrow @nogc
     {
@@ -192,7 +209,7 @@ final class RecordStore
     Records records() const pure nothrow @nogc
     {
         const open = _joiner.firstOpenJoin;
-        return Records(this, _format, _parted, length, open == PartJoiner.none ? _joins.length : open);
+        return Records(this, _format, _parted, length, open == PartJoiner.none ? _joins.length : open, _scannedBytes);
     }
 
     //! @brief A lease of the records found so far (records()): they stay open while it is
@@ -389,15 +406,17 @@ struct Records
     private Rebindable!(const PartedFormat) _parted; // the format, if its records may be parts
     private size_t _length;
     private size_t _joins; // the joined records below _length: RecordStore._joins
+    private size_t _scanned; // the bytes split into records when they were given: the end of the last one
 
     private this(const RecordStore store, const LogFormat format, const PartedFormat parted,
-        size_t length, size_t joins) pure nothrow @nogc
+        size_t length, size_t joins, size_t scanned) pure nothrow @nogc
     {
         _store = store;
         _format = format;
         _parted = parted;
         _length = length;
         _joins = joins;
+        _scanned = scanned;
     }
 
     //! The records it reads
@@ -447,7 +466,14 @@ struct Records
         const data = _store._source.data;
         const item = _store._offsets[record];
         if (!item.joined)
-            return format.decode(msg, format.recordAt(data, item.offset));
+        {
+            // Up to where the next record starts: a record a format ends by what follows
+            // it (a line, its continuation lines) doesn't take the bytes written after it
+            // was found, when it was taken whole at the end of a source that grew later
+            const next = record + 1 < _length ? _store._offsets[record + 1].offset : _scanned;
+            const end = next < data.length ? next : data.length; // data is empty once closed
+            return format.decode(msg, format.recordAt(data[0 .. end], item.offset));
+        }
 
         const join = joinOf(record);
         if (join.fragments == 0) // a message whose other parts never came
@@ -619,6 +645,25 @@ unittest
     scanAll(store, false);
     assert(store.length == 4 && payloadOf(store.records, 2) == "three");
     assert(before.length == 2 && payloadOf(before, 1) == "two", "a copy given before reads what it read");
+}
+
+@("Records: a record cut by the end and taken whole reads the same after more bytes come")
+unittest
+{
+    import formats.plain_text : PlainTextFormat;
+
+    auto source = new TextSource("one\ntw");
+    auto store = new RecordStore(source, new PlainTextFormat());
+    scanAll(store, true); // a pause: the cut line is taken as it is
+    assert(store.length == 2 && payloadOf(store.records, 1) == "tw");
+    const before = store.records;
+
+    source.add("o\nthree\n"); // the writer goes on with the line
+    scanAll(store, false);
+    assert(store.length == 4);
+    assert(payloadOf(store.records, 1) == "tw", "a row shown doesn't change");
+    assert(payloadOf(store.records, 2) == "o" && payloadOf(store.records, 3) == "three");
+    assert(payloadOf(before, 1) == "tw", "nor in a copy given before");
 }
 
 @("RecordStore: findRecords changes nothing, append takes what it found")

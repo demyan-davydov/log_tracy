@@ -3,7 +3,7 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { noTable, tableStep, paneChanges, anchorEdit, rowLookStep, keptRowStep, searchViewKey, jumpStep, showsRowsOf } from "../../resources/pane-state.js";
+import { noTable, tableStep, paneChanges, anchorEdit, rowLookStep, keptRowStep, searchViewKey, jumpStep, showsRowsOf, followEndStep } from "../../resources/pane-state.js";
 
 const ready = (dataVersion) => ({ status: "ready", dataVersion });
 
@@ -253,4 +253,33 @@ test("showsRowsOf: the rows on screen are of the content of the view", () => {
     assert.equal(showsRowsOf({ loaded: true, dataVersion: null }, { status: "filterFailed" }), false, "a status shown");
     assert.equal(showsRowsOf(noTable, ready(1)), false, "nothing shown yet");
     assert.equal(showsRowsOf(table(1), null), false, "no view");
+});
+
+test("a ready table at its end follows the rows a file being written adds", () => {
+    assert.deepEqual(followEndStep(ready(1), { total: 100, lastWhole: 99, current: null, selected: 0 }), { moveCurrent: false });
+    assert.deepEqual(followEndStep(ready(1), { total: 100, lastWhole: 99, current: 99, selected: 1 }), { moveCurrent: true },
+        "the current row goes on being the last");
+    assert.deepEqual(followEndStep(ready(1), { total: 0, lastWhole: null, current: null, selected: 0 }), { moveCurrent: false },
+        "an empty file that gets its first rows");
+});
+
+test("rows chosen up to the last are kept: the table follows, the selection stays", () => {
+    assert.deepEqual(followEndStep(ready(1), { total: 100, lastWhole: 99, current: 99, selected: 10 }), { moveCurrent: false });
+    assert.deepEqual(followEndStep(ready(1), { total: 100, lastWhole: 99, current: 99, selected: 0 }), { moveCurrent: false },
+        "Escape left the current row without a selection: it isn't chosen again");
+});
+
+test("a table that can't tell what is on screen (not shown) stays where it is", () => {
+    assert.equal(followEndStep(ready(1), null), null);
+});
+
+test("a table scrolled up, or with a row chosen above the last, stays where it is", () => {
+    assert.equal(followEndStep(ready(1), { total: 100, lastWhole: 60, current: null, selected: 0 }), null);
+    assert.equal(followEndStep(ready(1), { total: 100, lastWhole: 98, current: null, selected: 0 }), null, "the last row cut by the edge");
+    assert.equal(followEndStep(ready(1), { total: 100, lastWhole: 99, current: 50, selected: 1 }), null);
+});
+
+test("a table an operation fills doesn't follow its end: a big file stays at its top while it loads", () => {
+    for (const status of ["loadingFile", "filtering", "searching"])
+        assert.equal(followEndStep({ status, dataVersion: 1 }, { total: 30, lastWhole: 29, current: null, selected: 0 }), null, status);
 });

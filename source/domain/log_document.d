@@ -2,7 +2,9 @@
 //! descriptions of the choice if it takes them, its main and search views over its
 //! indexes, the filter, search and format requests given to the passes of the index (a
 //! format replaced keeps the records and builds the views again), the operations they
-//! run as its events tell them, and its anchors.
+//! run as its events tell them, and its anchors. It follows a file being written: polls
+//! it, lets its cut record out once it is quiet, and asks its holder to open it anew when it
+//! is truncated or its first bytes tell another format (ReopenWanted).
 module domain.log_document;
 
 import domain.document;
@@ -28,6 +30,8 @@ import utils.event_bus.event_bus_async : EventBusAsync;
 import utils.event_bus.event_bus_interface : SignalConsumer;
 import utils.background_slot : BackgroundSlot;
 import utils.ui_text : uiText, UiText, uiTextOf;
+
+import core.time : Duration, MonoTime, msecs;
 
 //! A read of descriptions ended (LogDocument.loadDescriptions): published from the worker of
 //! the descriptions slot once it is idle, whatever the end
@@ -97,6 +101,19 @@ class LogDocument : Document
     private bool _cancelSearch;
     private bool _sourceLost; // SourceLost was published
 
+    // ── Following a file being written (PolledSource) ──
+    //! How often the source is asked for its new bytes
+    enum pollInterval = 250.msecs;
+    //! The bytes a file empty when opened waits for before its format is detected anew
+    enum detectBytes = 4096;
+    //! ...or the time its first bytes are waited with, when they come slower
+    enum detectWait = 500.msecs;
+    private MonoTime function() nothrow @nogc @safe _clock = &currentTime; // tests move it
+    private MonoTime _polledAt; // the last poll of the source
+    private string _detectPath; // of a file empty when opened, its format not chosen: detected by its first bytes
+    private MonoTime _firstBytesAt; // when the first bytes of a file empty when opened came
+    private bool _reopenWanted; // ReopenWanted was published: nothing more is polled nor built
+
     this() @disable;
 
     //! @brief Opens the file in the format chosen before, or detects it
@@ -107,6 +124,8 @@ class LogDocument : Document
         auto source = new FileSource(path);
         scope (failure)
             source.close();
+        // Told by its name only: the first bytes written to it tell it again
+        const detectLater = !choice.isSet && source.data.length == 0;
         // A choice this build can't make (a format it doesn't know, a broken
         // variant) is detected again instead of locking the file out
         LogFormat format;
@@ -125,6 +144,8 @@ class LogDocument : Document
         if (descriptions.length && !takesDescriptions(format))
             choice.descriptions = null;
         this(source, format);
+        if (detectLater)
+            _detectPath = path;
         // Opened at once, decoded by them once read. The choice names them meanwhile, and if
         // they can't be read too: the next open tries again
         _formatChoice = choice;
@@ -326,9 +347,67 @@ class LogDocument : Document
             _events.publish(SourceLost());
         }
         _events.dispatch();
+        pollSource();
         // A source that got more bytes since the last pass (a file being
         // written, a stream): the next pass takes them
         startPassIfBehind();
+    }
+
+    //! @brief Asks the source for the bytes written since, every pollInterval while no
+    //! pass runs (LogIndex.poll): a file being written grows, its record cut by the end is
+    //! let out once it is quiet. A file truncated, or empty when opened and of a format its
+    //! first bytes tell, is to be opened anew (ReopenWanted)
+    private void pollSource()
+    {
+        if (_passRunning || _failed || sourceLost || _reopenWanted)
+            return;
+        const now = _clock();
+        if (now - _polledAt < pollInterval)
+            return;
+        _polledAt = now;
+        _index.poll(now);
+        if (_index.sourceTruncated)
+            wantReopen(ReopenWanted.Why.truncated);
+        else
+            detectAnew(now);
+    }
+
+    //! @brief The format of a file empty when opened, by its first bytes, before a pass
+    //! splits them: once enough came, the source is quiet, or they came slower than
+    //! detectWait. Another format than its name told opens it anew by that format
+    //! (ReopenWanted): its holders know the columns of the format they opened it with
+    private void detectAnew(MonoTime now)
+    {
+        if (_detectPath is null)
+            return;
+        const bytes = _index.bytes;
+        if (bytes.length == 0)
+            return;
+        if (_firstBytesAt == MonoTime.init)
+            _firstBytesAt = now;
+        if (bytes.length < detectBytes && !_index.sourceComplete && now - _firstBytesAt < detectWait)
+            return; // too few to tell yet
+        const path = _detectPath;
+        _detectPath = null;
+        FormatChoice choice;
+        try
+            detectFormat(path, bytes, choice);
+        catch (Exception)
+            return; // the format by its name stays
+        if (choice == _formatChoice)
+            return;
+        _formatChoice = choice; // the file is opened anew by it
+        wantReopen(ReopenWanted.Why.formatTold);
+    }
+
+    //! The file is to be opened anew by its holder (ReopenWanted): this document builds
+    //! nothing more meanwhile
+    private void wantReopen(ReopenWanted.Why why)
+    {
+        _reopenWanted = true;
+        _pendingViewFilter = PendingRequest.init;
+        _pendingSearch = PendingRequest.init;
+        _events.publish(ReopenWanted(why));
     }
 
     override bool sourceLost()
@@ -503,6 +582,8 @@ class LogDocument : Document
     {
         if (_passRunning || _failed || sourceLost || !_index.behind)
             return;
+        if (_reopenWanted || _detectPath !is null && _index.bytes.length > 0)
+            return; // not split by the format its name tells, while its bytes may tell another
         _passRunning = _index.runPass();
         if (_passRunning)
             _progress.reset(); // its first progress is told
@@ -1591,6 +1672,142 @@ unittest
     assert(finished.canFind("BuildSearchIndex"));
 }
 
+//! The time of a poll of the source, when no test sets the clock
+private MonoTime currentTime() nothrow @nogc @trusted
+{
+    return MonoTime.currTime;
+}
+
+version (unittest)
+{
+    // The clock of the documents of a test (LogDocument._clock): moved by the test
+    private __gshared MonoTime testNow;
+
+    private MonoTime testClock() nothrow @nogc @trusted
+    {
+        return testNow;
+    }
+
+    //! Opens the file at `path` with the test clock, set to now: after the file was opened
+    private LogDocument openWithTestClock(string path)
+    {
+        auto doc = new LogDocument(path);
+        testNow = MonoTime.currTime;
+        doc._clock = &testClock;
+        return doc;
+    }
+
+    //! Appends `text` to the file at `path`
+    private void appendTo(string path, string text)
+    {
+        import std.stdio : File;
+
+        File(path, "ab").rawWrite(text);
+    }
+
+    //! Moves the test clock by `time`, lets the document poll its file and waits for what
+    //! it starts
+    private void pollAfter(LogDocument doc, Duration time)
+    {
+        testNow += time;
+        doc.dispatchEvents();
+        waitIdle(doc);
+    }
+}
+
+@("LogDocument: a file being written grows in the views, its cut line let out after a pause")
+unittest
+{
+    import core.time : msecs;
+    import std.file : remove, tempDir, write;
+    import std.path : buildPath;
+
+    const path = buildPath(tempDir(), "log_document_growing.log");
+    write(path, "one\ntw");
+    scope (exit)
+        remove(path);
+    auto doc = openWithTestClock(path);
+    auto views = new Views(doc);
+    size_t grown;
+    doc.events.subscribe((const ContentGrown e) { ++grown; });
+    waitIdle(doc);
+    assert(doc.messageCount == 1, "the cut line waits while the file may be written");
+
+    pollAfter(doc, 300.msecs);
+    assert(doc.messageCount == 1, "not quiet long enough");
+    pollAfter(doc, FileSource.quietPeriod);
+    assert(doc.messageCount == 2 && realIndexes(doc.mainView) == [0, 1], "quiet: the cut line is a record");
+
+    appendTo(path, "o\nthree\n");
+    pollAfter(doc, 300.msecs);
+    assert(doc.messageCount == 4);
+    import std.conv : to;
+
+    DocumentItem item;
+    assert(doc.mainView.fetchItem(1, item) && item.message.payloadText.to!string == "tw",
+        "a row shown doesn't change when the line goes on");
+    assert(grown >= 1, "the views are told to count their rows");
+    assert(views.mainReady, "no operation: the view stays ready");
+}
+
+@("LogDocument: a file made shorter is told truncated, once")
+unittest
+{
+    import core.time : msecs;
+    import std.file : remove, tempDir, write;
+    import std.path : buildPath;
+
+    const path = buildPath(tempDir(), "log_document_truncated.log");
+    write(path, "one\ntwo\n");
+    scope (exit)
+        remove(path);
+    auto doc = openWithTestClock(path);
+    size_t truncated;
+    doc.events.subscribe((const ReopenWanted e) {
+        assert(e.why == ReopenWanted.Why.truncated);
+        ++truncated;
+    });
+    waitIdle(doc);
+
+    write(path, ""); // a rotation by copying empties it
+    pollAfter(doc, 300.msecs);
+    pollAfter(doc, 300.msecs);
+    doc.dispatchEvents();
+    assert(truncated == 1);
+}
+
+@("LogDocument: a file empty when opened is to be opened anew by the format its first bytes tell")
+unittest
+{
+    import core.time : msecs;
+    import std.file : remove, tempDir, write;
+    import std.path : buildPath;
+
+    const path = buildPath(tempDir(), "log_document_empty_then_dlt.log");
+    write(path, "");
+    scope (exit)
+        remove(path);
+    auto doc = openWithTestClock(path);
+    waitIdle(doc);
+    assert(doc.format.info.id != "dlt", "detected by its name: a text log");
+
+    size_t wanted;
+    doc.events.subscribe((const ReopenWanted e) {
+        assert(e.why == ReopenWanted.Why.formatTold);
+        ++wanted;
+    });
+    const bytes = testDlt(20);
+    assert(bytes.length < LogDocument.detectBytes, "fewer bytes than are enough to tell at once");
+    appendTo(path, cast(string) bytes);
+    pollAfter(doc, 300.msecs); // the first bytes: waited for a while, more may come
+    assert(wanted == 0 && doc.messageCount == 0, "not split by the format its name told");
+    pollAfter(doc, LogDocument.detectWait);
+    doc.dispatchEvents();
+    assert(wanted == 1);
+    assert(doc.formatChoice.id == "dlt", "the choice it is opened anew by");
+    assert(doc.messageCount == 0, "nothing built meanwhile");
+}
+
 @("LogDocument: a new search cancels the running one and replaces it")
 unittest
 {
@@ -2601,12 +2818,14 @@ unittest
     scope (exit)
         remove(path);
 
-    auto doc = new LogDocument(path);
+    auto doc = openWithTestClock(path);
     auto views = new Views(doc);
     size_t changed;
     doc.events.subscribe((const AttachmentsChanged e) { ++changed; });
     dispatchUntil(doc, () => views.mainReady);
     assert(changed > 0, "the files were told");
+    // A file without its end is incomplete once the log is quiet: before, it may still come
+    pollAfter(doc, FileSource.quietPeriod);
 
     const list = doc.attachments();
     assert(list.length == 3);

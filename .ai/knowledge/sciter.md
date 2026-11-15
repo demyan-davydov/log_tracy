@@ -24,7 +24,9 @@ agent can't drive it. In scapp a plain
   a 1 GB log with nobody touching the window got its progress at the pace of the work (gaps
   of 52-686 ms) and its end 80 ms after the last progress, window in the background.
   Sciter doesn't promise it, and Windows and Linux are not checked: if events stall there
-  until the mouse moves, wake the loop on publish (`postToWindowThread`).
+  until the mouse moves, wake the loop on publish (`postToWindowThread`). The poll of a file
+  being written (`LogDocument.dispatchEvents`, every 250 ms) relies on the same: it would
+  stall with them (`docs/backlog.md`).
 - The library is loaded once (`sciter/api`) and unloaded by a module destructor after main.
   The last collection of the GC runs after the module destructors: a `SciterValue` or a
   `SciterWindow` left to it would call an unloaded Sciter. `sciterApi()` asserts on such a use

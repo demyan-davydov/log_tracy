@@ -31,6 +31,8 @@ import utils.lock_guard;
 
 import std.typecons;
 
+import core.time : MonoTime;
+
 import core.sync.mutex : Mutex;
 
 alias Filter = LogFilter!wchar;
@@ -213,6 +215,32 @@ struct LogIndex
         stopSearch();
     }
 
+    //! @brief Asks the source for the bytes written since and whether it is quiet
+    //! (PolledSource): a pass takes them, see behind(). While no pass runs
+    void poll(MonoTime now)
+    {
+        assert(!busy, "a pass is running");
+        _store.poll(now);
+    }
+
+    //! The source got shorter than what was read of it (PolledSource.truncated)
+    bool sourceTruncated() const nothrow @nogc
+    {
+        return _store.truncated;
+    }
+
+    //! No more bytes of the source are waited for now (ByteSource.complete)
+    bool sourceComplete() const nothrow @nogc
+    {
+        return _store.complete;
+    }
+
+    //! The bytes of the source so far
+    const(ubyte)[] bytes() const pure nothrow @nogc
+    {
+        return _store.data;
+    }
+
     //! @return true if a pass has something to do: the source has bytes not
     //! split into records, records held for the parts of a message that its
     //! end lets out, or an index doesn't cover what it is built over
@@ -223,8 +251,9 @@ struct LogIndex
             return false;
         if (_store.data.length != _seenBytes)
             return true;
-        // A source may tell its end without more bytes
-        if (_store.holding && _store.complete)
+        // A source may tell its end without more bytes: the records held for the parts of a
+        // message, and a record cut by the end of the data, are let out
+        if (_store.complete && (_store.holding || _store.scannedBytes < _store.data.length))
             return true;
         if (_view.behind(_store.length))
             return true;
@@ -661,6 +690,7 @@ struct LogIndex
             enforceSourceAvailable();
 
             const bunch = _store.findRecords(bytes.data, bytes.final_);
+            enforceSourceAvailable(); // zeros of a lost file are no record waiting for its end
             if (bunch.found.next == _store.scannedBytes && bunch.found.count == 0 && !bunch.end)
             {
                 assert(!bytes.final_, "scanning must make progress");
@@ -1231,7 +1261,7 @@ unittest
     waitForOperation(index, () => index.runPass());
     assert(index.messageCount == 6, "it may still get its end");
     source.finish();
-    index._seenBytes = 0; // a source tells its end as it tells more bytes: not modelled here
+    assert(index.behind, "complete, with no more bytes: the record cut by the end is let out");
     waitForOperation(index, () => index.runPass());
     assert(index.messageCount == 7 && index.mainViewItemsCount == 5 && index.searchViewItemsCount == 3);
 }

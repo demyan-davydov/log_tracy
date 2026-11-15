@@ -5,7 +5,7 @@
 From bytes to the table:
 
 ```
-ByteSource (log_core/byte_source)          bytes of a log, addressed by offset (FileSource = mmap)
+ByteSource (log_core/byte_source)          bytes of a log, addressed by offset (FileSource = mmap, grows)
   └ LogFormat (log_core/log_format)        splits bytes into records, decodes one into a LogMessage,
        │                                   declares the table columns (ColumnInfo)
        ├ DltFormat (formats/dlt/format)    binary DLT; parser in formats/dlt/parser
@@ -212,10 +212,32 @@ utils  ←  sciter  ←  ui
   main view machine goes on as `Filtering`, the same content). A failure is of a stage
   (`PassFinished.failed`): a filter or a search that fails leaves the file loading; a cancel
   names its operation (`Document.requestCancel(Operation)`).
-- A source may grow (`ByteSource.complete` false: a file being written, a stream; its bytes
-  don't move): a record cut by the end waits, `Document.dispatchEvents()` starts a pass when
-  the index is `behind`, the views stay ready and `ContentGrown` tells them to count their
-  rows. No such source exists yet (`docs/backlog.md`); tests use stand-ins.
+- A source may grow (its bytes don't move): every open file does, `FileSource` follows it
+  (`docs/stories/growing-file.md`). It is a `PolledSource`: `LogDocument.dispatchEvents()`
+  polls it every `pollInterval` while no pass runs, through `LogIndex.poll` (the store owns
+  the source; the index asserts no pass runs), then starts a pass when the index is
+  `behind`; the views stay ready and `ContentGrown` tells them to count their rows.
+  `ByteSource.complete` is "no byte is waited for now", not "never more": `FileSource` is
+  complete once it didn't grow for `quietPeriod`, and not again when it grows. A record cut
+  by the end waits while it isn't; once it is, the record is let out (`final_`: a text line
+  is taken as it is, an incomplete DLT record dropped, the open messages of a
+  `PartedFormat` closed), and `LogIndex.behind` starts a pass for it without new bytes. What
+  was taken stays: `Records.decode` gives the format the data up to the next record (the
+  last one: up to the bytes split when the `Records` was given), so a text record doesn't
+  take the bytes written after it. A file truncated (`PolledSource.truncated`), or empty
+  when opened and of another format than its name told by its first bytes
+  (`LogDocument.detectAnew`; passes wait for them), is opened anew: the document publishes
+  `ReopenWanted` and builds nothing more, `AppSession` opens it in its tab by the format
+  choice of the document (`reopen`, the path of Retry; the script's `onDocumentReopened`).
+  A document is never given a format of other records in place: its holders keep the
+  columns of the format they opened it with (`DocumentFilters`). If it can't be opened, it
+  is shown lost, with Retry. Room to grow: `utils/mapped_file` reserves address space after the file
+  (`roomFor`) and maps the new pages there (`MappedFile.grow`), the slot of the fault
+  handler growing with it. On Windows (placeholders, Windows 10 1803+) whole 64K pieces of
+  the file at its open are a view, the rest and what is written later are read into private
+  memory after it (`readTo`, at most `readPerGrow` a grow), and the fault handler guards the
+  view only. Without room (an address space limit, an older Windows) a file is mapped as it
+  is and doesn't grow.
 - The filter and search indexes are built in parallel blocks on `std.parallelism`'s task pool
   (`utils/parallel_scan`), appended in order as the blocks before them are done; the offset
   index is built sequentially. A format and a filter are called from several threads. A block
@@ -285,8 +307,9 @@ utils  ←  sciter  ←  ui
   - they grow by 64K-entry chunks (mmap / VirtualAlloc) up to 2^32 entries;
   - entries never move, which is what lets the indexing thread read the offset index without
     the mutex while the UI thread reads under it.
-- `scanRecords` can resume and leaves an incomplete last record for a later call: this is meant
-  for future streaming sources (growing file, serial port), so keep that contract.
+- `scanRecords` can resume and leaves an incomplete last record for a later call, unless
+  `final_` (the source is complete now): a growing file relies on it, and a stream will, so
+  keep that contract.
 - The view status shown to the user comes from the state machines `ui/main_view_fsm` and
   `ui/search_view_fsm` (on `utils/fsm`), free of Sciter so they can be unit-tested.
 - A view shows its rows while an operation fills it. The contract is `dataVersion` of the

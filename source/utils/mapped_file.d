@@ -1,4 +1,6 @@
-//! Read-only memory mapped file that survives the loss of its storage.
+//! Read-only memory mapped file that survives the loss of its storage and grows in place
+//! as the file is written (MappedFile.grow: room reserved after it; on Windows what is
+//! written later is read into private memory there).
 //!
 //! When the medium of a mapped file goes away (a USB disk is pulled, an I/O
 //! error, the file is truncated), touching a page that is not in memory yet
@@ -15,11 +17,26 @@ module utils.mapped_file;
 
 import core.atomic : atomicLoad, atomicStore, cas, MemoryOrder;
 
-//! Read-only mapping of a whole file. Not copyable: it owns the mapping.
+//! What MappedFile.grow found
+enum Growth
+{
+    none, // the same size, or the file can't grow (no room reserved, lost)
+    grew, // data() is longer: the bytes of before at the same place
+    shrank, // the file is shorter than its data: what was cut reads as zeros when touched
+}
+
+//! @brief Read-only mapping of a whole file. Not copyable: it owns the mapping.
+//! It may grow in place (grow()): room is reserved after the file, so data() gets longer
+//! with the bytes of before at the same address. Read data() on any thread; grow() on one.
 struct MappedFile
 {
-    private const(ubyte)[] _data;
+    private const(ubyte)* _ptr;
+    private shared size_t _length; // of data(): published after its bytes are mapped
+    private size_t _reserved; // the address space from _ptr the file may grow into; 0: it doesn't grow
     private size_t _slot = noSlot;
+
+    version (Posix)
+        private int _fd = -1; // kept open while the file may grow
 
     version (Windows)
     {
@@ -27,6 +44,11 @@ struct MappedFile
 
         private HANDLE _file;
         private HANDLE _mapping;
+        // Of a file that grows: the bytes from _ptr mapped as a view of the file, whole 64K
+        // pieces of it; the rest of data() is private memory the file is read into (a view
+        // can't take the place of memory being read by other threads)
+        private size_t _viewLength;
+        private bool _readFailed; // a read of what was written failed: the file is lost
     }
 
     @disable this(this);
@@ -36,8 +58,8 @@ struct MappedFile
     this(string path)
     {
         mapFile(path);
-        if (_data.length > 0)
-            _slot = registerRange(_data.ptr, _data.length);
+        if (_length > 0 || _reserved > 0)
+            _slot = registerRange(_ptr, guardedLength);
     }
 
     ~this()
@@ -55,19 +77,93 @@ struct MappedFile
             _slot = noSlot;
         }
         unmapFile(wasLost);
-        _data = null;
+        _ptr = null;
+        atomicStore(_length, 0);
+        _reserved = 0;
     }
 
     //! @return the content of the file; reads as zeros after the file is lost
     const(ubyte)[] data() const pure nothrow @nogc @property
     {
-        return _data;
+        return _ptr[0 .. atomicLoad!(MemoryOrder.acq)(_length)];
+    }
+
+    //! @brief Takes the bytes written to the file since it was mapped or last grown:
+    //! data() gets longer, the bytes of before at the same place. One thread at a time.
+    Growth grow() nothrow @nogc
+    {
+        version (Posix)
+        {
+            import core.sys.posix.sys.mman : mmap, MAP_FAILED, MAP_FIXED, MAP_SHARED, PROT_READ;
+            import core.sys.posix.sys.stat : fstat, stat_t;
+
+            if (_fd == -1 || lost)
+                return Growth.none;
+            stat_t st;
+            if (fstat(_fd, &st) != 0)
+                return Growth.none;
+            const old = atomicLoad(_length); // this thread is its only writer
+            size_t size = cast(size_t) st.st_size;
+            if (size < old)
+                return Growth.shrank;
+            if (size > _reserved)
+                size = _reserved; // grown past its room: it stops growing
+            if (size == old)
+                return Growth.none;
+            // The pages mapped stay: the last one, partly past the old end, is a shared page
+            // of the file and shows what was written into it. Only the pages after it are new
+            const from = pageCeil(old);
+            if (size > from && mmap(cast(void*)(_ptr + from), size - from, PROT_READ,
+                    MAP_SHARED | MAP_FIXED, _fd, from) == MAP_FAILED)
+                return Growth.none;
+            extendRange(_slot, cast(size_t) _ptr + size); // before a reader may touch the bytes
+            atomicStore!(MemoryOrder.rel)(_length, size);
+            return Growth.grew;
+        }
+        else version (Windows)
+        {
+            import core.sys.windows.windows : GetFileSizeEx, LARGE_INTEGER;
+
+            if (!_reserved || lost)
+                return Growth.none;
+            LARGE_INTEGER fileSize;
+            if (!GetFileSizeEx(_file, &fileSize))
+                return Growth.none;
+            const old = atomicLoad(_length); // this thread is its only writer
+            size_t size = cast(size_t) fileSize.QuadPart;
+            if (size < old)
+                return Growth.shrank;
+            if (size > _reserved)
+                size = _reserved; // grown past its room: it stops growing
+            if (size - old > readPerGrow)
+                size = old + readPerGrow; // the rest by the next ones: the window doesn't wait the disk
+            if (size == old)
+                return Growth.none;
+            if (!readTo(size))
+                _readFailed = true;
+            return atomicLoad(_length) > old ? Growth.grew : Growth.none;
+        }
+        else
+            return Growth.none;
     }
 
     //! @return true once a read of the file failed: its storage is gone
     bool lost() const nothrow @nogc @property
     {
+        version (Windows)
+            if (_readFailed)
+                return true;
         return _slot != noSlot && isLostSlot(_slot);
+    }
+
+    //! The bytes from _ptr a read of which may fault (the fault handler guards them): the
+    //! mapping of the file, not the private memory a file that grows is read into on Windows
+    private size_t guardedLength() const nothrow @nogc
+    {
+        version (Windows)
+            if (_reserved)
+                return _viewLength;
+        return atomicLoad(_length);
     }
 
     version (Posix)
@@ -75,7 +171,8 @@ struct MappedFile
         private void mapFile(string path)
         {
             import core.sys.posix.fcntl : open, O_RDONLY;
-            import core.sys.posix.sys.mman : mmap, MAP_SHARED, MAP_FAILED, PROT_READ;
+            import core.sys.posix.sys.mman : mmap, munmap, MAP_ANON, MAP_FAILED, MAP_FIXED, MAP_PRIVATE,
+                MAP_SHARED, PROT_NONE, PROT_READ;
             import core.sys.posix.sys.stat : fstat, stat_t;
             import core.sys.posix.unistd : posixClose = close;
             import std.exception : errnoEnforce;
@@ -83,27 +180,54 @@ struct MappedFile
 
             const fd = open(path.toStringz, O_RDONLY);
             errnoEnforce(fd != -1, "Can't open " ~ path);
+            bool keep = false; // the file may grow: the descriptor stays open
             scope (exit)
-                posixClose(fd); // the mapping keeps its own reference
+                if (!keep)
+                    posixClose(fd); // the mapping keeps its own reference
 
             stat_t st;
             errnoEnforce(fstat(fd, &st) == 0, "Can't stat " ~ path);
             const size = cast(size_t) st.st_size;
+
+            // Room to grow into: addresses only, nothing is committed
+            const reserve = roomFor(size);
+            void* base = reserve ? mmap(null, reserve, PROT_NONE, MAP_PRIVATE | MAP_ANON, -1, 0) : MAP_FAILED;
+            if (base != MAP_FAILED)
+            {
+                if (size > 0 && mmap(base, size, PROT_READ, MAP_SHARED | MAP_FIXED, fd, 0) == MAP_FAILED)
+                {
+                    munmap(base, reserve);
+                    errnoEnforce(false, "Can't map " ~ path);
+                }
+                _ptr = cast(const(ubyte)*) base;
+                atomicStore(_length, size);
+                _reserved = reserve;
+                _fd = fd;
+                keep = true;
+                return;
+            }
+
+            // No room (an address space limit): mapped as it is, it doesn't grow
             if (size == 0)
                 return; // nothing to map
-
             void* ptr = mmap(null, size, PROT_READ, MAP_SHARED, fd, 0);
             errnoEnforce(ptr != MAP_FAILED, "Can't map " ~ path);
-            _data = (cast(const(ubyte)*) ptr)[0 .. size];
+            _ptr = cast(const(ubyte)*) ptr;
+            atomicStore(_length, size);
         }
 
         private void unmapFile(bool wasLost) nothrow @nogc
         {
             import core.sys.posix.sys.mman : munmap;
+            import core.sys.posix.unistd : posixClose = close;
 
             // Pages replaced after a loss are part of the same range
-            if (_data.length > 0)
-                munmap(cast(void*) _data.ptr, _data.length);
+            const length = _reserved ? _reserved : atomicLoad(_length);
+            if (length > 0)
+                munmap(cast(void*) _ptr, length);
+            if (_fd != -1)
+                posixClose(_fd);
+            _fd = -1;
         }
     }
     else version (Windows)
@@ -127,6 +251,11 @@ struct MappedFile
 
             LARGE_INTEGER size;
             enforce(GetFileSizeEx(_file, &size), error("Can't get the size of"));
+            if (mapToGrow(cast(size_t) size.QuadPart))
+            {
+                enforce(!_readFailed, error("Can't read"));
+                return;
+            }
             if (size.QuadPart == 0)
                 return; // nothing to map (and CreateFileMapping rejects it)
 
@@ -135,19 +264,127 @@ struct MappedFile
 
             void* ptr = MapViewOfFile(_mapping, FILE_MAP_READ, 0, 0, 0);
             enforce(ptr !is null, error("Can't map a view of"));
-            _data = (cast(const(ubyte)*) ptr)[0 .. cast(size_t) size.QuadPart];
+            _ptr = cast(const(ubyte)*) ptr;
+            atomicStore(_length, cast(size_t) size.QuadPart);
+        }
+
+        //! @brief Maps the file of `size` bytes so that it may grow, in placeholders of the
+        //! address space (Windows 10 1803+): whole 64K pieces of it as a view, the rest
+        //! read into private memory after it, room reserved for more
+        //! @return false if it can't be (an older Windows, no room): nothing is mapped then
+        private bool mapToGrow(size_t size)
+        {
+            import core.sys.windows.windows;
+
+            const api = placeholders();
+            const reserve = roomFor(size);
+            if (api.virtualAlloc2 is null || api.mapViewOfFile3 is null || reserve == 0)
+                return false;
+            auto process = GetCurrentProcess();
+            void* base = api.virtualAlloc2(process, null, reserve, MEM_RESERVE | memReservePlaceholder,
+                PAGE_NOACCESS, null, 0);
+            if (base is null)
+                return false;
+            const view = size & ~(allocationGranularity() - 1);
+            auto rest = cast(void*)(cast(ubyte*) base + view);
+            if (view > 0)
+            {
+                // The placeholder split in two: the view takes the first one
+                if (!VirtualFree(base, view, MEM_RELEASE | memPreservePlaceholder))
+                {
+                    VirtualFree(base, 0, MEM_RELEASE);
+                    return false;
+                }
+                _mapping = CreateFileMappingW(_file, null, PAGE_READONLY, 0, 0, null);
+                if (_mapping is null || api.mapViewOfFile3(_mapping, process, base, 0, view,
+                        memReplacePlaceholder, PAGE_READONLY, null, 0) is null)
+                {
+                    if (_mapping !is null)
+                        CloseHandle(_mapping);
+                    _mapping = null;
+                    VirtualFree(base, 0, MEM_RELEASE);
+                    VirtualFree(rest, 0, MEM_RELEASE);
+                    return false;
+                }
+            }
+            if (api.virtualAlloc2(process, rest, reserve - view, MEM_RESERVE | memReplacePlaceholder,
+                    PAGE_READWRITE, null, 0) is null)
+            {
+                if (view > 0)
+                    UnmapViewOfFile(base);
+                VirtualFree(rest, 0, MEM_RELEASE);
+                if (_mapping !is null)
+                    CloseHandle(_mapping);
+                _mapping = null;
+                return false;
+            }
+            _ptr = cast(const(ubyte)*) base;
+            _reserved = reserve;
+            _viewLength = view;
+            atomicStore(_length, view);
+            if (!readTo(size))
+                _readFailed = true;
+            return true;
+        }
+
+        //! @brief Reads the file from the end of data() to `size` into the private memory
+        //! after the view, committed as it goes; data() gets the bytes read
+        //! @return false if a read failed (what was read before is kept)
+        private bool readTo(size_t size) nothrow @nogc
+        {
+            import core.sys.windows.windows;
+
+            size_t length = atomicLoad(_length);
+            if (size <= length)
+                return true;
+            auto at = cast(void*)(_ptr + length);
+            if (VirtualAlloc(at, size - length, MEM_COMMIT, PAGE_READWRITE) is null)
+                return false;
+            bool ok = true;
+            while (length < size)
+            {
+                OVERLAPPED offset;
+                offset.Offset = cast(DWORD) length;
+                offset.OffsetHigh = cast(DWORD)(cast(ulong) length >> 32);
+                const left = size - length;
+                const want = cast(DWORD)(left < (1u << 30) ? left : (1u << 30));
+                DWORD read;
+                if (!ReadFile(_file, cast(void*)(_ptr + length), want, &read, &offset))
+                {
+                    ok = false;
+                    break;
+                }
+                if (read == 0)
+                    break; // shorter meanwhile: the next grow() tells it
+                length += read;
+            }
+            atomicStore!(MemoryOrder.rel)(_length, length);
+            return ok;
         }
 
         private void unmapFile(bool wasLost) nothrow @nogc
         {
             import core.sys.windows.windows;
 
-            if (_data.length > 0)
+            if (_reserved)
+            {
+                if (_viewLength > 0)
+                {
+                    if (wasLost) // the view was replaced by reserved memory
+                        VirtualFree(cast(void*) _ptr, 0, MEM_RELEASE);
+                    else
+                        UnmapViewOfFile(cast(void*) _ptr);
+                }
+                VirtualFree(cast(void*)(_ptr + _viewLength), 0, MEM_RELEASE);
+                _viewLength = 0;
+                _readFailed = false;
+            }
+            else if (atomicLoad(_length) > 0)
             {
                 if (wasLost) // the view was replaced by reserved memory
-                    VirtualFree(cast(void*) _data.ptr, 0, MEM_RELEASE);
+                    VirtualFree(cast(void*) _ptr, 0, MEM_RELEASE);
                 else
-                    UnmapViewOfFile(cast(void*) _data.ptr);
+                    UnmapViewOfFile(cast(void*) _ptr);
             }
             if (_mapping !is null)
                 CloseHandle(_mapping);
@@ -159,6 +396,97 @@ struct MappedFile
     }
     else
         static assert(0, "MappedFile: unsupported platform");
+}
+
+//! The address space reserved for a file of `size` bytes to grow into: a few times its size,
+//! and 64 GiB more at least; 0 where addresses are too few (a 32-bit build)
+private size_t roomFor(size_t size) pure nothrow @nogc @safe
+{
+    static if (size_t.sizeof < 8)
+        return 0;
+    else
+    {
+        enum size_t least = 64UL << 30;
+        const times = size <= size_t.max / 4 ? size * 4 : size_t.max;
+        return times > size + least ? times : size + least;
+    }
+}
+
+private size_t pageSize() nothrow @nogc
+{
+    version (Posix)
+    {
+        import core.sys.posix.unistd : sysconf, _SC_PAGESIZE;
+
+        return cast(size_t) sysconf(_SC_PAGESIZE);
+    }
+    else
+    {
+        import core.sys.windows.windows : GetSystemInfo, SYSTEM_INFO;
+
+        SYSTEM_INFO info;
+        GetSystemInfo(&info);
+        return info.dwPageSize;
+    }
+}
+
+version (Windows)
+{
+    import core.sys.windows.windows : HANDLE;
+
+    //! The most a grow() reads at once into the private memory of a file that grows
+    private enum size_t readPerGrow = 16 << 20;
+
+    // Placeholders of the address space (Windows 10 1803+), not in the headers of druntime
+    private enum uint memReservePlaceholder = 0x0004_0000;
+    private enum uint memReplacePlaceholder = 0x0000_4000;
+    private enum uint memPreservePlaceholder = 0x0000_0002;
+
+    private alias VirtualAlloc2Fn = extern (Windows) void* function(HANDLE process, void* base, size_t size,
+        uint type, uint protection, void* parameters, uint count) nothrow @nogc;
+    private alias MapViewOfFile3Fn = extern (Windows) void* function(HANDLE mapping, HANDLE process, void* base,
+        ulong offset, size_t size, uint type, uint protection, void* parameters, uint count) nothrow @nogc;
+
+    private struct PlaceholderApi
+    {
+        VirtualAlloc2Fn virtualAlloc2;
+        MapViewOfFile3Fn mapViewOfFile3;
+    }
+
+    //! The functions of placeholders, null where the system has none
+    private PlaceholderApi placeholders() nothrow @nogc
+    {
+        import core.sys.windows.windows : GetModuleHandleW, GetProcAddress;
+
+        __gshared PlaceholderApi api;
+        __gshared bool looked;
+        if (!looked)
+        {
+            if (auto module_ = GetModuleHandleW("kernelbase.dll"w.ptr))
+            {
+                api.virtualAlloc2 = cast(VirtualAlloc2Fn) GetProcAddress(module_, "VirtualAlloc2");
+                api.mapViewOfFile3 = cast(MapViewOfFile3Fn) GetProcAddress(module_, "MapViewOfFile3");
+            }
+            looked = true;
+        }
+        return api;
+    }
+
+    private size_t allocationGranularity() nothrow @nogc
+    {
+        import core.sys.windows.windows : GetSystemInfo, SYSTEM_INFO;
+
+        SYSTEM_INFO info;
+        GetSystemInfo(&info);
+        return info.dwAllocationGranularity;
+    }
+}
+
+//! `length` rounded up to whole pages
+private size_t pageCeil(size_t length) nothrow @nogc
+{
+    const page = pageSize();
+    return (length + page - 1) & ~(page - 1);
 }
 
 // ─── Registry of guarded ranges ────────────────────────────────────────────
@@ -201,6 +529,13 @@ private size_t registerRange(const(void)* begin, size_t length)
         return i;
     }
     throw new Exception("Too many mapped files");
+}
+
+//! The range of slot `i` ends at `end` now: a file grown in place
+private void extendRange(size_t i, size_t end) nothrow @nogc
+{
+    if (i != noSlot)
+        atomicStore!(MemoryOrder.rel)(g_slots[i].end, end);
 }
 
 private void unregisterRange(size_t i) nothrow @nogc
@@ -370,6 +705,85 @@ else version (Windows)
 // =============================================================================
 // Unit tests
 // =============================================================================
+
+version (unittest)
+{
+    private void append(string path, const(void)[] bytes)
+    {
+        import std.stdio : File;
+
+        auto file = File(path, "ab");
+        file.rawWrite(bytes);
+    }
+}
+
+@("MappedFile.grow: takes the bytes written since, the bytes of before at the same place")
+unittest
+{
+    import std.file : remove, tempDir, write;
+    import std.path : buildPath;
+
+    auto path = buildPath(tempDir(), "mapped_file_grow.bin");
+    write(path, "hello");
+    scope (exit)
+        remove(path);
+
+    auto file = MappedFile(path);
+    const before = file.data;
+    assert(file.grow() == Growth.none, "nothing written");
+
+    append(path, " world");
+    assert(file.grow() == Growth.grew);
+    assert(cast(const(char)[]) file.data == "hello world");
+    assert(file.data.ptr == before.ptr && cast(const(char)[]) before == "hello");
+
+    // Past the pages mapped at first
+    auto more = new ubyte[](3 * 65_536 + 7);
+    more[] = 'x';
+    append(path, more);
+    assert(file.grow() == Growth.grew);
+    assert(file.data.length == 11 + more.length && file.data.ptr == before.ptr);
+    assert(file.data[$ - 1] == 'x' && file.data[11] == 'x');
+    assert(!file.lost);
+}
+
+@("MappedFile.grow: an empty file that gets its first bytes")
+unittest
+{
+    import std.file : remove, tempDir, write;
+    import std.path : buildPath;
+
+    auto path = buildPath(tempDir(), "mapped_file_grow_empty.bin");
+    write(path, "");
+    scope (exit)
+        remove(path);
+
+    auto file = MappedFile(path);
+    assert(file.data.length == 0);
+    append(path, "first");
+    assert(file.grow() == Growth.grew);
+    assert(cast(const(char)[]) file.data == "first");
+}
+
+@("MappedFile.grow: a file made shorter is told, its data stays as long")
+unittest
+{
+    import std.file : remove, tempDir, write;
+    import std.path : buildPath;
+
+    // Small enough to be read, not mapped, on Windows: a mapped file can't be made
+    // shorter there
+    auto path = buildPath(tempDir(), "mapped_file_grow_shrank.bin");
+    write(path, "hello world");
+    scope (exit)
+        remove(path);
+
+    auto file = MappedFile(path);
+    write(path, "hello");
+    assert(file.grow() == Growth.shrank);
+    assert(file.data.length == 11);
+}
+
 
 version (Posix)
 {
