@@ -346,11 +346,11 @@ enum SCITER_WINDOW_CMD
 
 enum SCITER_WINDOW_STATE
 {
-    SCITER_WINDOW_STATE_CLOSED = 0, // close window
-    SCITER_WINDOW_STATE_SHOWN = 1,
-    SCITER_WINDOW_STATE_MINIMIZED = 2,
-    SCITER_WINDOW_STATE_MAXIMIZED = 3,
-    SCITER_WINDOW_STATE_HIDDEN = 4,
+    SCITER_WINDOW_STATE_CLOSED = 0, // not a window (SET_STATE: close it)
+    SCITER_WINDOW_STATE_HIDDEN = 1,
+    SCITER_WINDOW_STATE_SHOWN = 2,
+    SCITER_WINDOW_STATE_MINIMIZED = 3,
+    SCITER_WINDOW_STATE_MAXIMIZED = 4,
     SCITER_WINDOW_STATE_FULL_SCREEN = 5,
 }
 
@@ -574,3 +574,19 @@ alias DEBUG_OUTPUT_PROC = extern (C) void function(void* param, uint subsystem /
 //                void*                param,     // param to be passed "as is" to the pfOutput
 //                DEBUG_OUTPUT_PROC     pfOutput   // output function, output stream alike thing.
 //                );
+
+@("SCITER_WINDOW_STATE: the values of sciter-x-def.h (6.0.5.5)")
+unittest
+{
+    // Not of the window commands' order: HIDDEN is 1, SHOWN 2. A wrong value hid the window
+    // that expand() meant to show (Windows showed none)
+    with (SCITER_WINDOW_STATE)
+    {
+        assert(SCITER_WINDOW_STATE_CLOSED == 0);
+        assert(SCITER_WINDOW_STATE_HIDDEN == 1);
+        assert(SCITER_WINDOW_STATE_SHOWN == 2);
+        assert(SCITER_WINDOW_STATE_MINIMIZED == 3);
+        assert(SCITER_WINDOW_STATE_MAXIMIZED == 4);
+        assert(SCITER_WINDOW_STATE_FULL_SCREEN == 5);
+    }
+}

@@ -33,6 +33,11 @@ agent can't drive it. In scapp a plain
   macOS); the cause is in the log. The rule itself is in `.ai/knowledge/architecture.md`
   (Foreign Callbacks). Sciter calls its debug output on the window's thread (6.0.5.5, macOS,
   checked while a 50 MB log was indexed): the callback may allocate.
+- The constants of `sciter/capi` are copies of the SDK's headers, checked by hand: compare them
+  with `include/*.h` of the SDK of `libs/SCITER_VERSION` after an update. `SCITER_WINDOW_STATE`
+  was off by one (SHOWN 1, which is HIDDEN): `expand()` hid the window. macOS showed it anyway
+  (`activate` brings it forward), Windows never did: the program ran with an invisible window,
+  the "no window on Windows" of the users (found by the CI start check, 2026-11-17).
 - The library is loaded once (`sciter/api`) and unloaded by a module destructor after main.
   The last collection of the GC runs after the module destructors: a `SciterValue` or a
   `SciterWindow` left to it would call an unloaded Sciter. `sciterApi()` asserts on such a use
