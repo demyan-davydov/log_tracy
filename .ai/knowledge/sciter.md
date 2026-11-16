@@ -68,7 +68,17 @@ agent can't drive it. In scapp a plain
 
 - `element.content(a, b, c)` uses only the first argument; build lists with
   `innerHTML = ""` + `append(jsx)` per item. `Element.append` takes a single node.
+- `element.content([...])` of an array mixing texts and elements keeps only the elements
+  (`["a", <i/>, "b"]` gives `<i></i>`); a fragment keeps both: `content(<>{pieces}</>)`.
+- Don't keep state as properties of elements (`row.view = ...`): on rows reused as slots such
+  properties went missing after a while (2026-11-15; an element held by the script kept them,
+  the cause wasn't pinned down). Keep it in JS, by the element's place (`elementIndex`).
 - `el.attributes["x"] = null` sets the text "null"; use `removeAttribute` / `setAttribute`.
+- Any `classList` call (`add`, `remove`, `toggle`, even `contains`) on an element taken out of
+  the DOM with `remove()` segfaults (6.0.5.5, 2026-11-15; `JS_GetPropertyInternal`). An element
+  never inserted yet (`Element.create`) is fine; `className`, `setAttribute`, `textContent`
+  and inserting it back are fine on a removed one. Keep elements out of the DOM only with
+  `className` / `setAttribute("class")`, or reinsert first.
 - Setting an input's `value` attribute in JSX doesn't change its current value: assign
   `input.value`.
 - `style.variables({name: null})` doesn't remove a variable: `var(name, default)` then doesn't
@@ -135,6 +145,28 @@ agent can't drive it. In scapp a plain
   `preventDefault` + `stopPropagation`. `Range.applyMark(name)` + `::mark(name)` tints a range.
 - A moved frameset splitter fires `statechange`. `sizechange` on a `th` fires when the column
   is widened by the rows (`th.on("sizechange", ...)`, non-bubbling).
+- `sizechange` reaches an element subscribed with `on("sizechange", ...)`; an
+  `["on sizechange"]` method of its class is never called (an element bound by CSS
+  `prototype:`: neither `this()` nor field initializers run either).
+- The wheel and the trackpad on macOS (6.0.5.5, 2026-11-15):
+  - A mouse wheel comes as `wheel` in pixels (deltaMode 0), accelerated by the system: 12,
+    112, 461, … up to ~1000 px an event every ~15 ms while it spins, single ones of 20 000
+    px. Apply them once a frame (`requestAnimationFrame`), never one by one with a layout
+    each: the queue grows and the window hangs. A native scroll moves less than the deltas.
+    Frames heavy enough (20–35 ms) hold the input back, and macOS sends the wheel in lumps
+    (20 000–30 000 px every ~300 ms): keep the way pending to about a screen, drop the surplus.
+  - `requestAnimationFrame` callbacks come 5–36 ms apart, not at the screen's rate: a scroll
+    stepped by the raw time between frames jerks; even the step out (a mean period, the lag
+    caught up a little each frame).
+  - A trackpad comes as gestures, and only to an element that asks: on `gesturestart` call
+    `this.state.wantsGestures("pan-vertical", "pan-horizontal")`, then `gesturepan` carries
+    the finger's move (deltaY; content follows the finger, scroll by -deltaY). Without
+    the request a trackpad sends the script nothing, on the element or the document (a
+    mouse wheel's `wheel` comes either way).
+  - The inertia after a swipe isn't delivered: `gestureswipe` comes with zero deltas and
+    Sciter animates only an element with a native scroll of its own (`scrollanimationstart`
+    / `end`, ~1 s). An element scrolled by script makes its own inertia.
+  - `overflow: hidden-scroll` scrolls by the wheel and the trackpad without a scrollbar.
 
 ## Popups, Tooltips, Menus
 
@@ -185,6 +217,30 @@ agent can't drive it. In scapp a plain
   use a real child element. On `:before`, `visibility: hidden` and `opacity` are ignored;
   `color: transparent` hides it, `color: inherit` shows it. Changing its `content` relayouts
   the table and the rows below blink: keep the content, toggle the color.
+- A child with `position: absolute` (`top`, `right`) inside an element itself `position:
+  absolute` was placed by the positioned ancestor above both (6.0.5.5, 2026-11-15): place such
+  a child in the flow (`margin-top`, `margin-left: *`) instead.
+- An element with `overflow-x: hidden` still scrolls by `scrollTo` (and reports
+  `scrollWidth`), but keeps its `scrollLeft` when its content gets narrower: the content stays
+  shifted out of sight (`auto` brings it back); clamp it yourself.
+- The cost of a change of a table row (6.0.5.5, 2026-11-16, 13 cells): any attribute of a `tr`
+  changed (a class too, one no CSS rule names too) restyles the row and all its cells, ~0.5 ms
+  a row; the same value written again costs nothing. A text of a cell is ~10 µs. Keep the
+  attributes of the rows as they are; what changes with the row's number goes into painting.
+- Where a row goes in a table (6.0.5.5, 2026-11-16, 30–34 rows of 13 cells): `append` of a row
+  of the table itself (moved from the top to the end) or a row removed from anywhere is cheap,
+  ~1 ms for 4 rows. A row inserted anywhere but at the end (`insertBefore` the first, the
+  second, the middle one; a row of the table too) re-lays the whole table out, ~14 ms
+  (~0.45 ms a row), one row or four, fixed widths of the columns or not, wrapped or
+  single-line; `:nth-child` rules are no part of it. A row taken out of the DOM and inserted
+  again, even at the end, is styled anew with its cells: ~14 ms for 4. Blocks of
+  `flow: horizontal` instead of a table pay for an insertion at the top too (~8 ms).
+- `element.paintBackground = gfx => ...` draws under the element's content, but the element's
+  own CSS background is painted over it: give the element none and paint it too. `gfx` is in
+  the element's box, in px as `getBoundingClientRect`; `element.style.variable("name")` gives a
+  CSS variable for `gfx.fillStyle`; `requestPaint()` asks for it again. What it paints is not
+  clipped to the element's box (a rect above a `tbody` painted over the table's header): cut
+  it yourself.
 - `:nth-child` styles are not updated for the siblings that stay when an element is prepended
   or removed (6.0.5.5): `matches(":nth-child(even)")` gives the new answer, the applied style
   is the old one. The rows virtual-list keeps while scrolling had wrong stripes
@@ -231,6 +287,9 @@ agent can't drive it. In scapp a plain
   `width` attribute of a `th` has no effect at usual sizes; a CSS `width` is enforced.
   `box-sizing: border-box` on all headers shifted every column by 1dip: leave it off unless a
   width is set.
+  A `th` with a padding of 9 px came out 14 px wider than its `min-width` (6.0.5.5), whether
+  from the box's inner width or with `border-box`: learn the excess from what a `min-width`
+  gave, don't derive it.
 - Sizing a chip by its text and cutting it at the room left (the Filters page, 6.0.5.5):
   - a `width: max-content` element counts a child with a `max-width` as that max-width, not
     its text: a cap on the name made every chip as wide as the cap. `max-width: max-content`
