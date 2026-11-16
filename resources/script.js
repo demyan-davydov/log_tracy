@@ -6,7 +6,7 @@ import {
     documentOpened, openFailed, documentClosed, recentFileRemoved, shown, activeDocId
 } from "window-state.js";
 import { lastUsedText } from "recent-time.js";
-import { recentFileMenu } from "recent-file-menu.js";
+import { clickOpensRecentFile, recentFileMenu } from "recent-file-menu.js";
 import { DocumentPane } from "document-pane.js";
 import { paneChanges, tabProgress } from "pane-state.js";
 import { TabStrip } from "tabs.js";
@@ -285,7 +285,7 @@ function recentFileCommand(command, path) {
         case "remove":
             if (backend.removeRecentFile(path)) {
                 win = recentFileRemoved(win, path);
-                refreshTabs();
+                refreshTabsSoon();
             }
             break;
     }
@@ -299,7 +299,7 @@ function openFile(path) {
     if (!failure) return; // opened
     console.error("Can't open", path, ":", failure.error);
     win = openFailed(win, failure); // shown under the file in the recent files
-    refreshTabs();
+    refreshTabsSoon();
 }
 
 function setTheme(theme) {
@@ -424,8 +424,7 @@ function setupEvents() {
     document.on("click", "#btn-placeholder-open", openFileAction);
 
     document.on("click", ".recent-file", (evt, item) => {
-        if (evt.target.closest(".recent-file-menu")) return; // its button or its menu
-        openFile(item.getAttribute("path"));
+        if (clickOpensRecentFile(evt.target)) openFile(item.getAttribute("path"));
     });
     document.on("click", ".recent-file-menu li[command]", (evt, li) => {
         if (li.hasAttribute("disabled")) return;
@@ -568,6 +567,21 @@ function refreshTabs() {
     for (const doc of docs) showTabStatus(doc.id, panes.get(doc.id));
 
     showDocument();
+}
+
+// refreshTabs() once the event being handled is done, one for any number of
+// calls till then. For a change made by a click on the recent files: the list
+// drawn again under the pointer in the middle of a click is suspected to leave
+// Sciter's next click with no target, or lost (seen once, not reproduced again:
+// .ai/knowledge/sciter.md)
+let refreshPosted = false;
+function refreshTabsSoon() {
+    if (refreshPosted) return;
+    refreshPosted = true;
+    document.post(() => {
+        refreshPosted = false;
+        refreshTabs();
+    });
 }
 
 function switchTab(docId) {

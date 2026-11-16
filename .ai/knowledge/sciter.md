@@ -123,6 +123,12 @@ agent can't drive it. In scapp a plain
   (`patch`), removing `evt.target`, then read `evt.clientX`: a segfault on a null pointer in
   `qjs::event_client_x` went together with it (seen in a crash report, not reproduced). The
   table now unpaints a dropped selection in place (`_unpaintTextSelection`).
+- A `click` may come with `evt.target` null (6.0.5.5, macOS, seen once in a user's log, not
+  reproduced again): a failed open of a recent file had drawn the list again inside its click,
+  the next click on the list got no target, and the clicks after it seemed lost. A delegated
+  handler checks the target (`clickOpensRecentFile`); a change made by a click on the recent
+  files draws the list after the click (`refreshTabsSoon` in `script.js`). Suspected, not
+  confirmed: the redraw in the middle of a click.
 - Mouse capture (`state.capture`) on an element recreated in the same mousedown went together
   with a segfault on tab drag; capture isn't needed for dragging: document-level
   `mousemove` / `mouseup` work.

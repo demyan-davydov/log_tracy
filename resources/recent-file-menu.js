@@ -13,3 +13,11 @@ export function recentFileMenu({ exists, opened }) {
     if (!opened) items.push({ command: "remove", enabled: true });
     return items;
 }
+
+// Whether a click on a row of the recent list opens its file: not when it is on
+// the row's "⋮" button or its menu. Sciter may give a click no `target` (seen
+// once the list was drawn again under the pointer): where it was is unknown, it
+// may have been a command of the menu, so it opens nothing.
+export function clickOpensRecentFile(target) {
+    return target != null && !target.closest(".recent-file-menu");
+}

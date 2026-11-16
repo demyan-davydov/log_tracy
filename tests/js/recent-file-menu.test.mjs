@@ -2,7 +2,7 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { recentFileMenu } from "../../resources/recent-file-menu.js";
+import { clickOpensRecentFile, recentFileMenu } from "../../resources/recent-file-menu.js";
 
 const commands = items => items.map(({ command, enabled }) => [command, enabled]);
 
@@ -19,4 +19,15 @@ test("an open file is not removed: it would be listed again at once", () => {
 test("a file not found has no folder to show it in", () => {
     assert.deepEqual(commands(recentFileMenu({ exists: false, opened: false })),
         [["show-in-folder", false], ["copy-path", true], ["remove", true]]);
+});
+
+test("a click on a row opens its file, one on its menu button doesn't", () => {
+    const inMenu = { closest: selector => selector === ".recent-file-menu" ? {} : null };
+    const inRow = { closest: () => null };
+    assert.equal(clickOpensRecentFile(inRow), true);
+    assert.equal(clickOpensRecentFile(inMenu), false);
+});
+
+test("a click whose target is gone opens nothing: it may have been on the menu", () => {
+    assert.equal(clickOpensRecentFile(null), false);
 });
