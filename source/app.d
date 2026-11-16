@@ -118,9 +118,6 @@ int main()
 	// A new need gets its flag here, with why.
 	sciterApi().SciterSetOption(null, SCITER_RT_OPTIONS.SCITER_SET_SCRIPT_RUNTIME_FEATURES, 0);
 
-    import sciter.capi.types;
-    sciterApi().SciterSetOption(null, SCITER_RT_OPTIONS.SCITER_SET_GFX_LAYER, GFX_LAYER.GFX_LAYER_SKIA_ANGLE);
-
 	sciterApi().SciterSetMediaType(null, "desktop,gsciter"w.ptr);
 
 	int result = 0;
