@@ -9,7 +9,7 @@ $ErrorActionPreference = "Stop"
 $out = "build/ci"
 New-Item -ItemType Directory -Force $out | Out-Null
 
-Add-Type -ReferencedAssemblies System.Drawing, System.Windows.Forms @"
+Add-Type @"
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -47,17 +47,19 @@ public static class StartCheck {
         return found;
     }
 
-    // A picture of the whole desktop
-    public static void SaveDesktop(string path) {
-        var bounds = System.Windows.Forms.SystemInformation.VirtualScreen;
-        using (var bitmap = new System.Drawing.Bitmap(bounds.Width, bounds.Height))
-        using (var g = System.Drawing.Graphics.FromImage(bitmap)) {
-            g.CopyFromScreen(bounds.Left, bounds.Top, 0, 0, bitmap.Size);
-            bitmap.Save(path, System.Drawing.Imaging.ImageFormat.Png);
-        }
-    }
 }
 "@
+
+# A picture of the whole desktop
+function Save-Desktop($path) {
+    Add-Type -AssemblyName System.Drawing, System.Windows.Forms
+    $bounds = [System.Windows.Forms.SystemInformation]::VirtualScreen
+    $bitmap = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+    $g = [System.Drawing.Graphics]::FromImage($bitmap)
+    $g.CopyFromScreen($bounds.Left, $bounds.Top, 0, 0, $bitmap.Size)
+    $bitmap.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
+    $g.Dispose(); $bitmap.Dispose()
+}
 
 # Waits for the window of `$p`: "window", "exited" or "none"
 function Wait-Window($p) {
@@ -91,14 +93,20 @@ if ($state -eq "window") {
 Write-Host "No window after $Seconds s: $state (process $($p.Id), session $($p.SessionId))"
 if ($state -eq "exited") { Write-Host "Exit code: $($p.ExitCode)" }
 else {
-    Write-Section "Windows of the process" ([StartCheck]::WindowsOf([uint32]$p.Id))
-    Write-Section "Threads" ($p.Threads | ForEach-Object { "$($_.Id) $($_.ThreadState) $($_.WaitReason) cpu=$($_.TotalProcessorTime)" })
-    $cdb = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe" -ErrorAction SilentlyContinue
-    if ($cdb) {
-        & $cdb.FullName -p $p.Id -c "~*kn 40; qd" 2>&1 | Out-File "$out/stacks.txt"
-        Write-Section "Stacks (cdb)" (Get-Content "$out/stacks.txt")
-    } else { Write-Host "No cdb on the runner: no stacks" }
-    try { [StartCheck]::SaveDesktop("$out/desktop.png"); Write-Host "The desktop: $out/desktop.png" }
+    # each part on its own: one that fails leaves the others
+    try { Write-Section "Windows of the process" ([StartCheck]::WindowsOf([uint32]$p.Id)) }
+    catch { Write-Host "No windows listed: $_" }
+    try { Write-Section "Threads" ($p.Threads | ForEach-Object { "$($_.Id) $($_.ThreadState) $($_.WaitReason) cpu=$($_.TotalProcessorTime)" }) }
+    catch { Write-Host "No threads listed: $_" }
+    try {
+        $cdb = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe" -ErrorAction SilentlyContinue
+        if ($cdb) {
+            & $cdb.FullName -p $p.Id -c "~*kn 40; qd" 2>&1 | Out-File "$out/stacks.txt"
+            Write-Section "Stacks (cdb)" (Get-Content "$out/stacks.txt")
+        } else { Write-Host "No cdb on the runner: no stacks" }
+    }
+    catch { Write-Host "No stacks: $_" }
+    try { Save-Desktop "$out/desktop.png"; Write-Host "The desktop: $out/desktop.png" }
     catch { Write-Host "No picture of the desktop: $_" }
     Stop-Process -Id $p.Id -Force
 }
