@@ -54,6 +54,28 @@ jobs:
       - name: Distribution
         run: node scripts/build.mjs dist
 
+      # The program of the distribution started as Explorer starts it (Start-Process: a program of
+      # /SUBSYSTEM:WINDOWS gets no stdout or stderr): it shows its window and keeps running, not
+      # ends or runs on without one (utils/std_streams). Stopped then, its settings left unsaved
+      - name: Start the distribution without standard streams
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $p = Start-Process build/dist/windows/log_tracy.exe -PassThru
+          $deadline = (Get-Date).AddSeconds(30)
+          while ((Get-Date) -lt $deadline) {
+            Start-Sleep -Milliseconds 500
+            $p.Refresh()
+            if ($p.HasExited) { throw "Log Tracy ended without a window (exit code $($p.ExitCode))" }
+            if ($p.MainWindowHandle -ne 0) {
+              Write-Host "The window is shown: $($p.MainWindowTitle)"
+              Stop-Process -Id $p.Id -Force
+              exit 0
+            }
+          }
+          Stop-Process -Id $p.Id -Force
+          throw "Log Tracy runs with no window after 30 s"
+
       # packed here: an artifact is zipped without the executable bits of the files
       - name: Pack the distribution
         shell: bash

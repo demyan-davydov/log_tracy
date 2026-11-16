@@ -59,7 +59,7 @@ int main()
 	// the lines still in the buffer are lost when the process is killed or crashes, and the log
 	// of a failure comes out empty. Windows has no line buffering (_IOLBF is full buffering in
 	// its C library): unbuffered there. Release builds keep the default. A stdout that can't be
-	// set up (a Windows program without a console) is left as it is: the app runs anyway.
+	// set up is left as it is: the app runs anyway.
 	debug
 	{
 		import core.stdc.stdio : _IOLBF, _IONBF;

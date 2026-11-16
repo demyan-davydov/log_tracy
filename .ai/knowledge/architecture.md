@@ -42,7 +42,8 @@ utils  ←  sciter  ←  ui
   `std.regex`), keys by name (`utils/keys`,
   whatever the system) and their codes of macOS (`utils/mac_keys`), Objective-C calls
   (`utils/objc`), the boundary of callbacks of foreign code (`utils/foreign_callback`), the
-  program's own log (`utils/app_log`).
+  program's own log (`utils/app_log`), standard streams a program started without
+  (`utils/std_streams`).
 - `log_core/`: what doesn't depend on a format (LogMessage, LogFormat, filters, ByteSource,
   column layout, the values of the columns of a record (`column_values`: the one place the
   columns of a record are read as values to show; the table writes Sciter values through
@@ -87,11 +88,18 @@ utils  ←  sciter  ←  ui
 - The resources are built into the executable (`ui/app_resources`, string imports) and served
   to Sciter at `this://app/<path>` (`SciterWindow.onLoadData`). The icons are not built in:
   `resources/icons/`, made of its `logo.png` by `scripts/utils/make-icons.mjs`, are taken by `dist`.
-- The script's `console.log` goes to the program's log (`appLog` of `utils/app_log`) as
-  `info [script]: ...` lines (errors as `error [script]: ...`): stdout, next to the backend's
-  `writeln`, or, once stdout fails a write (a Windows program without a console), the debug
-  output of the system (DebugView). The backend's `writeln` don't fall back: see Foreign
-  Callbacks.
+- The script's `console.log` goes to the program's log (`appLog` of `utils/app_log`, which never
+  throws) as `info [script]: ...` lines (errors as `error [script]: ...`): stdout, next to the
+  backend's `writeln`.
+- A Windows program run from Explorer has no stdout and stderr (`/SUBSYSTEM:WINDOWS`), a
+  launcher elsewhere may close them, and std.stdio throws once a write to one fails. The module
+  constructor of `utils/std_streams` points each missing one at the null device (`NUL`,
+  `/dev/null`): the log of such a run is dropped (no log file yet: `docs/backlog.md`). It runs
+  before the constructor of `sciter/api`, which writes as it loads Sciter, because that module
+  imports it: a new module that writes in its constructor imports it too. Each stream is
+  checked by its own handle, not by a console: a stream the program was given (a file, the
+  pipe of an MCP client) stays. CI starts the Windows distribution as Explorer does and waits
+  for its window (`.github/workflows/build.yml`).
 
 ## Foreign Callbacks
 
@@ -102,9 +110,8 @@ utils  ←  sciter  ←  ui
   its fallback, an `Error` (a bug) is logged and aborts the process. A new callback does the
   same, with a unittest that it is `nothrow`. What each callback answers on a failure:
   `.ai/knowledge/sciter.md` (Native Side).
-- The guard keeps Sciter whole, it doesn't make a Windows program without a console work: a
-  handler of an xcall that `writeln`s throws there at the first flush and stops half-way. That
-  needs stdout redirected at start (`docs/backlog.md`, "Windows без консоли").
+- The guard keeps Sciter whole whatever throws; the missing stdout of a Windows program is
+  handled before, at start (`utils/std_streams`, above).
 
 ## Settings and Lifetime
 

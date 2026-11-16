@@ -5,6 +5,7 @@ import sciter.capi.api;
 import utils.dllib;
 import std.exception : enforce;
 import std.stdio : writeln;
+import utils.std_streams : streamsChecked;
 
 /// Load Sciter library and initialize API
 /// This is a singleton, so it will be loaded only once
@@ -17,7 +18,19 @@ import std.stdio : writeln;
 
 shared static this()
 {
+    streamsCheckedBeforeSciter = streamsChecked();
     loadSciterLib();
+}
+
+// Whether utils/std_streams had fixed the missing streams when Sciter was loaded: its load
+// writes to stdout, a missing one would throw before main
+private __gshared bool streamsCheckedBeforeSciter;
+
+@("loadSciterLib: the missing standard streams are fixed before Sciter is loaded")
+unittest
+{
+    assert(streamsCheckedBeforeSciter,
+        "utils/std_streams's constructor must run before this module's: it writes to stdout");
 }
 
 // Unloaded after main: a use of Sciter past this point (a finalizer of the last collection of
