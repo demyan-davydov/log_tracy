@@ -621,7 +621,8 @@ function makeDmg(path, files) {
 function publish(system, make) {
     const staging = mkdtempSync(join(tmpdir(), "dlt-dist-"));
     const dir = `build/dist/${system}`;
-    const copy = freshDir(`build/dist/.${system}-new`);
+    // no leading dot: iCloud Drive marks a dot folder hidden and the flag outlives the rename
+    const copy = freshDir(`build/dist/${system}-new`);
     try {
         make(staging);
         // ditto keeps the signature and attributes of a bundle as they are
