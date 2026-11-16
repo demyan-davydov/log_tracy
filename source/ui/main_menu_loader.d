@@ -36,6 +36,7 @@ version (OSX):
 import std.string : toStringz, fromStringz;
 import std.utf : toUTF16;
 
+import utils.foreign_callback : guardCallback;
 import utils.objc : cls, msg, sel_registerName;
 
 extern (C) bool class_addMethod(void* cls, void* name, void* imp, const char* types);
@@ -57,7 +58,12 @@ private void* makeNSString(string str)
     return msg(alloc("NSString"), "initWithUTF8String:", toStringz(str));
 }
 
-private extern (C) void menuItemClicked(void* self, void* _cmd, void* sender)
+private extern (C) void menuItemClicked(void* self, void* _cmd, void* sender) nothrow
+{
+    guardCallback("a click of the menu", () => clickMenuItem(sender));
+}
+
+private void clickMenuItem(void* sender)
 {
     void* nsStrId = msg(sender, "representedObject");
     if (!nsStrId)
@@ -106,10 +112,12 @@ private __gshared MainWindow terminatingWindow;
 // NSApplicationDelegate: Quit, Quit of the Dock, logging out. Cocoa exits the process right
 // after this (exit() inside the event loop: main() never goes on) and closes the window
 // without its closerequest, so the window saves now, while its script is alive.
-private extern (C) ulong applicationShouldTerminate(void* self, void* _cmd, void* sender)
+private extern (C) ulong applicationShouldTerminate(void* self, void* _cmd, void* sender) nothrow
 {
-    if (terminatingWindow)
-        terminatingWindow.terminate();
+    guardCallback("the termination of the application", () {
+        if (terminatingWindow)
+            terminatingWindow.terminate();
+    });
     return 1; // NSTerminateNow
 }
 
@@ -259,4 +267,14 @@ private void setupMainMenuOSX(MainWindow window, MenuItem[] bar)
         msg!void(hwnd, "makeKeyAndOrderFront:", cast(void*) null);
         msg!void(hwnd, "orderFrontRegardless");
     }
+}
+
+@("menuItemClicked, applicationShouldTerminate: nothing thrown unwinds into Cocoa")
+unittest
+{
+    import std.traits : FunctionAttribute, functionAttributes;
+
+    assert(functionAttributes!menuItemClicked & FunctionAttribute.nothrow_, "menuItemClicked must be nothrow");
+    assert(functionAttributes!applicationShouldTerminate & FunctionAttribute.nothrow_,
+        "applicationShouldTerminate must be nothrow");
 }

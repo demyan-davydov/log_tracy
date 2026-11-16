@@ -10,6 +10,7 @@ import sciter.capi.api : SciterAPI_T;
 import sciter.capi.types;
 import sciter.capi.behavior;
 import sciter.capi.def;
+import utils.foreign_callback : guardCallback;
 import utils.keys : KeyPress;
 import std.stdio : writeln;
 import std.string : toStringz;
@@ -198,19 +199,7 @@ private void runPostedTask(SCN_POSTED_NOTIFICATION* notification) nothrow
         return;
     auto posted = cast(PostedTask) cast(void*) notification.lparam;
     GC.removeRoot(cast(void*) posted);
-    try
-        posted.run();
-    catch (Throwable e) // an Error: a bug; it must not unwind through the frames of Sciter
-    {
-        import core.stdc.stdlib : abort;
-
-        try
-            writeln("Error in a task posted to the window: ", e);
-        catch (Throwable)
-        {
-        }
-        abort();
-    }
+    guardCallback("a task posted to the window", () => posted.run()); // nothrow: an Error aborts
 }
 
 class SciterWindow : SciterEventHandler
@@ -251,31 +240,20 @@ class SciterWindow : SciterEventHandler
         import std.utf : toUTF8;
 
         auto request = cast(SCN_LOAD_DATA*) pns;
-        try
-        {
-            const data = (cast(SciterWindow) param).onLoadData(request.uri.fromStringz.toUTF8);
-            if (data !is null)
-                _api.SciterDataReady(pns.hwnd, request.uri, data.ptr, cast(UINT) data.length);
-        }
-        catch (Exception e)
-        {
+        guardCallback("a load of data by Sciter", () {
+            const uri = request.uri.fromStringz.toUTF8;
             try
-                writeln("Can't load ", request.uri.fromStringz, ": ", e.msg);
-            catch (Exception)
             {
+                const data = (cast(SciterWindow) param).onLoadData(uri);
+                if (data !is null)
+                    _api.SciterDataReady(pns.hwnd, request.uri, data.ptr, cast(UINT) data.length);
             }
-        }
-        catch (Throwable e) // an Error: a bug, the program can't go on
-        {
-            import core.stdc.stdlib : abort;
-
-            try
-                writeln("Error loading ", request.uri.fromStringz, ": ", e);
-            catch (Throwable)
+            catch (Exception e)
             {
+                e.msg = "can't load " ~ uri ~ ": " ~ e.msg; // the log names what failed
+                throw e;
             }
-            abort();
-        }
+        });
         return SC_LOAD_DATA_RETURN_CODES.LOAD_OK;
     }
 
@@ -284,11 +262,6 @@ class SciterWindow : SciterEventHandler
         writeln("SciterWindow d'tor");
         _api.SciterSetCallback(_hwnd, null, null); // Sciter must not call a destroyed object
         super.detachEventHandler(_hwnd);
-    }
-
-    private static extern (C) long sciterWindowDelegate(HWINDOW hwnd, uint msg, size_t wParam, ptrdiff_t lParam, void* pParam, int* handled)
-    {
-        return 0;
     }
 
     // workaround. better to call it in d'tor

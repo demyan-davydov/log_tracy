@@ -41,7 +41,8 @@ utils  ←  sciter  ←  ui
   (`utils/text_search`), regular expressions (`utils/text_regex`, the only module that uses
   `std.regex`), keys by name (`utils/keys`,
   whatever the system) and their codes of macOS (`utils/mac_keys`), Objective-C calls
-  (`utils/objc`).
+  (`utils/objc`), the boundary of callbacks of foreign code (`utils/foreign_callback`), the
+  program's own log (`utils/app_log`).
 - `log_core/`: what doesn't depend on a format (LogMessage, LogFormat, filters, ByteSource,
   column layout, the values of the columns of a record (`column_values`: the one place the
   columns of a record are read as values to show; the table writes Sciter values through
@@ -86,8 +87,24 @@ utils  ←  sciter  ←  ui
 - The resources are built into the executable (`ui/app_resources`, string imports) and served
   to Sciter at `this://app/<path>` (`SciterWindow.onLoadData`). The icons are not built in:
   `resources/icons/`, made of its `logo.png` by `scripts/utils/make-icons.mjs`, are taken by `dist`.
-- The script's `console.log` goes to the app's stdout as `info [script]: ...` lines (errors as
-  `error [script]: ...`), next to the backend's `writeln`.
+- The script's `console.log` goes to the program's log (`appLog` of `utils/app_log`) as
+  `info [script]: ...` lines (errors as `error [script]: ...`): stdout, next to the backend's
+  `writeln`, or, once stdout fails a write (a Windows program without a console), the debug
+  output of the system (DebugView). The backend's `writeln` don't fall back: see Foreign
+  Callbacks.
+
+## Foreign Callbacks
+
+- Nothing thrown in D may unwind through the frames of foreign code (Sciter, Cocoa): its state
+  is undefined after it, and LDC's exceptions on Windows do unwind through C++ frames. Every
+  `extern (C)` function such code calls is `nothrow` and runs its body through `guardCallback`
+  (`utils/foreign_callback`): an `Exception` is logged by `appLog` and the callback answers
+  its fallback, an `Error` (a bug) is logged and aborts the process. A new callback does the
+  same, with a unittest that it is `nothrow`. What each callback answers on a failure:
+  `.ai/knowledge/sciter.md` (Native Side).
+- The guard keeps Sciter whole, it doesn't make a Windows program without a console work: a
+  handler of an xcall that `writeln`s throws there at the first flush and stops half-way. That
+  needs stdout redirected at start (`docs/backlog.md`, "Windows без консоли").
 
 ## Settings and Lifetime
 

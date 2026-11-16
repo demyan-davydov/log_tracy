@@ -25,6 +25,14 @@ agent can't drive it. In scapp a plain
   of 52-686 ms) and its end 80 ms after the last progress, window in the background.
   Sciter doesn't promise it, and Windows and Linux are not checked: if events stall there
   until the mouse moves, wake the loop on publish (`postToWindowThread`).
+- Nothing thrown in D may unwind through the frames of Sciter (or of Cocoa): every `extern (C)`
+  function they call is `nothrow` and runs its body through `guardCallback`
+  (`utils/foreign_callback`). An `Exception` is logged and the callback answers its fallback, an
+  `Error` aborts the process. A failed xcall is an event left unhandled: the script's `xcall`
+  throws "TypeError: unknown name '<name>'", as for a name the window doesn't know (6.0.5.5,
+  macOS); the cause is in the log. The rule itself is in `.ai/knowledge/architecture.md`
+  (Foreign Callbacks). Sciter calls its debug output on the window's thread (6.0.5.5, macOS,
+  checked while a 50 MB log was indexed): the callback may allocate.
 - The library is loaded once (`sciter/api`) and unloaded by a module destructor after main.
   The last collection of the GC runs after the module destructors: a `SciterValue` or a
   `SciterWindow` left to it would call an unloaded Sciter. `sciterApi()` asserts on such a use

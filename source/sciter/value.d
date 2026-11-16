@@ -817,25 +817,6 @@ struct AsArrayView
         append(sciterValue);
     }
 
-    void enumerate(bool delegate(in SciterValueView pkey, in SciterValueView pval) cb) const
-    {
-        struct CallbackData
-        {
-            bool delegate(in SciterValueView, in SciterValueView) callback;
-        }
-
-        extern (C) SBOOL nativeCb(void* param, const(SCITER_VALUE)* pkey, const(SCITER_VALUE)* pval)
-        {
-            auto data = cast(CallbackData*) param;
-            SciterValueView key = cast(SCITER_VALUE*) pkey; // remove const
-            SciterValueView val = cast(SCITER_VALUE*) pval; // remove const
-            return data.callback(key, val) ? 1 : 0;
-        }
-
-        CallbackData data = CallbackData(cb);
-        sciterApi().ValueEnumElements(_value, &nativeCb, cast(void*)&data);
-    }
-
     int opApply(scope int delegate(SciterValue) dg)
     {
         int result = 0;
@@ -1153,7 +1134,7 @@ unittest
         }
     }
 
-    // Test AsArrayView and enumerate
+    // Test AsArrayView
     {
 
         SciterValue v = SciterValue.makeArray(10, "abc", true);
@@ -1170,14 +1151,6 @@ unittest
 
         assert(arrView[1].tryGet(s) && to!string(s) == "abc");
         assert(arrView[2].isBool());
-
-        // Test enumerate
-        int count = 0;
-        arrView.enumerate((in SciterValueView key, in SciterValueView val) {
-            count++;
-            return true; // continue
-        });
-        assert(count == 3);
 
         // Test append
         arrView.append(42);

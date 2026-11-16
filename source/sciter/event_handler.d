@@ -7,6 +7,7 @@ import sciter.capi.types;
 import sciter.capi.behavior;
 import sciter.capi.def;
 import std.stdio : writeln;
+import utils.foreign_callback : guardCallback;
 
 class SciterEventHandler
 {
@@ -46,12 +47,19 @@ class SciterEventHandler
         writeln("Window event handler detached (Direct), result: ", res);
     }
 
-    private static extern (C) SBOOL elementProc(void* tag, HELEMENT he, uint evtg, void* prms)
+    // Every event of the window and every xcall of its script: what a handler throws is logged
+    // and the event is left unhandled. An xcall left unhandled throws in the script, as one of
+    // no such name does: "TypeError: unknown name '<name>'" (6.0.5.5); the log has the cause
+    private static extern (C) SBOOL elementProc(void* tag, HELEMENT he, uint evtg, void* prms) nothrow
     {
         auto self = cast(SciterEventHandler) tag;
         if (self is null)
             return 0;
+        return guardCallback("an event of the window", false, () => self.dispatch(he, evtg, prms)) ? 1 : 0;
+    }
 
+    private bool dispatch(HELEMENT he, uint evtg, void* prms)
+    {
         bool res = false;
 
         switch (evtg)
@@ -59,7 +67,7 @@ class SciterEventHandler
         case EVENT_GROUPS.SUBSCRIPTIONS_REQUEST:
             {
                 UINT* p = cast(UINT*) prms;
-                res = self.handleSubscription(he, p);
+                res = handleSubscription(he, p);
                 break;
             }
         case EVENT_GROUPS.HANDLE_INITIALIZATION:
@@ -67,83 +75,83 @@ class SciterEventHandler
                 auto params = cast(INITIALIZATION_PARAMS*) prms;
                 if (params.cmd == INITIALIZATION_EVENTS.BEHAVIOR_DETACH)
                 {
-                    self.handleDetached(he);
+                    handleDetached(he);
                 }
                 else if (params.cmd == INITIALIZATION_EVENTS.BEHAVIOR_ATTACH)
                 {
-                    self.handleAttached(he);
+                    handleAttached(he);
                 }
                 res = false;
                 break;
             }
         case EVENT_GROUPS.HANDLE_SOM:
             {
-                res = self.handleEvent(he, cast(SOM_PARAMS*) prms);
+                res = handleEvent(he, cast(SOM_PARAMS*) prms);
                 break;
             }
         case EVENT_GROUPS.HANDLE_BEHAVIOR_EVENT:
             {
-                res = self.handleEvent(he, cast(BEHAVIOR_EVENT_PARAMS*) prms);
+                res = handleEvent(he, cast(BEHAVIOR_EVENT_PARAMS*) prms);
                 break;
             }
         case EVENT_GROUPS.HANDLE_SCRIPTING_METHOD_CALL:
             {
-                res = self.handleEvent(he, cast(SCRIPTING_METHOD_PARAMS*) prms);
+                res = handleEvent(he, cast(SCRIPTING_METHOD_PARAMS*) prms);
                 break;
             }
         case EVENT_GROUPS.HANDLE_GESTURE:
             {
-                res = self.handleEvent(he, cast(GESTURE_PARAMS*) prms);
+                res = handleEvent(he, cast(GESTURE_PARAMS*) prms);
                 break;
             }
         case EVENT_GROUPS.HANDLE_DRAW:
             {
-                res = self.handleEvent(he, cast(DRAW_PARAMS*) prms);
+                res = handleEvent(he, cast(DRAW_PARAMS*) prms);
                 break;
             }
         case EVENT_GROUPS.HANDLE_DATA_ARRIVED:
             {
-                res = self.handleEvent(he, cast(DATA_ARRIVED_PARAMS*) prms);
+                res = handleEvent(he, cast(DATA_ARRIVED_PARAMS*) prms);
                 break;
             }
         case EVENT_GROUPS.HANDLE_FOCUS:
             {
-                res = self.handleEvent(he, cast(FOCUS_PARAMS*) prms);
+                res = handleEvent(he, cast(FOCUS_PARAMS*) prms);
                 break;
             }
         case EVENT_GROUPS.HANDLE_KEY:
             {
-                res = self.handleEvent(he, cast(KEY_PARAMS*) prms);
+                res = handleEvent(he, cast(KEY_PARAMS*) prms);
                 break;
             }
         case EVENT_GROUPS.HANDLE_SCROLL:
             {
-                res = self.handleEvent(he, cast(SCROLL_PARAMS*) prms);
+                res = handleEvent(he, cast(SCROLL_PARAMS*) prms);
                 break;
             }
         case EVENT_GROUPS.HANDLE_TIMER:
             {
-                res = self.handleEvent(he, cast(TIMER_PARAMS*) prms);
+                res = handleEvent(he, cast(TIMER_PARAMS*) prms);
                 break;
             }
         case EVENT_GROUPS.HANDLE_MOUSE:
             {
-                res = self.handleEvent(he, cast(MOUSE_PARAMS*) prms);
+                res = handleEvent(he, cast(MOUSE_PARAMS*) prms);
                 break;
             }
         case EVENT_GROUPS.HANDLE_EXCHANGE:
             {
-                res = self.handleEvent(he, cast(EXCHANGE_PARAMS*) prms);
+                res = handleEvent(he, cast(EXCHANGE_PARAMS*) prms);
                 break;
             }
         case EVENT_GROUPS.HANDLE_ATTRIBUTE_CHANGE:
             {
-                res = self.handleEvent(he, cast(ATTRIBUTE_CHANGE_PARAMS*) prms);
+                res = handleEvent(he, cast(ATTRIBUTE_CHANGE_PARAMS*) prms);
                 break;
             }
         case EVENT_GROUPS.HANDLE_STYLE_CHANGE:
             {
-                res = self.handleEventStyleChange(he, cast(uint) prms);
+                res = handleEventStyleChange(he, cast(uint) prms);
                 break;
             }
 
@@ -151,7 +159,7 @@ class SciterEventHandler
             break;
         }
 
-        return res ? 1 : 0;
+        return res;
     }
 
     // to override
@@ -250,4 +258,13 @@ class SciterEventHandler
         return false;
     }
 
+}
+
+@("SciterEventHandler.elementProc: nothing thrown unwinds into Sciter")
+unittest
+{
+    import std.traits : FunctionAttribute, functionAttributes;
+
+    assert(functionAttributes!(SciterEventHandler.elementProc) & FunctionAttribute.nothrow_,
+        "elementProc must be nothrow: an exception would unwind through the frames of Sciter");
 }
