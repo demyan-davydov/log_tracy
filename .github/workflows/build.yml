@@ -54,28 +54,6 @@ jobs:
       - name: Distribution
         run: node scripts/build.mjs dist
 
-      # The program of the distribution started as Explorer starts it (Start-Process: a program of
-      # /SUBSYSTEM:WINDOWS gets no stdout or stderr): it shows its window and keeps running, not
-      # ends or runs on without one (utils/std_streams). Stopped then, its settings left unsaved
-      - name: Start the distribution without standard streams
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $p = Start-Process build/dist/windows/log_tracy.exe -PassThru
-          $deadline = (Get-Date).AddSeconds(30)
-          while ((Get-Date) -lt $deadline) {
-            Start-Sleep -Milliseconds 500
-            $p.Refresh()
-            if ($p.HasExited) { throw "Log Tracy ended without a window (exit code $($p.ExitCode))" }
-            if ($p.MainWindowHandle -ne 0) {
-              Write-Host "The window is shown: $($p.MainWindowTitle)"
-              Stop-Process -Id $p.Id -Force
-              exit 0
-            }
-          }
-          Stop-Process -Id $p.Id -Force
-          throw "Log Tracy runs with no window after 30 s"
-
       # packed here: an artifact is zipped without the executable bits of the files
       - name: Pack the distribution
         shell: bash
@@ -93,6 +71,20 @@ jobs:
             build/dist/linux/*.deb
             build/dist/windows/*.zip
           if-no-files-found: error
+
+      # The program of the distribution started as Explorer starts it, no stdout or stderr: it
+      # shows its window (utils/std_streams). Without one, what tells why goes to build/ci/.
+      # After the uploads: a failure here leaves the distribution to download
+      - name: Start the distribution without standard streams
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/utils/windows-start-check.ps1
+      - uses: actions/upload-artifact@v4
+        if: failure() && runner.os == 'Windows'
+        with:
+          name: windows-start-check
+          path: build/ci/
+          if-no-files-found: ignore
 
   # A tag v<VERSION> (git tag v0.9.0 && git push origin v0.9.0) publishes a release of GitHub
   # with the installers of the three systems, once every build has passed. The tag must be
