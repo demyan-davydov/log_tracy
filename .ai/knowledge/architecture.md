@@ -135,7 +135,9 @@ utils  ←  sciter  ←  ui
 - A release build runs one copy per `settings.json` (`utils/single_instance`, a lock on
   `settings.lock` next to it): a second one brings the first forward and exits. Debug builds
   run side by side.
-- A recent file (`ui/recent_files`) keeps its format choice and its filter sets.
+- A recent file (`ui/recent_files`) keeps its format choice, its filter sets, its search history
+  and its anchors (message indexes: restored when the file is opened or opened anew, dropped
+  when a rotation truncates it).
 - `main()` (`app.d`) puts the application together: it makes the `DocumentStore` and the
   `AppSession` over it with its factory of documents (`LogDocument`), so `ui/` doesn't create
   documents itself, gives the session to `MainWindow`, and closes the store after the window

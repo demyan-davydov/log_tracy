@@ -1,6 +1,6 @@
 //! The recent files: the list the placeholder shows (recentFilesMax files, the
 //! latest first) and what is kept for each of them (the format it was opened
-//! with, when it was used, its filter sets, its search history), the
+//! with, when it was used, its filter sets, its search history, its anchors), the
 //! operations on the list and how the settings keep it in JSON.
 module ui.recent_files;
 
@@ -53,6 +53,7 @@ struct RecentFile
     long lastUsed; /// when it was worked with last: ms since the Unix epoch (UTC); 0 if unknown
     SavedFilter[] filters; /// loaded for it, in the order loaded
     SearchChip[][] searches; /// the queries searched in it, the latest first (searchHistoryMax at most)
+    size_t[] anchors; /// the messages anchored in it (DocumentItem.realIndex), sorted
 }
 
 /// The most queries the search history of a file keeps
@@ -63,7 +64,7 @@ RecentFile copyOf(const RecentFile file)
 {
     return RecentFile(file.path, file.format, file.lastUsed,
         file.filters.map!(f => SavedFilter(f.name, f.source, f.enabled, copyOf(f.rules))).array,
-        file.searches.map!(q => q.dup).array);
+        file.searches.map!(q => q.dup).array, file.anchors.dup);
 }
 
 /// A mutable copy of rules
@@ -150,6 +151,28 @@ RecentFile[] withSearch(const RecentFile[] list, string path, const(SearchChip)[
     return result;
 }
 
+/// Returns: the anchors of `path`, sorted; null if it isn't in the list
+size_t[] savedAnchors(const RecentFile[] list, string path)
+{
+    path = recentFilePath(path);
+    foreach (file; list)
+        if (filenameCmp(file.path, path) == 0)
+            return file.anchors.dup;
+    return null;
+}
+
+/// Returns the recent list with the anchors of `path` replaced, sorted, in place; a file
+/// not in the list isn't added
+RecentFile[] withAnchors(const RecentFile[] list, string path, const(size_t)[] anchors)
+{
+    path = recentFilePath(path);
+    RecentFile[] result = copyOf(list);
+    foreach (ref file; result)
+        if (filenameCmp(file.path, path) == 0)
+            file.anchors = anchors.dup.sort.release;
+    return result;
+}
+
 /// Now, as RecentFile.lastUsed counts it: UTC, so a change of the time zone or
 /// of daylight saving time doesn't move the times already saved
 long nowMs()
@@ -182,6 +205,8 @@ RecentFile[] withRecentFile(const RecentFile[] list, RecentFile file)
                 file.filters = saved.filters;
             if (file.searches is null)
                 file.searches = saved.searches;
+            if (file.anchors is null)
+                file.anchors = saved.anchors;
         }
         result = [file] ~ result.filter!(f => filenameCmp(f.path, file.path) != 0).array;
     }
@@ -279,7 +304,7 @@ string recentFilesJson(const RecentFile[] list, const string[] openPaths = null)
 }
 
 /// The recent list as the settings keep it: [{"path", "format", "variant",
-/// "encoding", "descriptions", "lastUsed", "filterSets", "searches"}], the keys without a
+/// "encoding", "descriptions", "lastUsed", "filterSets", "searches", "anchors"}], the keys without a
 /// value left out
 JSONValue recentFilesToJson(const RecentFile[] list)
 {
@@ -307,6 +332,8 @@ JSONValue recentFilesToJson(const RecentFile[] list)
             ])).array);
         if (f.searches.length)
             fv.object["searches"] = JSONValue(f.searches.map!(q => chipsToJson(q)).array);
+        if (f.anchors.length)
+            fv.object["anchors"] = JSONValue(f.anchors.map!(a => JSONValue(a)).array);
         recentArray ~= fv;
     }
     return JSONValue(recentArray);
@@ -330,7 +357,7 @@ RecentFile[] recentFilesFromJson(const JSONValue json)
             const filePath = "path" in val;
             if (filePath !is null && filePath.type == JSONType.string)
                 list = withRecentFile(list,
-                    RecentFile(filePath.str, formatOf(val), lastUsedOf(val), filtersOf(val), searchesOf(val)));
+                    RecentFile(filePath.str, formatOf(val), lastUsedOf(val), filtersOf(val), searchesOf(val), anchorsOf(val)));
         }
     }
     return list;
@@ -420,6 +447,29 @@ private SearchChip[][] searchesOf(const JSONValue entry)
         } // skipped
     }
     return result;
+}
+
+/// The anchors saved in a recent file entry: {"anchors": [message indexes]}, sorted; what
+/// isn't an index (not a whole number, negative) or is there already is skipped, the ones
+/// after Anchors.MaxAnchors too
+private size_t[] anchorsOf(const JSONValue entry)
+{
+    import domain.anchors : Anchors;
+
+    const anchors = "anchors" in entry;
+    if (anchors is null || anchors.type != JSONType.array)
+        return null;
+    size_t[] result;
+    foreach (ref index; anchors.array)
+    {
+        if (result.length == Anchors.MaxAnchors)
+            break;
+        if (index.type == JSONType.integer && index.integer >= 0 && !result.canFind(index.integer))
+            result ~= cast(size_t) index.integer;
+        else if (index.type == JSONType.uinteger && !result.canFind(index.uinteger))
+            result ~= cast(size_t) index.uinteger;
+    }
+    return result.sort.release;
 }
 
 /// The time saved in a recent file entry: {"lastUsed": ms}; 0 if there is none
@@ -713,4 +763,42 @@ unittest
 
     assert(withRecentFile(list, RecentFile(testPath("/a.log"), FormatChoice("dlt"), 200))[0].searches == [a, c, b]);
     assert(withFilesUsed(list, [testPath("/a.log")], 300)[0].searches == [a, c, b]);
+}
+
+@("withAnchors: a file's anchors are kept sorted, in place, when it is opened again or the window is closed")
+unittest
+{
+    auto list = [RecentFile(testPath("/b.log")), RecentFile(testPath("/a.log"))];
+    list = withAnchors(list, testPath("/logs/../a.log"), [40, 3, 17]);
+    assert(savedAnchors(list, testPath("/a.log")) == [3, 17, 40], "sorted");
+    assert(list[1].path == testPath("/a.log"), "in place");
+    assert(savedAnchors(list, testPath("/b.log")).length == 0);
+    assert(savedAnchors(list, testPath("/c.log")) is null);
+    assert(withAnchors(list, testPath("/c.log"), [1]) == list, "a file not in the list isn't added");
+
+    assert(withRecentFile(list, RecentFile(testPath("/a.log"), FormatChoice("dlt"), 200))[0].anchors == [3, 17, 40]);
+    assert(withFilesUsed(list, [testPath("/a.log")], 300)[0].anchors == [3, 17, 40]);
+    assert(savedAnchors(withAnchors(list, testPath("/a.log"), []), testPath("/a.log")).length == 0, "all cleared");
+}
+
+@("recentFilesToJson: the anchors of a file are saved and read back; what can't be an anchor is skipped")
+unittest
+{
+    import domain.anchors : Anchors;
+
+    auto list = withAnchors([RecentFile(testPath("/a.log"))], testPath("/a.log"), [5, 2]);
+    const json = recentFilesToJson(list);
+    assert(json.array[0]["anchors"].array.length == 2);
+    assert(savedAnchors(recentFilesFromJson(json), testPath("/a.log")) == [2, 5]);
+    assert("anchors" !in recentFilesToJson([RecentFile(testPath("/b.log"))]).array[0], "none, no key");
+
+    auto entry = parseJSON(`[{"path": "", "anchors": [7, -1, "x", 7, 3.5, 1]}]`);
+    entry.array[0]["path"] = testPath("/a.log");
+    assert(savedAnchors(recentFilesFromJson(entry), testPath("/a.log")) == [1, 7], "negative, not integers, repeated: skipped");
+
+    JSONValue[] many;
+    foreach (i; 0 .. Anchors.MaxAnchors + 3)
+        many ~= JSONValue(i);
+    entry.array[0]["anchors"] = JSONValue(many);
+    assert(savedAnchors(recentFilesFromJson(entry), testPath("/a.log")).length == Anchors.MaxAnchors, "no more than fit");
 }

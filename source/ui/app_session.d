@@ -364,6 +364,7 @@ final class AppSession
             const filters = oldUi is null ? null : oldUi.filters.saved();
             auto old = _documents.replace(docId, fresh);
             addDocumentUi(docId); // the new document starts with a new machine
+            restoreAnchors(docId, path); // before the filters: their pass lists them
             _documentUis[docId].filters.restore(filters);
             if (old !is null)
                 old.destroy();
@@ -527,7 +528,8 @@ final class AppSession
     /// or went>}`; nothing
     /// changes when refused: at the anchor limit, or when the document can't
     /// change (its file is lost). The script writes the text (plural forms of
-    /// the limit: trn).
+    /// the limit: trn). The anchors are kept in the settings of the file, as its
+    /// filters are.
     string setAnchor(DocumentId docId, int messageIndex, bool value)
     {
         import domain.anchors : Anchors;
@@ -535,6 +537,8 @@ final class AppSession
         auto doc = _documents.doc(docId);
         const change = messageIndex < 0 ? AnchorChange(AnchorRefusal.unavailable)
             : doc.setAnchor(cast(size_t) messageIndex, value);
+        if (change)
+            saveAnchors(docId);
         JSONValue json = ["full": doc.anchorsFull];
         json["max"] = Anchors.MaxAnchors;
         json["pending"] = change.pending;
@@ -546,6 +550,30 @@ final class AppSession
         case AnchorRefusal.limit: json["refused"] = "limit"; break;
         }
         return json.toString;
+    }
+
+    /// The anchors of the document kept in the settings of its file, if they changed
+    private void saveAnchors(DocumentId docId)
+    {
+        const path = sourcePathOf(docId);
+        if (path.length == 0)
+            return;
+        auto anchors = withAnchors(_settings.recentFiles, path, _documents.doc(docId).exportAnchors);
+        if (anchors == _settings.recentFiles)
+            return;
+        _settings.recentFiles = anchors;
+        settingsChanged();
+    }
+
+    /// The document just opened from `path` gets the anchors the file had last time
+    private void restoreAnchors(DocumentId docId, string path)
+    {
+        import std.stdio : writeln;
+
+        try
+            _documents.doc(docId).importAnchors(savedAnchors(_settings.recentFiles, path));
+        catch (Exception e)
+            writeln("Anchors of ", path, " not restored: ", e.msg);
     }
 
     /// Cancel pressed in the main view of the document: its machine decides
@@ -902,7 +930,17 @@ final class AppSession
         events.subscribe((const DocumentEvent!ContentGrown e) {
             processDocumentEvent(e.docId, e.event);
         });
-        events.subscribe((const DocumentEvent!ReopenWanted e) { _reopen ~= e.docId; });
+        events.subscribe((const DocumentEvent!ReopenWanted e) {
+            _reopen ~= e.docId;
+            // A file truncated by a rotation is another log: the messages anchored are gone
+            if (e.event.why == ReopenWanted.Why.truncated)
+                if (auto path = sourcePathOf(e.docId))
+                    if (savedAnchors(_settings.recentFiles, path).length)
+                    {
+                        _settings.recentFiles = withAnchors(_settings.recentFiles, path, null);
+                        settingsChanged();
+                    }
+        });
         // An anchor taken while a pass ran: the tables follow the rows it changed
         events.subscribe((const DocumentEvent!AnchorApplied e) {
             _scriptCalls ~= ScriptCall("onAnchorApplied", idOf(e.docId), anchorRowsJson(e.event.rows).toString);
@@ -970,6 +1008,7 @@ final class AppSession
         _tabs.add(docId);
         _tabHolds[docId] = hold;
         addDocumentUi(docId);
+        restoreAnchors(docId, path); // before the filters: their pass lists them
         _documentUis[docId].filters.restore(savedFilters(_settings.recentFiles, path));
     }
 
@@ -1103,10 +1142,18 @@ version (unittest)
         // What setAnchor answers and anchorsFull tells after it
         AnchorChange anchorChange;
         bool full;
-        AnchorChange setAnchor(size_t index, bool value) { return anchorChange; }
+        size_t[] anchored; // the anchors it has: imported, or set when anchorChange lets them
+        AnchorChange setAnchor(size_t index, bool value)
+        {
+            import std.algorithm : canFind, remove;
+
+            if (anchorChange && anchored.canFind(index) != value)
+                anchored = value ? anchored ~ index : anchored.remove!(a => a == index);
+            return anchorChange;
+        }
         bool anchorsFull() const { return full; }
-        size_t[] exportAnchors() const pure { return null; }
-        void importAnchors(const(size_t[]) anchors) {}
+        size_t[] exportAnchors() const pure { return anchored.dup; }
+        void importAnchors(const(size_t[]) anchors) { anchored ~= anchors; }
         bool requestCancel(Operation operation) { cancelAsked = true; current = null; return true; }
         bool sourceLost() { return false; }
         FormatChoice choice = FormatChoice("plain-text", 0); // what formatChoice() tells
@@ -2058,4 +2105,49 @@ unittest
     // the chip doesn't change whether a pattern is valid, so it can't be told apart here
     assert(f.session.checkRegex(`time(out|d)\s+\d`, false) == "");
     assert(f.session.checkRegex("(unclosed", true).length > 0);
+}
+
+@("AppSession: the anchors of a file are kept in its settings, and it gets them when opened again")
+unittest
+{
+    auto f = Fixture.make();
+    const path = testPath("/logs/a.log");
+    auto id = f.session.openFile(path).docId;
+    f.session.setAnchor(id, 9, true);
+    f.session.setAnchor(id, 4, true);
+    assert(savedAnchors(f.session.settings.recentFiles, path) == [4, 9]);
+    assert(f.session.settingsDue);
+
+    f.docOf(path).anchorChange = AnchorChange(AnchorRefusal.limit);
+    f.session.saveSettings(`{}`);
+    f.session.setAnchor(id, 5, true);
+    assert(savedAnchors(f.session.settings.recentFiles, path) == [4, 9], "a refused one isn't");
+    assert(!f.session.settingsDue, "nothing changed");
+
+    f.docOf(path).anchorChange = AnchorChange.init;
+    f.session.setAnchor(id, 9, false);
+    assert(savedAnchors(f.session.settings.recentFiles, path) == [4], "a cleared one is dropped");
+
+    f.session.closeTab(cast(int) id.toInt());
+    id = f.session.openFile(path).docId;
+    assert(f.docOf(path).anchored == [4], "opened again, with its anchors");
+}
+
+@("AppSession: a document opened anew keeps its anchors, unless its file was truncated")
+unittest
+{
+    auto f = Fixture.make();
+    const path = testPath("/logs/a.log");
+    const id = f.session.openFile(path).docId;
+    f.session.setAnchor(id, 4, true);
+    f.session.dispatchEvents();
+
+    f.docOf(path).bus.publish(ReopenWanted(ReopenWanted.Why.formatTold));
+    f.session.dispatchEvents();
+    assert(f.docOf(path).anchored == [4], "the same file read another way");
+
+    f.docOf(path).bus.publish(ReopenWanted(ReopenWanted.Why.truncated));
+    f.session.dispatchEvents();
+    assert(f.docOf(path).anchored.length == 0, "a file truncated by a rotation is another log");
+    assert(savedAnchors(f.session.settings.recentFiles, path).length == 0);
 }
