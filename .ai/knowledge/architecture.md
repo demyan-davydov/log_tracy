@@ -223,6 +223,9 @@ utils  ←  sciter  ←  ui
   anchors and no search the search stage still follows the load (`LogIndex.partOf`), not a
   filter alone, which would scan slower in parts: the search view
   lists them while the file loads (the machine's `ListingAnchors`).
+  The anchors a file had last time (`importAnchors`, at open) are listed so too: a `quiet`
+  search request (`PendingRequest`) builds the search stage anew with no operation told, so the
+  view shows them as they come (`ContentGrown`) instead of a "Searching" it wasn't asked for.
 - The operations the views see (`OperationStarted / Progress / Finished` of the load, the
   filter, the search) overlap. They are the document's: `LogIndex` reports only its own
   facts, `PassProgress` (its positions: bytes split, records the filter covers, rows the

@@ -78,6 +78,7 @@ class LogDocument : Document
     {
         LogFilter!wchar filter;
         bool requested;
+        bool quiet; // only the anchors are listed anew: no operation is told
     }
 
     private PendingRequest _pendingViewFilter;
@@ -545,11 +546,14 @@ class LogDocument : Document
         if (_pendingSearch.requested)
         {
             auto filter = _pendingSearch.filter;
+            const quiet = _pendingSearch.quiet;
             _pendingSearch = PendingRequest.init;
-            finish(Operation.BuildSearchIndex, OperationFinished.Result.Cancelled); // replaced before its end
+            if (!quiet)
+                finish(Operation.BuildSearchIndex, OperationFinished.Result.Cancelled); // replaced before its end
             _index.setSearchFilter(filter, Anchors(_anchors));
             _searchFilter = filter;
-            start(Operation.BuildSearchIndex);
+            if (!quiet)
+                start(Operation.BuildSearchIndex);
         }
         startPassIfBehind();
         // Nothing to bring up to date (no record, no row to search): no pass
@@ -777,7 +781,9 @@ class LogDocument : Document
         _anchors.importAnchors(anchors);
         if (sourceLost || _failed)
             return;
-        rebuildViews(false);
+        // No search was asked for: the anchors are listed as the load goes, with no operation
+        // told, so the search view shows them as they come
+        rebuildViews(false, _searchFilter is null);
         applyPending();
     }
 
@@ -800,14 +806,15 @@ class LogDocument : Document
     //! @brief Asks for the views to be built again as they are: the filter (and the search it
     //! repeats), or the search only. A filter asked for already builds both
     //! @param main - the main view too when it has no filter: its rows are read anew
-    private void rebuildViews(bool main)
+    //! @param quiet - the search view only lists the anchors anew: no operation is told for it
+    private void rebuildViews(bool main, bool quiet = false)
     {
         if (_pendingViewFilter.requested)
             return;
         if (main || _viewFilter !is null)
             _pendingViewFilter = PendingRequest(_viewFilter, true);
         else if (!_pendingSearch.requested)
-            _pendingSearch = PendingRequest(_searchFilter, true);
+            _pendingSearch = PendingRequest(_searchFilter, true, quiet);
     }
 
     override bool requestCancel(Operation operation)
@@ -2331,6 +2338,54 @@ version (unittest) private
         doc.events.subscribe((const AnchorApplied e) { log.rows ~= e.rows; });
         return log;
     }
+}
+
+@("LogDocument anchors: imported while the file loads, listed with no search operation")
+unittest
+{
+    import formats.plain_text : PlainTextFormat;
+    import std.algorithm : sort;
+    import std.array : appender;
+    import std.format : format;
+
+    auto text = appender!string;
+    foreach (i; 0 .. 1000)
+        text ~= format("line %s\n", i);
+    auto doc = new LogDocument(new MemorySource(cast(const(ubyte)[]) text[]), new PlainTextFormat());
+    Document.Operation[] started;
+    doc.events.subscribe((const OperationStarted e) { started ~= e.operation; });
+
+    doc.importAnchors([5, 700]); // the load has just begun
+    waitIdle(doc);
+    assert(doc.exportAnchors.dup.sort.release == [5, 700]);
+    assert(realIndexes(doc.searchView) == [5, 700], "the search view lists them");
+    assert(realIndexes(doc.mainView).length == 1000);
+    foreach (operation; started)
+        assert(operation != Document.Operation.BuildSearchIndex, "no search was asked for");
+}
+
+@("LogDocument anchors: imported after the load, the search view is told its growth")
+unittest
+{
+    import formats.plain_text : PlainTextFormat;
+    import std.array : appender;
+    import std.format : format;
+
+    auto text = appender!string;
+    foreach (i; 0 .. 1000)
+        text ~= format("line %s\n", i);
+    auto doc = new LogDocument(new MemorySource(cast(const(ubyte)[]) text[]), new PlainTextFormat());
+    waitIdle(doc);
+    Document.Operation[] started;
+    size_t grown;
+    doc.events.subscribe((const OperationStarted e) { started ~= e.operation; });
+    doc.events.subscribe((const ContentGrown e) { ++grown; });
+
+    doc.importAnchors([5]);
+    waitIdle(doc);
+    assert(realIndexes(doc.searchView) == [5]);
+    assert(started.length == 0, "no operation: the views stay ready");
+    assert(grown >= 1, "the table counts the row it lists: nothing else tells it");
 }
 
 @("LogDocument anchors: set while a pass runs, listed once it stops for them")
