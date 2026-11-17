@@ -79,6 +79,17 @@
     background-color: var(--bg-row-stripe);
 }
 
+/* The rows the search found (in the main view and in the search results; a
+   row listed there only by its anchor is not): the row and the stripe a bit
+   darker, so the stripes still show. The selection stays above them. */
+.log-table>tbody>tr[row-found="true"][row-selected="false"] {
+    background-color: var(--bg-row-found);
+}
+
+.log-table>tbody>tr:nth-child(even)[row-found="true"][row-selected="false"] {
+    background-color: var(--bg-row-found-stripe);
+}
+
 .log-table>tbody>tr>td:first-child {
     font-family: 'Courier New', Courier, monospace;
     font-size: 100%;
@@ -107,8 +118,7 @@
    and colors, since Sciter ignores opacity and visibility on a :before. Sizes
    in em: the mark follows the font size of the table. */
 .log-table>tbody>tr>td.anchor:before {
-    /* A block in the middle of the cell: its centre is that of the cell, as
-       the centre of the ring of a found row (below) is */
+    /* A block in the middle of the cell */
     display: block;
     text-align: center;
     vertical-align: bottom;
@@ -133,16 +143,12 @@
 .log-table>tbody>tr[has-anchor="true"]>td.anchor:before {
     content: "⚓";
     /* Sciter centres a block by * (flex) margins, not auto; not across: the
-       cell centres its content, the ring (:after) right under it */
+       cell centres its content */
     border-radius: 50%;
     outline: 1dip solid var(--anchor-border-color);
     transform: scale(1);
     color: var(--text-main);
     background-color: var(--bg-anchor);
-}
-
-.log-table>tbody>tr[row-found="true"] {
-    -foreground: var(--found-foreground)
 }
 
 /* No room for another anchor (document-pane.js): an empty cell shows on hover

@@ -52,7 +52,11 @@
     --bg-table: #222222;
     --bg-table-header: #3e372d;
     --bg-row: #1d1d1d;
-    --bg-row-stripe: #2d2d2d;
+    --bg-row-stripe: #282828;
+    /* The rows the search found, in both tables: the row and the stripe a bit
+       lighter and warmer (morph: sepia), see table.css */
+    --bg-row-found: morph(var(--bg-row), lighten:12%, sepia:35%);
+    --bg-row-found-stripe: morph(var(--bg-row-stripe), lighten:12%, sepia:35%);
     /* Text selected in the cells of a log table (text-selection.js), on any row */
     --bg-text-selected: #264f78;
     /* Selected rows of a log table: while the table is focused, while it isn't
@@ -67,10 +71,6 @@
     --anchor-border-color: #808080;
     --anchor-faint: #6e6e6e;
     --anchor-refused: #d07070;
-    /* The ring of a row the search found, in its anchor cell (table.css), and its outline */
-    --found-ring: #e8a040;
-    --found-ring-edge: #4a4a4a;
-    --found-foreground: rgba(131, 2, 178, 0.16);
 
     /* Details Panel */
     --bg-details: #252526;

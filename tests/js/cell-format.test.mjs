@@ -140,14 +140,18 @@ test("columnClass: Payload is marked by its kind, whatever its id", () => {
     assert.equal(columnClass({ format: "dlt", id: "app", kind: "Text" }), "col-app col-dlt-app");
 });
 
-test("a row the search found keeps the white and grey of the rows", () => {
-    // The stripes are the look of every row in both tables: a background of the
-    // found rows mixed with them (what the search found is marked over the row,
-    // and its matches are in the colors of their chips)
+test("a row the search found is a bit darker than its stripe, the selection above it", () => {
+    // A found row and a found stripe have their own colors in both themes, set on
+    // the row only while it isn't selected; no layer over the row (it would tint the text)
     const resource = name => readFileSync(new URL(`../../resources/${name}`, import.meta.url), "utf8");
-    assert.doesNotMatch(resource("table.css"), /--bg-row-found/);
-    for (const theme of ["theme-light.css", "theme-dark.css"])
-        assert.doesNotMatch(resource(theme), /--bg-row-found/, theme);
+    const table = resource("table.css");
+    assert.match(table, /tr\[row-found="true"\]\[row-selected="false"\]\s*\{\s*background-color: var\(--bg-row-found\);/);
+    assert.match(table, /tr:nth-child\(even\)\[row-found="true"\]\[row-selected="false"\]\s*\{\s*background-color: var\(--bg-row-found-stripe\);/);
+    assert.doesNotMatch(table, /-foreground:/);
+    for (const theme of ["theme-light.css", "theme-dark.css"]) {
+        assert.match(resource(theme), /--bg-row-found:/, theme);
+        assert.match(resource(theme), /--bg-row-found-stripe:/, theme);
+    }
 });
 
 // The pieces of a cell (splitSelected) as text with "|" for each gap, "^" for

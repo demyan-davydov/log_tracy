@@ -336,7 +336,9 @@ agent can't drive it. In scapp a plain
 - `text-shadow` is faint (no halo that keeps a white glyph seen on white) and a list of
   shadows draws none; a glyph in a small box sits ~1px low. For a mark on any color draw a
   vector icon: `foreground-image: icon(viewbox;d-path)` with `fill` and `stroke`.
-- No `contrast-color()` and no CSS function of one's own: `morph()` only shifts a color. A
+- No `contrast-color()` and no CSS function of one's own: `morph()` only shifts a color
+  (`darken`, `lighten`, `sepia`, `mix`...; Sciter's name for the old `tint()`). It takes a
+  `var()` as its base, in a variable too: the found rows derive from the stripes this way. A
   text on a color set by the script takes its color from the script too (`contrastText`
   of `resources/rule-colors.js`, the chips of the Filters page).
 - An empty element as a space in a line of text (the gaps of the Index): `display: inline`
