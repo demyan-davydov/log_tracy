@@ -166,7 +166,10 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     Ignore case) doesn't change the results; only Enter or the Search button commits it. While
     the controls differ from the committed query, the panel shows it (tinted toolbar
     `--bg-search-pending` and a stronger tint of the field itself
-    `--bg-input-search-pending`, the Search button becomes primary). The draft (with its error) and
+    `--bg-input-search-pending`, the Search button becomes primary, and the field shows the
+    Enter symbol instead of the faint check of a matching query: icons of `.chip-editor`'s
+    `foreground-image`, filled shapes, as Sciter draws no strokes there; the right padding of
+    the field keeps the chips from going under them). The draft (with its error) and
     the committed query belong to the document: each tab shows its own.
 32. **Match colors: one shared set of pale colors.** 16 pale colors on which the theme's text
     reads well (light: pastels under dark text; dark: muted tones of the same hues under light

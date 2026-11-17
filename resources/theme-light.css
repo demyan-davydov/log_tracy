@@ -79,6 +79,9 @@
     --bg-details: #f5f5f5;
     --bg-search-pending: #fff3cd;
     --bg-input-search-pending: #ffe9a6;
+    /* the state mark in the search field: results match the query, the query isn't searched yet */
+    --search-state-synced: #2e9a4f;
+    --search-state-pending: #8a6100;
 
     /* The match colors: one per search chip and the matches it finds, see match-colors.css */
     --match-color-0: #ffb2b2;
