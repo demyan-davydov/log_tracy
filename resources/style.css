@@ -487,6 +487,7 @@ frameset > splitter:active {
 }
 
 .bottom-tab {
+    position: relative; /* for .tab-sep */
     flow: horizontal;
     height: *;
     max-width: max-content;
@@ -497,6 +498,22 @@ frameset > splitter:active {
     border-radius: 0 0 5pt 5pt;
     color: var(--tab-text);
     cursor: default;
+}
+
+/* The same separators as between the top tabs, hidden next to the active one */
+.bottom-tab > .tab-sep {
+    position: absolute;
+    left: -1dip;
+    top: 4pt;
+    bottom: 6pt;
+    width: 2dip;
+    border-radius: 1dip;
+    background: var(--tab-separator);
+}
+
+.bottom-tab.active > .tab-sep,
+.bottom-tab.active + .bottom-tab > .tab-sep {
+    background: transparent;
 }
 
 /* Pushes the tabs of the application (MCP Server) to the right end */

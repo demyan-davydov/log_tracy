@@ -140,10 +140,12 @@ function renderPane(splitters) {
                 </div>
                 {/* Its dot: some rule works on the log (markFiltersTab) */}
                 <div class="bottom-tab" data-page="filters">
+                    <span class="tab-sep" />
                     <span class="bottom-tab-name" data-tr="Filters" />
                     <span class="bottom-tab-dot" />
                 </div>
                 <div class="bottom-tab" data-page="file-info">
+                    <span class="tab-sep" />
                     <span class="bottom-tab-name" data-tr="File Info" />
                 </div>
                 {/* The tabs of the document on the left, those of the application on the right */}
