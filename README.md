@@ -17,7 +17,8 @@ incident in logs of many gigabytes.
 - **Whole messages on screen.** A row grows to fit its message: a long one is read at a
   glance, not scrolled sideways.
 - **Robust DLT.** A damaged record doesn't swallow the ones after it, and a message an
-  application cut into numbered parts is joined back into one.
+  application cut into pieces is joined back into one: numbered parts (`1/3: `, `2/3: `, ...)
+  and pieces cut at the 1024-byte limit of a logging buffer alike.
 - **Non-verbose DLT decoded.** Load the FIBEX of the firmware (a file or a folder of them)
   on the File Info page: non-verbose messages get their AppId, CtxId, level and text, and
   filters and search work on them. The FIBEX is remembered for the log.
