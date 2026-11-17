@@ -750,11 +750,18 @@ frameset > splitter:active {
 .filter-button {
     width: 16dip; /* not min-width: Sciter leaves it out of the chip's max-content, cutting the name */
     height: 16dip;
-    line-height: 16dip;
+    vertical-align: middle; /* in a head or a tab taller than the button: not at the top */
+    /* The glyphs (×, +, ✎) sit low in their line: a shorter line lifts them by
+       a dip (half of the difference); ⤓ sits high, a longer one lowers it */
+    line-height: 14dip;
     text-align: center;
     border-radius: 8dip;
     color: var(--tab-close);
     cursor: pointer;
+}
+
+.filter-button.filter-export {
+    line-height: 18dip;
 }
 
 .filter-button:hover {
