@@ -622,6 +622,7 @@ frameset > splitter:active {
 }
 
 .filter-set-head .filter-name {
+    vertical-align: middle; /* with the switch: a name without it sits at the top of the taller head */
     max-width: max-content;
 }
 
@@ -697,6 +698,7 @@ frameset > splitter:active {
    max-width is its text, so the chip's own max-content is the text (Sciter
    takes a child's max-width for it) */
 .filter-chip .filter-name {
+    vertical-align: middle;
     max-width: max-content;
 }
 
