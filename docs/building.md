@@ -5,6 +5,15 @@ the building; the script adds the tests, the distributions and a compile check f
 
 ## Setting up
 
+Node.js 22 or newer is the one thing to install by hand: the script that sets up the rest
+runs on it. `node scripts/install-deps.mjs` checks the tools below and tells what is
+missing and the command that installs it; `node scripts/install-deps.mjs --install` runs
+that command (the package manager of the system: Homebrew, apt, dnf, pacman or winget; on
+Linux through `sudo`) and checks again. What it can't install (Node.js, LDC on Windows, a
+system without a package manager it knows) it lists as done by hand. `--dev` adds the tools
+of development that a build doesn't need (screenshots and stacks on Linux). The exit code is 1
+while something is missing. The steps below are what the script does, for doing it by hand.
+
 You need:
 
 - **LDC** (`ldc2`), the LLVM-based D compiler. dmd is not supported: the project builds with

@@ -39,6 +39,7 @@ Build and test with **ldc2** (`--compiler=ldc2`); the scripts assume it too. One
 every system, `scripts/build.mjs` (for people: `docs/building.md`):
 
 ```sh
+node scripts/install-deps.mjs                   # checks LDC, dub, Git LFS, the C toolchain; --install installs what is missing
 node scripts/build.mjs                          # debug for this machine → build/osx-aarch64-debug/log_tracy
 node scripts/build.mjs --release                # release; --arch x64|arm64 for another architecture
 node scripts/run.mjs                            # builds as above (same options) and starts the app, its stdout here
