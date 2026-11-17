@@ -118,7 +118,9 @@ behaviour: `.ai/knowledge/sciter.md`.
 - Rendering a row is hot: see `.ai/rules/ui.md`.
 - A log table sizes its sliding window to its height (`VirtualDltTBody.fitWindow`,
   `windowSize`, by the lowest of its rows and header): each half of the window holds the
-  rows it can show and a quarter more (5 rows more at least), no fewer than 20 rows in all.
+  rows it can show and three quarters more (5 rows more at least), no fewer than 20 rows in all:
+  the window is three screens at least, since a swipe's scroll makes Sciter pump a chunk of two
+  screens, and a smaller window flips between two positions (list-navigation.js).
   Sciter fills a list with half its window: a smaller half leaves a gap under the rows. It
   is refitted when it renders, and by the table itself (`watchSize`) when it is resized or
   its font size changes (`sizechange` of the tbody and the thead, only when a height
