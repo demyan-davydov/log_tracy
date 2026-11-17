@@ -4,9 +4,9 @@
     height: *;
 }
 
-/* ---- Status views: loading, filtering, searching, failures, lost file ----
-   Shown instead of a table. A centered block: title, thin progress bar,
-   detail (hint or error, wraps), buttons. Centered by flexible margins: when
+/* ---- Status views: failures, cancels, the lost file, a search waiting ----
+   Shown instead of a table. A centered block: title, detail (hint or error,
+   wraps), buttons (of the lost file). Centered by flexible margins: when
    the panel is low they shrink to zero instead of pushing the content out.
    As wide as its widest line, at least 380dip, at most the panel. */
 
@@ -61,12 +61,6 @@
     font-weight: 600;
 }
 
-.status-body>progress {
-    width: *;
-    height: 6dip;
-    margin-top: 10dip;
-}
-
 .status-detail {
     width: *; /* wraps at the block's width, not at its own text's */
     margin-top: 6dip;
@@ -114,14 +108,6 @@
 
 .status-view.compact .status-title {
     font-size: 10pt;
-}
-
-.status-view.compact .status-body>progress {
-    margin-top: 6dip;
-}
-
-.status-view.compact .status-actions {
-    margin-top: 8dip;
 }
 
 /* ---- The progress of a filter or a search under the table it is filling:

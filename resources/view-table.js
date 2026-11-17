@@ -54,10 +54,9 @@ export class ViewTable {
         this.status = null; // the view the status over the table shows, null: none
         this.running = null; // the view the progress under the table shows, null: none
         this.focusCovered = false; // a status view took the focus from the table
-        // Cancel of the status view and of the progress: what it means is decided by the
-        // machine of the view (stop the filter or the search)
-        for (const button of [status.$(".btn-cancel"), progress.$(".btn-cancel")])
-            button.on("click", () => this.cancel());
+        // Cancel of the progress: what it means is decided by the machine of the
+        // view (stop the filter or the search)
+        progress.$(".btn-cancel").on("click", () => this.cancel());
     }
 
     // Cancels what the view is doing (backend)
@@ -109,7 +108,7 @@ export class ViewTable {
     update() {
         const vm = this.currentView();
         if (!vm) return null;
-        const step = tableStep(this.shown, vm, () => this.list.totalItems());
+        const step = tableStep(this.shown, vm);
         this.shown = step.shown;
         const cover = step.table ? null : this.coverFor(vm);
         this.running = this.showRunning(step.running ? vm : null, cover ?? this.list);
@@ -141,10 +140,10 @@ export class ViewTable {
     }
 
     // A status view covering the table (`cover`) takes the focus from it: the
-    // keys must not scroll or copy rows of a view being rebuilt. The table
+    // keys must not scroll or copy rows of a view that has none. The table
     // gets it back when it is uncovered, if the focus didn't go elsewhere.
-    // The focus left in a view that covered it (on the view or on its Cancel,
-    // tabbed to or pressed) goes to the table too: the view is hidden, the
+    // The focus left in a view that covered it (on the view or on a button of
+    // it, tabbed to or pressed) goes to the table too: the view is hidden, the
     // keys would go nowhere.
     takeFocus(cover) {
         const list = this.list;

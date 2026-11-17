@@ -7,16 +7,22 @@ import { scrollTarget } from "./row-selection.js";
 // { dataVersion } of the view they come from, null while the view isn't a table
 export const noTable = { loaded: false, dataVersion: null };
 
-// The views an operation is filling: the table shows what it found so far
-const fillingStatuses = ["filtering", "searching"];
+// True if the table of the view `vm` shows rows, not the status of the view:
+// by what the view has, not by its status, so a new status of a machine falls
+// on the right side. A view with content (dataVersion, see ReadyView.dataVersion
+// in source/ui/main_view_fsm.d) shows it, complete or being filled (a load, a
+// filter, a search), the table empty until its first row. A view without one
+// (a cancel, a failure, a lost file, a search waiting for the log view) is a
+// status over the table.
+function showsRows(vm) {
+    return vm.dataVersion !== undefined;
+}
 
-// True if the table of the view `vm` shows rows, not the status of the view.
-// A view that is ready does; a file being loaded shows the records found so
-// far; a filter or a search shows what it found once it found something
-// (`total`: () => its rows now).
-function showsRows(vm, total) {
-    if (vm.status === "ready" || vm.status === "loadingFile") return true;
-    return fillingStatuses.includes(vm.status) && total() > 0;
+// True if an operation filling the table of the view `vm` shows its progress
+// and Cancel under it (a filter, a search): the one that can be cancelled. A
+// load can't: its tab shows the progress, closing the tab stops it.
+function runsUnder(vm) {
+    return vm.canCancel === true;
 }
 
 // The next step of a table when its view (a machine of the document: { status,
@@ -32,15 +38,14 @@ function showsRows(vm, total) {
 // The content of one dataVersion only grows (see ReadyView.dataVersion in
 // source/ui/main_view_fsm.d), whatever the status: while an operation fills
 // it and after, for a source that never ends.
-// @param total - () => the rows of the view now; called only if the step depends on it
-export function tableStep(shown, vm, total) {
-    if (!showsRows(vm, total)) {
+export function tableStep(shown, vm) {
+    if (!showsRows(vm)) {
         return { table: false, reload: false, resetSelection: false, grow: false, running: false,
             shown: { ...shown, dataVersion: null } };
     }
     const filling = vm.status !== "ready";
     const step = { table: true, reload: false, resetSelection: false, grow: false,
-        running: fillingStatuses.includes(vm.status), shown: { loaded: true, dataVersion: vm.dataVersion } };
+        running: runsUnder(vm), shown: { loaded: true, dataVersion: vm.dataVersion } };
     // New content being filled starts at the top: it has no rows yet to keep the scroll at
     if (!shown.loaded) return { ...step, reload: "start", resetSelection: true };
     // null: a status was shown, the view may have been rebuilt meanwhile

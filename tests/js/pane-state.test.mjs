@@ -7,11 +7,10 @@ import { noTable, tableStep, paneChanges, anchorEdit, rowLookStep, keptRowStep, 
 
 const ready = (dataVersion) => ({ status: "ready", dataVersion });
 
-const none = () => 0;
 const table = (dataVersion) => ({ loaded: true, dataVersion });
 
 test("the first rows of a table start at the top, nothing selected", () => {
-    const step = tableStep(noTable, ready(1), none);
+    const step = tableStep(noTable, ready(1));
     assert.equal(step.table, true);
     assert.equal(step.reload, "start");
     assert.equal(step.resetSelection, true);
@@ -20,7 +19,7 @@ test("the first rows of a table start at the top, nothing selected", () => {
 });
 
 test("the same content again: the table keeps its rows and counts the new ones", () => {
-    const step = tableStep(table(1), ready(1), none);
+    const step = tableStep(table(1), ready(1));
     assert.equal(step.table, true);
     assert.equal(step.reload, false);
     assert.equal(step.resetSelection, false);
@@ -28,7 +27,7 @@ test("the same content again: the table keeps its rows and counts the new ones",
 });
 
 test("other content, complete: other rows at the same scroll, the selection dropped", () => {
-    const step = tableStep(table(1), ready(2), none);
+    const step = tableStep(table(1), ready(2));
     assert.equal(step.reload, "keep");
     assert.equal(step.resetSelection, true);
     assert.equal(step.grow, false);
@@ -36,59 +35,58 @@ test("other content, complete: other rows at the same scroll, the selection drop
 });
 
 test("a failure instead of the table: the table is reloaded when it comes back", () => {
-    const failed = tableStep(table(1), { status: "filterFailed" }, none);
+    const failed = tableStep(table(1), { status: "filterFailed" });
     assert.equal(failed.table, false);
     assert.equal(failed.reload, false);
     assert.equal(failed.running, false);
     assert.deepEqual(failed.shown, { loaded: true, dataVersion: null });
-    const back = tableStep(failed.shown, ready(1), none);
+    const back = tableStep(failed.shown, ready(1));
     assert.equal(back.reload, "keep", "even with the same dataVersion: the view was rebuilt");
     assert.equal(back.resetSelection, true);
 });
 
 test("a file being loaded shows the records found so far, from the top, and grows", () => {
     const loading = { status: "loadingFile", canCancel: false, progress: 0, dataVersion: 1 };
-    const first = tableStep(noTable, loading, none);
+    const first = tableStep(noTable, loading);
     assert.equal(first.table, true, "even before the first record");
     assert.equal(first.reload, "start");
     assert.equal(first.running, false, "no progress at the table: the tab shows it, closing it stops the load");
-    const more = tableStep(first.shown, { ...loading, progress: 0.5 }, () => 1000);
+    const more = tableStep(first.shown, { ...loading, progress: 0.5 });
     assert.deepEqual([more.table, more.reload, more.resetSelection, more.grow], [true, false, false, true]);
-    const done = tableStep(more.shown, ready(1), () => 2000);
+    const done = tableStep(more.shown, ready(1));
     assert.deepEqual([done.table, done.reload, done.resetSelection, done.grow], [true, false, false, true],
         "the same content, complete: the last records are counted, nothing is reloaded");
 });
 
-test("a filter or a search running shows what it found so far, with its progress", () => {
+test("a filter or a search running shows what it found so far, with its progress under the table", () => {
     for (const status of ["filtering", "searching"]) {
         const vm = { status, canCancel: true, progress: 0.1, dataVersion: 2 };
-        const empty = tableStep(table(1), vm, none);
-        assert.equal(empty.table, false, `${status}: its status until the first row is found`);
-        assert.equal(empty.running, false);
-        const first = tableStep(empty.shown, { ...vm, progress: 0.2 }, () => 5);
-        assert.deepEqual([first.table, first.reload, first.resetSelection, first.grow], [true, "start", true, false],
-            `${status}: new content starts at the top`);
-        assert.equal(first.running, true, `${status}: the progress and Cancel by the table`);
-        const more = tableStep(first.shown, { ...vm, progress: 0.6 }, () => 50);
+        const empty = tableStep(table(1), vm);
+        assert.deepEqual([empty.table, empty.reload, empty.resetSelection, empty.grow], [true, "start", true, false],
+            `${status}: the table, empty, before the first row is found: new content starts at the top`);
+        assert.equal(empty.running, true, `${status}: the progress and Cancel under the table, never over it`);
+        const more = tableStep(empty.shown, { ...vm, progress: 0.6 });
         assert.deepEqual([more.table, more.reload, more.resetSelection, more.grow, more.running],
             [true, false, false, true, true], status);
-        const done = tableStep(more.shown, ready(2), () => 80);
+        const done = tableStep(more.shown, ready(2));
         assert.deepEqual([done.table, done.reload, done.resetSelection, done.grow, done.running],
             [true, false, false, true, false], status);
     }
 });
 
 test("an operation that found nothing ends in an empty table", () => {
-    const empty = tableStep(table(1), { status: "searching", canCancel: true, progress: 0.9, dataVersion: 2 }, none);
-    const done = tableStep(empty.shown, ready(2), none);
-    assert.deepEqual([done.table, done.reload, done.resetSelection], [true, "keep", true]);
+    const empty = tableStep(table(1), { status: "searching", canCancel: true, progress: 0.9, dataVersion: 2 });
+    const done = tableStep(empty.shown, ready(2));
+    assert.deepEqual([done.table, done.reload, done.resetSelection, done.grow], [true, false, false, true]);
 });
 
-test("the rows of a view are counted only when the step depends on them", () => {
-    const counted = () => { throw new Error("counted"); };
-    tableStep(table(1), ready(2), counted);
-    tableStep(table(1), { status: "filterCancelled" }, counted);
-    tableStep(noTable, { status: "loadingFile", dataVersion: 1 }, counted);
+test("a view shows its table when it has content, its progress under it when it can be cancelled, whatever its status", () => {
+    const filling = tableStep(table(1), { status: "someOperation", canCancel: true, progress: 0.3, dataVersion: 2 });
+    assert.deepEqual([filling.table, filling.running], [true, true], "content being filled: the table, the progress under it");
+    const growing = tableStep(table(1), { status: "someLoad", canCancel: false, progress: 0.3, dataVersion: 2 });
+    assert.deepEqual([growing.table, growing.running], [true, false], "content that can't be cancelled: no progress by the table");
+    const none = tableStep(table(1), { status: "someFailure", canCancel: false });
+    assert.deepEqual([none.table, none.running], [false, false], "no content: its status over the table");
 });
 
 test("panels are created for new documents and removed for closed ones", () => {

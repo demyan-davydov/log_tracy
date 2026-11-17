@@ -81,15 +81,18 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
 20. **Comfort margins yield to small panels.** A margin kept for context (rows above a row
     scrolled to) is given only while the panel has room; in a low panel the target itself
     must stay visible.
-21. **Status views are uniform and fit any panel.** Loading / filtering / searching / failure /
-    lost-file views share one layout (`.status-view`: title, thin progress, detail line,
-    buttons), centered by flexible margins so a low panel never pushes content out of view.
-    Errors from the core are shown; after a cancel or failure the detail says what to do next.
+21. **Status views are uniform and fit any panel.** Failure / cancel / lost-file / waiting
+    views share one layout (`.status-view`: title, detail line, buttons), centered by
+    flexible margins so a low panel never pushes content out of view. They have no progress:
+    an operation running shows its progress under the table (21a). Errors from the core are
+    shown; after a cancel or failure the detail says what to do next.
 21a. **Tables show rows before an operation ends.** A file being loaded shows the records
     found so far (those its filters let through), with no progress and no Cancel by the table:
     its tab shows the progress, closing the tab stops the load. A filter or a search shows
     what it found so far, with its progress and Cancel in a strip under the table
-    (`.view-progress`), no row covered; until the first row is found, its status view. After
+    (`.view-progress`), no row covered; before the first row is found too, the table empty:
+    the progress of a filter or a search is always under the table, never over it (a file
+    whose anchors or matches come at once and one where they don't look the same). After
     a cancel or a failure: the status view.
 22. **Empty states are useful and calm.** Centered; an accented title, a one-line hint with the
     shortcut, then something actionable (recent files that open on click); no decorative

@@ -26,8 +26,9 @@ behaviour: `.ai/knowledge/sciter.md`.
   backend with the predicates the view and the rows use),
   the search bar, `SearchBar` (`search-bar.js`, on `.search-bar`), and its two tables,
   `MainViewTable` and `SearchViewTable` (`view-table.js`): each a `ViewTable`, a table with
-  the view of its machine, the status views covering it, the progress under it (their Cancel
-  too) and the focus the covers take (`update()` over `tableStep`). What only one of them has
+  the view of its machine, the status views covering it, the progress under it (its Cancel
+  too) and the focus the covers take (`update()` over `tableStep`: the table when the view
+  has content, its `dataVersion`; the progress under it when it can be cancelled). What only one of them has
   stays in its subclass (the lost file and Go to Message of the main one, the empty view
   before a search); what ties the two (the found rows of the main table, following a
   selection) stays in the panel. A part binds the events of its own element and asks the
@@ -35,8 +36,9 @@ behaviour: `.ai/knowledge/sciter.md`.
   parts too, is built by `renderPane` of `document-pane.js`. A new piece of the panel is a
   part of its own, not more members of `DocumentPane`; its decisions that can be tested go
   into a pure module (`pane-commands.js`, `pane-state.js`). `status-view.js` is not a part:
-  the texts of the statuses and the filling of a status view, whose buttons the tables
-  (Cancel) and the panel (Retry, Close) bind. Only the panel of the active tab is shown, the others
+  the texts of the statuses (`covers`: of a status view; `progress`: of the strip under a
+  table) and their filling; the tables bind the Cancel of the strip, the panel the
+  buttons of the lost file (Retry, Close). Only the panel of the active tab is shown, the others
   are `display: none` and keep their rows, scroll, selection and draft as they are; a hidden
   panel renders what changed when it is shown.
 - The tab strip (rendering, pressing, dragging, tooltips) is `resources/tabs.js`; what a tab

@@ -43,11 +43,7 @@ function renderPane(splitters) {
                 <div class="status-view overlay main-status" tabindex="0" style="display:none;">
                     <div class="status-body">
                         <div class="status-title"></div>
-                        <progress value="0" max="100"></progress>
                         <div class="status-detail"></div>
-                        <div class="status-actions">
-                            <button class="btn-cancel" data-tr="Cancel" />
-                        </div>
                     </div>
                 </div>
                 <div class="status-view overlay source-lost" tabindex="0" style="display:none;">
@@ -99,11 +95,7 @@ function renderPane(splitters) {
                     <div class="status-view overlay compact search-status" tabindex="0" style="display:none;">
                         <div class="status-body">
                             <div class="status-title"></div>
-                            <progress value="0" max="100"></progress>
                             <div class="status-detail"></div>
-                            <div class="status-actions">
-                                <button class="btn-cancel" data-tr="Cancel" />
-                            </div>
                         </div>
                     </div>
                     <table class="log-table search-view" fixed-layout="true">
