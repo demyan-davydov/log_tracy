@@ -12,7 +12,7 @@
 //! not called any more; what changes after that is written by finish().
 module ui.app_session;
 
-import core.time : Duration;
+import core.time : Duration, MonoTime;
 import domain.attachments : Attachment, AttachmentState;
 import domain.document;
 import domain.document_id;
@@ -74,6 +74,9 @@ final class AppSession
     private FileShower _showInFolder;
     private ScriptCall[] _scriptCalls; // queued for the idle loop
     private DocumentId[] _reopen; // to be opened anew after the dispatch (ReopenWanted)
+    // When each document began to open, until its load completes: the console tells
+    // how long the whole load took (a load that never completes tells nothing)
+    private MonoTime[DocumentId] _loadStarted;
     private bool _settingsChanged; // since they were last written
     private bool _closing; // the window closes: no more calls of the script
     private WindowMenu _menu = windowMenu(hostMenuPlatform(), ""); // the menu of the window
@@ -305,15 +308,12 @@ final class AppSession
 
         try
         {
-            import core.time : MonoTime;
-
             // Opened the way it was last time: the format may have been chosen by hand
             const openStart = MonoTime.currTime;
             auto document = _open(path, savedFormat(_settings.recentFiles, path));
-            // The file opened and its format detected; the load goes on (BuildOffsetIndex)
-            writeln("Opened file in ", msText(MonoTime.currTime - openStart), ": ", path);
             const hold = _documents.add(document, path); // held by its tab
             const docId = hold.docId;
+            _loadStarted[docId] = openStart; // the load goes on (BuildOffsetIndex)
             addTab(hold, path);
             _tabs.activate(docId);
             rememberRecentFile(RecentFile(path, document.formatChoice, nowMs()));
@@ -349,7 +349,6 @@ final class AppSession
     /// restored. Returns: an error message for the UI, "" if it was replaced
     private string reopen(DocumentId docId)
     {
-        import core.time : MonoTime;
         import std.stdio : writeln;
 
         const id = idOf(docId);
@@ -363,6 +362,7 @@ final class AppSession
             const openStart = MonoTime.currTime;
             auto fresh = _open(path, choice);
             const openTime = MonoTime.currTime - openStart;
+            _loadStarted[docId] = openStart; // its load starts anew
 
             const destroyStart = MonoTime.currTime;
             // The filters the old document had, for the new one
@@ -980,6 +980,16 @@ final class AppSession
             writeln("Operation ", e.event.operation, " ", e.event.result, ", doc ", e.docId.toInt(),
                 " in ", msText(e.event.elapsed),
                 e.event.error.empty ? "" : ": " ~ english(e.event.error));
+            // The first load ended: how long it took from the opening, once (a file that
+            // grows builds on, a stream never completes)
+            if (e.event.operation == Document.Operation.BuildOffsetIndex)
+                if (auto started = e.docId in _loadStarted)
+                {
+                    if (e.event.result == OperationFinished.Result.Completed)
+                        writeln("Loaded file in ", msText(MonoTime.currTime - *started), ": ",
+                            _documents.sourcePath(e.docId));
+                    _loadStarted.remove(e.docId);
+                }
             processDocumentEvent(e.docId, e.event);
         });
     }
@@ -1033,6 +1043,7 @@ final class AppSession
     {
         const path = sourcePathOf(docId);
         _documentUis.remove(docId);
+        _loadStarted.remove(docId);
         if (_tabs.remove(docId))
             releaseTabHold(docId);
         if (path.length)
