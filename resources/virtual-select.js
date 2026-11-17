@@ -172,9 +172,13 @@ export class VirtualList extends Element {
         if (!row) return false;
         const offset = row.getBoundingClientRect().top - this.getBoundingClientRect().top;
         // A smooth scroll goes past the last row (6.0.5.5), an instant one stops there
-        const bottom = Math.max(0, this.scrollHeight - this.clientHeight);
-        this.scrollTo({ top: Math.min(this.scrollTop + offset, bottom), behavior });
+        this.scrollTo({ top: Math.min(this.scrollTop + offset, this.scrollEnd()), behavior });
         return true;
+    }
+
+    // The largest scrollTop: the list scrolled to its last rendered row
+    scrollEnd() {
+        return Math.max(0, this.scrollHeight - this.clientHeight);
     }
 
     // vlist.navigateTo(target) made safe, see navigationStep: the rows of a

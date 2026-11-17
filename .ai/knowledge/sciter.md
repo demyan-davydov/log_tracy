@@ -366,6 +366,11 @@ agent can't drive it. In scapp a plain
   inserted by hand that makes the rendered ones overflow the list leaves the wheel dead too
   (the scrollbar works, a resize heals it): `followAnchor` leaves that insertion to a render
   while the rows fit the list.
+  A list scrolled somewhere that was edited by hand shows a gap under its rows (rows removed)
+  or has its rows pushed (a row inserted above the first on screen): `settle` of
+  `VirtualDltTBody` puts it right: at once after the first edit of a frame (no blink: the
+  layout is read synchronously and is current), and once more in the frame, after the rest of
+  its edits (an edit each doesn't read the layout each: hundreds of anchors at open).
 - A virtual-list hidden (`display: none`, or `visibility`) and shown again keeps its rows, first
   visible item and pixel offset, even after a resize while hidden; a hidden list requests no
   rows. Focus stays on an element inside a hidden pane: move it on a switch.

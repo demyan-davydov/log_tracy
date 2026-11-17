@@ -405,7 +405,7 @@ export class VirtualDltTBody extends VirtualSelect {
     followAnchor(message, added) {
         const vlist = this.vlist;
         const rows = [...this.children];
-        const rendered = rows.map(row => Number(row.$("td.anchor")?.getAttribute("msg-index")));
+        const rendered = rows.map(messageOf);
         if (!vlist || rendered.some(m => !Number.isFinite(m))) return false; // an empty row
         // Room: every row of the view is rendered and the window can take one more, so the
         // row is rendered, not counted (sciter.md, "Virtual Lists").
@@ -426,6 +426,7 @@ export class VirtualDltTBody extends VirtualSelect {
             row = Element.create(this.renderItem(item));
         }
 
+        this.settleLater();
         if (edit.removeAt !== null) rows[edit.removeAt].remove();
         if (row && edit.insertAt < rows.length) this.insertBefore(row, rows[edit.insertAt]);
         else if (row) this.append(row); // after the last rendered row
@@ -437,7 +438,83 @@ export class VirtualDltTBody extends VirtualSelect {
         const first = vlist.itemsBefore;
         for (const [i, row] of [...this.children].entries())
             row.setAttribute("view-index", first + i);
+        if (!this._settledNow) { // the first edit of the frame, now: before it is painted, no blink
+            this._settledNow = true;
+            this.settle(false);
+        }
         return true;
+    }
+
+    // After the rows were edited by hand (followAnchor) a list scrolled somewhere may
+    // show a gap under its last row (rows removed, the ones before the first still
+    // not rendered), or have its rows pushed off their place (a row inserted above the
+    // first on screen). The first row on screen and where it is are noted before the
+    // first edit of a frame (note); settle() puts the list right: at once after the
+    // first edit, so the frame painted has no blink, and in the next frame, after all
+    // the edits of this one (a file opened with its anchors brings hundreds: one layout
+    // for them, not one each). Nothing is noted for a list at its top with all rows
+    // rendered: nothing to keep, nothing before the first row to render.
+    settleLater() {
+        if (this._settle) return;
+        const vlist = this.vlist;
+        const scrolled = vlist.itemsBefore > 0 || this.scrollTop > 0;
+        this._settle = this.note(scrolled);
+        this._settledNow = false;
+        requestAnimationFrame(() => this.settle());
+    }
+
+    // The first row on screen (its message) and its top in the list; `scrolled`: the
+    // list was scrolled somewhere, else nothing is kept
+    note(scrolled) {
+        const row = scrolled ? this.vlist.firstVisibleItem : null;
+        const message = row ? messageOf(row) : NaN;
+        return {
+            message: Number.isFinite(message) ? message : null,
+            offset: row ? row.getBoundingClientRect().top - this.getBoundingClientRect().top : 0,
+            scrolled,
+        };
+    }
+
+    // Puts the list right after an edit by hand: the gap under the last row is
+    // filled from the rows before (VirtualList.fill goes to the end of the list
+    // then); a scroll left past the end (it stays in pixels when the rows got fewer,
+    // sciter.md) is put back to the end; else the first row noted is put back where
+    // it was. `final`: the frame's own pass, the last one. Nothing is done for a
+    // hidden list (it keeps its scroll, nothing can be measured); a drag in this
+    // list goes on as it is and the pass is tried again in the next frame.
+    settle(final = true) {
+        const noted = this._settle;
+        const vlist = this.vlist;
+        if (!noted || !noted.scrolled || !vlist || !this.parentElement) {
+            if (final) this._settle = null;
+            return;
+        }
+        if (drag?.list === this) {
+            if (final) requestAnimationFrame(() => this.settle());
+            return;
+        }
+        if (final) this._settle = null;
+        const box = this.getBoundingClientRect();
+        if (!(box.height > 0)) return; // hidden
+        const last = this.lastElementChild;
+        if (vlist.itemsBefore > 0 && last && last.getBoundingClientRect().bottom < box.bottom) {
+            this.fill();
+            return;
+        }
+        const end = this.scrollEnd();
+        if (this.scrollTop > end + 1) {
+            this.scrollTo({ top: end, behavior: "instant" });
+            return;
+        }
+        if (noted.message === null) return;
+        const row = [...this.children].find(r => messageOf(r) === noted.message);
+        if (!row) { // the row noted was removed: the next edits keep the first row now on screen
+            if (!final) this._settle = this.note(true);
+            return;
+        }
+        const delta = row.getBoundingClientRect().top - box.top - noted.offset;
+        if (Math.abs(delta) < 1) return;
+        this.scrollTo({ top: Math.max(0, Math.min(this.scrollTop + delta, end)), behavior: "instant" });
     }
 
     // True if the rendered `rows` don't overflow the list yet: a row added to them
@@ -619,6 +696,11 @@ export class VirtualDltTBody extends VirtualSelect {
             if (item) row.patch(this.renderItem(item));
         }
     }
+}
+
+// The message index of the log row `row`, NaN for an empty row
+function messageOf(row) {
+    return Number(row.$("td.anchor")?.getAttribute("msg-index"));
 }
 
 // A drag in a log table, started by a press (beginDrag), null while none:
