@@ -385,6 +385,15 @@ export class DocumentPane {
         this.updateFileInfo();
     }
 
+    // Find (Cmd+F / Ctrl+F): the search page is shown, the caret at the end of the query.
+    // Nothing if the focus is in the query already: the caret stays where it is
+    focusSearch() {
+        if (!this.visible || this.destroyed) return;
+        if (isInside(document.$(":focus"), this.root.$(".chip-search"))) return;
+        this.showBottomPage("search");
+        this.searchBar.editor.focusAtEnd();
+    }
+
     // Marks the tab of the Filters page with its dot while some rule works on the log
     markFiltersTab(active) {
         this.root.$(".bottom-tab[data-page=filters]").classList.toggle("marked", active);

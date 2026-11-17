@@ -7,6 +7,7 @@
     "\"{value}\" is not a hex number": "«{value}» — не шестнадцатеричное число",
     "\"{value}\" is not a number": "«{value}» — не число",
     "&File": "&Файл",
+    "&Find": "&Найти",
     "&Go to Message...": "&Перейти к сообщению...",
     "&Minimize": "&Свернуть",
     "&Navigation": "&Навигация",

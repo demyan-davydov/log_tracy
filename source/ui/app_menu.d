@@ -88,6 +88,7 @@ enum MenuCommand : string
     openFile = "file.open",
     minimize = "window.minimize",
     goToMessage = "navigation.goToMessage",
+    find = "navigation.find",
 }
 
 /// A key combination, independent of the platform.
@@ -198,7 +199,10 @@ MenuItem[] appMenu(MenuPlatform platform, scope Translate tr) pure @safe
     // `&` marks the mnemonic letter of Windows and Linux; macOS has none
     auto openFile = command(MenuCommand.openFile, tr("&Open File..."), primary("O"));
     auto settings = command(MenuCommand.settings, tr("&Settings..."), primary(","));
-    auto navigation = submenu(tr("&Navigation"), [command(MenuCommand.goToMessage, tr("&Go to Message..."), primary("G"))]);
+    auto navigation = submenu(tr("&Navigation"), [
+        command(MenuCommand.find, tr("&Find"), primary("F")),
+        command(MenuCommand.goToMessage, tr("&Go to Message..."), primary("G")),
+    ]);
     final switch (platform)
     {
     case MenuPlatform.mac:
@@ -397,7 +401,7 @@ unittest
     foreach (platform; [MenuPlatform.mac, MenuPlatform.windows, MenuPlatform.linux])
     {
         auto bar = appMenu(platform);
-        foreach (id; [MenuCommand.openFile, MenuCommand.settings, MenuCommand.quit, MenuCommand.goToMessage])
+        foreach (id; [MenuCommand.openFile, MenuCommand.settings, MenuCommand.quit, MenuCommand.goToMessage, MenuCommand.find])
             assert(find(bar, id) !is null, "a platform lacks " ~ id);
     }
 }
@@ -414,6 +418,17 @@ unittest
                 navigation = menu.items;
         assert(find(navigation, MenuCommand.goToMessage) !is null, "not in Navigation");
         assert(find(bar, MenuCommand.goToMessage).shortcut == primary("G"));
+    }
+}
+
+@("Find is in Navigation with Cmd+F / Ctrl+F")
+unittest
+{
+    foreach (platform; [MenuPlatform.mac, MenuPlatform.windows, MenuPlatform.linux])
+    {
+        auto bar = appMenu(platform);
+        assert(find(bar, MenuCommand.find) !is null, "no Find");
+        assert(find(bar, MenuCommand.find).shortcut == primary("F"));
     }
 }
 

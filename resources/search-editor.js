@@ -88,6 +88,12 @@ export class SearchEditor {
 
     focus() { this.placeFocus(); }
 
+    // Takes the focus with the caret after the last chip (Find, Cmd+F / Ctrl+F)
+    focusAtEnd() {
+        const state = this.syncedState();
+        this.go(moveTo(state, { gap: state.chips.length })); // go() places the focus
+    }
+
     // The editor is removed with its document: stops its timer and its
     // handlers of the document
     destroy() {

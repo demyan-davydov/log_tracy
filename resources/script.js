@@ -412,6 +412,9 @@ globalThis.onMenuCommand = function (id) {
         case "window.minimize":
             platform.minimizeWindow();
             break;
+        case "navigation.find":
+            if (shownPane) shownPane.focusSearch();
+            break;
         case "navigation.goToMessage":
             goToMessageAction();
             break;

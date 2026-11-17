@@ -155,6 +155,8 @@ behaviour: `.ai/knowledge/sciter.md`.
 - Go to Message (Navigation menu, Cmd+G / Ctrl+G): `go-to-message.htm`, `go-to-message.js`;
   the row it lands on (the nearest shown when filtered out) is
   `backend.mainViewNearestPosition`, `MainViewTable.goToMessage`
+- Find (Navigation menu, Cmd+F / Ctrl+F): `DocumentPane.focusSearch` shows the Search page and
+  puts the caret at the end of the query (`SearchEditor.focusAtEnd`)
 - Recent files: `recent-time.js`, `recent-file-menu.js`
 - File Info page: `file-info.js` (the rows; the FIBEX row of a DLT log: what decodes it, a
   read going on or why one failed, Load File / Load Folder / Unload), rendered by
