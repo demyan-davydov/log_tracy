@@ -15,7 +15,9 @@ import log_core.log_filter;
 import domain.anchors;
 import domain.attachments : Attachment, AttachmentState;
 import domain.log_index;
+import domain.index.progress : PassProgress;
 import domain.index.record_store : RecordsLease;
+import domain.operation_progress : filterOver, loadOver, progressOf, ProgressThrottle, Running;
 import formats.registry : createFormat, detectFormat, takesDescriptions, withDescriptions;
 import log_core.byte_source;
 import log_core.log_format : ColumnInfo, FormatChoice, LogFormat;
@@ -86,6 +88,7 @@ class LogDocument : Document
     private bool _loading = true;
     private bool _filtering;
     private bool _searching;
+    private ProgressThrottle _progress; // what of the progress of the running pass was told
     private bool _failed; // the index can't be brought up to date: nothing more is asked of it
     private bool _loadCompleted; // the load reached the end of the source once
     private UiText _failure; // why the document is done for: its load or a later pass failed
@@ -291,9 +294,9 @@ class LogDocument : Document
         _events = new EventBusAsync();
         // Subscribed before anyone else: the document is up to date before
         // external subscribers see the events that follow
+        _events.subscribe((const PassProgress e) { passProgress(e); });
+        _events.subscribe((const IndexGrown e) { indexGrown(e); });
         _events.subscribe((const PassFinished e) { passFinished(e); });
-        // The file is loaded, or filtered, while the pass goes on with a search
-        _events.subscribe((const StageFinished e) { finish(e.operation, OperationFinished.Result.Completed); });
         _events.subscribe((const DescriptionsLoaded e) { descriptionsLoaded(e); });
         _descriptionsSlot = BackgroundSlot(null);
         // Before the index starts its first pass, so it precedes any progress event
@@ -501,6 +504,8 @@ class LogDocument : Document
         if (_passRunning || _failed || sourceLost || !_index.behind)
             return;
         _passRunning = _index.runPass();
+        if (_passRunning)
+            _progress.reset(); // its first progress is told
     }
 
     private ref bool running(Operation operation) return
@@ -543,6 +548,28 @@ class LogDocument : Document
         _index.stopSearch();
         _searchFilter = null;
         finish(Operation.BuildSearchIndex, result, error);
+    }
+
+    //! @brief The running pass got further: tells the progress of the operations that run,
+    //! and the end of the load or the filter as soon as they have nothing left, while the
+    //! pass goes on with what follows them
+    private void passProgress(const PassProgress e)
+    {
+        const values = progressOf(e, Running(_loading, _filtering, _searching));
+        if (_progress.take(values))
+            _events.publish(OperationProgress(values));
+        if (loadOver(e))
+            finish(Operation.BuildOffsetIndex, OperationFinished.Result.Completed);
+        if (filterOver(e, _loading))
+            finish(Operation.BuildFilterIndex, OperationFinished.Result.Completed);
+    }
+
+    //! The index added rows its positions don't tell of: a view no operation fills counts
+    //! them. Anchors listed with no search are told by the search, if it runs
+    private void indexGrown(const IndexGrown e)
+    {
+        if (e.records || e.anchors && !_searching)
+            _events.publish(ContentGrown());
     }
 
     //! @brief A pass of the index ended: tells the end of the operations it
@@ -1477,6 +1504,91 @@ unittest
     assert(grown >= 1, "the views are told to count their rows");
     assert(started.length == 0, "no operation: the views stay ready");
     assert(views.mainReady && views.searchReady);
+}
+
+@("LogDocument: anchors listed with no search after the end of a filter are told after it")
+unittest
+{
+    import formats.plain_text : PlainTextFormat;
+    import log_core.search_filter : SearchChip, SearchFilter;
+    import std.algorithm : countUntil;
+    import std.array : appender;
+    import std.format : format;
+
+    auto text = appender!string;
+    foreach (i; 0 .. 1000)
+        text ~= format("line %s\n", i);
+    auto doc = new LogDocument(new MemorySource(cast(const(ubyte)[]) text[]), new PlainTextFormat());
+    waitIdle(doc);
+    assert(doc.setAnchor(5, true).rows.search);
+
+    string[] told;
+    doc.events.subscribe((const OperationFinished e) {
+        if (e.operation == Document.Operation.BuildFilterIndex)
+            told ~= "filter done";
+    });
+    doc.events.subscribe((const ContentGrown e) { told ~= "grown"; });
+    runAndWait(doc, () => doc.applyViewFilter(SearchFilter.fromChips([SearchChip("line")])));
+    assert(doc.searchView.itemsCount == 1);
+    // The search view is shown as ready once the filter is done: what it lists after that
+    // must be told, or its table never counts it
+    assert(told.countUntil("grown") > told.countUntil("filter done"), format("%s", told));
+}
+
+@("LogDocument: anchors listed while a search runs are told by its progress, not as a growth")
+unittest
+{
+    import formats.plain_text : PlainTextFormat;
+    import log_core.search_filter : SearchChip, SearchFilter;
+    import std.array : appender;
+    import std.format : format;
+
+    auto text = appender!string;
+    foreach (i; 0 .. 1000)
+        text ~= format("line %s\n", i);
+    auto doc = new LogDocument(new MemorySource(cast(const(ubyte)[]) text[]), new PlainTextFormat());
+    waitIdle(doc);
+    doc.setAnchor(5, true);
+
+    size_t grown;
+    doc.events.subscribe((const ContentGrown e) { ++grown; });
+    runAndWait(doc, () => doc.applySearchFilter(null)); // the anchors only, as a search
+    assert(doc.searchView.itemsCount == 1);
+    assert(grown == 0, "the search tells its rows");
+}
+
+@("LogDocument: a filter is told complete while the search over its view goes on")
+unittest
+{
+    import std.algorithm : canFind;
+    import std.conv : to;
+    import std.file : remove;
+
+    auto path = writeTestDlt("dlt_document_filter_before_search.dlt", 50_000);
+    scope (exit)
+        remove(path);
+    auto doc = new LogDocument(path);
+    waitIdle(doc);
+
+    string[] finished; // completed
+    doc.events.subscribe((const OperationFinished e) {
+        if (e.result == OperationFinished.Result.Completed)
+            finished ~= e.operation.to!string;
+    });
+    auto search = new GateFilter(10); // holds the search after its first rows
+    scope (exit)
+        search.open(); // a failed test must not leave the worker held
+    // Given to the index together, when the running pass stops: a filter that covers
+    // every record from the start, no position to tell before the search is held
+    doc.applySearchFilter(new ConstFilter(true));
+    doc.applyViewFilter(null);
+    doc.applySearchFilter(search);
+    dispatchUntil(doc, () => finished.canFind("BuildFilterIndex"));
+    assert(finished.canFind("BuildFilterIndex"), "the main view is filtered: not told till the pass ends");
+    assert(!finished.canFind("BuildSearchIndex"), "the search is held");
+    search.open();
+    dispatchUntil(doc, () => finished.canFind("BuildSearchIndex"));
+    assert(finished.canFind("BuildSearchIndex"));
 }
 
 @("LogDocument: a new search cancels the running one and replaces it")

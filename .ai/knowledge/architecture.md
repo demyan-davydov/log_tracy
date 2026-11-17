@@ -222,9 +222,15 @@ utils  ←  sciter  ←  ui
   filter alone, which would scan slower in parts: the search view
   lists them while the file loads (the machine's `ListingAnchors`).
 - The operations the views see (`OperationStarted / Progress / Finished` of the load, the
-  filter, the search) overlap. `LogDocument` tells them on the UI thread from the index's
-  `StageFinished` and `PassFinished`; `OperationProgress` carries all of them in one event
-  (events of one type override each other in the queue). `Document.dispatchEvents()` delivers
+  filter, the search) overlap. They are the document's: `LogIndex` reports only its own
+  facts, `PassProgress` (its positions: bytes split, records the filter covers, rows the
+  search covers; throttled, and every time the load reaches the end of its bytes or the
+  filter covers the records after it), `IndexGrown` (rows its positions don't tell of) and
+  `PassFinished`. `LogDocument`, which knows which operations run, makes them their
+  progress and their ends on the UI thread (`domain/operation_progress`: a stage is as far
+  as the one it follows) and decides when a view no operation fills is told
+  `ContentGrown`; nothing about the operations is kept in the index. `OperationProgress`
+  carries all of them in one event (events of one type override each other in the queue). `Document.dispatchEvents()` delivers
   the events on the UI thread. The load and the filter tell their end apart, as soon as they
   have nothing left: the file may be loaded while its filter still fills the main view (the
   main view machine goes on as `Filtering`, the same content). A failure is of a stage
@@ -300,7 +306,7 @@ utils  ←  sciter  ←  ui
     `utils/parallel_scan`), so nothing is decoded again on one thread. A reader apart from
     the window scans and folds on a pool of its own: on the shared one its blocks queue
     before those of an index, and closing a document waits for its index's scan;
-  - `ProgressReporter` (`progress`).
+  - `ProgressReporter` (`progress`): publishes the `PassProgress` of a pass, throttled.
 - The indexes are `BaseIndex` over `utils/chunked_array` (`domain/index/`):
   - they grow by 64K-entry chunks (mmap / VirtualAlloc) up to 2^32 entries;
   - entries never move, which is what lets the indexing thread read the offset index without
@@ -333,7 +339,8 @@ utils  ←  sciter  ←  ui
 - Indexes and background work: `domain/log_index`, `domain/index/`, `utils/background_slot`,
   `utils/parallel_scan`
 - A document and its views, anchors: `domain/log_document`, `domain/document`,
-  `domain/anchors`
+  `domain/anchors`; the progress of its operations from the positions of the index:
+  `domain/operation_progress`
 - Formats and detection: `formats/registry` (see `.ai/knowledge/formats.md`)
 - Files sent in a log (the file transfer of DLT): `formats/dlt/file_transfer`,
   `domain/index/transfers` (the catalog), `domain/attachments`, `AppSession.attachmentsJson`

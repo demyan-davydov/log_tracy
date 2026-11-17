@@ -1,6 +1,6 @@
 //! MatchStage: how far a stage of a pass of LogIndex that collects the records a filter
 //! matches has got (the filter of the main view, the search): its filter, the positions it
-//! covers, whether it was stopped and whether its progress and end are still to be told.
+//! covers and whether it was stopped.
 //!
 //! Not thread-safe: LogIndex writes it from the UI thread while no pass runs and from the
 //! worker of a pass while it runs.
@@ -19,27 +19,24 @@ struct MatchStage
     Filter filter; // null: none
     size_t scanned; // the positions its index covers
     bool stopped; // cancelled or failed: its index is left as it is
-    bool report; // asked for and not complete yet: its progress and end are told
 
     this(bool listsWithoutFilter) pure nothrow @nogc @safe
     {
         _listsWithoutFilter = listsWithoutFilter;
     }
 
-    //! The stage is asked for with `filter`: from the start, told if `report`
-    void restart(Filter filter, bool report = true) pure nothrow @nogc @safe
+    //! The stage is asked for with `filter`: from the start
+    void restart(Filter filter) pure nothrow @nogc @safe
     {
         this.filter = filter;
         scanned = 0;
         stopped = false;
-        this.report = report;
     }
 
-    //! Cancelled or failed: its index is left as it is, nothing more is told
+    //! Cancelled or failed: its index is left as it is
     void stop() pure nothrow @nogc @safe
     {
         stopped = true;
-        report = false;
     }
 
     //! It has something to do over a range: not stopped, and with a filter unless it runs
@@ -106,9 +103,9 @@ unittest
     search.restart(null);
     search.scanned = 3;
     search.stop();
-    assert(!search.live && !search.report && search.scanned == 3);
-    search.restart(null, false);
-    assert(search.live && search.scanned == 0 && !search.report);
+    assert(!search.live && search.scanned == 3);
+    search.restart(null);
+    assert(search.live && search.scanned == 0);
 }
 
 @("MatchStage: covers the positions it scanned, unless stopped")
