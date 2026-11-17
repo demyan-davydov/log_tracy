@@ -202,6 +202,32 @@ private void runPostedTask(SCN_POSTED_NOTIFICATION* notification) nothrow
     guardCallback("a task posted to the window", () => posted.run()); // nothrow: an Error aborts
 }
 
+version (Windows)
+{
+    // The id of the icon in resources/app.rc ("101 ICON ...")
+    private enum appIconId = 101;
+
+    /// Gives the window the icon built into the program (the class of Sciter's windows has
+    /// none): the big one for the taskbar and Alt+Tab, the small one for the title bar. Nothing
+    /// changes when the program has no icon resource (dub test's runner).
+    private void setWindowIcon(HWINDOW hwnd) nothrow @nogc
+    {
+        import core.sys.windows.windows;
+
+        auto instance = GetModuleHandleW(null);
+        const resource = cast(const(wchar)*) cast(size_t) appIconId;
+        void set(WPARAM size, int metricX, int metricY)
+        {
+            auto icon = LoadImageW(instance, resource, IMAGE_ICON,
+                GetSystemMetrics(metricX), GetSystemMetrics(metricY), LR_DEFAULTCOLOR);
+            if (icon !is null)
+                SendMessageW(cast(HWND) hwnd, WM_SETICON, size, cast(LPARAM) icon);
+        }
+        set(ICON_BIG, SM_CXICON, SM_CYICON);
+        set(ICON_SMALL, SM_CXSMICON, SM_CYSMICON);
+    }
+}
+
 class SciterWindow : SciterEventHandler
 {
     private HWINDOW _hwnd;
@@ -217,6 +243,8 @@ class SciterWindow : SciterEventHandler
         _api.SciterSetCallback(_hwnd, &hostCallback, cast(void*) this);
 
         attachEventHandler(_hwnd);
+        version (Windows)
+            setWindowIcon(_hwnd);
     }
 
     /// The data at `uri` the window gives Sciter itself (the files of its dialogs too), null to
