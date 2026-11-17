@@ -60,6 +60,7 @@
 
 .chip-editor > .placeholder {
     color: var(--text-label);
+    opacity: 0.6; /* paler than a label: a hint, not content */
     margin: 1dip 0;
     line-height: 1.3em;
 }
