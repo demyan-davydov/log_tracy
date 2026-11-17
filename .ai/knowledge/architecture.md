@@ -176,7 +176,7 @@ utils  ←  sciter  ←  ui
   passed to the session and the window: `OPEN_AT_START` (logs opened at start, `backend.startFiles()`), `MENU_BAR_PLATFORM`,
   `PSEUDO_LOCALE`, `SCITER_DEBUG_MODE` (the debug mode of Sciter, for its inspector). The table of them: `docs/building.md`, "Environment variables for
   development"; a new one goes there.
-- The debug channel (debug builds only, `SCITER_DEBUG_PORT`): `ui/debug_channel` is a TCP
+- The debug channel (only a build with `--debug-channel`, version `DebugChannel`, debug or release; `SCITER_DEBUG_PORT`): `ui/debug_channel` is a TCP
   server on 127.0.0.1 that runs the requests of `ui/debug_protocol` (JavaScript to evaluate,
   `resources/debug-eval.js` making its value plain JSON; a render of the window into a PNG,
   and of each open popup into a PNG beside it; the mouse moved and keys pressed as events of
@@ -370,5 +370,5 @@ utils  ←  sciter  ←  ui
 - Files sent in a log (the file transfer of DLT): `formats/dlt/file_transfer`,
   `domain/index/transfers` (the catalog), `domain/attachments`, `AppSession.attachmentsJson`
 - Backend texts for the user: `utils/ui_text`, `ui/translations` (see `.ai/knowledge/i18n.md`)
-- Looking inside the running app (debug builds): `ui/debug_channel`, `ui/debug_protocol`,
+- Looking inside the running app (builds with `--debug-channel`): `ui/debug_channel`, `ui/debug_protocol`,
   `resources/debug-eval.js`, the client `scripts/utils/app.mjs` (`.ai/workflows/preview-ui.md`)

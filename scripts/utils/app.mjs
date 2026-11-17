@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { BuildError, build, targetPath } from "../build.mjs";
 import { copyProgram, programName, systemEnv } from "./screenshot.mjs";
 
-export const appUsage = `Drives a copy of Log Tracy (a debug build) through its debug channel.
+export const appUsage = `Drives a copy of Log Tracy (a build with the debug channel) through its debug channel.
 
   node scripts/utils/app.mjs <command> [options]
 
@@ -21,7 +21,9 @@ export const appUsage = `Drives a copy of Log Tracy (a debug build) through its 
       --open <log>      open this log at start (repeat for several tabs)
       --settings <file> start with this settings.json
       --env NAME=VALUE  an environment variable for the app, repeatable
-      --no-build        take the debug build as it is
+      --release         a release build instead of the debug one, for what only a release shows
+                        (both are built with the debug channel, --debug-channel of build.mjs)
+      --no-build        take the build as it is
   eval "<js>"           runs the code in the window, prints the value of its last expression
                         as JSON (an element as {tag, id, class, text, box}); fails on an error
   wait "<js>"           runs the code until its value is true (an error such as a missing
@@ -60,7 +62,7 @@ const stepCommands = ["eval", "wait", "shot", "hover", "key", "type"];
 
 /// The command line: { command, args, open, settings, env, build, timeout, help }
 export function parseAppArgs(argv) {
-    const options = { command: null, args: [], open: [], settings: null, env: {}, build: true, timeout: 10, help: false };
+    const options = { command: null, args: [], open: [], settings: null, env: {}, build: true, release: false, timeout: 10, help: false };
     let onlyArgs = false; // after "--": a text such as "--flag" for type is an argument
     for (let i = 0; i < argv.length; i++) {
         const arg = argv[i];
@@ -90,6 +92,7 @@ export function parseAppArgs(argv) {
             options.env[text.slice(0, at)] = text.slice(at + 1);
         } else if (name === "--timeout") options.timeout = seconds(value(), "--timeout");
         else if (name === "--no-build") options.build = false;
+        else if (name === "--release") options.release = true;
         else if (name === "--help") options.help = true;
         else throw new BuildError(`unknown option ${arg} (--help)`);
     }
@@ -305,7 +308,8 @@ async function inputStep(channel, kind, text) {
 async function start(options) {
     for (const log of options.open)
         if (!existsSync(log)) throw new BuildError(`No log ${log}`);
-    const buildDir = options.build ? build({ release: false, arch: null }) : targetPath({ release: false, arch: null });
+    const target = { release: options.release, arch: null, debugChannel: true };
+    const buildDir = options.build ? build(target) : targetPath(target);
     await stop(true);
     copyProgram(buildDir, copyDir, options.settings);
     const env = { ...process.env, ...systemEnv(process.platform), ...options.env, SCITER_DEBUG_PORT: "0" };

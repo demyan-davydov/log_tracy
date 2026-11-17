@@ -57,7 +57,7 @@ configuration "application" {
 configuration "unittest" {
 	targetType "executable"
 	dependency "unit-threaded" version="~>2.2.6"
-	versions "unitUnthreaded"
+	versions "unitUnthreaded" "DebugChannel"
 	mainSourceFile "build/unittest/ut.d"
 	excludedSourceFiles "source/app.d" // the program's main
 	preBuildCommands "\"$DUB\" run --compiler=\"$DC\" unit-threaded@2.2.6 -c gen_ut_main -- -f build/unittest/ut.d -d \"$DUB\""

@@ -1,4 +1,4 @@
-//! The protocol of the debug channel (ui/debug_channel, debug builds only): requests and
+//! The protocol of the debug channel (ui/debug_channel, builds with --debug-channel only): requests and
 //! responses are lines of JSON over a TCP connection. Sciter-free, so it is tested here.
 //!
 //! A request: {"eval": "<js>"} runs the code in the window and answers the value of its last

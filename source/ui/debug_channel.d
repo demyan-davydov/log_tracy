@@ -1,4 +1,4 @@
-//! The debug channel of debug builds: with SCITER_DEBUG_PORT=<port> a server on 127.0.0.1
+//! The debug channel (builds with `--debug-channel`, version DebugChannel): with SCITER_DEBUG_PORT=<port> a server on 127.0.0.1
 //! answers the requests of ui/debug_protocol (code to run in the window, a shot of it, the
 //! mouse moved and keys pressed as events of the system), for agents and scripts looking
 //! inside the running app (scripts/utils/app.mjs). A release build has no server and only says that
@@ -10,17 +10,17 @@
 module ui.debug_channel;
 
 import sciter.capi.types : HWINDOW;
-import std.stdio : writeln;
+import std.stdio : stdout, writeln;
 
-/// The channel main() starts: does nothing in a release build or without SCITER_DEBUG_PORT
+/// The channel main() starts: does nothing in a build without it or without SCITER_DEBUG_PORT
 struct DebugChannel
 {
-    debug private Server _server;
+    version (DebugChannel) private Server _server;
 
     /// Stops answering: call it before the window is destroyed
     void stop()
     {
-        debug if (_server !is null)
+        version (DebugChannel) if (_server !is null)
         {
             _server.stop();
             _server = null;
@@ -29,7 +29,7 @@ struct DebugChannel
 }
 
 /// The channel to the window `hwnd`, when SCITER_DEBUG_PORT is set (0: any free port, written
-/// to the output). Debug builds only.
+/// to the output). Builds with version DebugChannel only.
 DebugChannel startDebugChannel(HWINDOW hwnd)
 {
     import std.process : environment;
@@ -38,7 +38,7 @@ DebugChannel startDebugChannel(HWINDOW hwnd)
     const setting = environment.get("SCITER_DEBUG_PORT", "");
     if (!setting.length)
         return channel;
-    debug
+    version (DebugChannel)
     {
         import ui.debug_protocol : parsePort;
 
@@ -54,11 +54,11 @@ DebugChannel startDebugChannel(HWINDOW hwnd)
             writeln("Can't start the debug channel: ", e.msg);
     }
     else
-        writeln("SCITER_DEBUG_PORT is ignored: the debug channel is in debug builds only");
+        writeln("SCITER_DEBUG_PORT is ignored: this build has no debug channel (version DebugChannel)");
     return channel;
 }
 
-debug:
+version (DebugChannel):
 
 import core.sync.event : Event;
 import core.time : Duration, seconds;
@@ -88,6 +88,7 @@ private final class Server
         _listener.listen(1);
         // scripts/utils/app.mjs reads the port from this line (port 0 is any free one)
         writeln("Debug channel: listening on 127.0.0.1:", _listener.localAddress.toPortString);
+        stdout.flush(); // a release build buffers its output: the script waits for this line
         auto thread = new Thread(&serve);
         thread.isDaemon = true; // the app exits whatever a client does
         thread.start();

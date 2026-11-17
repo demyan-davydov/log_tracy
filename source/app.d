@@ -131,7 +131,7 @@ int main()
 		auto session = newSession(settings, documents, sciterDebugMode);
 		scope auto win = new MainWindow(session, sciterDebugMode); // scope ensures that d'tor is called on exit
 
-		// SCITER_DEBUG_PORT=<port>: the debug channel to the window, debug builds only
+		// SCITER_DEBUG_PORT=<port>: the debug channel to the window, builds with version DebugChannel only (build --debug-channel)
 		auto debugChannel = startDebugChannel(win.hwnd);
 		scope (exit) debugChannel.stop(); // before the window is destroyed
 

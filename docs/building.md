@@ -109,6 +109,7 @@ The commands can be run from any folder: the script goes to the project root its
 ```sh
 node scripts/build.mjs                    # debug build for this machine
 node scripts/build.mjs --release          # release build
+node scripts/build.mjs --debug-channel    # with the debug channel (also with --release), see below
 node scripts/build.mjs --arch x64         # another architecture: x64 or arm64
 node scripts/test.mjs                     # the D unittests, the JS tests, the names of .ai/
 node scripts/test.mjs --module <file.d>   # the unittests of one D module (see "Tests")
@@ -250,8 +251,10 @@ Windows and Linux were not tried on those systems yet.
 
 ### Driving the app: the debug channel
 
-`node scripts/utils/app.mjs` drives a running copy of a debug build through its debug channel
-(`SCITER_DEBUG_PORT`): it looks inside the window instead of guessing from a screenshot.
+`node scripts/utils/app.mjs` drives a running copy of the app through its debug channel (`SCITER_DEBUG_PORT`): it looks inside the window instead of
+guessing from a screenshot. The channel is in a build only when asked, a debug build too:
+`node scripts/build.mjs [--release] --debug-channel` (D version `DebugChannel`); `app.mjs start`
+builds it itself, and `start --release` drives a release, for what only a release shows.
 
 ```sh
 node scripts/utils/app.mjs start --open ~/logs/trace.dlt     # builds, starts a copy in build/app, keeps it running

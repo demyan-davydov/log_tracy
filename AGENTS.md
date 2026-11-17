@@ -42,6 +42,7 @@ every system, `scripts/build.mjs` (for people: `docs/building.md`):
 node scripts/install-deps.mjs                   # checks LDC, dub, Git LFS, the C toolchain; --install installs what is missing
 node scripts/build.mjs                          # debug for this machine → build/osx-aarch64-debug/log_tracy
 node scripts/build.mjs --release                # release; --arch x64|arm64 for another architecture
+node scripts/build.mjs --debug-channel          # the debug channel is in a build only with this (debug or --release)
 node scripts/run.mjs                            # builds as above (same options) and starts the app, its stdout here
 node scripts/test.mjs                           # D unittests ("N test(s) run, 0 failed."), JS tests, stale names of .ai/
 node scripts/test.mjs --filter utils.fsm        # only the D unittests whose names start with it (repeatable), no JS tests
@@ -53,7 +54,7 @@ dub build --compiler=ldc2                       # the same build without the scr
 node --test "tests/js/*.test.mjs"               # JS unit tests only (pure modules such as resources/new-tab.js)
 node scripts/utils/i18n-extract.mjs             # brings the translation catalogs up to the texts of the code
 node scripts/utils/screenshot.mjs --open <log>  # the app's window with a log → build/screenshot.png (--help)
-node scripts/utils/app.mjs start --open <log>   # a running debug copy to drive: eval, wait, shot, run, stop (--help)
+node scripts/utils/app.mjs start --open <log>   # a running copy (debug; --release too) to drive: eval, wait, shot, run, stop (--help)
 node scripts/build.mjs gen-log <file> --format dlt|dlt-v2|text --size 1G  # a test log, same bytes per seed (--help)
 node scripts/build.mjs pack-libs                # the Sciter libraries of libs/ into their archives of LFS, after an update
 node scripts/build.mjs bench [log] [words] --against master  # bench_rows.d (--bench index) of both sides, a table (--help)

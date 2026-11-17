@@ -1,6 +1,6 @@
 ---
 name: app
-description: Drive a running debug copy of Log Tracy through its debug channel (scripts/utils/app.mjs): run JavaScript in its window, wait for a state, read elements and their geometry, render the window, run a scenario of steps. Use to check every state of a UI change, reproduce a UI bug, or look inside the window instead of guessing from a screenshot; not for simple CSS tweaks the user checks themselves.
+description: Drive a running copy (debug, or release with `start --release`) of Log Tracy through its debug channel (scripts/utils/app.mjs): run JavaScript in its window, wait for a state, read elements and their geometry, render the window, run a scenario of steps. Use to check every state of a UI change, reproduce a UI bug, or look inside the window instead of guessing from a screenshot; not for simple CSS tweaks the user checks themselves.
 argument-hint: "[log path] [what to check]"
 ---
 

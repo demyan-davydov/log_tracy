@@ -9,8 +9,9 @@ test("start takes logs, settings, variables and the build", () => {
     assert.deepEqual(parseAppArgs(["start", "--open", "a.dlt", "--open=b.log", "--settings", "s.json",
         "--env", "PSEUDO_LOCALE=1", "--no-build"]), {
         command: "start", args: [], open: ["a.dlt", "b.log"], settings: "s.json",
-        env: { PSEUDO_LOCALE: "1" }, build: false, timeout: 10, help: false
+        env: { PSEUDO_LOCALE: "1" }, build: false, release: false, timeout: 10, help: false
     });
+    assert.equal(parseAppArgs(["start", "--release"]).release, true);
 });
 
 test("the commands and their arguments", () => {

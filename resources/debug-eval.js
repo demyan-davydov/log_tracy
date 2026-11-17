@@ -1,4 +1,4 @@
-// What the debug channel (ui/debug_channel, debug builds only) evaluates for a request
+// What the debug channel (ui/debug_channel, builds with --debug-channel only) evaluates for a request
 // {"eval": code}: this function expression, called with the code. It answers, as JSON text, what
 // the code gave: {value} made plain JSON or {thrown} (the response line is made of it by
 // ui/debug_protocol). Not served to the window and not a module: SciterEval runs it in the

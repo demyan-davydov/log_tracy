@@ -55,6 +55,8 @@ Commands:
 
 Options:
   --release       a release build instead of debug (build; dist always is one)
+  --debug-channel also build the debug channel, in a debug or a release build
+                  (scripts/utils/app.mjs drives the app through it)
   --arch x64|arm64
                   another architecture than this machine's (build, test, dist)
   --brief         only what failed: compile errors, failed tests with their places and the
@@ -115,6 +117,7 @@ export function parseCommand(argv) {
         if (argv.includes(command)) throw new BuildError(`${command} comes first: node scripts/build.mjs ${command} ...`);
     let command = null;
     let release = false;
+    let debugChannel = false;
     let arch = null;
     let module = null;
     const filters = [];
@@ -122,6 +125,7 @@ export function parseCommand(argv) {
     for (let i = 0; i < argv.length; i++) {
         const arg = argv[i];
         if (arg === "--release") release = true;
+        else if (arg === "--debug-channel") debugChannel = true;
         else if (arg === "--brief") brief = true;
         else if (arg === "--arch" || arg.startsWith("--arch=")) {
             const value = arg === "--arch" ? argv[++i] : arg.slice("--arch=".length);
@@ -148,6 +152,7 @@ export function parseCommand(argv) {
     // an option the command doesn't take is refused rather than silently ignored
     if (release && (command === "test" || command === "pack-libs"))
         throw new BuildError(`${command} takes no --release`);
+    if (debugChannel && command !== "build") throw new BuildError("--debug-channel is an option of build");
     if (arch && command === "pack-libs") throw new BuildError("pack-libs packs every library, it takes no --arch");
     if (filters.length > 0) {
         if (command !== "test") throw new BuildError("--filter is an option of test: node scripts/build.mjs test --filter <name>");
@@ -159,15 +164,17 @@ export function parseCommand(argv) {
         return { command, release: false, arch: null, module, ...(brief && { brief }) };
     }
     return { command, release: release || command === "dist", arch, ...(filters.length > 0 && { filters }),
-        ...(brief && { brief }) };
+        ...(brief && { brief }), ...(debugChannel && { debugChannel }) };
 }
 
 /// The arguments of dub for `build` or `test` (whose build type is always unittest); `filters`
 /// go to unit-threaded's runner of `test`.
-export function dubArgs(command, { release, installed, arch, filters = [] }) {
+export function dubArgs(command, { release, installed, arch, debugChannel, filters = [] }) {
     const args = [command, "--compiler=ldc2"];
     // dist: the release of an installed program, settings in the user's folder (dub.sdl)
     if (command === "build") args.push(`--build=${installed ? "dist" : release ? "release" : "debug"}`);
+    // the debug channel (ui/debug_channel) is in a build only when asked, a debug one too
+    if (debugChannel && command === "build") args.push("--d-version=DebugChannel");
     if (arch) args.push(`--arch=${dubArchOf[arch]}`);
     if (filters.length > 0) args.push("--", ...filters);
     return args;
@@ -894,12 +901,12 @@ export function runCommandLine(argv) {
 function main(argv) {
     const callerDir = process.cwd();
     process.chdir(fileURLToPath(new URL("..", import.meta.url))); // the project root
-    const { command, release, arch, toolArgs, module, filters, brief } = parseCommand(argv);
+    const { command, release, debugChannel, arch, toolArgs, module, filters, brief } = parseCommand(argv);
     if (brief) startBrief();
     if (command === "gen-log") genLog(toolArgs, callerDir);
     else if (command === "bench") benchAgainst(toolArgs, callerDir);
     else if (command === "help") process.stdout.write(buildUsage);
-    else if (command === "build") console.log(`Built: ${build({ release, arch })}`);
+    else if (command === "build") console.log(`Built: ${build({ release, arch, debugChannel })}`);
     else if (command === "test" && module) testModule(module, callerDir);
     else if (command === "test") test({ arch, filters });
     else if (command === "dist") dist(arch);

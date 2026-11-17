@@ -47,11 +47,11 @@ the named functions from a temporary copy of the page, then delete the copy.
 
 ## Driving the App
 
-`scripts/utils/app.mjs` drives a running copy of a debug build through the debug channel
+`scripts/utils/app.mjs` drives a running copy of the app (a build with `--debug-channel`: `app.mjs start` builds it, a release too with `start --release`) through the debug channel
 (`docs/building.md`, "Driving the app"): no temporary changes of the script any more.
 
 ```sh
-node scripts/utils/app.mjs start --open <log> [--settings <settings.json>] [--env NAME=VALUE] [--no-build]
+node scripts/utils/app.mjs start --open <log> [--settings <settings.json>] [--env NAME=VALUE] [--release] [--no-build]
 node scripts/utils/app.mjs wait "<js true when ready>" [--timeout 10]
 node scripts/utils/app.mjs eval "<js>"          # the value of the last expression as JSON
 node scripts/utils/app.mjs shot [build/x.png]   # then read the PNG; an open popup: x.popup-N.png too
