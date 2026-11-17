@@ -587,7 +587,9 @@ final class AppSession
     void cancelMainView(DocumentId docId)
     {
         if (auto ui = _documentUis.get(docId, null))
-            ui.pressMainCancel();
+            // The cancelled filter isn't applied: the boxes go back to what the view shows
+            if (ui.pressMainCancel())
+                filterCommand(docId, (DocumentFilters filters) => filters.restoreApplied());
     }
 
     void cancelSearchView(DocumentId docId)

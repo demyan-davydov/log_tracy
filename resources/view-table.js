@@ -205,11 +205,13 @@ export class ViewTable {
 // The main view: the log as the filters show it. Its file may be lost: the
 // view then covers the table with a view of its own (Retry, Close).
 export class MainViewTable extends ViewTable {
-    // @param elements - as ViewTable, and lost: the view of the lost file
+    // @param elements - as ViewTable, lost: the view of the lost file, cancelled(): the panel
+    //   shows the boxes of the filters anew (a cancel puts them back)
     constructor(docId, elements) {
         super(docId, elements, mainViewStatus);
         this.lostView = elements.lost;
         this.path = ""; // of the file, shown by the lost view
+        this.cancelled = elements.cancelled;
     }
 
     get covers() {
@@ -242,6 +244,7 @@ export class MainViewTable extends ViewTable {
 
     cancel() {
         backend.cancelMainView(this.docId);
+        this.cancelled(); // the filter boxes changed
     }
 
     // Go to Message: the row of message `index`, or of the first one after it

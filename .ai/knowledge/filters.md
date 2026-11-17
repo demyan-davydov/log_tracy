@@ -37,6 +37,11 @@
   can be exported. No file is referred to, so a file loaded for two logs doesn't tie them
   together.
 
+- Cancel of a running filter puts the boxes of the panel back (`AppSession.cancelMainView`):
+  `DocumentFilters.markApplied` remembers them when a load or a filter ends
+  (`DocumentUi.show`), `restoreApplied` sets them again and filters anew. Rules
+  are found by id, sets by index (`remove` drops its entry).
+
 ## Rule Editor and Colors
 
 - The rule editor (`resources/rule-editor.htm`) has a row per column of the format

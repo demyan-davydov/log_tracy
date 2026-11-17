@@ -6,6 +6,7 @@ module ui.document_ui;
 import domain.document_store : DocumentStore;
 import domain.document : Document;
 import domain.document_id : DocumentId;
+import std.sumtype : match;
 import log_core.log_message : LogMessage;
 import log_core.rule_filter : RuleId;
 import ui.filter_commands : DocumentFilters;
@@ -21,6 +22,7 @@ final class DocumentUi : MainViewSink, MainViewCommands, SearchViewSink, SearchV
     private MainViewFsm _mainView;
     private SearchViewFsm _searchView;
     private DocumentFilters _filters;
+    private bool _filterCancelAsked; // set by cancelOperation, read by pressMainCancel
 
     MainViewModel mainViewShown; // the latest view shown by the machine
     bool mainViewChanged; // shown since it was last sent to JS
@@ -64,9 +66,12 @@ final class DocumentUi : MainViewSink, MainViewCommands, SearchViewSink, SearchV
         return _filters is null ? RuleId.init : _filters.ruleOf(message);
     }
 
-    void pressMainCancel()
+    /// Returns: true if a running filter was asked to stop
+    bool pressMainCancel()
     {
+        _filterCancelAsked = false;
         _mainView.process(CancelPressed());
+        return _filterCancelAsked;
     }
 
     void pressSearchCancel()
@@ -76,8 +81,14 @@ final class DocumentUi : MainViewSink, MainViewCommands, SearchViewSink, SearchV
 
     void show(in MainViewModel vm)
     {
+        // A load or a filter that just ended: the boxes are what the view shows. Not a ready view that
+        // only grew, a switch may have come since
+        const built = mainViewShown.match!((in FilteringView _) => true, (in LoadingFileView _) => true, (in _) => false);
+        const ready = vm.match!((in ReadyView _) => true, (in _) => false);
         mainViewShown = vm;
         mainViewChanged = true;
+        if (built && ready && _filters !is null)
+            _filters.markApplied();
     }
 
     void show(in SearchViewModel vm)
@@ -90,7 +101,8 @@ final class DocumentUi : MainViewSink, MainViewCommands, SearchViewSink, SearchV
     // filter is stopped with it, the search alone
     bool cancelOperation()
     {
-        return _documents.doc(_docId).requestCancel(Document.Operation.BuildFilterIndex);
+        _filterCancelAsked = _documents.doc(_docId).requestCancel(Document.Operation.BuildFilterIndex);
+        return _filterCancelAsked;
     }
 
     bool cancelSearch()

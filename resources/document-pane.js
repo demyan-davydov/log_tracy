@@ -193,7 +193,8 @@ export class DocumentPane {
         // onSearchViewChanged) are theirs, see view-table.js
         const $ = selector => this.root.$(selector);
         this.main = new MainViewTable(docId, { table: $("table.main-view"), status: $(".main-status"),
-            progress: $(".main-progress"), lost: $(".source-lost") });
+            progress: $(".main-progress"), lost: $(".source-lost"),
+            cancelled: () => this.filterPanel.showResult("") });
         this.search = new SearchViewTable(docId, { table: $("table.search-view"), status: $(".search-status"),
             progress: $(".search-progress") });
         // A row the user selects in one table is shown in the other (followSelection,

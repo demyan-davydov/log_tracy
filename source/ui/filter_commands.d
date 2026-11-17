@@ -34,6 +34,8 @@ final class DocumentFilters
     private UiText[RuleId] _problems; // why a rule isn't applied, by its id: found as it comes in
     private RuleMatcher _matcher; // compiled from _sets by rematch(); null: no rules
     private RuleIdGenerator _ruleIds; // the rules get their ids when they come in
+    private bool[] _appliedSets; // the boxes of the sets and rules (by id) when the view was complete
+    private bool[RuleId] _appliedRules;
 
     // The commands return their messages as UiText, the session puts them; what is made as text
     // here (the JSON of the panel, the name of a new set or rule) is put by the TextForUser
@@ -205,6 +207,8 @@ final class DocumentFilters
         if (set >= _sets.length)
             return noSuchSet();
         const changed = filtersView(_sets[set]);
+        if (set < _appliedSets.length)
+            _appliedSets = _appliedSets.remove(set); // its boxes go with it
         foreach (ref r; _sets[set].rules)
             _problems.remove(r.id);
         _sets = _sets.remove(set);
@@ -249,6 +253,31 @@ final class DocumentFilters
         rematch();
         if (_sets[set].enabled && filters(*target, true)) // markers don't change what is shown
             apply();
+        return UiText.init;
+    }
+
+    //! Remembers the boxes as the view shows them: its filter is complete
+    void markApplied()
+    {
+        _appliedSets = _sets.map!(set => set.enabled).array;
+        _appliedRules = null;
+        foreach (set; _sets)
+            foreach (rule; set.rules)
+                _appliedRules[rule.id] = rule.enabled;
+    }
+
+    //! Puts the boxes as they were when the view was complete and filters it anew: for a filter the
+    //! user cancelled, which isn't applied, so no box may say it is
+    UiText restoreApplied()
+    {
+        foreach (i, ref set; _sets)
+        {
+            set.enabled = i < _appliedSets.length && _appliedSets[i];
+            foreach (ref rule; set.rules)
+                rule.enabled = _appliedRules.get(rule.id, false);
+        }
+        rematch();
+        apply();
         return UiText.init;
     }
 
@@ -673,6 +702,35 @@ unittest
     assert(english(logcat.filters.loadFile(path)).canFind("DLT"));
     assert(logcat.filters.sets.length == 0 && logcat.applyCount == 0);
     assert(logcat.filters.toJson()["canFilter"].boolean && !logcat.filters.toJson()["canDlf"].boolean);
+}
+
+@("DocumentFilters: restoreApplied puts the boxes as the complete view had them")
+unittest
+{
+    import std.file : remove;
+
+    const path = makeDlf("filters_restore.dlf", appFilter("APP1"), appFilter("APP2"));
+    scope (exit)
+        remove(path);
+
+    auto fx = new Fixture();
+    assert(fx.filters.loadFile(path).empty);
+    fx.filters.markApplied();
+    assert(fx.filters.enableRule(0, 1, false).empty);
+    assert(fx.filters.enableSet(0, false).empty);
+    assert(fx.filters.restoreApplied().empty);
+    assert(fx.filters.sets[0].enabled && fx.filters.sets[0].rules[0].enabled && fx.filters.sets[0].rules[1].enabled);
+    assert(fx.shows("APP2") && !fx.shows("APP3"), "the view shows what the boxes say");
+
+
+    // A removed set takes its remembered boxes with it
+    assert(fx.filters.newSet().empty);
+    assert(fx.filters.enableSet(1, false).empty);
+    fx.filters.markApplied();
+    assert(fx.filters.enableSet(1, true).empty);
+    assert(fx.filters.remove(0).empty);
+    assert(fx.filters.restoreApplied().empty);
+    assert(!fx.filters.sets[0].enabled, "the set that remains is the one that was off");
 }
 
 @("DocumentFilters: a set and a rule are switched off and on, a removed set stops filtering")
