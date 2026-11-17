@@ -294,9 +294,16 @@
 }
 
 .level-fatal {
+    font-weight: bold;
+}
+
+/* Fatal: the color behind the text only, not the whole cell */
+.level-fatal>span.level-mark {
     color: var(--log-fatal-text);
     background-color: var(--log-fatal-bg);
-    font-weight: bold;
+    display: inline-block;
+    border-radius: 3dip;
+    padding: 0 4dip;
 }
 
 .level-error {
@@ -318,8 +325,8 @@
     color: var(--log-debug);
 }
 
-/* Selection: the selected rows have the theme's blue (paler while the table
-   isn't focused), the current row (keyboard focus) a frame, duller while the
+/* Selection: the selected rows have the theme's blue (the same while the table
+   isn't focused, its own variable stays to set apart), the current row (keyboard focus) a frame, duller while the
    table isn't focused. The theme's colors, not the system's: they don't
    change with the OS settings */
 .log-table>tbody>tr[row-selected="true"] {
@@ -376,6 +383,7 @@ popup.notice.right {
    cellContent): over the match colors too; the text of the theme, as above.
    A gap of the Index between selected digits too (i.digit-gap) */
 .log-table td>span.text-selected,
+.log-table td>span.level-mark span.text-selected,
 .log-table td>i.text-selected {
     background-color: var(--bg-text-selected);
     color: var(--text-main);

@@ -52,7 +52,9 @@ function cellContent(text, matches, matchColors, part, grouped = false) {
 function renderCell(column, value, text, level, matches, matchColors, part) {
     if (column.kind === "Level") {
         if (!value) return <td class="aux"></td>; // LogLevel.None: the record has no level
-        return <td class={`level level-${text.toLowerCase()}`}>{cellContent(text, null, null, part)}</td>;
+        const content = cellContent(text, null, null, part);
+        // Fatal: the color is behind the text only, not the whole cell (table.css)
+        return <td class={`level level-${text.toLowerCase()}`}>{text === "Fatal" ? <span class="level-mark">{content}</span> : content}</td>;
     }
     if (column.kind === "Payload" && value !== null)
         return <td>{cellContent(text, matches, matchColors, part)}</td>;

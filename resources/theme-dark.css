@@ -58,11 +58,11 @@
     --bg-row-found: morph(var(--bg-row), lighten:12%, sepia:35%);
     --bg-row-found-stripe: morph(var(--bg-row-stripe), lighten:12%, sepia:35%);
     /* Text selected in the cells of a log table (text-selection.js), on any row */
-    --bg-text-selected: #264f78;
+    --bg-text-selected: #1a7f37;
     /* Selected rows of a log table: while the table is focused, while it isn't
        (a duller blue), their text; the frame of the current row */
     --bg-row-selected: #0b4a8c;
-    --bg-row-selected-inactive: #3a4a5e;
+    --bg-row-selected-inactive: #0b4a8c;
     --text-row-selected: #fff;
     --border-row-current: #6aa6ec;
     --border-row-current-inactive: #6b7c92;
@@ -103,8 +103,8 @@
     --chip-selected-inactive: #3a3d41;
 
     /* Log Levels */
-    --log-fatal-bg: #5a0000;
-    --log-fatal-text: #ffd6d6;
+    --log-fatal-bg: #b3173f;
+    --log-fatal-text: #fff;
     --log-error: #ff4d4d;
     --log-warn: #ffaa00;
     --log-info: #60c060;
