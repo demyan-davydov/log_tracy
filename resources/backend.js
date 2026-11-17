@@ -151,6 +151,7 @@ export const newFilterSet = docId => message(xcall("newFilterSet", docId));
 export const exportFilterSet = (docId, set, path) => message(xcall("exportFilterSet", docId, set, path));
 export const removeFilterSet = (docId, set) => message(xcall("removeFilterSet", docId, set));
 export const enableFilterSet = (docId, set, enabled) => message(xcall("enableFilterSet", docId, set, enabled));
+export const renameFilterSet = (docId, set, name) => message(xcall("renameFilterSet", docId, set, name));
 export const addFilterRule = (docId, set, rule) => message(xcall("addFilterRule", docId, set, JSON.stringify(rule)));
 export const updateFilterRule = (docId, set, index, rule) =>
     message(xcall("updateFilterRule", docId, set, index, JSON.stringify(rule)));

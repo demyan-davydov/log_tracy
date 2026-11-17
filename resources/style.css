@@ -585,6 +585,16 @@ frameset {
     max-width: max-content;
 }
 
+/* The name edited in place (double-click): in the font of the name, wide
+   enough for a usual one, no wider than the page */
+.filter-name-edit {
+    width: 16em;
+    max-width: *;
+    height: 1.4em;
+    padding: 0 3dip;
+    font-weight: inherit;
+}
+
 /* Indented enough for the buttons of a rule on the left of a chip
    (.filter-chip-actions) */
 .filter-chips {

@@ -358,6 +358,9 @@ class MainWindow : SciterWindow
         case "enableFilterSet":
             answer(filterCommand(docParam(), f => f.enableSet(param!int(1), param!bool(2))));
             return true;
+        case "renameFilterSet":
+            answer(filterCommand(docParam(), f => f.renameSet(param!int(1), param!string(2))));
+            return true;
         case "addFilterRule":
             answer(filterCommand(docParam(), f => f.addRule(param!int(1), param!string(2))));
             return true;

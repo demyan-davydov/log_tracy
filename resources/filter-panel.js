@@ -24,11 +24,14 @@ const ruleKindTitles = {
 const noFilters = { canFilter: false, canDlf: false, active: false, sets: [] };
 
 // The head of a set: its switch, name and buttons. Its set-index is read by the
-// handlers of its switch and buttons (their parent).
-function setHead(set, s) {
+// handlers of its switch and buttons (their parent). A set being renamed has
+// a text field in place of its name (its value set by the caller).
+function setHead(set, s, renaming) {
     return <div class="filter-set-head" set-index={s}>
         <input type="checkbox" class="filter-set-switch" />
-        <span class="filter-name" title={set.source ? tr("Loaded from {file}", { file: set.source }) : ""}>{set.name}</span>
+        {renaming
+            ? <input type="text" class="filter-name-edit" />
+            : <span class="filter-name" title={set.source ? tr("Loaded from {file}", { file: set.source }) : ""}>{set.name}</span>}
         <span class="filter-button filter-export" title={tr("Export to a filter file")}>⤓</span>
         <span class="filter-button filter-add" title={tr("Add a rule")}>+</span>
         <span class="filter-button filter-remove" title={tr("Remove this filter")}>×</span>
@@ -65,13 +68,16 @@ function ruleChip(rule, s, r) {
 // A block per set: its head, then its rules as chips wrapping under it; after
 // it a line per rule not applied saying why. The chips shrink with the page
 // (no overflow in a narrow window).
-// The switches get their state here: the markup can't set it.
-function renderSets(panel, sets) {
+// The switches and the name being edited (set `renaming`, null if none) get
+// their state here: the markup can't set it.
+function renderSets(panel, sets, renaming) {
     sets.forEach((set, s) => {
         panel.append(<div class={set.enabled ? "filter-set" : "filter-set off"} />);
         const row = panel.lastElementChild;
-        row.append(setHead(set, s));
+        row.append(setHead(set, s, s === renaming));
         row.$(".filter-set-switch").value = set.enabled;
+        const edit = row.$(".filter-name-edit");
+        if (edit) edit.value = set.name;
         row.append(<div class="filter-chips" />);
         const chips = row.lastElementChild;
         set.rules.forEach((rule, r) => {
@@ -103,6 +109,7 @@ export class FilterPanel {
         this.host = host;
         this.filters = noFilters; // what render() got last
         this.message = ""; // of the last command
+        this.renaming = null; // the set whose name is edited in place, null if none
         this.rendered = false; // built on the first show, and again when its texts are stale
         this.bind();
     }
@@ -153,8 +160,10 @@ export class FilterPanel {
             panel.append(<div class="filters-empty">{info.canFilter
                 ? tr("No filters: load a filter file or create a new one")
                 : tr("This log has no columns to filter by")}</div>);
-        renderSets(panel, sets);
-        const again = focused && panel.$(focused);
+        if (this.renaming !== null && !sets[this.renaming]) this.renaming = null;
+        renderSets(panel, sets, this.renaming);
+        const edit = panel.$(".filter-name-edit");
+        const again = edit ?? (focused && panel.$(focused));
         if (again) again.state.focus = true;
         this.root.$(".btn-dlf").style.display = info.canFilter ? "" : "none";
         this.root.$(".btn-new-dlf").style.display = info.canFilter ? "" : "none";
@@ -179,6 +188,32 @@ export class FilterPanel {
         if (!input.classList.contains("filter-rule-switch")) return null;
         const rule = owner.getAttribute("rule-index");
         return `.filter-chip[set-index="${set}"][rule-index="${rule}"] > .filter-rule-switch`;
+    }
+
+    // Edits the name of a set in place, its text selected: Enter or a click
+    // elsewhere renames it, Escape keeps the name. The field takes the focus
+    // after the double-click that asked for it: Sciter drops a focus set while
+    // a press on a non-focusable element is handled
+    startRename(set) {
+        this.renaming = set;
+        this.render();
+        setTimeout(() => {
+            const edit = this.root.$(".filter-name-edit");
+            if (!edit) return;
+            edit.state.focus = true;
+            edit.edit.selectRange(0, edit.value.length);
+        }, 0);
+    }
+
+    // Ends the edit of a name: renames the set with the text (the backend
+    // keeps the old name for one empty or of spaces only) or, cancelled, keeps it
+    endRename(apply) {
+        const set = this.renaming;
+        if (set === null) return; // ended already: the field lost the focus as it went
+        this.renaming = null;
+        const edit = this.root.$(".filter-name-edit");
+        if (apply && edit) this.showResult(backend.renameFilterSet(this.docId, set, edit.value));
+        else this.render();
     }
 
     // Opens the editor of a rule of a set (rule -1: a new one) and applies
@@ -217,14 +252,28 @@ export class FilterPanel {
         });
 
         // An empty set, kept with the log like a loaded one; its first rule is
-        // asked for right away
+        // asked for right away, then its name
         on("click", ".btn-new-dlf", () => {
             this.showResult(backend.newFilterSet(docId));
             if (this.message) return;
             const set = this.filters.sets.length - 1;
             // No first rule: no set either, so cancelled tries don't pile up
             if (!this.editRule(set, -1)) this.showResult(backend.removeFilterSet(docId, set));
+            else this.startRename(set);
         });
+
+        on("dblclick", ".filter-set-head .filter-name", (evt, name) => {
+            this.startRename(setOf(name.parentElement));
+            return true;
+        });
+
+        on("keydown", ".filter-name-edit", evt => {
+            if (evt.code !== "Enter" && evt.code !== "Escape") return false;
+            this.endRename(evt.code === "Enter");
+            return true;
+        });
+
+        on("focusout", ".filter-name-edit", () => this.endRename(true));
 
         on("click", ".filter-add", (evt, button) => {
             this.editRule(setOf(button.parentElement), -1);

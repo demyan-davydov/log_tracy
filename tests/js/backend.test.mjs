@@ -71,6 +71,8 @@ test("the columns of the tables come as text, to tell a change", () => {
 test("a message of the backend is \"\" when there is none", () => {
     assert.equal(callOf(() => backend.newFilterSet(3), undefined).value, "");
     assert.equal(callOf(() => backend.retryDocument(3), "gone").value, "gone");
+    assert.deepEqual(callOf(() => backend.renameFilterSet(3, 1, "Errors"), undefined),
+        { call: ["renameFilterSet", 3, 1, "Errors"], value: "" });
 });
 
 test("openFile: the id of the document, or why the file can't be opened", () => {

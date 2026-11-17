@@ -226,6 +226,19 @@ final class DocumentFilters
         return UiText.init;
     }
 
+    //! @brief Renames a set; the name is trimmed, an empty one (or one of
+    //! spaces only) leaves the old name
+    UiText renameSet(size_t set, string name)
+    {
+        import std.string : strip;
+
+        if (set >= _sets.length)
+            return noSuchSet();
+        if (name.strip.length)
+            _sets[set].name = name.strip;
+        return UiText.init;
+    }
+
     //! @brief Switches one rule of a set on or off
     UiText enableRule(size_t set, size_t rule, bool enabled)
     {
@@ -688,6 +701,19 @@ unittest
     assert(fx.filters.sets.length == 0 && fx.applied is null);
     assert(!fx.filters.remove(0).empty, "no such set");
     assert(!fx.filters.enableRule(5, 0, true).empty);
+}
+
+@("DocumentFilters: a set is renamed, its name trimmed; an empty name or one of spaces leaves the old one")
+unittest
+{
+    auto fx = new Fixture();
+    assert(fx.filters.newSet().empty);
+    assert(fx.filters.renameSet(0, "  Errors of APP1 ").empty);
+    assert(fx.filters.sets[0].name == "Errors of APP1", fx.filters.sets[0].name);
+    assert(fx.filters.saved()[0].name == "Errors of APP1", "kept for the log");
+    assert(fx.filters.renameSet(0, "").empty && fx.filters.sets[0].name == "Errors of APP1");
+    assert(fx.filters.renameSet(0, " \t ").empty && fx.filters.sets[0].name == "Errors of APP1");
+    assert(!fx.filters.renameSet(3, "Other").empty, "no such set");
 }
 
 @("DocumentFilters: switching a marker rule, or a set of markers only, doesn't filter the view again")
