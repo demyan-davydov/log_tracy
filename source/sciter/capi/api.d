@@ -24,7 +24,7 @@ struct SciterAPI_T
 
     uint version_; // 0
     extern (C) LPCWSTR function() SciterClassName; // 1
-    extern (C) uint function(SBOOL) SciterVersion; // 2
+    extern (C) uint function(uint) SciterVersion; // 2
     extern (C) SBOOL function(HWINDOW, LPCWSTR, const(ubyte)*, UINT) SciterDataReady; // 3
     extern (C) SBOOL function(HWINDOW, LPCWSTR, const(ubyte)*, UINT, void*) SciterDataReadyAsync; // 4
 

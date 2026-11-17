@@ -99,6 +99,9 @@ private void loadSciterLib()
     instance.api = getApi();
     writeln("Sciter library loaded: ", LIB_NAME);
     writeln("Sciter API Version: ", instance.api.version_);
+    // SciterVersion(n) is the n-th part (0..3) of the library version, as in 6.0.5.5.
+    writeln("Sciter Version: ", instance.api.SciterVersion(0), ".", instance.api.SciterVersion(1),
+        ".", instance.api.SciterVersion(2), ".", instance.api.SciterVersion(3));
     writeln("-------------------------------");
     writeln();
 }
