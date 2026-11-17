@@ -69,8 +69,11 @@ interface LogFormat
     //! Stops when `offsets` is full, at the end of the data, or after skipping
     //! a long run of bytes that are not records, so the caller gets control
     //! back regularly (to check for cancellation). Call again from `next`.
-    //! @param final_ - no more bytes will come: an incomplete record at the end
-    //! is dropped. Otherwise scanning stops before it (next is its start) and
+    //! @param final_ - no byte is waited for now (ByteSource.complete): a record
+    //! cut by the end is let out, taken as it is where the format can tell a
+    //! record by its end alone (a text line), else dropped. More bytes may come
+    //! later (a file written after a pause): they are scanned as records of
+    //! their own. Otherwise scanning stops before it (next is its start) and
     //! it is found by a later call, once its rest has arrived.
     //! @returns the number of offsets written and where to continue;
     //! with final_ the data is done once next == data.length

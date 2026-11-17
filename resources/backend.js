@@ -6,7 +6,7 @@
 // when there is none. The backend tells the script
 // what changed by calling the global functions of script.js (onDocumentOpened,
 // onMainViewChanged, onSearchViewChanged, onAnchorApplied, onAttachmentsChanged,
-// onFileInfoChanged, getAppState),
+// onFileInfoChanged, onDocumentReopened, getAppState),
 // never from inside one of these calls. Kept free of Sciter but for Window:
 // tests/js.
 

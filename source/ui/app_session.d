@@ -72,6 +72,7 @@ final class AppSession
     private SettingsWriter _write;
     private FileShower _showInFolder;
     private ScriptCall[] _scriptCalls; // queued for the idle loop
+    private DocumentId[] _reopen; // to be opened anew after the dispatch (ReopenWanted)
     private bool _settingsChanged; // since they were last written
     private bool _closing; // the window closes: no more calls of the script
     private WindowMenu _menu = windowMenu(hostMenuPlatform(), ""); // the menu of the window
@@ -112,6 +113,31 @@ final class AppSession
             for (Throwable t = e; t !is null; t = t.next)
                 writeln("Document event handler failed: ", t.msg);
         }
+        // Opened anew apart from the dispatch: the documents are replaced
+        auto reopened = _reopen;
+        _reopen = null;
+        foreach (docId; reopened)
+            reopenWanted(docId);
+    }
+
+    /// The file of a document is to be opened anew (ReopenWanted: truncated by a rotation,
+    /// or of a format its first bytes tell): it is, in its tab, by the format choice of the
+    /// document, and the script resets the tab
+    private void reopenWanted(DocumentId docId)
+    {
+        import std.stdio : writeln;
+
+        if (!_documents.isOpen(docId))
+            return; // closed meanwhile
+        const error = reopen(docId);
+        if (error.length == 0)
+        {
+            _scriptCalls ~= ScriptCall("onDocumentReopened", idOf(docId));
+            return;
+        }
+        // Its rows are gone: shown lost, with Retry, rather than frozen on them
+        writeln("Reopening the file failed: ", error);
+        processDocumentEvent(docId, SourceLost());
     }
 
     /// The calls of the script queued since the last time, in order: the
@@ -307,12 +333,20 @@ final class AppSession
     /// "" if the document was replaced by a freshly opened one
     string retryDocument(int id)
     {
-        import core.time : MonoTime;
-        import std.stdio : writeln;
-
         const docId = findDocument(id);
         if (!docId.isValid)
             return _catalog.translate(uiText("the document is not open"));
+        return reopen(docId);
+    }
+
+    /// Opens the file of the document anew in its place, in the format it had, its filters
+    /// restored. Returns: an error message for the UI, "" if it was replaced
+    private string reopen(DocumentId docId)
+    {
+        import core.time : MonoTime;
+        import std.stdio : writeln;
+
+        const id = idOf(docId);
         const path = sourcePathOf(docId);
         // reopened in the format it had, not detected again
         const choice = _documents.doc(docId).formatChoice;
@@ -868,6 +902,7 @@ final class AppSession
         events.subscribe((const DocumentEvent!ContentGrown e) {
             processDocumentEvent(e.docId, e.event);
         });
+        events.subscribe((const DocumentEvent!ReopenWanted e) { _reopen ~= e.docId; });
         // An anchor taken while a pass ran: the tables follow the rows it changed
         events.subscribe((const DocumentEvent!AnchorApplied e) {
             _scriptCalls ~= ScriptCall("onAnchorApplied", idOf(e.docId), anchorRowsJson(e.event.rows).toString);
@@ -1116,6 +1151,7 @@ version (unittest)
             AppSettings[] written;
             FormatChoice lastChoice; // asked of the factory
             string[] shown; // in the file manager
+            bool refuseOpen; // every file opened from now on fails
         }
 
         AppSession session;
@@ -1130,7 +1166,7 @@ version (unittest)
             f.store = new DocumentStore();
             f.session = new AppSession(settings, f.store, (string path, FormatChoice choice) {
                 records.lastChoice = choice;
-                if (path.canFind("missing"))
+                if (path.canFind("missing") || records.refuseOpen)
                     throw new Exception("no such file");
                 if (path.canFind("refused"))
                 {
@@ -1217,6 +1253,46 @@ unittest
     assert(f.session.openFile(testPath("/logs/a.log")).docId == first);
     assert(parseJSON(f.session.workspaceInfoJson()).array.length == 2);
     assert(f.session.takeScriptCalls()[0] == ScriptCall("onDocumentOpened", cast(int) first.toInt()));
+}
+
+@("AppSession: a document whose file was truncated is opened anew in its tab, the script told")
+unittest
+{
+    auto f = Fixture.make();
+    const path = testPath("/logs/a.log");
+    const id = f.session.openFile(path).docId;
+    f.session.dispatchEvents();
+    f.session.takeScriptCalls();
+    auto old = f.docOf(path);
+
+    old.bus.publish(ReopenWanted(ReopenWanted.Why.truncated));
+    f.session.dispatchEvents();
+    assert(f.docOf(path) !is old, "opened anew");
+    assert(f.store.doc(id) is f.docOf(path), "in the place of the old one, with its id");
+    const calls = f.session.takeScriptCalls();
+    assert(calls.length > 0 && calls[0] == ScriptCall("onDocumentReopened", cast(int) id.toInt()));
+}
+
+@("AppSession: a document that can't be opened anew is shown lost, to be retried")
+unittest
+{
+    import std.algorithm : any;
+    import std.json : parseJSON;
+
+    auto f = Fixture.make();
+    const path = testPath("/logs/a.log");
+    const id = f.session.openFile(path).docId;
+    f.session.dispatchEvents();
+    f.session.takeScriptCalls();
+    auto old = f.docOf(path);
+
+    f.records.refuseOpen = true; // removed by the rotation meanwhile
+    old.bus.publish(ReopenWanted(ReopenWanted.Why.truncated));
+    f.session.dispatchEvents();
+    assert(f.docOf(path) is old, "not replaced");
+    const calls = f.session.takeScriptCalls();
+    assert(calls.any!(c => c.name == "onMainViewChanged" && parseJSON(c.json)["status"].str == "sourceLost"),
+        "shown lost: not frozen on rows that are gone");
 }
 
 @("AppSession: the views of a new document reach the script after it is told of the document")

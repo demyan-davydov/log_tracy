@@ -111,7 +111,7 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     Layouts follow the platform: Windows File → Exit Alt+F4, Linux Quit Ctrl+Q, mnemonics with
     `&` on Windows/Linux only. Shortcut texts in hints come from the same model (⌘O / Ctrl+O).
     D gives the model, the script renders: D builds no Sciter markup.
-44. **After a tab is switched, the keys go to its document.** A click on a tab leaves the
+45. **After a tab is switched, the keys go to its document.** A click on a tab leaves the
     keyboard in that document's panel (its table, or what had the focus there) once the button
     is released, as opening a file does; never nowhere. A switch shows the panel at once, the
     focus follows the release: it must not slow the switch down (`press-focus.js`).
@@ -146,15 +146,25 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     then the rows; Cmd+C copies the selected text if any, else the rows (cells by tabs, rows by
     new lines); the row context menu offers "Copy" while text is selected, and "Copy Row".
     Selected text is painted over the match colors (`--bg-text-selected`).
+30. **A file being written grows, the table at its end follows it.** Every open file is
+    followed (no switch): the lines written to it come into the table by themselves. A table
+    whose last row is wholly on screen, with no current row or the last one current, follows
+    the end as `tail -f` does, the current row staying the last (rows chosen up to the last
+    stay chosen: only a single current row moves with the end); a table scrolled up, or with
+    a row above the last chosen, stays where it is. The other table doesn't follow these
+    moves. Only rows of a file being written are
+    followed: a table a load, a filter or a search fills stays at its top. A line cut by the
+    end of the file is shown once the file is quiet for a second; a file emptied by a
+    rotation is opened anew in its tab.
 
 ## Search
 
-30. **Queries apply only on explicit commit.** Editing a query and its modes (text, Regex,
+31. **Queries apply only on explicit commit.** Editing a query and its modes (text, Regex,
     Ignore case) doesn't change the results; only Enter or the Search button commits it. While
     the controls differ from the committed query, the panel shows it (tinted toolbar
     `--bg-search-pending`, the Search button becomes primary). The draft (with its error) and
     the committed query belong to the document: each tab shows its own.
-31. **Match colors: one shared set of pale colors.** 16 pale colors on which the theme's text
+32. **Match colors: one shared set of pale colors.** 16 pale colors on which the theme's text
     reads well (light: pastels under dark text; dark: muted tones of the same hues under light
     text), called "match colors", kept as constants (`--match-color-0…15` in both themes,
     classes `match-color-N` in `resources/match-colors.css`, `matchColorCount` in
@@ -163,12 +173,12 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
 
 ## Filters
 
-32. **The filters panel replaces a quick filter.** No per-column quick filter. Filter files are
+33. **The filters panel replaces a quick filter.** No per-column quick filter. Filter files are
     only appended (no "replace" load); each loaded filter has a delete (×) button. A whole
     filter and each of its rules can be switched on and off. Loaded filters are copied into the
     settings of the log, not referenced by path: a `.dlf` shared by two logs must not tie them
     together. The design allows filters for every format.
-33. **The filter editor is a modal window.** A rule is edited in a modal window (like Settings),
+34. **The filter editor is a modal window.** A rule is edited in a modal window (like Settings),
     not inline in the panel. Edits apply and are remembered at once (no
     Save, no unsaved prompts); a set can be exported to a `.dlf`. "New
     Filter" creates an empty set without asking for a file and opens the editor of its first
@@ -176,21 +186,21 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
 
 ## Recent Files
 
-34. **Immediate and forgiving.** A file joins the recent list (newest first, max 8) as soon as
+35. **Immediate and forgiving.** A file joins the recent list (newest first, max 8) as soon as
     it opens, and the list is saved at once. A file that no longer exists stays listed, grayed,
     with a "File not found" note; a file that failed to open goes on top, marked "Failed to
     open" with the reason under it (error color), and the New Tab is brought up if a document
     was shown; the reason disappears after a successful open or "+".
-35. **A file remembers its format.** A recent file opens in the format it was opened with last
+36. **A file remembers its format.** A recent file opens in the format it was opened with last
     time, not by detection; with no saved format it is detected and then remembered. The
     format is shown left of the name as a badge; all badges look uniform (three-letter
     abbreviations of the same shape).
-36. **Recent files tell when they were used.** Right of the name: "Opened" for an open file
+37. **Recent files tell when they were used.** Right of the name: "Opened" for an open file
     (clicking it switches to its tab), otherwise when it was worked with last: "Just now",
     "N minutes/hours ago" within 24 h, "Yesterday, 14:05", "2 days ago, 14:05",
     "3 Nov, 14:05", the year only if not this one. Notes go on a line under the path. No live
     refresh while the screen is shown.
-37. **Actions in a per-row menu.** Hovering a recent file shows a "⋮" button at the right of
+38. **Actions in a per-row menu.** Hovering a recent file shows a "⋮" button at the right of
     its row, in a slot of its own (nothing moves); it stays while its menu is open. The menu
     acts on that file only: Show in Folder, Copy Path, then apart Remove from Recent. The
     labels are the same on every system. An open file has no Remove; a file not found has Show
@@ -198,23 +208,23 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
 
 ## Settings
 
-38. **Settings has sections.** The dialog lists its sections on the left like vertical tabs
+39. **Settings has sections.** The dialog lists its sections on the left like vertical tabs
     (Appearance: language, theme; Table: the font size first, then the columns); one
     Save/Cancel for all. The font size applies at once to the column strip, which is the
     preview; the size the dialog opened with is shown in italics in the list. At a large font
     the checkboxes keep their size; the strip may grow wider than the dialog and scroll.
-39. **Table columns are arranged per format.** For each format (by its id, all variants
+40. **Table columns are arranged per format.** For each format (by its id, all variants
     together) the user orders the columns and hides some; the layout is global for every log
     of that format. Index stays first and Payload last. Columns are reordered by dragging with
     the feedback of rule 18. The editor shows the columns as they look: a strip of headers
     styled exactly like the table header, the visibility checkbox under each; a hidden
     column's header is faded.
-40. **Settings start from the current document.** A per-format setting opens on the format of
+41. **Settings start from the current document.** A per-format setting opens on the format of
     the active tab and marks it in the list ("DLT (current file)").
 
 ## Bottom Panel
 
-41. **Tabs below the pages.** The panel under the main table is a set of pages with a tab strip
+42. **Tabs below the pages.** The panel under the main table is a set of pages with a tab strip
     at its bottom (IDE-like; the active tab merges with its page above). No title header inside
     a page when its tab already names it. The strip under the tabs stays grey (`--bg-header`).
     Each page has its own color, so the page open is seen at a glance: Search that of its results table (`--bg-table`),
@@ -226,13 +236,13 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     The "Filters" tab has a dot after its name while some rule works on the log (an enabled,
     applied rule of an enabled set, markers too), so a filtered log is seen with another page
     open; the dot grows in and out, the tab keeps its width.
-42. **File Info.** Path, Size (physical size with the record count next to it), Format, and
+43. **File Info.** Path, Size (physical size with the record count next to it), Format, and
     for a DLT log FIBEX last: the path of the FIBEX with "file" or "folder" after it (or that
     there is none; the remembered one muted while it is read or if it can't be), a note under
     it (reading, or why it can't be read: the one before stays), and the buttons Load File,
     Load Folder (the system dialogs pick files or folders, not both) and Unload. No Name row
     (the tab shows it). Every value that carries information is selectable.
-43. **Filters as chips.** The Filters page shows a block per filter set: its head (switch,
+44. **Filters as chips.** The Filters page shows a block per filter set: its head (switch,
     name, buttons) on its own line, its rules as chips wrapping under it, indented (switch,
     color with the kind in it (+, −, ◆), name). Edit and remove of a rule are in a tab shown
     over its chip on hover (its width, its hover color, no border), out of the chip's width. A rule not applied has a red border,

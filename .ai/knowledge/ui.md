@@ -62,7 +62,12 @@ behaviour: `.ai/knowledge/sciter.md`.
 - A table grows in place by `VirtualList.grow()` (`virtual-select.js`, the decision in
   `growStep` of `list-navigation.js`): only `vlist.itemsAfter` changes, the rows on screen are
   not rendered again. `componentUpdate()` on a changed count clears and renders the rows:
-  not for a view being filled. The progress and Cancel of a filter or a search filling a table
+  not for a view being filled. A ready view that grows (a file being written) may be
+  followed to its end instead: `followEndStep` (`pane-state.js`) decides by what
+  `VirtualDltTBody.endState()` tells before the growth, `followEnd()` scrolls to the end
+  (and keeps the current row the last), without telling the other table (`rowChosen`).
+- A document opened anew in its tab (Retry, a file truncated or of a format its first bytes
+  tell: the backend's `onDocumentReopened`) resets the tab by `DocumentPane.reopened()`. The progress and Cancel of a filter or a search filling a table
   are in the strip under it (`.view-progress`, `showProgress` of `status-view.js`).
 
 ## Table Columns

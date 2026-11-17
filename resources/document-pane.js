@@ -712,17 +712,21 @@ export class DocumentPane {
                 this.main.lostError(tr("Still unavailable: {error}", { error }));
                 return;
             }
-            // A new document with the same id: its first rows start at the top,
-            // its filters are restored (no message of a command before), it has
-            // no search and no anchors yet
-            this.markAnchorsFull(false);
-            for (const table of this.tables) table.reset();
-            this.appliedColumns = null;
-            this.searchBar.reset();
-            this.filterPanel.reopened();
             const refreshStart = Date.now();
-            this.host.refreshTabs(); // the reopened document starts loading
+            this.reopened();
             console.log(`Retry: xcall ${retryTime} ms, views refresh ${Date.now() - refreshStart} ms`);
         });
+    }
+
+    // The file was opened anew in this tab (Retry, or a file truncated by a rotation):
+    // a new document with the same id. Its first rows start at the top, its filters are
+    // restored (no message of a command before), it has no search and no anchors yet
+    reopened() {
+        this.markAnchorsFull(false);
+        for (const table of this.tables) table.reset();
+        this.appliedColumns = null;
+        this.searchBar.reset();
+        this.filterPanel.reopened();
+        this.host.refreshTabs(); // the reopened document starts loading
     }
 }

@@ -322,6 +322,21 @@ struct AnchorApplied
     AnchorRows rows;
 }
 
+//! The file of the document is to be opened anew by its holder, by formatChoice: it got
+//! shorter than what was read of it (truncated: a rotation by copying it and emptying it),
+//! or it was empty when opened and its first bytes tell another format than its name did.
+//! Published once; the document builds nothing more meanwhile
+struct ReopenWanted
+{
+    enum Why
+    {
+        truncated,
+        formatTold,
+    }
+
+    Why why;
+}
+
 //! The file of the document can't be read any more (its disk was removed, a
 //! read failed). Published once; the document stays unusable afterwards.
 struct SourceLost

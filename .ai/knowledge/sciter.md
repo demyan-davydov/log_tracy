@@ -24,7 +24,9 @@ agent can't drive it. In scapp a plain
   a 1 GB log with nobody touching the window got its progress at the pace of the work (gaps
   of 52-686 ms) and its end 80 ms after the last progress, window in the background.
   Sciter doesn't promise it, and Windows and Linux are not checked: if events stall there
-  until the mouse moves, wake the loop on publish (`postToWindowThread`).
+  until the mouse moves, wake the loop on publish (`postToWindowThread`). The poll of a file
+  being written (`LogDocument.dispatchEvents`, every 250 ms) relies on the same: it would
+  stall with them (`docs/backlog.md`).
 - Nothing thrown in D may unwind through the frames of Sciter (or of Cocoa): every `extern (C)`
   function they call is `nothrow` and runs its body through `guardCallback`
   (`utils/foreign_callback`). An `Exception` is logged and the callback answers its fallback, an

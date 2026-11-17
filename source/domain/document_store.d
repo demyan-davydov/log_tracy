@@ -30,7 +30,7 @@ struct DocumentEvent(E)
 
 /// Document events that DocumentStore forwards as DocumentEvent!E
 alias ForwardedDocumentEvents = AliasSeq!(OperationStarted, OperationProgress, OperationFinished, ContentGrown,
-    SourceLost, AttachmentsChanged, FormatReplaced, DescriptionsChanged, AnchorApplied);
+    SourceLost, ReopenWanted, AttachmentsChanged, FormatReplaced, DescriptionsChanged, AnchorApplied);
 
 private class NullDocumentView : DocumentView
 {

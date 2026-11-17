@@ -683,6 +683,13 @@ globalThis.onAnchorApplied = function (docId, json) {
     panes.get(docId)?.followAnchorRows(JSON.parse(json));
 };
 
+// Native: the file of a document was truncated (a rotation by copying it and emptying it)
+// and opened anew in its tab, from its start
+globalThis.onDocumentReopened = function (docId) {
+    console.log("Native: onDocumentReopened", docId);
+    panes.get(docId)?.reopened();
+};
+
 // Native: a file was opened, in a new document or in the one that had it open
 // already (then that one is the current document again)
 globalThis.onDocumentOpened = function (docId) {

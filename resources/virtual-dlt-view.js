@@ -499,6 +499,32 @@ export class VirtualDltTBody extends VirtualSelect {
         return true;
     }
 
+    // What followEndStep (pane-state.js) decides by, before the list grows: { total: the
+    // rows it has, lastWhole: the last row wholly on screen, current, selected: the rows
+    // selected }; null if it can't tell, its rows not laid out (a hidden tab or page)
+    endState() {
+        const vlist = this.vlist;
+        if (!vlist || !(this.getBoundingClientRect().height > 0)) return null;
+        return {
+            total: vlist.itemsBefore + this.children.length + vlist.itemsAfter,
+            lastWhole: this.wholeRowsRange()?.[1] ?? null,
+            current: this.selection.current,
+            selected: this.selection.count,
+        };
+    }
+
+    // Shows the last row, as the table follows the end of a file being written; with
+    // `moveCurrent` it is made the current row and the only one selected too. The script
+    // moves it, not the user: the other table doesn't follow it (rowChosen isn't told)
+    followEnd(moveCurrent) {
+        const last = this.totalItems() - 1;
+        if (last < 0) return;
+        this.cancelSmoothJump();
+        if (moveCurrent) this.selection.moveTo(last);
+        this.navigateTo("end");
+        this.updateRowStates();
+    }
+
     // Makes the row `position` current and the only one selected with `top` the
     // first row shown (by the render componentUpdate() posts, the end of the
     // way animated: smoothAnimateTo; null: the scroll stays), a step of

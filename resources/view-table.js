@@ -10,7 +10,7 @@
 import * as backend from "backend.js";
 import { rowLayout } from "cell-format.js";
 import { followedRow } from "row-selection.js";
-import { noTable, tableStep, jumpStep, showsRowsOf } from "pane-state.js";
+import { noTable, tableStep, jumpStep, showsRowsOf, followEndStep } from "pane-state.js";
 import { mainViewStatus, searchViewStatus, showProgress, showStatus } from "status-view.js";
 
 // True if `element` is `root` or inside it (and still in the document)
@@ -116,7 +116,7 @@ export class ViewTable {
         this.status = cover === this.statusView ? vm : null;
         for (const view of this.covers) view.style.display = view === cover ? "block" : "none";
         this.takeFocus(cover);
-        if (step.table) this.reloadRows(step);
+        if (step.table) this.reloadRows(step, vm);
         else this.fillCover(cover, vm);
         return step;
     }
@@ -160,11 +160,21 @@ export class ViewTable {
         if (this.covers.some(view => isInside(focused, view)) || (taken && !focused)) list.state.focus = true;
     }
 
-    reloadRows(step) {
+    reloadRows(step, vm) {
         const list = this.list;
         if (step.resetSelection) list.resetSelection(); // the rows are other messages now
         if (step.reload) reloadList(list, step.reload === "start" ? "start" : null);
-        else if (step.grow) list.grow(); // more rows of the same content: the ones on screen stay
+        else if (step.grow) this.growRows(vm);
+    }
+
+    // More rows of the same content: the ones on screen stay, unless the table was at the
+    // end of a ready view, which it follows then (a file being written, followEndStep)
+    growRows(vm) {
+        const list = this.list;
+        const before = list.endState();
+        list.grow();
+        const follow = followEndStep(vm, before);
+        if (follow) list.followEnd(follow.moveCurrent);
     }
 
     // True if the rows on screen are of the content of the view (showsRowsOf):
