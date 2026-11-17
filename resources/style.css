@@ -342,6 +342,11 @@ body > header {
     display: none;
 }
 
+/* Not while the tab is dragged: hidden, not removed, so its width stays */
+.tab.dragging .tab-close {
+    visibility: hidden;
+}
+
 .tab .tab-close:hover {
     color: var(--text-main);
     background: var(--tab-close-hover);
@@ -368,9 +373,11 @@ body > header {
     background: var(--tab-progress-done);
 }
 
-/* Dragging: the tab follows the mouse, the others slide out of the way */
+/* Dragging: the tab follows the mouse, the others move out of the way. No
+   transitions: on a big screen every frame of one costs ~100 ms of the main
+   thread (measured), the mouse events wait for it and the tab lags behind */
 .tab.shifting {
-    transition: transform cubic-out 150ms;
+    transition: none;
 }
 
 .tab.dragging {
@@ -378,10 +385,7 @@ body > header {
     color: var(--text-main);
     background: var(--bg-tab-active);
     border-color: var(--border-color);
-}
-
-.tab.dragging.settling {
-    transition: transform cubic-out 150ms;
+    transition: none;
 }
 
 /* A round "+" left of the tabs, opening the New Tab; only while documents

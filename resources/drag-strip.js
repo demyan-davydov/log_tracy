@@ -8,7 +8,7 @@
 import { clampShift, dragTarget, settleShift } from "drag-order.js";
 
 export const DRAG_THRESHOLD = 4; // px of mouse movement before a press becomes a drag
-export const SETTLE_MS = 160;    // a bit longer than the .settling transition
+export const SETTLE_MS = 0;      // the item jumps into its place: no transitions in the strip (style.css)
 
 // Moves an item along the strip by `dx` px (0: back in its place)
 export function setShift(item, dx) {
