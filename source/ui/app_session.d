@@ -12,6 +12,7 @@
 //! not called any more; what changes after that is written by finish().
 module ui.app_session;
 
+import core.time : Duration;
 import domain.attachments : Attachment, AttachmentState;
 import domain.document;
 import domain.document_id;
@@ -304,8 +305,13 @@ final class AppSession
 
         try
         {
+            import core.time : MonoTime;
+
             // Opened the way it was last time: the format may have been chosen by hand
+            const openStart = MonoTime.currTime;
             auto document = _open(path, savedFormat(_settings.recentFiles, path));
+            // The file opened and its format detected; the load goes on (BuildOffsetIndex)
+            writeln("Opened file in ", msText(MonoTime.currTime - openStart), ": ", path);
             const hold = _documents.add(document, path); // held by its tab
             const docId = hold.docId;
             addTab(hold, path);
@@ -972,9 +978,18 @@ final class AppSession
         });
         events.subscribe((const DocumentEvent!OperationFinished e) {
             writeln("Operation ", e.event.operation, " ", e.event.result, ", doc ", e.docId.toInt(),
+                " in ", msText(e.event.elapsed),
                 e.event.error.empty ? "" : ": " ~ english(e.event.error));
             processDocumentEvent(e.docId, e.event);
         });
+    }
+
+    /// A time for the console, as profiling reads it: "12.3 ms"
+    private static string msText(Duration time)
+    {
+        import std.format : format;
+
+        return format("%.1f ms", time.total!"usecs" / 1000.0);
     }
 
     /// The rows an anchor changed, for the script: {"message", "anchored", "main", "search"}

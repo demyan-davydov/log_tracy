@@ -7,6 +7,7 @@ module domain.document;
 import log_core.log_message;
 import log_core.log_filter : LogFilter;
 import utils.ui_text : UiText;
+import core.time : Duration;
 
 import domain.attachments : Attachment;
 import domain.index.record_store : RecordsLease;
@@ -355,4 +356,5 @@ struct OperationFinished
     Document.Operation operation;
     Result result;
     UiText error; // set when result == Failed: for the user, translated where it is shown
+    Duration elapsed; /// from its start to its end, as the document saw them (for profiling)
 }

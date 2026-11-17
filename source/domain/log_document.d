@@ -15,6 +15,7 @@ import log_core.log_message;
 import log_core.log_filter;
 
 import domain.anchors;
+import core.time : MonoTime;
 import domain.attachments : Attachment, AttachmentState;
 import domain.log_index;
 import domain.index.progress : PassProgress;
@@ -84,6 +85,8 @@ class LogDocument : Document
     // The messages whose anchor was set or cleared while a pass ran: _anchors has them
     // already, the index gets them once the pass stops (applyPending), each once
     private size_t[] _pendingAnchors;
+    // When each operation started, for the time OperationFinished tells
+    private MonoTime[Operation.max + 1] _started;
     // A pass of the index runs, as seen from the UI thread: cleared when its
     // PassFinished is dispatched (the slot is idle by then)
     private bool _passRunning;
@@ -321,6 +324,7 @@ class LogDocument : Document
         _events.subscribe((const DescriptionsLoaded e) { descriptionsLoaded(e); });
         _descriptionsSlot = BackgroundSlot(null);
         // Before the index starts its first pass, so it precedes any progress event
+        _started[Operation.BuildOffsetIndex] = MonoTime.currTime;
         _events.publish(OperationStarted(Operation.BuildOffsetIndex));
         _index = LogIndex(source, format, _events); // starts the pass that loads the file
         _passRunning = true;
@@ -607,6 +611,7 @@ class LogDocument : Document
     private void start(Operation operation)
     {
         running(operation) = true;
+        _started[operation] = MonoTime.currTime;
         _events.publish(OperationStarted(operation));
     }
 
@@ -617,7 +622,7 @@ class LogDocument : Document
             return;
         running(operation) = false;
         _loadCompleted |= operation == Operation.BuildOffsetIndex && result == OperationFinished.Result.Completed;
-        _events.publish(OperationFinished(operation, result, error));
+        _events.publish(OperationFinished(operation, result, error, MonoTime.currTime - _started[operation]));
     }
 
     //! A search that didn't complete leaves no results: nothing is found, and
@@ -1226,7 +1231,12 @@ unittest
     scope (exit)
         remove(path);
 
+    import core.thread : Thread;
+    import core.time : MonoTime, msecs;
+
+    const opened = MonoTime.currTime;
     auto doc = new LogDocument(path);
+    Thread.sleep(20.msecs); // the load can't be reported before it
 
     string[] log;
     float lastProgress = -1;
@@ -1259,6 +1269,8 @@ unittest
     assert(finished.result == OperationFinished.Result.Completed);
     assert(lastProgress == 1.0f, "last progress event must report completion");
     assert(countOnFinish == messageCount);
+    assert(finished.elapsed >= 20.msecs && finished.elapsed <= MonoTime.currTime - opened,
+        "how long it took, from the opening");
 }
 
 @("LogDocument: destroy while indexing cancels and joins the worker")
