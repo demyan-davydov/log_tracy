@@ -25,7 +25,26 @@
         .row > .value > span { margin: * 0; } /* centered in the row: from, to */
         .row input[type=text] { width: *; }
         .row select.check { width: 100dip; }
-        .row select.level, .row select.label-value { width: 120dip; }
+        .row select.level { width: 120dip; }
+
+        /* The values of an enum column as push buttons, one pressed (.selected): a
+           row of them. Not <button>s: a button takes the focus after a press */
+        .enum-buttons { flow: horizontal; border-spacing: 4dip; }
+        .enum-option {
+            padding: 3dip 10dip;
+            border: 1dip solid var(--border-input);
+            border-radius: 4dip;
+            background: var(--btn-default-bg);
+            color: var(--text-main);
+            cursor: pointer;
+        }
+        .enum-option:hover { background: var(--btn-default-hover); }
+        .enum-option:focus { border-color: var(--border-focus); outline: none; }
+        .enum-option.selected {
+            background: var(--btn-primary-bg);
+            border-color: var(--btn-primary-border);
+            color: var(--btn-primary-text);
+        }
         label { flow: horizontal; vertical-align: middle; border-spacing: 4dip; white-space: nowrap; }
 
         input[type=text] {
@@ -129,9 +148,10 @@
                             <select class="level" role="to">{levelNames.map(l => <option value={l}>{l}</option>)}</select>
                         ];
                     case "Enum":
-                        return [<select class="label-value" role="value">
-                            {(column.labels || []).map(l => <option value={l}>{l}</option>)}
-                        </select>];
+                        return [<div class="enum-buttons" role="value">
+                            {(column.labels || []).map((l, i) =>
+                                <span class={i === 0 ? "enum-option selected" : "enum-option"} value={l} tabindex="0">{l}</span>)}
+                        </div>];
                 }
             })();
             const textual = column.kind === "Text" || column.kind === "Payload";
@@ -145,6 +165,24 @@
             </div>;
         }
 
+        // The value of a control: a group of push buttons (an enum) is the one
+        // pressed; a value it doesn't have presses the first, as a list would
+        function isEnum(c) {
+            return c.classList.contains("enum-buttons");
+        }
+
+        function controlValue(c) {
+            if (isEnum(c)) return c.$(".enum-option.selected")?.getAttribute("value") ?? "";
+            return c.getAttribute("type") === "checkbox" ? !!c.value : (c.value ?? "");
+        }
+
+        function setControlValue(c, value) {
+            if (!isEnum(c)) { c.value = value; return; }
+            const options = [...c.$$(".enum-option")];
+            const pressed = options.find(o => o.getAttribute("value") === value) ?? options[0];
+            for (const o of options) o.classList.toggle("selected", o === pressed);
+        }
+
         function control(row, role) {
             return row.$(`[role="${role}"]`);
         }
@@ -154,7 +192,7 @@
                 const values = rows[row.getAttribute("column")];
                 for (const role of Object.keys(values)) {
                     const c = control(row, role);
-                    if (c) c.value = values[role];
+                    if (c) setControlValue(c, values[role]);
                 }
             }
         }
@@ -165,7 +203,7 @@
                 const values = {};
                 for (const c of row.$$("[role]")) {
                     const role = c.getAttribute("role");
-                    values[role] = c.getAttribute("type") === "checkbox" ? !!c.value : (c.value ?? "");
+                    values[role] = controlValue(c);
                 }
                 rows[row.getAttribute("column")] = values;
             }
@@ -263,6 +301,17 @@
         }
         document.on("input", ".condition input[type=text]", switchOn);
         document.on("change", ".condition select", switchOn);
+        // A push button of an enum: pressed by a click, Space or Enter
+        document.on("click", ".enum-option", (evt, option) => {
+            setControlValue(option.parentElement, option.getAttribute("value"));
+            switchOn(evt, option.parentElement);
+        });
+        document.on("keydown", ".enum-option", (evt, option) => {
+            if (evt.code !== "Space" && evt.code !== "Enter") return false;
+            setControlValue(option.parentElement, option.getAttribute("value"));
+            switchOn(evt, option.parentElement);
+            return true;
+        });
         document.on("change", "input[type=checkbox]", () => validate());
 
         document.on("click", ".kept-remove", (evt, button) => {
