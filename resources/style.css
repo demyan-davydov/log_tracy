@@ -682,6 +682,11 @@ frameset > splitter:active {
 }
 
 /* Why a rule isn't applied: under the chips of its set, across the row */
+.filter-no-rules {
+    color: var(--text-label);
+    font-size: 0.9em;
+}
+
 .filter-note {
     padding: 0 0 2pt 40dip; /* under the chips */
     font-size: 0.85em;

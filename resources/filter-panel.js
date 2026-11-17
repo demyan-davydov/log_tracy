@@ -80,6 +80,7 @@ function renderSets(panel, sets, renaming) {
         if (edit) edit.value = set.name;
         row.append(<div class="filter-chips" />);
         const chips = row.lastElementChild;
+        if (set.rules.length === 0) chips.append(<span class="filter-no-rules">{tr("No rules")}</span>);
         set.rules.forEach((rule, r) => {
             chips.append(ruleChip(rule, s, r));
             const chip = chips.lastElementChild;

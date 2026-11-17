@@ -96,6 +96,7 @@
     "No file open": "Нет открытых файлов",
     "No filters: load a filter file or create a new one": "Фильтров нет: загрузите файл фильтра или создайте новый",
     "No format has columns to arrange.": "Ни у одного формата нет колонок, которые можно упорядочить.",
+    "No rules": "Нет правил",
     "No searches in this file yet": "В этом файле еще ничего не искали",
     "None": "Нет",
     "Not applied: {error}": "Не применяется: {error}",
