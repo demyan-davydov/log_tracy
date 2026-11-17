@@ -87,9 +87,11 @@ export function paneChanges(paneIds, docIds) {
 //   { before: -1, 0 or 1 rows before the rendered ones, after: the same after
 //     them, insertAt / removeAt: the place among the rendered rows, or null }
 // `rendered`: the messages of the rendered rows, in order. null if there are none.
-// `room`: the list doesn't fill the table, all its rows are rendered. A row
-// added at an end is rendered then: counted out of sight it couldn't be
-// scrolled to. In a full list it is counted, the rendered rows stay as many.
+// `room`: all the rows of the view are rendered and the window of the list has room
+// for one more. A row added at an end is rendered then, even past the height of the
+// table: a list whose window has room doesn't ask for a row counted after the rendered
+// ones, so it couldn't be scrolled to by the wheel. With the window full the row is
+// counted, the rendered rows stay as many.
 export function anchorEdit(rendered, message, added, room) {
     if (rendered.length === 0) return null;
     const step = added ? 1 : -1;

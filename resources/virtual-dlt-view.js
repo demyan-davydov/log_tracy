@@ -398,17 +398,26 @@ export class VirtualDltTBody extends VirtualSelect {
     // after them (see anchorEdit), and the rendered rows are numbered anew.
     // Their content stays: they show the same messages. Rebuilding the list
     // instead (componentUpdate) would scroll it, rendering the rows again
-    // would make them blink.
-    // @return false if no row is rendered, or the row to show can't be read: the
-    // caller rebuilds the list
+    // would make them blink. The exception: while the rendered rows fit the table
+    // a row to insert is left to the render (see fitsIn).
+    // @return false if no row is rendered, the row to show can't be read, or the
+    // rows still fit the table: the caller rebuilds the list
     followAnchor(message, added) {
         const vlist = this.vlist;
         const rows = [...this.children];
         const rendered = rows.map(row => Number(row.$("td.anchor")?.getAttribute("msg-index")));
         if (!vlist || rendered.some(m => !Number.isFinite(m))) return false; // an empty row
-        const room = vlist.itemsBefore === 0 && vlist.itemsAfter === 0 && rows.length < this.visibleRowCount();
+        // Room: every row of the view is rendered and the window can take one more, so the
+        // row is rendered, not counted (sciter.md, "Virtual Lists").
+        const room = vlist.itemsBefore === 0 && vlist.itemsAfter === 0 && rows.length < vlist.slidingWindowSize;
         const edit = anchorEdit(rendered, message, added, room);
         if (edit === null) return false;
+        // A row inserted by hand that makes the rows overflow the table leaves the list
+        // not scrolling by the wheel (only by the scrollbar, until the window is resized):
+        // it doesn't learn of the new scroll range. While the rows fit the table any
+        // insertion may be that one, so it is left to the render, which does learn (the
+        // list is not scrolled yet: nothing is lost). Once they overflow, rows go in by hand.
+        if (edit.insertAt !== null && this.fitsIn(rows)) return false;
         // The row of the anchor, before anything changes: without it the list is rebuilt
         let row = null;
         if (edit.insertAt !== null) {
@@ -417,15 +426,26 @@ export class VirtualDltTBody extends VirtualSelect {
             row = Element.create(this.renderItem(item));
         }
 
-        vlist.itemsBefore += edit.before;
-        vlist.itemsAfter += edit.after;
         if (edit.removeAt !== null) rows[edit.removeAt].remove();
         if (row && edit.insertAt < rows.length) this.insertBefore(row, rows[edit.insertAt]);
         else if (row) this.append(row); // after the last rendered row
+        // The counts are assigned after the rows are in the DOM, as grow() does: the list
+        // reads its scroll range then. Assigned first, a row inserted over the height of the
+        // table left the range stale: the wheel scrolled nothing until the window was resized.
+        vlist.itemsBefore += edit.before;
+        vlist.itemsAfter += edit.after;
         const first = vlist.itemsBefore;
         for (const [i, row] of [...this.children].entries())
             row.setAttribute("view-index", first + i);
         return true;
+    }
+
+    // True if the rendered `rows` don't overflow the list yet: a row added to them
+    // may be higher than any of them, so any one may be the one that overflows
+    fitsIn(rows) {
+        if (rows.length === 0) return true;
+        const used = rows[rows.length - 1].getBoundingClientRect().bottom - rows[0].getBoundingClientRect().top;
+        return used <= this.getBoundingClientRect().height;
     }
 
     // Sizes the sliding window of the list by its height (windowSize): when it

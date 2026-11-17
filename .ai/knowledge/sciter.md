@@ -360,6 +360,12 @@ agent can't drive it. In scapp a plain
   (6.0.5.5) grows the scrollbar range, keeps the rendered rows, the first visible item and the
   scroll, and the list asks for the new rows when scrolled to them. A list whose window ends
   at its last row with room left doesn't ask: append the rows (`VirtualList.grow`).
+  The same for a row counted by `itemsAfter` while the rendered ones just fill the table
+  (an anchor in the search list): the wheel scrolls nothing, only the scrollbar does. Render
+  such a row up to the window (`followAnchor`), not up to the height of the list. A row
+  inserted by hand that makes the rendered ones overflow the list leaves the wheel dead too
+  (the scrollbar works, a resize heals it): `followAnchor` leaves that insertion to a render
+  while the rows fit the list.
 - A virtual-list hidden (`display: none`, or `visibility`) and shown again keeps its rows, first
   visible item and pixel offset, even after a resize while hidden; a hidden list requests no
   rows. Focus stays on an element inside a hidden pane: move it on a switch.
