@@ -10,6 +10,7 @@
     border: 1dip solid var(--border-popup);
     border-radius: 3dip;
     cursor: text;
+    transition: background-color linear 150ms;
 }
 
 .chip-editor.focused {

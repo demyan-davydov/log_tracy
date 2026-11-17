@@ -76,6 +76,7 @@
     /* Details Panel */
     --bg-details: #252526;
     --bg-search-pending: #3d3520;
+    --bg-input-search-pending: #54451c;
 
     /* The match colors: one per search chip and the matches it finds, see match-colors.css */
     --match-color-0: #903b3b;

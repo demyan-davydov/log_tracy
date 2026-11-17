@@ -36,6 +36,11 @@ header {
     background: var(--bg-search-pending);
 }
 
+/* ... and the field itself is tinted too: the toolbar's strip around it is thin */
+.search-toolbar.pending .chip-editor {
+    background: var(--bg-input-search-pending);
+}
+
 .main-content {
     size: *;
     position: relative;
