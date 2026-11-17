@@ -390,6 +390,14 @@ popup.notice.right {
     color: var(--text-main);
 }
 
+/* In a selected row the text keeps the row's color (white in the dark theme), the
+   selection doesn't dim it */
+.log-table>tbody>tr[row-selected="true"] td>span.text-selected,
+.log-table>tbody>tr[row-selected="true"] td>span.level-mark span.text-selected,
+.log-table>tbody>tr[row-selected="true"] td>i.text-selected {
+    color: var(--text-row-selected);
+}
+
 /* Single-line rows (Settings, applySingleLineRows in document-pane.js): every
    row is exactly one line high, whatever its payload, so the virtual list
    gets rows of one height. The line height is set on the row in units of the
