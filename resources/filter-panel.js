@@ -201,6 +201,11 @@ export class FilterPanel {
         setTimeout(() => {
             const edit = this.root.$(".filter-name-edit");
             if (!edit) return;
+            // On the field itself, bound once focused: the delegated focusout
+            // of the panel doesn't see every way the focus leaves it
+            const end = () => this.endRename(true);
+            edit.on("focusout", end);
+            edit.on("blur", end);
             edit.state.focus = true;
             edit.edit.selectRange(0, edit.value.length);
         }, 0);
