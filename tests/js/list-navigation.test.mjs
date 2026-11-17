@@ -59,13 +59,19 @@ test("a list without rows, or with fewer rows than it renders, is rebuilt", () =
     assert.deepEqual(grown({ total: 150 }), { rebuild: true });
 });
 
-test("half the window is the rows the list can show, one line high each, and a quarter more", () => {
-    assert.equal(windowSize({ height: 2000, lineHeight: 20 }), 2 * 125);
-    assert.equal(windowSize({ height: 1990, lineHeight: 20 }), 2 * 125, "a row cut by the bottom edge counts");
+test("half the window is the rows the list can show, one line high each, and three quarters more", () => {
+    assert.equal(windowSize({ height: 2000, lineHeight: 20 }), 2 * 175);
+    assert.equal(windowSize({ height: 1990, lineHeight: 20 }), 2 * 175, "a row cut by the bottom edge counts");
 });
 
 test("a list of few rows gets at least windowMargin rows more in each half", () => {
-    assert.equal(windowSize({ height: 300, lineHeight: 20 }), 2 * (15 + windowMargin));
+    assert.equal(windowSize({ height: 120, lineHeight: 20 }), 2 * (6 + windowMargin));
+});
+
+test("the window is at least three screens of rows: Sciter pumps two screens at a time", () => {
+    // a window of less than that flips the list between two positions on a swipe
+    for (const height of [483, 736, 1000, 1500, 2500])
+        assert.ok(windowSize({ height, lineHeight: 21 }) >= 3 * Math.ceil(height / 19), `height ${height}`);
 });
 
 test("rows lower than the line measured still fill the list with half the window, however high it is", () => {

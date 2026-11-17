@@ -41,12 +41,18 @@ export function growStep(list) {
 // about 1 ms a row of a log table, the bulk of the time of a jump.
 export const minWindowSize = 20;
 
-// What each half of the window has over the rows the list shows: a quarter
+// What each half of the window has over the rows the list shows: three quarters
 // more (windowExtra), at least windowMargin rows. The line measured may be
 // higher than the rows (the header, measured before any row: ~10 % higher),
 // an error that grows with the list, and Sciter fills a couple of rows less
-// than half the window.
-export const windowExtra = 0.25;
+// than half the window. The quarter is not enough: a scroll past the edge of the
+// rows (a trackpad swipe, its inertia) makes Sciter prepend or append a chunk of
+// about two screens of rows and drop as many from the other end. When the window
+// is less than three screens (the chunk and the screen kept) the screen then
+// reaches past the other end, Sciter pumps there and takes the chunk back, and
+// the list flips between the two positions (measured 2026-11-17, 6.0.5.5: a
+// window of 98 rows for a screen of 39 flips, 114 doesn't).
+export const windowExtra = 0.75;
 export const windowMargin = 5;
 
 // How many rows a virtual list renders. Sciter fills a list (a new view, a
