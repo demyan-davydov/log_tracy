@@ -1,7 +1,8 @@
-//! The numbered parts of a DLT message: a writer that cuts a long text into verbose
-//! messages of one string argument "<k>/<n>: <text>" each (not a segmentation of the
-//! protocol). Tells what a record is as a part (dltPartOf) and decodes the parts of a
-//! message as one record (parseDltParts), for DltFormat as a PartedFormat.
+//! The parts of a DLT message its writer cut (not a segmentation of the protocol): into
+//! verbose messages of one string argument "<k>/<n>: <text>" each, or with no mark into
+//! pieces at a limit of its text (tellPiece). Tells what a record is as a part (dltPartOf)
+//! and decodes the parts of a message as one record (parseDltParts), for DltFormat as a
+//! PartedFormat.
 module formats.dlt.parts;
 
 import formats.dlt.fields;
@@ -11,19 +12,26 @@ import formats.dlt.parser : ArgumentKind, LogItemHeaders, VerboseArgument, Verbo
     findVerboseStart, parseDltItem, readArgument, readMarkedAscii, storageSizeOf;
 import formats.dlt.protocol;
 
-import log_core.log_format : RecordPart;
+import log_core.log_format : PieceKind, RecordPart;
+import log_core.log_level : LogLevel;
 import log_core.log_message : LogMessage;
-import log_core.text_encoding : isUtf8, utf8CutTail;
+import log_core.text_encoding : asciiLength, isUtf8, utf8CutTail;
 
 import std.traits : isSomeChar;
 
+//! The limits of a text its writers cut at, in bytes, the least first: a longer one goes
+//! on in pieces. 1024, or 1023 and the zero after them (a buffer of 1024)
+static immutable size_t[] dltPieceLimits = [1023, 1024];
+
 //! @returns what the record at the start of `data` (whole, as DltFormat.scanRecords
-//! found it; the bytes after it may follow) is as a part of a message: not a part,
-//! RecordPart.init
+//! found it; the bytes after it may follow) is as a part of a message (readPart): a
+//! numbered part, a piece, another record of its writer; RecordPart.init if whose it is
+//! is not known (not verbose, not readable)
 RecordPart dltPartOf(const(ubyte)[] data, bool hasStorageHeader) nothrow @nogc
 {
     PartText part;
-    return readPart(data, hasStorageHeader, part) ? part.part : RecordPart.init;
+    readPart(data, hasStorageHeader, part);
+    return part.part;
 }
 
 //! @returns false if the record at the start of `data` is surely not a part, by a look
@@ -73,10 +81,13 @@ private bool appendTexts(Builder)(Builder builder, const(ubyte[])[] parts, bool 
     }
 
     PartText part;
-    foreach (record; parts)
+    bool numbered;
+    foreach (i, record; parts)
     {
-        if (!readPart(record, hasStorageHeader, part))
+        // The parts of one message: all numbered, or all pieces
+        if (!readPart(record, hasStorageHeader, part) || i != 0 && part.part.isPart != numbered)
             return false;
+        numbered = part.part.isPart;
         const(char)[] text = part.text;
 
         // The rest of the cut character: the continuation bytes it lacks, at the start
@@ -106,12 +117,19 @@ private bool appendTexts(Builder)(Builder builder, const(ubyte[])[] parts, bool 
         flushCut();
 
         const whole = text.length - utf8CutTail(text);
-        builder.appendUtf8(text[0 .. whole], false);
+        // Its start in ASCII as it is, in words (asciiLength): pieces are of long texts
+        const ascii = asciiLength(text[0 .. whole]);
+        builder.appendAscii(text[0 .. ascii], false);
+        builder.appendUtf8(text[ascii .. whole], false);
         foreach (c; text[whole .. $])
             cut[cutLength++] = c;
         cutUtf8 = beyondAscii;
     }
     flushCut();
+
+    // A message of pieces whose last one is cut: its text goes on beyond what came
+    if (!numbered && part.part.piece == PieceKind.cut)
+        builder.appendAscii(" [cut]", false);
 
     // A message whose last parts never came (PartJoiner closed it): how many it got
     if (part.part.number != part.part.count)
@@ -156,8 +174,11 @@ private struct PartText
 }
 
 //! @brief Reads the record at the start of `record` (the bytes after it may follow) as a
-//! part of a message
-//! @returns false if it isn't one: not a verbose record of one string argument "k/n: "
+//! part of a message: a numbered part, a piece of a text cut at its writer's limit
+//! (tellPiece), another record of its writer (PieceKind.other), RecordPart.init if whose
+//! it is is not known
+//! @returns true if it is a verbose record of one string argument: `part.text` is its
+//! text, without its number if it is numbered
 private bool readPart(const(ubyte)[] record, bool hasStorageHeader, out PartText part) nothrow @nogc
 {
     StorageInfo storage;
@@ -176,6 +197,8 @@ private bool readPart(const(ubyte)[] record, bool hasStorageHeader, out PartText
     uint arguments;
     ubyte counter;
     bool msbf;
+    long time = RecordPart.noTime;
+    LogLevel level = LogLevel.None;
     const version_ = protocolVersion(message);
     if (version_ == 2)
     {
@@ -192,10 +215,15 @@ private bool readPart(const(ubyte)[] record, bool hasStorageHeader, out PartText
         arguments = h.numberOfArguments;
         counter = h.counter;
         msbf = false; // as the parser reads version 2
+        long ns;
+        if (h.hasTimestamp && toTimeNs(h.seconds, h.nanoseconds, ns))
+            time = ns;
+        if (h.hasMessageInfo)
+            level = h.messageInfo.logLevel();
     }
     else if (version_ <= 1)
     {
-        if (!mayBePartOf(message))
+        if (message.length < StandardHeader.sizeof)
             return false;
         const length = (cast(const(StandardHeader)*) message.ptr).nativeLength;
         if (length > message.length || hasStorageHeader && !endsAtHeader(message[length .. $]))
@@ -210,21 +238,71 @@ private bool readPart(const(ubyte)[] record, bool hasStorageHeader, out PartText
         arguments = headers.extended.numberOfArguments;
         counter = headers.standard.messageCounter;
         msbf = headers.standard.isBigEndian();
+        if (headers.standard.withTimestamp)
+            time = headers.extraTimestamp * 100_000L; // in 0.1 ms
+        level = headers.extended.messageInfo.logLevel();
     }
     else
         return false;
+
+    part.part.sender = senderOf(removeIdPadding(ecuId), removeIdPadding(appId), removeIdPadding(ctxId));
+    part.part.counter = counter;
+    part.part.nextCounter = cast(ubyte)(counter + 1);
+    part.part.time = time;
+    part.part.level = level;
+    part.part.piece = PieceKind.other;
 
     VerboseArgument argument;
     if (arguments != 1 || !readArgument(payload, msbf, argument) || argument.kind != ArgumentKind.String)
         return false;
     part.text = argument.text;
     part.utf8 = argument.utf8;
-    if (!takeNumber(part.text, part.part.number, part.part.count))
-        return false;
-    part.part.sender = senderOf(removeIdPadding(ecuId), removeIdPadding(appId), removeIdPadding(ctxId));
-    part.part.counter = counter;
-    part.part.nextCounter = cast(ubyte)(counter + 1);
+    uint number, count;
+    if (takeNumber(part.text, number, count))
+    {
+        part.part.number = number;
+        part.part.count = count;
+        part.part.piece = PieceKind.unknown; // numbered: not a piece
+    }
+    else
+        tellPiece(part.part, part.text);
     return true;
+}
+
+//! @brief The rule of the pieces of a text its writer cut at its limit with no mark
+//! (dltPieceLimits): a text of a limit, or up to 3 bytes under it where the limit would
+//! cut a UTF-8 character, with no line break at its end, is cut: the next record of the
+//! writer goes on with it. Which one does, PartJoiner tells: its next counter, at once,
+//! starting with a character the room left didn't take (the room under the nearest limit:
+//! whose limit the writer has is not known)
+private void tellPiece(ref RecordPart part, const(char)[] text) pure nothrow @nogc
+{
+    part.firstCharLength = text.length == 0 ? 0 : utf8LengthOf(text[0]);
+    if (isCutAtLimit(text.length, text.length == 0 ? '\0' : text[$ - 1]))
+    {
+        part.piece = PieceKind.cut;
+        foreach (limit; dltPieceLimits)
+            if (limit >= text.length)
+            {
+                part.room = cast(uint)(limit - text.length);
+                break;
+            }
+    }
+    else
+        part.piece = PieceKind.text;
+}
+
+//! @returns true if a text of `length` bytes ending in `last` is cut at a limit (tellPiece)
+private bool isCutAtLimit(size_t length, char last) pure nothrow @nogc
+{
+    enum maxRoom = 3; // a UTF-8 character the limit would cut: of 4 bytes at most
+    return length <= dltPieceLimits[$ - 1] && length + maxRoom >= dltPieceLimits[0] && last != '\n';
+}
+
+//! @returns the bytes of the UTF-8 character `lead` starts, 1 if it starts none
+private uint utf8LengthOf(char lead) pure nothrow @nogc
+{
+    return lead >= 0xF0 ? 4 : lead >= 0xE0 ? 3 : lead >= 0xC0 ? 2 : 1;
 }
 
 //! @returns true if the bytes after a record, by its length, start with a storage header
@@ -261,7 +339,17 @@ bool dltMayBePartAt()(const(ubyte)[] message, in VerboseStart start) pure nothro
     if (typeInfo & TypeInfoFlags.VariableInfo)
         return true; // the name comes first: left to readPart
     const c = message[start.at + 6];
-    return c >= '0' && c <= '9';
+    if (c >= '0' && c <= '9')
+        return true;
+    // A piece cut at the limit: its length and its last character
+    const length = readValue!ushort(message[start.at + 4 .. start.at + 6], start.msbf);
+    const end = start.at + 6 + length;
+    if (length + 3 < dltPieceLimits[0] || end > message.length)
+        return false; // zeros at its end make it shorter still, never longer
+    auto text = cast(const(char)[]) message[start.at + 6 .. end];
+    while (text.length != 0 && text[$ - 1] == '\0')
+        text = text[0 .. $ - 1];
+    return isCutAtLimit(text.length, text.length == 0 ? '\0' : text[$ - 1]);
 }
 
 //! @brief Takes the number "<k>/<n>: " off the start of `text`: 1 <= k <= n, at most
@@ -326,6 +414,27 @@ version (unittest)
         r.payload = argument(0x200 | (utf8 ? 0x8000 : 0), bytesOf(cast(ushort)(text.length + 1), msbf)
             ~ cast(const(ubyte)[]) text ~ cast(ubyte) 0, msbf);
         return r.bytes();
+    }
+
+    //! A verbose record of version 1 of one string argument, its timestamp in 0.1 ms
+    private ubyte[] timedRecord(const(char)[] text, ubyte counter, uint timestamp)
+    {
+        BuildV1 r;
+        r.counter = counter;
+        r.withTimestamp = true;
+        r.timestamp = timestamp;
+        r.numberOfArguments = 1;
+        r.payload = argument(0x200, bytesOf(cast(ushort)(text.length + 1))
+            ~ cast(const(ubyte)[]) text ~ cast(ubyte) 0);
+        return r.bytes();
+    }
+
+    //! `length` bytes of ASCII text, `last` its last character
+    private string longText(size_t length, char last = 'z')
+    {
+        import std.array : replicate;
+
+        return "a".replicate(length - 1) ~ last;
     }
 
     private string payloadOf(const(ubyte[])[] parts...)
@@ -419,6 +528,77 @@ unittest
     assert(!dltPartOf(nonVerbose.bytes(), true).isPart);
 
     assert(!dltPartOf(null, true).isPart && !dltPartOf(textRecord("1/2: x")[0 .. 20], true).isPart);
+}
+
+@("dltPartOf: a text of the limit of its writer with no line break at its end is a cut piece")
+unittest
+{
+    const cut = dltPartOf(timedRecord(longText(dltPieceLimits[$ - 1]), 41, 12_345), true);
+    assert(!cut.isPart && cut.piece == PieceKind.cut && cut.room == 0);
+    assert(cut.counter == 41 && cut.nextCounter == 42);
+    assert(cut.time == 12_345 * 100_000L, "the timestamp of the header, in ns");
+    assert(cut.level == LogLevel.Info, "the level of the message info");
+    assert(cut.sender == dltPartOf(textRecord("x", 0), true).sender);
+
+    // Writers of either limit: 1024 bytes of text, or 1023 and the zero after them
+    assert(dltPieceLimits == [1023, 1024]);
+    const of1023 = dltPartOf(timedRecord(longText(1023), 0, 0), true);
+    assert(of1023.piece == PieceKind.cut && of1023.room == 0, "the room of the nearest limit");
+
+    // The writer keeps a UTF-8 character whole: up to 3 bytes under its limit
+    const short_ = dltPartOf(timedRecord(longText(1021), 0, 0), true);
+    assert(short_.piece == PieceKind.cut && short_.room == 2);
+    assert(dltPartOf(timedRecord(longText(1020), 0, 0), true).room == 3);
+    assert(dltPartOf(timedRecord(longText(1019), 0, 0), true).piece == PieceKind.text);
+    assert(dltPartOf(timedRecord(longText(1025), 0, 0), true).piece == PieceKind.text);
+    assert(dltPartOf(timedRecord(longText(1024, '\n'), 0, 0), true).piece == PieceKind.text,
+        "a line break at its end: a whole message");
+}
+
+@("dltPartOf: any record of one text may go on with a cut piece, others of its writer end it")
+unittest
+{
+    const text = dltPartOf(timedRecord("дальше", 7, 1), true);
+    assert(!text.isPart && text.piece == PieceKind.text && text.firstCharLength == 2);
+    assert(text.counter == 7 && text.time == 100_000);
+    assert(dltPartOf(textRecord("x"), true).time == RecordPart.noTime, "no timestamp");
+    assert(dltPartOf(textRecord("x"), true).firstCharLength == 1);
+
+    BuildV1 two;
+    two.counter = 3;
+    two.numberOfArguments = 2;
+    two.payload = argument(0x200, bytesOf(cast(ushort) 2) ~ cast(ubyte[]) "x\0".dup)
+        ~ argument(0x200, bytesOf(cast(ushort) 2) ~ cast(ubyte[]) "y\0".dup);
+    const other = dltPartOf(two.bytes(), true);
+    assert(other.piece == PieceKind.other && other.counter == 3);
+    assert(other.sender == text.sender);
+
+    BuildV1 nonVerbose;
+    nonVerbose.verbose = false;
+    nonVerbose.payload = bytesOf(5u) ~ cast(ubyte[]) "x".dup;
+    assert(dltPartOf(nonVerbose.bytes(), true) == RecordPart.init, "whose: not told");
+}
+
+@("parseDltParts: the pieces of a text cut at the limit are joined as they are")
+unittest
+{
+    const first = longText(dltPieceLimits[$ - 1]);
+    assert(payloadOf(timedRecord(first, 0, 0), timedRecord("goes on\n", 1, 0)) == first ~ "goes on\n");
+}
+
+@("parseDltParts: a message of pieces whose last one is cut tells it")
+unittest
+{
+    const first = longText(dltPieceLimits[$ - 1]);
+    assert(payloadOf(timedRecord(first, 0, 0), timedRecord(first, 1, 0)) == first ~ first ~ " [cut]");
+}
+
+@("parseDltParts: a numbered part and a piece are not joined, the first is left as it is")
+unittest
+{
+    const piece = timedRecord(longText(dltPieceLimits[$ - 1]), 1, 0);
+    assert(payloadOf(textRecord("1/2: one", 0), piece) == "1/2: one");
+    assert(payloadOf(piece, textRecord("2/2: two", 2)) == longText(dltPieceLimits[$ - 1]));
 }
 
 @("dltPartOf: the record ends at its own length, whatever bytes follow it")

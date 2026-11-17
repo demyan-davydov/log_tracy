@@ -316,14 +316,16 @@ final class RecordStore
         const data = _source.data;
         foreach (i, offset; bunch.records)
         {
-            const mayBePart = (bunch.marks[i] & RecordMark.part) != 0;
-            if (!mayBePart && !_joiner.holding)
+            // A record that goes on with a piece cut at a limit has no mark: while one is
+            // open, whose every record is is told (seldom, and for a record or two)
+            const ask = (bunch.marks[i] & RecordMark.part) != 0 || _joiner.followsPieces;
+            if (!ask && !_joiner.holding)
             {
                 items[count++] = OffsetIndexItem(offset); // the usual record
                 continue;
             }
             const record = _offsets.length + count;
-            const step = _joiner.add(mayBePart ? _parted.partOf(data, offset) : RecordPart.init,
+            const step = _joiner.add(ask ? _parted.partOf(data, offset) : RecordPart.init,
                 record, _joins.length, _fragments.length);
             final switch (step.kind)
             {
@@ -636,10 +638,12 @@ unittest
 
 version (unittest)
 {
-    import log_core.log_format : ColumnInfo, FormatInfo, PartedFormat, RecordPart;
+    import log_core.log_format : ColumnInfo, FormatInfo, PartedFormat, PieceKind, RecordPart;
 
-    //! Lines of plain text, "<sender><counter> <k>/<n>: <text>" a part of a message:
-    //! its parts are decoded as their texts joined by "|"
+    //! Lines of plain text, "<sender><counter> <k>/<n>: <text>" a part of a message,
+    //! "<sender><counter> ~<text>" a piece cut at a limit, "<sender><counter> <text>" a
+    //! piece that may go on with one: the parts of a message are decoded as their texts
+    //! joined by "|"
     private class PartedText : LogFormat, PartedFormat
     {
         import formats.plain_text : PlainTextFormat;
@@ -661,20 +665,41 @@ version (unittest)
             => _text.decode(msg, record);
 
         override ubyte marksOf(const(ubyte)[] data, size_t offset) const nothrow @nogc
-            => partOf(data, offset).isPart ? RecordMark.part : RecordMark.none;
+        {
+            const part = partOf(data, offset);
+            return part.isPart || part.piece == PieceKind.cut ? RecordMark.part : RecordMark.none;
+        }
 
         override RecordPart partOf(const(ubyte)[] data, size_t offset) const nothrow @nogc
         {
             RecordPart part;
             const s = cast(const(char)[]) recordAt(data, offset);
-            if (s.length < 7 || s[2] != ' ' || s[4] != '/' || s[6] != ':')
+            if (s.length < 4 || s[1] < '0' || s[1] > '9' || s[2] != ' ')
                 return part;
             part.sender[0] = s[0];
             part.counter = s[1] - '0';
             part.nextCounter = part.counter + 1;
-            part.number = s[3] - '0';
-            part.count = s[5] - '0';
+            if (s.length >= 7 && s[4] == '/' && s[6] == ':')
+            {
+                part.number = s[3] - '0';
+                part.count = s[5] - '0';
+            }
+            else
+            {
+                part.piece = s[3] == '~' ? PieceKind.cut : PieceKind.text;
+                part.firstCharLength = 1;
+            }
             return part;
+        }
+
+        //! The text of a line after its sender and counter, without its number or "~"
+        private static const(char)[] textOf(const(char)[] s) pure nothrow @nogc
+        {
+            if (s[3] == '~')
+                return s[4 .. $]; // a cut piece
+            if (s.length >= 7 && s[4] == '/')
+                return s[8 .. $]; // a numbered part
+            return s[3 .. $]; // a piece going on with one
         }
 
         override bool decodeParts(ref LogMessage!wchar msg, const(ubyte[])[] parts) const nothrow @nogc
@@ -686,7 +711,7 @@ version (unittest)
                 auto s = cast(const(char)[]) part;
                 while (s.length && (s[$ - 1] == '\n'))
                     s = s[0 .. $ - 1];
-                builder.appendAscii(s[8 .. $], false);
+                builder.appendAscii(textOf(s), false);
                 if (part !is parts[$ - 1])
                     builder.appendAscii("|", false);
             }
@@ -825,6 +850,17 @@ unittest
     const records = store.records;
     assert(records.length == 2);
     assert(payloadOf(records, 0) == "a|b|c" && payloadOf(records, 1) == "x|y");
+}
+
+@("RecordStore: a piece cut at a limit is joined with the next record of its writer, not marked")
+unittest
+{
+    auto store = new RecordStore(new TextSource("A1 ~he\nB\nA2 ~ll\nA3 o\ny\nA5 ~x\nA9 z\n"), new PartedText());
+    scanAll(store, true);
+    const records = store.records;
+    assert(records.length == 5);
+    assert(payloadOf(records, 0) == "he|ll|o" && payloadOf(records, 1) == "B" && payloadOf(records, 2) == "y");
+    assert(payloadOf(records, 3) == "A5 ~x" && payloadOf(records, 4) == "A9 z", "not the next counter");
 }
 
 @("RecordStore: once an append of parts failed half done, the store takes nothing more")

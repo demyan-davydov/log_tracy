@@ -60,7 +60,12 @@ Adding a format, step by step: `.ai/workflows/add-format.md`.
   O(1) for a sound record).
 - A message its writer cut into numbered parts (verbose, one string argument `k/n: `) is one
   record: `formats/dlt/parts` tells a part (`dltPartOf`) and decodes the parts as one
-  (`parseDltParts`); `DltFormat` is a `PartedFormat` through them. The joining itself is the
+  (`parseDltParts`); `DltFormat` is a `PartedFormat` through them. So is a message its
+  writer cut with no mark at its limit of 1024 or 1023 bytes of text: `parts.tellPiece` is
+  that rule on the format's side (`dltPieceLimits`, a piece of a limit or up to 3 bytes
+  under it, no line break at its end), `PartJoiner.piecesGoOn` on the joiner's (the next counter, the
+  same level, `maxPieceGap`, the room left), `RecordPart.piece` carries it between them
+  (`docs/stories/cut-pieces.md`). The joining itself is the
   index's (`.ai/knowledge/architecture.md`, Indexing and Threads).
 - A file sent in the log (the file transfer of DLT: FLST, FLDA, FLFI, FLER, verbose
   log messages whose first and last arguments are the marker) is told by
