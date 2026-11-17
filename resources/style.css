@@ -670,6 +670,13 @@ frameset > splitter:active {
     border-radius: 3dip;
     background: var(--bg-main);
     position: relative; /* for its .filter-chip-actions */
+    box-shadow: 0 0 0 0 rgba(0, 0, 0, 0); /* no shadow: it grows and fades in, shrinks and fades out */
+    transition: box-shadow ease-out 200ms;
+}
+
+/* A soft shadow under the rule the mouse is on */
+.filter-chip:hover {
+    box-shadow: 0 2dip 6dip rgba(0, 0, 0, 0.25);
 }
 
 /* The page is tinted (--page-filters-bg): a hover of its own tint */
@@ -776,11 +783,18 @@ frameset > splitter:active {
     z-index: 1;
     visibility: hidden;
     animation: filter-tab-keep 200ms;
+    /* The tab's shadow, here: the window clips what is inside it, not its own
+       shadow. The chip's one, moved left and not spread to the right, so it
+       doesn't darken the chip */
+    border-radius: 3dip 0 0 3dip;
+    box-shadow: 0 0 0 0 rgba(0, 0, 0, 0);
+    transition: box-shadow ease-out 200ms;
 }
 
 .filter-chip:hover > .filter-chip-actions {
     visibility: visible;
     animation: none;
+    box-shadow: -1dip 2dip 6dip -1dip rgba(0, 0, 0, 0.25);
 }
 
 @keyframes filter-tab-keep {
