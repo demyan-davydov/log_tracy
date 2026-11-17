@@ -319,8 +319,9 @@
 }
 
 /* Selection: the selected rows have the theme's blue (paler while the table
-   isn't focused), the current row (keyboard focus) a frame while it is. The
-   theme's colors, not the system's: they don't change with the OS settings */
+   isn't focused), the current row (keyboard focus) a frame, duller while the
+   table isn't focused. The theme's colors, not the system's: they don't
+   change with the OS settings */
 .log-table>tbody>tr[row-selected="true"] {
     background-color: var(--bg-row-selected-inactive);
     color: var(--text-row-selected);
@@ -332,6 +333,10 @@
 
 /* box-shadow, not outline: Sciter paints the outline of a row of a scrolled
    virtual-list scrollTop lower (.ai/knowledge/sciter.md) */
+.log-table>tbody>tr[row-current="true"] {
+    box-shadow: inset 0 0 0 1dip var(--border-row-current-inactive);
+}
+
 .log-table>tbody:focus>tr[row-current="true"] {
     box-shadow: inset 0 0 0 1dip var(--border-row-current);
 }

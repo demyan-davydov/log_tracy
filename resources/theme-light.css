@@ -63,10 +63,11 @@
     --bg-text-selected: #b4d5fe;
     /* Selected rows of a log table: while the table is focused, while it isn't
        (a paler blue), their text; the frame of the current row */
-    --bg-row-selected: #cae2fb;
-    --bg-row-selected-inactive: #c7daee;
+    --bg-row-selected: #b0d2f8;
+    --bg-row-selected-inactive: #b8cde4;
     --text-row-selected: #000;
-    --border-row-current: #cfe5fd;
+    --border-row-current: #3b82d6;
+    --border-row-current-inactive: #8aa4c2;
     /* The anchor mark (table.css): its circle, the faint one on hover, the one
        of an anchor that can't be set (the limit) */
     --bg-anchor: #d6d6d6;
