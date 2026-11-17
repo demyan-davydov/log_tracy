@@ -109,21 +109,21 @@ final class DocumentFilters
             return uiText("Can't load the filter: {reason}", "reason", uiTextOf(e));
         set.source = path;
         identify(set);
-        _sets ~= set;
+        _sets = set ~ _sets; // the newest on top
         rematch();
         if (filtersView(set))
             apply();
         return noteOf(baseName(path), notes);
     }
 
-    //! @brief Appends an empty set, to add rules to
+    //! @brief Adds an empty set on top, to add rules to
     UiText newSet(TextForUser text = null)
     {
         if (!canFilter())
             return noColumns();
         FilterSet set;
         set.name = say(text, uiText("New Filter")); // a name of the user's, in the language of now
-        _sets ~= set;
+        _sets = set ~ _sets;
         return UiText.init;
     }
 
@@ -649,7 +649,7 @@ unittest
     assert(fx.filters.loadFile(second).empty);
     assert(fx.shows("APP1") && fx.shows("APP2") && !fx.shows("APP3"));
     assert(fx.filters.sets.length == 2);
-    assert(fx.filters.sets[0].name == "filters_first.dlf" && fx.filters.sets[0].source == first);
+    assert(fx.filters.sets[1].name == "filters_first.dlf" && fx.filters.sets[1].source == first);
 }
 
 @("DocumentFilters: a filter file of Log Tracy is loaded for any log, one of another format with a note")
@@ -802,7 +802,7 @@ unittest
         remove(path);
 
     auto fx = new Fixture();
-    assert(fx.filters.loadFile(path).empty && fx.filters.newSet().empty);
+    assert(fx.filters.newSet().empty && fx.filters.loadFile(path).empty);
     assert(fx.filters.addRule(1, appRule("Three", "APP3")).empty);
     const ids = [fx.idOf(0, 0), fx.idOf(0, 1), fx.idOf(1, 0)];
     foreach (i, id; ids)
@@ -911,7 +911,7 @@ unittest
     const second = makeDlf("filters_save_2.dlf", appFilter("APP3"));
 
     auto fx = new Fixture();
-    assert(fx.filters.loadFile(first).empty && fx.filters.loadFile(second).empty);
+    assert(fx.filters.loadFile(second).empty && fx.filters.loadFile(first).empty);
     assert(fx.filters.enableRule(0, 1, false).empty && fx.filters.enableSet(1, false).empty);
     assert(fx.filters.addRule(0, appRule("Four", "APP4")).empty);
     const saved = fx.filters.saved();
@@ -1114,8 +1114,8 @@ unittest
     assert(russian(error).startsWith("Не удалось загрузить фильтр: "));
 
     assert(filters.newSet(&russian).empty);
-    assert(filters.sets[$ - 1].name == "Новый фильтр");
-    assert(filters.newSet().empty && filters.sets[$ - 1].name == "New Filter", "no text given: english");
+    assert(filters.sets[0].name == "Новый фильтр");
+    assert(filters.newSet().empty && filters.sets[0].name == "New Filter", "no text given: english");
     assert(filters.addRule(0, `{"name": "x", "enabled": true, "conditions": [{"column": "nosuch", "check": "equals", "value": "1"}]}`).empty);
     assert(filters.toJson(&russian)["sets"][0]["rules"][0]["error"].str == "в журнале нет колонки «nosuch»");
     assert(filters.toJson()["sets"][0]["rules"][0]["error"].str == "no column \"nosuch\" in this log");

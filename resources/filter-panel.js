@@ -244,7 +244,7 @@ export class FilterPanel {
         const setOf = (element) => parseInt(element.getAttribute("set-index"));
         const ruleOf = (element) => parseInt(element.getAttribute("rule-index"));
 
-        // Filter sets are only appended; each one has its remove button. A filter
+        // A new filter set goes on top, none replaces another; each one has its remove button. A filter
         // file of Log Tracy for any log, a .dlf for a DLT one.
         on("click", ".btn-dlf", () => {
             const fn = platform.chooseFileToOpen(fileFilter(filterFilesToLoad(this.filters.canDlf)));
@@ -256,7 +256,7 @@ export class FilterPanel {
         on("click", ".btn-new-dlf", () => {
             this.showResult(backend.newFilterSet(docId));
             if (this.message) return;
-            const set = this.filters.sets.length - 1;
+            const set = 0; // the new set is on top
             // No first rule: no set either, so cancelled tries don't pile up
             if (!this.editRule(set, -1)) this.showResult(backend.removeFilterSet(docId, set));
             else this.startRename(set);

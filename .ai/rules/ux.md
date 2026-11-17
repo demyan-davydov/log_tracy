@@ -181,7 +181,7 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
 ## Filters
 
 33. **The filters panel replaces a quick filter.** No per-column quick filter. Filter files are
-    only appended (no "replace" load); each loaded filter has a delete (×) button. A whole
+    added on top of the list (no "replace" load); each loaded filter has a delete (×) button. A whole
     filter and each of its rules can be switched on and off. Loaded filters are copied into the
     settings of the log, not referenced by path: a `.dlf` shared by two logs must not tie them
     together. The design allows filters for every format.
