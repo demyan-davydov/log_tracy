@@ -84,17 +84,34 @@ interface LogFormat
     bool decode(ref LogMessage!wchar msg, const(ubyte)[] record) const nothrow @nogc;
 }
 
-//! What a record is as a part of a message its writer cut into numbered parts
-//! ("1/2: ...", "2/2: ..."), as PartedFormat.partOf tells it
+//! What a record is to a message its writer cut with no mark: at a limit of its text, the
+//! next record of the writer going on with it (a piece). Told for the records of one text
+enum PieceKind : ubyte
+{
+    unknown, // not told: whose it is is not known
+    other, // a record of the writer not of one text: it goes on with no cut piece
+    text, // a record of one text: it may go on with a cut piece of its writer
+    cut, // a record of one text cut at its writer's limit: the next one of the writer goes on
+}
+
+//! What a record is as a part of a message its writer cut: into numbered parts ("1/2: ...",
+//! "2/2: ..."), or into pieces at a limit of its text (PieceKind), as PartedFormat.partOf
+//! tells it
 struct RecordPart
 {
+    enum long noTime = long.min;
+
     ubyte[16] sender; // who wrote it: the parts of a message come from one writer
-    uint number; // 1-based; 0: the record is not a part
+    uint number; // 1-based; 0: the record is not a numbered part
     uint count; // of the parts of the message
     uint counter; // the writer's message counter of the record (0 without one)
     uint nextCounter; // the counter the next part has: they follow one by one
+    PieceKind piece; // what it is to a message cut at a limit
+    long time = noTime; // a piece: when its writer wrote it, in ns of the writer's clock
+    uint room; // a cut piece: the bytes its writer left under the limit not to cut a character
+    uint firstCharLength; // a piece of text: the bytes of its first character
 
-    //! @returns true if the record is a part of a message
+    //! @returns true if the record is a numbered part of a message
     bool isPart() const pure nothrow @nogc @safe
     {
         return number != 0;
@@ -106,7 +123,7 @@ struct RecordPart
 enum RecordMark : ubyte
 {
     none = 0,
-    part = 1, // a part of a message: PartedFormat.partOf tells
+    part = 1, // a part of a message, numbered or a piece cut at a limit: PartedFormat.partOf tells
     transfer = 2, // a message of a file sent in the log: TransferringFormat.transferOf tells
 }
 
@@ -118,19 +135,24 @@ interface MarkedFormat
 {
     //! @returns the RecordMark bits of what the record at `offset` of the data (as
     //! scanRecords found it) may be: an unset bit rules it out surely, a set one leaves
-    //! it to the full question. Asked of every record: keep it cheap, one look for all
+    //! it to the full question (but for a record going on with a piece cut at a limit,
+    //! which has no mark: PartedFormat.partOf). Asked of every record: keep it cheap, one
+    //! look for all
     ubyte marksOf(const(ubyte)[] data, size_t offset) const nothrow @nogc;
 }
 
-//! A LogFormat whose writers may cut a long message into numbered parts, written as
-//! records of their own: the index joins them into one record (domain/index/part_joiner).
-//! It marks the records that may be parts (MarkedFormat). Asked of a format by a cast;
-//! immutable like the LogFormat it is.
+//! A LogFormat whose writers may cut a long message into numbered parts or into pieces at
+//! a limit of its text, written as records of their own: the index joins them into one
+//! record (domain/index/part_joiner). It marks the records that may be numbered parts or
+//! cut pieces (MarkedFormat). Asked of a format by a cast; immutable like the LogFormat
+//! it is.
 interface PartedFormat : MarkedFormat
 {
     //! @returns what the record at `offset` of the data (as scanRecords found it) is as
-    //! a part; not a part: RecordPart.init. Asked only of the records marked
-    //! RecordMark.part
+    //! a part: a numbered one, or what it is to a piece cut at a limit (RecordPart.piece,
+    //! with its sender); RecordPart.init if whose it is is not known. Asked of the records
+    //! marked RecordMark.part, and of every record while a cut piece waits for the next
+    //! (PartJoiner.followsPieces): what goes on with it has no mark
     RecordPart partOf(const(ubyte)[] data, size_t offset) const nothrow @nogc;
 
     //! @brief Decodes the parts of one message (as recordAt gives them, in order, the

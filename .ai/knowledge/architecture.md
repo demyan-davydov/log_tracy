@@ -248,10 +248,12 @@ utils  ←  sciter  ←  ui
     grows. The format may be replaced by one of the same records (`replaceFormat`, while no
     pass runs); a `Records` decodes by the format it was given with, so a reader of a lease
     goes on with the format of before. A format that is a `PartedFormat` (`log_core/log_format`: its records may be
-    numbered parts of one message) has its parts joined into one record as they are found
+    numbered parts of one message, or pieces of a text cut at a limit) has its parts joined into one record as they are found
     (`part_joiner`): `findRecords` asks the format, without the lock, what each record may
     be (`MarkedFormat.marksOf`, once a record for every question: a `RecordMark` byte a
-    record of its `Bunch`), `append` asks `partOf` of those marked a part only. Every
+    record of its `Bunch`), `append` asks `partOf` of those marked a part only, and of
+    every record while a message of pieces is open (`PartJoiner.followsPieces`: what goes
+    on with a cut piece has no mark). Every
     record goes to the offset index at once
     but the later parts of a message: they are fragments of its head (the joined bit of
     its `OffsetIndexItem`), a list in a table of the store (`Join`, `Fragment`), which

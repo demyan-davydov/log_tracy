@@ -961,6 +961,15 @@ unittest
     assert(marks(VerboseArgs(false).str("2/2: llo").record()) == RecordMark.part, "little-endian");
     assert(marks(VerboseArgs().str("FLFI").u32(7).str("FLFI").record()) == RecordMark.transfer);
     assert(marks(VerboseArgs().str("a text").record()) == RecordMark.none);
+    {
+        import std.array : replicate;
+        import formats.dlt.parts : dltPieceLimits;
+
+        const cut = "a".replicate(dltPieceLimits[$ - 1]);
+        assert(marks(VerboseArgs().str(cut).record()) == RecordMark.part, "a piece cut at the limit");
+        assert(marks(VerboseArgs().str(cut[0 .. $ - 1] ~ "\n").record()) == RecordMark.none, "a whole one");
+        assert(marks(VerboseArgs().str(cut ~ "a").record()) == RecordMark.none, "over the limit");
+    }
     assert(marks(VerboseArgs().str("FLFI").u32(7).record()) == RecordMark.none, "two arguments");
     assert(marks(buildDltMessage()) == RecordMark.none, "not verbose");
 
