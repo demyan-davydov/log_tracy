@@ -252,6 +252,7 @@
             showKept();
             showMessage($("#rule-error"), params.error || "");
             $("#name").focus();
+            $("#name").edit.selectRange(0, $("#name").value.length); // typing replaces the name
         });
 
         // Typed into, or chosen: its condition is switched on
