@@ -102,11 +102,11 @@
 }
 
 /* The color of the filter rule a record matches: set on the row, shown on its Index cell only (the second one, after
-   the anchor), fading out from the left edge to a third of the cell; the
+   the anchor), fading out from the left edge; the
    background of the row shows through. Sciter takes var() in a gradient only
    in `background`, not in `background-image`. */
 .log-table>tbody>tr[rule-color="true"]>td:nth-child(2) {
-    background: linear-gradient(to right, var(--rule-color), transparent 25%);
+    background: linear-gradient(90deg, var(--rule-color), transparent 25%);
     background-position: 1dip 0;
 }
 

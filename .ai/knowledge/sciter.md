@@ -296,8 +296,9 @@ agent can't drive it. In scapp a plain
   `size: auto`.
 - Gradients: `background-image: linear-gradient(...)` is ignored, only the `background:`
   shorthand draws one. A CSS variable works inside the gradient
-  (`linear-gradient(to right, var(--rule-color), transparent 33%)`); a whole gradient stored in
-  a variable doesn't.
+  (`linear-gradient(90deg, var(--rule-color), transparent 25%)`); a whole gradient stored in
+  a variable doesn't. Write the direction as an angle: `to right` tilts the gradient downward in
+  tall cells.
 - Dark theme: `document.attributes["theme"] = "dark"` switches Sciter's own widgets (select,
   buttons, checkboxes, inputs) to dark and, by `:root[theme="dark"]`, our `theme-dark.css`
   (every page loads both theme files). The open list of a
