@@ -7,6 +7,7 @@
 module domain.index.part_joiner;
 
 import log_core.log_format : PieceKind, RecordPart;
+import log_core.log_level : LogLevel;
 
 //! Where a record goes
 enum StepKind : ubyte
@@ -115,6 +116,7 @@ struct PartJoiner
             chain.nextCounter = part.nextCounter;
             chain.time = part.time;
             chain.room = part.room;
+            chain.level = part.level;
             if (part.piece != PieceKind.cut || chain.expected > maxParts)
                 close(open);
             return step;
@@ -131,20 +133,21 @@ struct PartJoiner
         chain.cut = true;
         chain.time = part.time;
         chain.room = part.room;
+        chain.level = part.level;
         _chains[_open++] = chain;
         ++_cutOpen;
         return Step(StepKind.head);
     }
 
     //! @brief The rule of pieces: a record of one text goes on with the piece its writer
-    //! cut before it if it is the next message of the writer (its counter), written at
-    //! once (maxPieceGap, when both times are known), and starts with a character the
-    //! cut piece left no room for
+    //! cut before it if it is the next message of the writer (its counter), of the same
+    //! level (the writer cut one message), written at once (maxPieceGap, when both times
+    //! are known), and starts with a character the cut piece left no room for
     private static bool piecesGoOn(const ref Chain chain, in RecordPart part) pure nothrow @nogc
     {
         if (part.piece != PieceKind.text && part.piece != PieceKind.cut)
             return false;
-        if (part.counter != chain.nextCounter)
+        if (part.counter != chain.nextCounter || part.level != chain.level)
             return false;
         if (part.time != RecordPart.noTime && chain.time != RecordPart.noTime
             && (part.time < chain.time || part.time - chain.time > maxPieceGap))
@@ -200,6 +203,7 @@ private:
         bool cut; // of pieces cut at a limit, not of numbered parts (count is 0)
         long time = RecordPart.noTime; // pieces: of its last one
         uint room; // pieces: the room its last one left under the limit
+        LogLevel level; // pieces: the level of its pieces
     }
 
     // The open messages, the oldest head first: heads come in the order of the file
@@ -378,7 +382,7 @@ unittest
     assert(joiner.add(piece('A', K.text, 10, 101), 7, 3, 12).kind == StepKind.record);
 }
 
-@("PartJoiner: a piece goes on only with the next counter, in maxPieceGap, after the room")
+@("PartJoiner: a piece goes on only with the next counter, in maxPieceGap, of its level, after the room")
 unittest
 {
     alias K = PieceKind;
@@ -398,6 +402,18 @@ unittest
     assert(joiner.add(piece('A', K.text, 2, 99), 7, 4, 1).kind == StepKind.record, "earlier");
     joiner.add(piece('A', K.cut, 1, -1), 8, 4, 1);
     assert(joiner.add(piece('A', K.text, 2, 5000), 9, 5, 1).kind == StepKind.fragment, "no time: not told");
+
+    // Its writer cut the message: the pieces have its level
+    auto debug_ = piece('A', K.cut, 1, 100);
+    debug_.level = LogLevel.Debug;
+    joiner.add(debug_, 14, 7, 3);
+    auto info = piece('A', K.text, 2, 100);
+    info.level = LogLevel.Info;
+    assert(joiner.add(info, 15, 8, 3).kind == StepKind.record, "another level");
+    joiner.add(debug_, 16, 8, 3);
+    auto same = info;
+    same.level = LogLevel.Debug;
+    assert(joiner.add(same, 17, 9, 3).kind == StepKind.fragment);
 
     // The writer left 2 bytes under its limit: the next piece starts with a longer character
     joiner.add(piece('A', K.cut, 1, 100, 2), 10, 5, 2);

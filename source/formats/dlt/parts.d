@@ -13,6 +13,7 @@ import formats.dlt.parser : ArgumentKind, LogItemHeaders, VerboseArgument, Verbo
 import formats.dlt.protocol;
 
 import log_core.log_format : PieceKind, RecordPart;
+import log_core.log_level : LogLevel;
 import log_core.log_message : LogMessage;
 import log_core.text_encoding : asciiLength, isUtf8, utf8CutTail;
 
@@ -197,6 +198,7 @@ private bool readPart(const(ubyte)[] record, bool hasStorageHeader, out PartText
     ubyte counter;
     bool msbf;
     long time = RecordPart.noTime;
+    LogLevel level = LogLevel.None;
     const version_ = protocolVersion(message);
     if (version_ == 2)
     {
@@ -216,6 +218,8 @@ private bool readPart(const(ubyte)[] record, bool hasStorageHeader, out PartText
         long ns;
         if (h.hasTimestamp && toTimeNs(h.seconds, h.nanoseconds, ns))
             time = ns;
+        if (h.hasMessageInfo)
+            level = h.messageInfo.logLevel();
     }
     else if (version_ <= 1)
     {
@@ -236,6 +240,7 @@ private bool readPart(const(ubyte)[] record, bool hasStorageHeader, out PartText
         msbf = headers.standard.isBigEndian();
         if (headers.standard.withTimestamp)
             time = headers.extraTimestamp * 100_000L; // in 0.1 ms
+        level = headers.extended.messageInfo.logLevel();
     }
     else
         return false;
@@ -244,6 +249,7 @@ private bool readPart(const(ubyte)[] record, bool hasStorageHeader, out PartText
     part.part.counter = counter;
     part.part.nextCounter = cast(ubyte)(counter + 1);
     part.part.time = time;
+    part.part.level = level;
     part.part.piece = PieceKind.other;
 
     VerboseArgument argument;
@@ -531,6 +537,7 @@ unittest
     assert(!cut.isPart && cut.piece == PieceKind.cut && cut.room == 0);
     assert(cut.counter == 41 && cut.nextCounter == 42);
     assert(cut.time == 12_345 * 100_000L, "the timestamp of the header, in ns");
+    assert(cut.level == LogLevel.Info, "the level of the message info");
     assert(cut.sender == dltPartOf(textRecord("x", 0), true).sender);
 
     // Writers of either limit: 1024 bytes of text, or 1023 and the zero after them

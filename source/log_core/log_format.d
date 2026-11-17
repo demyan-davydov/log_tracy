@@ -4,6 +4,7 @@
 //! (FormatChoice).
 module log_core.log_format;
 
+import log_core.log_level : LogLevel;
 import log_core.log_message : LogMessage, TimeKind;
 import log_core.text_encoding : TextEncoding;
 
@@ -110,6 +111,7 @@ struct RecordPart
     long time = noTime; // a piece: when its writer wrote it, in ns of the writer's clock
     uint room; // a cut piece: the bytes its writer left under the limit not to cut a character
     uint firstCharLength; // a piece of text: the bytes of its first character
+    LogLevel level; // a piece: the level of the record (the pieces of a message have one)
 
     //! @returns true if the record is a numbered part of a message
     bool isPart() const pure nothrow @nogc @safe
