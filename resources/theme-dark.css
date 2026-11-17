@@ -3,6 +3,8 @@
     /* Main Layout */
     --bg-main: #1e1e1e;
     --text-main: #d4d4d4;
+    /* The caret between the chips of the search field (search-editor.css) */
+    --caret-color: #d4d4d4;
     --bg-header: #2d2d2d;
     --border-color: #3e3e42;
     /* The splitter between the main table and the bottom panel (style.css) */

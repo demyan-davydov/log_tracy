@@ -5,6 +5,8 @@
     /* Main Layout */
     --bg-main: #fff;
     --text-main: #333;
+    /* The caret between the chips of the search field (search-editor.css) */
+    --caret-color: #666;
     --bg-header: #f0f0f0;
     --border-color: #ccc;
     /* The splitter between the main table and the bottom panel (style.css) */

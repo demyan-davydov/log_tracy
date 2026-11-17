@@ -47,15 +47,21 @@
     margin: 1dip 0;
 }
 
+/* The caret blinks as the one of a text field: half a period (530ms) on, half off.
+   It starts anew each time the caret appears in a gap (the class .caret) */
 .chip-editor > .gap.caret {
-    width: 1dip;
+    width: 1.5dip;
     margin: 1dip 2dip;
-    background: var(--text-main);
+    background: var(--caret-color);
+    animation: caret-blink 1060ms linear infinite;
 }
 
-/* The caret blinks as the one of a text field (search-editor.js toggles the class) */
-.chip-editor.blink-off > .gap.caret {
-    background: transparent;
+@keyframes caret-blink {
+    0% { background-color: var(--caret-color); }
+    49% { background-color: var(--caret-color); }
+    50% { background-color: transparent; }
+    99% { background-color: transparent; }
+    100% { background-color: var(--caret-color); }
 }
 
 .chip-editor > .placeholder {

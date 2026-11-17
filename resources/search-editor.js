@@ -16,9 +16,6 @@ import { formatQuery, parseQuery, makeChip, pastedText } from "search-query.js";
 import { EditHistory } from "edit-history.js";
 import { matchColorCount, matchColorClass } from "match-colors.js";
 
-// The blink of the caret between chips, as a text field's: half a period on, half off
-const blinkHalfPeriod = 530;
-
 const isMac = platform.isMac;
 
 export class SearchEditor {
@@ -41,7 +38,6 @@ export class SearchEditor {
         this.regexErrors = new Map(); // "matchCase\0pattern" -> error
         this.entryText = null; // the text of the chip edited, as it was when the caret came in (Esc)
         this.textAnchor = null; // where a Shift selection inside the edited chip started
-        this.blinkTimer = null; // while the caret between chips is shown
         this.drag = null; // a mouse selection: {anchor} from a gap, {chip, left} from inside a chip
         this.bind();
         this.bindHistoryButton();
@@ -100,7 +96,6 @@ export class SearchEditor {
         this.destroyed = true; // what is still posted (focusout, chip sync) does nothing
         this.closeHistory({ refocus: false });
         this.endDrag();
-        this.restartBlink(false);
         for (const handler of Object.values(this.documentHandlers)) document.off(handler);
     }
 
@@ -195,17 +190,7 @@ export class SearchEditor {
         const caretShown = focused && !range && pos.gap !== undefined;
         this.root.$$(".gap").forEach((el, g) =>
             el.classList.toggle("caret", caretShown && pos.gap === g));
-        this.restartBlink(caretShown);
         this.root.classList.toggle("focused", focused);
-    }
-
-    // The caret is shown again on every change of the state, then blinks
-    restartBlink(shown) {
-        this.root.classList.remove("blink-off");
-        if (this.blinkTimer) clearInterval(this.blinkTimer);
-        this.blinkTimer = shown && !this.destroyed
-            ? setInterval(() => this.root.classList.toggle("blink-off"), blinkHalfPeriod)
-            : null;
     }
 
     placeFocus() {
