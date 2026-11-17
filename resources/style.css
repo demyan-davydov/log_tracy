@@ -555,17 +555,30 @@ frameset {
 /* A block per set: its head, then its rules as chips wrapping under it,
    indented */
 .filter-set {
+    width: *; /* the page's width, not its head's: a long name is cut */
     flow: vertical;
     border-spacing: 2pt;
     padding: 3pt 0;
 }
 
 /* As wide as its name and buttons: they stay together; a name longer than
-   the page is cut */
+   the page is cut. Sciter stretches a block of a vertical flow over the row
+   whatever its width: the flexible margin takes the rest */
 .filter-set > .filter-set-head {
     width: max-content;
     max-width: 100%;
+    margin-right: *;
     box-sizing: border-box;
+}
+
+/* Its buttons (⤓, +, ×) only while the mouse is on the head, at their place
+   right of the name: the head keeps its width */
+.filter-set-head > .filter-button {
+    visibility: hidden;
+}
+
+.filter-set-head:hover > .filter-button {
+    visibility: visible;
 }
 
 .filter-set-head .filter-name {

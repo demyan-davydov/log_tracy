@@ -246,7 +246,8 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     Load Folder (the system dialogs pick files or folders, not both) and Unload. No Name row
     (the tab shows it). Every value that carries information is selectable.
 44. **Filters as chips.** The Filters page shows a block per filter set: its head (switch,
-    name, buttons) on its own line, its rules as chips wrapping under it, indented (switch,
+    name, buttons) on its own line, as wide as its content, its buttons shown right of the
+    name only while the mouse is on the head (no animation), its rules as chips wrapping under it, indented (switch,
     color with the kind in it (+, −, ◆), name). Remove and edit of a rule (× leftmost, then ✎)
     are in a tab that slides out of the left of its chip on hover (200 ms), its continuation:
     its height, its hover color and border, no right border, the chip's left border wiped out
