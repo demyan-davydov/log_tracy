@@ -399,7 +399,8 @@ struct MappedFile
 }
 
 //! The address space reserved for a file of `size` bytes to grow into: a few times its size,
-//! and 64 GiB more at least; 0 where addresses are too few (a 32-bit build)
+//! and 64 GiB more at least, in whole 64K pieces (a placeholder of Windows of another size
+//! isn't made, and the file then doesn't grow); 0 where addresses are too few (a 32-bit build)
 private size_t roomFor(size_t size) pure nothrow @nogc @safe
 {
     static if (size_t.sizeof < 8)
@@ -407,8 +408,10 @@ private size_t roomFor(size_t size) pure nothrow @nogc @safe
     else
     {
         enum size_t least = 64UL << 30;
-        const times = size <= size_t.max / 4 ? size * 4 : size_t.max;
-        return times > size + least ? times : size + least;
+        enum size_t piece = 64 << 10; // the allocation granularity of Windows, whole pages anywhere
+        const times = size <= size_t.max / 4 ? size * 4 : size_t.max - piece;
+        const room = times > size + least ? times : size + least;
+        return (room + piece - 1) & ~(piece - 1);
     }
 }
 
@@ -715,6 +718,27 @@ version (unittest)
         auto file = File(path, "ab");
         file.rawWrite(bytes);
     }
+
+    //! Writes `bytes` over the file: std.file.write opens it shared with no one, which
+    //! Windows refuses while the file is open here
+    private void rewrite(string path, const(void)[] bytes)
+    {
+        import std.stdio : File;
+
+        auto file = File(path, "wb");
+        file.rawWrite(bytes);
+    }
+}
+
+@("roomFor: whole 64K pieces, as the placeholders of Windows take them")
+unittest
+{
+    static if (size_t.sizeof == 8)
+        foreach (size; [0, 5, 65_535, 65_536, 1_000_003])
+        {
+            const room = roomFor(size);
+            assert(room % 65_536 == 0 && room >= size + (64UL << 30));
+        }
 }
 
 @("MappedFile.grow: takes the bytes written since, the bytes of before at the same place")
@@ -779,7 +803,7 @@ unittest
         remove(path);
 
     auto file = MappedFile(path);
-    write(path, "hello");
+    rewrite(path, "hello");
     assert(file.grow() == Growth.shrank);
     assert(file.data.length == 11);
 }

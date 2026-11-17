@@ -1768,6 +1768,7 @@ unittest
     import core.time : msecs;
     import std.file : remove, tempDir, write;
     import std.path : buildPath;
+    import std.stdio : File;
 
     const path = buildPath(tempDir(), "log_document_truncated.log");
     write(path, "one\ntwo\n");
@@ -1781,7 +1782,9 @@ unittest
     });
     waitIdle(doc);
 
-    write(path, ""); // a rotation by copying empties it
+    // A rotation by copying empties it; not by std.file.write, which opens it shared with no
+    // one and Windows refuses while it is open here
+    File(path, "wb");
     pollAfter(doc, 300.msecs);
     pollAfter(doc, 300.msecs);
     doc.dispatchEvents();

@@ -158,6 +158,7 @@ unittest
     import core.time : msecs;
     import std.file : remove, tempDir, write;
     import std.path : buildPath;
+    import std.stdio : File;
 
     const path = buildPath(tempDir(), "byte_source_truncated.txt");
     write(path, "one\ntwo\n");
@@ -168,7 +169,9 @@ unittest
     auto source = new FileSource(path, t0);
     scope (exit)
         source.close();
-    write(path, ""); // emptied, as a rotation by copying does
+    // Emptied, as a rotation by copying does; not by std.file.write, which opens it shared
+    // with no one and Windows refuses while it is open here
+    File(path, "wb");
     source.poll(t0 + 10.msecs);
     assert(source.truncated);
 }
