@@ -7,6 +7,9 @@
     --text-main: #333;
     --bg-header: #f0f0f0;
     --border-color: #ccc;
+    /* The splitter between the main table and the bottom panel (style.css) */
+    --splitter-bg: #b8b8bc;
+    --splitter-bg-hover: #3b82d6;
 
     /* Toolbar & Tabs */
     --bg-tab-inactive: #e0e0e0;

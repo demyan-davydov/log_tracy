@@ -437,6 +437,20 @@ frameset {
     height: *;
 }
 
+/* The splitter between the main table and the bottom panel: taller than the
+   default hairline and darker than the borders around it, so it is seen and
+   easy to catch; it lights up under the mouse and while dragged */
+frameset > splitter {
+    height: 6dip;
+    background: var(--splitter-bg);
+    transition: background-color linear 120ms;
+}
+
+frameset > splitter:hover,
+frameset > splitter:active {
+    background: var(--splitter-bg-hover);
+}
+
 /* The panels of the documents: one shown, the others display: none */
 #document-panes {
     size: *;

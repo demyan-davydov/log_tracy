@@ -77,6 +77,9 @@ function renderPane(splitters) {
             </div>
         </section>
 
+        {/* An explicit splitter: Sciter styles it (style.css), the default one is a hairline */}
+        <splitter />
+
         {/* The bottom panel: pages over a strip of their tabs, below them.
             One page is shown, the one of the active tab (data-page) */}
         <section class="bottom-panel">
