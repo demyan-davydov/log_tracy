@@ -79,22 +79,22 @@
     --bg-search-pending: #fff3cd;
 
     /* The match colors: one per search chip and the matches it finds, see match-colors.css */
-    --match-color-0: #ffd6d6;
-    --match-color-1: #c6ede3;
-    --match-color-2: #fff1b0;
-    --match-color-3: #f8d2e8;
-    --match-color-4: #cdeed3;
-    --match-color-5: #ffe2c6;
-    --match-color-6: #c9e8f6;
-    --match-color-7: #d3defa;
-    --match-color-8: #ddd5f8;
-    --match-color-9: #ebd4f5;
-    --match-color-10: #e8f5c0;
-    --match-color-11: #f2dccc;
-    --match-color-12: #e1e7cf;
-    --match-color-13: #d4e6ea;
-    --match-color-14: #e6e0ef;
-    --match-color-15: #efe5d6;
+    --match-color-0: #ffb2b2;
+    --match-color-1: #a4ecd9;
+    --match-color-2: #ffeb8c;
+    --match-color-3: #fbabd9;
+    --match-color-4: #acebb8;
+    --match-color-5: #ffd0a2;
+    --match-color-6: #a2defa;
+    --match-color-7: #abc2ff;
+    --match-color-8: #c0affa;
+    --match-color-9: #e0b0f5;
+    --match-color-10: #e2fa97;
+    --match-color-11: #f2c7a8;
+    --match-color-12: #d4e0b3;
+    --match-color-13: #b8dbe3;
+    --match-color-14: #d2c5e6;
+    --match-color-15: #ead6b7;
     --chip-border: #b8c4d6;
     --chip-edge-space: rgba(0, 0, 0, 0.16);
     --chip-selected: #cce0ff;

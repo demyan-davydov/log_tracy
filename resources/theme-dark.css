@@ -77,22 +77,22 @@
     --bg-search-pending: #3d3520;
 
     /* The match colors: one per search chip and the matches it finds, see match-colors.css */
-    --match-color-0: #5a3434;
-    --match-color-1: #46532e;
-    --match-color-2: #33415e;
-    --match-color-3: #5a4430;
-    --match-color-4: #2f5238;
-    --match-color-5: #2b5048;
-    --match-color-6: #2c4a58;
-    --match-color-7: #55502a;
-    --match-color-8: #41395e;
-    --match-color-9: #4d3758;
-    --match-color-10: #5a3550;
-    --match-color-11: #54403a;
-    --match-color-12: #474e37;
-    --match-color-13: #34494e;
-    --match-color-14: #463f52;
-    --match-color-15: #514636;
+    --match-color-0: #903b3b;
+    --match-color-1: #6c8a34;
+    --match-color-2: #375697;
+    --match-color-3: #936234;
+    --match-color-4: #37874b;
+    --match-color-5: #318775;
+    --match-color-6: #2e7393;
+    --match-color-7: #8f842c;
+    --match-color-8: #524293;
+    --match-color-9: #72428b;
+    --match-color-10: #8f3d79;
+    --match-color-11: #835649;
+    --match-color-12: #6b7b46;
+    --match-color-13: #41727d;
+    --match-color-14: #62527c;
+    --match-color-15: #806843;
     --chip-border: #4f5b6b;
     --chip-edge-space: rgba(255, 255, 255, 0.2);
     --chip-selected: #264f78;
