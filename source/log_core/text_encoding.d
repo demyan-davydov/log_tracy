@@ -1,5 +1,6 @@
 //! The encodings of text logs: which one some bytes are in (a byte order mark,
-//! or the zero bytes of UTF-16 without one), and UTF-16 converted to UTF-8.
+//! or the zero bytes of UTF-16 without one), UTF-16 converted to UTF-8, and
+//! whether some bytes are UTF-8.
 module log_core.text_encoding;
 
 //! The encoding of a text log. Saved in the settings by encodingName().
@@ -164,6 +165,90 @@ private wchar unitAt(const(ubyte)[] data, size_t i, bool be) pure nothrow @nogc 
     return be ? unitAt!(TextEncoding.utf16be)(data, i) : unitAt!(TextEncoding.utf16le)(data, i);
 }
 
+//! @returns true if `text` is UTF-8: every character whole and of no more bytes than it
+//! needs, no surrogate, nothing beyond U+10FFFF
+bool isUtf8(const(char)[] text) pure nothrow @nogc @safe
+{
+    size_t i = 0;
+    while (i < text.length)
+    {
+        const ubyte b = text[i];
+        if (b < 0x80)
+        {
+            ++i;
+            continue;
+        }
+        // The length of the character and the range of its second byte
+        size_t length;
+        ubyte low = 0x80, high = 0xBF;
+        if (b >= 0xC2 && b <= 0xDF)
+            length = 2;
+        else if (b >= 0xE0 && b <= 0xEF)
+        {
+            length = 3;
+            if (b == 0xE0)
+                low = 0xA0; // shorter would do
+            else if (b == 0xED)
+                high = 0x9F; // a surrogate
+        }
+        else if (b >= 0xF0 && b <= 0xF4)
+        {
+            length = 4;
+            if (b == 0xF0)
+                low = 0x90; // shorter would do
+            else if (b == 0xF4)
+                high = 0x8F; // beyond U+10FFFF
+        }
+        else
+            return false;
+        if (text.length - i < length)
+            return false;
+        const ubyte second = text[i + 1];
+        if (second < low || second > high)
+            return false;
+        foreach (k; 2 .. length)
+            if ((cast(ubyte) text[i + k] & 0xC0) != 0x80)
+                return false;
+        i += length;
+    }
+    return true;
+}
+
+//! @returns the length of the start of `text` in ASCII: up to its first byte beyond it
+size_t asciiLength(const(char)[] text) pure nothrow @nogc @trusted
+{
+    // 8 bytes at a time: the texts of logs are mostly ASCII
+    enum ulong high = 0x8080_8080_8080_8080;
+    size_t i = 0;
+    for (; i + 8 <= text.length; i += 8)
+    {
+        ulong word = void;
+        (cast(ubyte*)&word)[0 .. 8] = cast(const(ubyte)[]) text[i .. i + 8];
+        if (word & high)
+            break;
+    }
+    while (i < text.length && text[i] < 0x80)
+        ++i;
+    return i;
+}
+
+//! @returns how many bytes at the end of `text` are a UTF-8 character cut short
+size_t utf8CutTail(const(char)[] text) pure nothrow @nogc @safe
+{
+    // The lead byte of the last character, at most 3 bytes back
+    foreach (back; 1 .. 4)
+    {
+        if (back > text.length)
+            return 0;
+        const ubyte b = text[$ - back];
+        if ((b & 0xC0) == 0x80)
+            continue; // a continuation byte
+        const size_t need = b >= 0xF0 ? 4 : b >= 0xE0 ? 3 : b >= 0xC0 ? 2 : 1;
+        return need > back ? back : 0;
+    }
+    return 0;
+}
+
 //! @brief `head` in UTF-8, without its byte order mark: what the detectors of
 //! the formats look at (they read UTF-8)
 const(ubyte)[] utf8Head(const(ubyte)[] head, TextEncoding encoding) pure nothrow @safe
@@ -273,4 +358,43 @@ unittest
 {
     assert(utf8Head(utf16Bytes("Я\n", TextEncoding.utf16be, true), TextEncoding.utf16be) == "Я\n");
     assert(utf8Head(utf16Bytes("Я\n", TextEncoding.utf16le), TextEncoding.utf16le) == "Я\n");
+}
+
+@("isUtf8: whole characters of UTF-8, not a byte of Latin-1 nor a character cut short")
+unittest
+{
+    assert(isUtf8(""));
+    assert(isUtf8("ok\t\0"));
+    assert(isUtf8("好呀 даль 😀"));
+    assert(!isUtf8("caf\xE9"));
+    assert(!isUtf8("好"[0 .. 2]));
+    assert(!isUtf8("\xC0\x80"), "a character of more bytes than it needs");
+    assert(!isUtf8("\xE0\x80\x80") && !isUtf8("\xF0\x80\x80\x80"), "longer than it needs");
+    assert(!isUtf8("\xED\xA0\x80"), "a surrogate");
+    assert(!isUtf8("\xF4\x90\x80\x80"), "beyond U+10FFFF");
+    assert(isUtf8("\xED\x9F\xBF\xF4\x8F\xBF\xBF\xE0\xA0\x80\xF0\x90\x80\x80"), "the edges allowed");
+}
+
+@("utf8CutTail: the bytes of a last character cut short, none of a whole one")
+unittest
+{
+    assert(utf8CutTail("") == 0);
+    assert(utf8CutTail("ok") == 0);
+    assert(utf8CutTail("a好") == 0);
+    assert(utf8CutTail(("a好")[0 .. 3]) == 2);
+    assert(utf8CutTail("😀"[0 .. 3]) == 3);
+}
+
+@("asciiLength: the start in ASCII, whatever its length and place of the first other byte")
+unittest
+{
+    assert(asciiLength("") == 0);
+    assert(asciiLength("short") == 5);
+    assert(asciiLength("a text of more than eight bytes") == 31);
+    foreach (at; 0 .. 20)
+    {
+        char[24] text = 'a';
+        text[at] = '\xD0';
+        assert(asciiLength(text[]) == at);
+    }
 }

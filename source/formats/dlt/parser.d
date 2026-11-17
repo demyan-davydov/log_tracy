@@ -10,6 +10,7 @@ import std.stdint;
 import std.traits : isSomeChar;
 
 import log_core.log_message;
+import log_core.text_encoding : asciiLength, isUtf8, utf8CutTail;
 import formats.dlt.fields;
 import formats.dlt.fibex : Fibex, FibexMessage, FibexValue;
 
@@ -702,7 +703,7 @@ private bool decodeArgument(Builder)(ref Builder builder, ref const(ubyte)[] pay
         if (argument.utf8)
             builder.appendUtf8(argument.text);
         else
-            builder.appendAscii(argument.text);
+            appendMarkedAscii(builder, argument.text);
         break;
     case Kind.Raw:
         builder.appendHex(cast(const(char)[]) value);
@@ -889,7 +890,7 @@ private void decodeByFibex(Builder)(ref Builder builder, ref const FibexMessage 
             appendFloat(builder, value, msbf);
             break;
         case FibexValue.ascii:
-            builder.appendAscii(withoutTrailingZeros(cast(const(char)[]) value));
+            appendMarkedAscii(builder, withoutTrailingZeros(cast(const(char)[]) value));
             break;
         case FibexValue.utf8:
             builder.appendUtf8(withoutTrailingZeros(cast(const(char)[]) value));
@@ -1289,6 +1290,54 @@ private void addResponseStatus(size_t capacity)(ref ShortText!capacity text, uby
     }
 }
 
+//! How a text its writer marks as ASCII reads. Writers mark UTF-8 so, and other DLT
+//! viewers show it as UTF-8: so does this one when its bytes are UTF-8, else it is a
+//! character per byte (Latin-1).
+struct MarkedAscii
+{
+    size_t ascii; // the length of its start in ASCII
+    size_t cutTail; // the bytes of a last character cut short, if not all are ASCII
+    bool utf8; // the bytes between the two are UTF-8
+
+    //! @returns true if a byte beyond ASCII comes before the cut tail
+    bool beyondAscii(size_t length) const pure nothrow @nogc
+    {
+        return ascii + cutTail < length;
+    }
+}
+
+//! @brief Reads `text` marked ASCII: its start in ASCII by words, the rest only if a byte
+//! beyond ASCII comes
+MarkedAscii readMarkedAscii(const(char)[] text) pure nothrow @nogc
+{
+    MarkedAscii r;
+    r.ascii = asciiLength(text);
+    if (r.ascii == text.length)
+    {
+        r.utf8 = true;
+        return r;
+    }
+    r.cutTail = utf8CutTail(text); // a byte beyond ASCII starts it: never before r.ascii
+    r.utf8 = isUtf8(text[r.ascii .. $ - r.cutTail]);
+    return r;
+}
+
+//! @brief Appends a text its writer marks as ASCII (readMarkedAscii). A last character cut
+//! short by the writer is UTF-8 only after whole ones beyond ASCII: alone, "\xE9" at the
+//! end is as likely "é" of Latin-1.
+void appendMarkedAscii(Builder)(ref Builder builder, const(char)[] text) nothrow @nogc
+{
+    const r = readMarkedAscii(text);
+    builder.appendAscii(text[0 .. r.ascii]); // the start in ASCII as it is: the most of texts
+    const rest = text[r.ascii .. $];
+    if (rest.length == 0)
+        return;
+    if (r.utf8 && (r.cutTail == 0 || r.beyondAscii(text.length)))
+        builder.appendUtf8(rest, false);
+    else
+        builder.appendAscii(rest, false);
+}
+
 //! Appends data of a control message: as text when it is printable UTF-8
 //! (trailing zeros aside), in hex otherwise
 private void appendData(Builder)(ref Builder builder, const(ubyte)[] data) nothrow @nogc
@@ -1313,36 +1362,10 @@ private const(char)[] withoutTrailingZeros(const(char)[] s) pure nothrow @nogc
 //! tab and line breaks
 bool isPrintableUtf8(const(char)[] s) pure nothrow @nogc
 {
-    size_t i = 0;
-    while (i < s.length)
-    {
-        const ubyte b = s[i];
-        if (b < 0x80)
-        {
-            if ((b < 0x20 && b != '\t' && b != '\n' && b != '\r') || b == 0x7F)
-                return false;
-            ++i;
-            continue;
-        }
-
-        size_t continuation;
-        if (b >= 0xC2 && b <= 0xDF)
-            continuation = 1;
-        else if (b >= 0xE0 && b <= 0xEF)
-            continuation = 2;
-        else if (b >= 0xF0 && b <= 0xF4)
-            continuation = 3;
-        else
+    foreach (c; s)
+        if ((c < 0x20 && c != '\t' && c != '\n' && c != '\r') || c == 0x7F)
             return false;
-
-        if (i + continuation >= s.length)
-            return false;
-        foreach (k; 1 .. continuation + 1)
-            if ((cast(ubyte) s[i + k] & 0xC0) != 0x80)
-                return false;
-        i += continuation + 1;
-    }
-    return true;
+    return isUtf8(s);
 }
 
 // ─── Verbose arguments of version 1 records ──────────────────────────────────
@@ -1481,6 +1504,45 @@ unittest
     LogMessage!char msg;
     assert(parseDltItem(msg, data));
     assert(msg.payloadText == "Hello DLT");
+}
+
+@("parseDltItem: a string argument marked ASCII is shown as UTF-8 when its bytes are UTF-8")
+unittest
+{
+    import std.conv : to;
+
+    // As DLT Viewer and Chipmunk show it: writers mark UTF-8 texts as ASCII
+    LogMessage!wchar msg;
+    assert(parseDltItem(msg, verbose(verboseAsciiStringArg("好呀 ok"), 1).bytes()));
+    assert(msg.payloadText == "好呀 ok"w, msg.payloadText.to!string);
+
+    // Cut by its writer in the middle of the last character: still UTF-8, the cut bytes "?"
+    const cut = "好呀"[0 .. 5];
+    auto cutArg = argument(0x200, bytesOf(cast(ushort) 6) ~ cast(ubyte[]) cut.dup ~ cast(ubyte) 0);
+    assert(parseDltItem(msg, verbose(cutArg, 1).bytes()));
+    assert(msg.payloadText == "好??"w, msg.payloadText.to!string);
+
+    // Not UTF-8 (Latin-1): a character per byte, as before; also a last byte that may
+    // start a character of UTF-8 after ASCII alone
+    auto latin1 = argument(0x200, bytesOf(cast(ushort) 3) ~ cast(ubyte[])[0x63, 0xE9, 0]);
+    assert(parseDltItem(msg, verbose(latin1, 1).bytes()));
+    assert(msg.payloadText == "c\u00e9"w, msg.payloadText.to!string);
+}
+
+@("parseDltItem: a string of FIBEX marked ASCII is shown as UTF-8 when its bytes are UTF-8")
+unittest
+{
+    import std.conv : to;
+
+    const fibex = parseFibex(fibexOf(valuePdu("P_S", "S_STRG_ASCII", 0),
+            logFrame("ID_4", "APP1", "CON1", "P_S")));
+    BuildV1 r;
+    r.extended = false;
+    r.payload = bytesOf(4u) ~ bytesOf(cast(ushort) 4) ~ cast(ubyte[]) "好\0".dup;
+
+    LogMessage!wchar msg;
+    assert(parseDltItem(msg, r.bytes(), true, fibex));
+    assert(msg.payloadText == "好"w, msg.payloadText.to!string);
 }
 
 @("parseDltItem: verbose mixed arguments")

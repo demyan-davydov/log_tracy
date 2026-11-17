@@ -8,11 +8,12 @@ import formats.dlt.fields;
 import formats.dlt.header_v2 : ContentInfo, HeaderTypeV2, HeaderV2, HeaderV2Status, baseHeaderV2Size,
     protocolVersion, readHeaderV2;
 import formats.dlt.parser : ArgumentKind, LogItemHeaders, VerboseArgument, VerboseStart, ecuIdOf, findHeaders,
-    findVerboseStart, parseDltItem, readArgument, storageSizeOf;
+    findVerboseStart, parseDltItem, readArgument, readMarkedAscii, storageSizeOf;
 import formats.dlt.protocol;
 
 import log_core.log_format : RecordPart;
 import log_core.log_message : LogMessage;
+import log_core.text_encoding : isUtf8, utf8CutTail;
 
 import std.traits : isSomeChar;
 
@@ -59,10 +60,15 @@ private bool appendTexts(Builder)(Builder builder, const(ubyte[])[] parts, bool 
     // A UTF-8 character the writer cut between two parts: its bytes in the part before
     char[4] cut;
     size_t cutLength = 0;
+    // Never completed, the cut is UTF-8 cut short ("?") if its part is surely UTF-8 (marked so,
+    // or beyond ASCII before it: readMarkedAscii), else a character per byte
+    bool cutUtf8;
     void flushCut()
     {
-        if (cutLength != 0)
+        if (cutLength != 0 && (cutUtf8 || isUtf8(cut[0 .. cutLength])))
             builder.appendUtf8(cut[0 .. cutLength], false);
+        else if (cutLength != 0)
+            builder.appendAscii(cut[0 .. cutLength], false);
         cutLength = 0;
     }
 
@@ -72,25 +78,38 @@ private bool appendTexts(Builder)(Builder builder, const(ubyte[])[] parts, bool 
         if (!readPart(record, hasStorageHeader, part))
             return false;
         const(char)[] text = part.text;
-        if (!part.utf8)
-        {
-            flushCut();
-            builder.appendAscii(text, false);
-            continue;
-        }
+
+        // The rest of the cut character: the continuation bytes it lacks, at the start
+        size_t rest = 0;
         if (cutLength != 0)
         {
-            // Its rest: the continuation bytes the next part starts with
-            size_t i = 0;
-            while (i < text.length && cutLength < cut.length && (text[i] & 0xC0) == 0x80)
-                cut[cutLength++] = text[i++];
-            text = text[i .. $];
-            flushCut();
+            const need = cut[0] >= 0xF0 ? 4 : cut[0] >= 0xE0 ? 3 : 2;
+            while (rest < text.length && cutLength + rest < need && (text[rest] & 0xC0) == 0x80)
+                ++rest;
         }
-        const whole = text.length - cutTail(text);
+        bool beyondAscii = part.utf8;
+        if (!part.utf8)
+        {
+            const after = text[rest .. $];
+            const r = readMarkedAscii(after);
+            if (!r.utf8)
+            {
+                flushCut();
+                builder.appendAscii(text, false);
+                continue;
+            }
+            beyondAscii = r.beyondAscii(after.length);
+        }
+        foreach (c; text[0 .. rest])
+            cut[cutLength++] = c;
+        text = text[rest .. $];
+        flushCut();
+
+        const whole = text.length - utf8CutTail(text);
         builder.appendUtf8(text[0 .. whole], false);
         foreach (c; text[whole .. $])
             cut[cutLength++] = c;
+        cutUtf8 = beyondAscii;
     }
     flushCut();
 
@@ -291,23 +310,6 @@ private ubyte[16] senderOf(const(char)[] ecuId, const(char)[] appId, const(char)
     return sender;
 }
 
-//! @returns how many bytes at the end of `text` are a UTF-8 character cut short
-private size_t cutTail(const(char)[] text) pure nothrow @nogc
-{
-    // The lead byte of the last character, at most 3 bytes back
-    foreach (back; 1 .. 4)
-    {
-        if (back > text.length)
-            return 0;
-        const ubyte b = text[$ - back];
-        if ((b & 0xC0) == 0x80)
-            continue; // a continuation byte
-        const size_t need = b >= 0xF0 ? 4 : b >= 0xE0 ? 3 : b >= 0xC0 ? 2 : 1;
-        return need > back ? back : 0;
-    }
-    return 0;
-}
-
 version (unittest)
 {
     import formats.dlt.testing_utils;
@@ -503,6 +505,28 @@ unittest
     const a = textRecord("1/2: a" ~ "д"[0 .. 1], 0, true);
     const b = textRecord("2/2: bc", 1, false);
     assert(payloadOf(a, b) == "a?bc");
+}
+
+@("parseDltParts: parts marked ASCII are joined as UTF-8 when their bytes are UTF-8")
+unittest
+{
+    const text = "даль";
+    const a = textRecord("1/2: " ~ text[0 .. 3], 0); // "д" and half of "а"
+    const b = textRecord("2/2: " ~ text[3 .. $], 1);
+    assert(payloadOf(a, b) == "даль");
+    assert(payloadOf(textRecord("1/2: \xE9", 0), textRecord("2/2: x", 1)) == "\u00e9x",
+        "not UTF-8: a character per byte");
+    assert(payloadOf(textRecord("1/2: ok\xD0", 0), textRecord("2/2: \xB4", 1)) == "okд",
+        "a character cut after ASCII alone, completed by the next part");
+    assert(payloadOf(textRecord("1/2: abc\xC3", 0), textRecord("2/2: \xA9x", 1)) == "abcéx");
+}
+
+@("parseDltParts: a character cut short in the last part marked ASCII reads as in one argument")
+unittest
+{
+    const cut = "好呀"[0 .. 5];
+    assert(payloadOf(textRecord("1/2: a", 0), textRecord("2/2: " ~ cut, 1)) == "a好??");
+    assert(payloadOf(textRecord("1/2: a", 0), textRecord("2/2: c\xE9", 1)) == "ac\u00e9");
 }
 
 @("parseDltParts: a message without its last parts tells how many it got")
