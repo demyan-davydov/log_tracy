@@ -285,6 +285,11 @@ agent can't drive it. In scapp a plain
   the background of the row (its stripe shows through) and under the text.
 - `:empty` is not re-evaluated when a script changes `innerText`: set `style.display` from the
   script instead.
+- A transition doesn't delay `visibility` (`transition-delay` or a duration: it switches at
+  once); keep an element shown for a while by an `animation` of `@keyframes` with `visibility:
+  visible` in both, set on the hidden state (`.filter-chip-actions`). In `transform`,
+  `translate(100%, 0)` is wrong: a zero needs a unit (`0dip`); a percentage of the element's
+  own width works, on a block (a `span` needs `display: block`).
 - `position: absolute` offsets are relative to the padding box (inside the border); calibrate
   by measuring `getBoundingClientRect()`. `position: absolute` with `height: 100%` gets height
   0 inside a `position: relative` block: pin it by `left/top/right/bottom: 0` with

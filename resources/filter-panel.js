@@ -37,8 +37,8 @@ function setHead(set, s) {
 
 // The chip of a rule: its switch, the mark of its kind and its name, filled
 // with the color of the rule and its text in the contrasting one; its buttons
-// in a tab shown over it on hover, out of its width, in its color
-// (--chip-color). Its set-index and rule-index are read by the handlers. Its
+// (× remove, then ✎ edit) in a tab sliding out of its left on hover, out of
+// its width, in its color (--chip-color). Its set-index and rule-index are read by the handlers. Its
 // tooltip (and its mark's: a cut name has a tooltip of its own) says what the
 // rule does; a rule not applied is marked, its error in its tooltip.
 function ruleChip(rule, s, r) {
@@ -54,8 +54,10 @@ function ruleChip(rule, s, r) {
         <span class={"filter-kind " + rule.kind} title={kind} />
         <span class="filter-name">{rule.name || tr("(no name)")}</span>
         <span class="filter-chip-actions">
-            <span class="filter-button filter-rule-edit" title={tr("Edit this rule (or double-click it)")}>✎</span>
-            <span class="filter-button filter-rule-remove" title={tr("Remove this rule")}>×</span>
+            <span class="filter-chip-tab">
+                <span class="filter-button filter-rule-remove" title={tr("Remove this rule")}>×</span>
+                <span class="filter-button filter-rule-edit" title={tr("Edit this rule (or double-click it)")}>✎</span>
+            </span>
         </span>
     </div>;
 }

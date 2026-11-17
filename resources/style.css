@@ -572,13 +572,15 @@ frameset {
     max-width: max-content;
 }
 
+/* Indented enough for the buttons of a rule on the left of a chip
+   (.filter-chip-actions) */
 .filter-chips {
     width: *;
-    margin-left: 20dip;
+    margin-left: 40dip;
     flow: horizontal-wrap;
     border-spacing: 4dip;
-    /* No overflow: hidden: it would clip the buttons over the first line
-       (.filter-chip-actions). The chips shrink to the row without it */
+    /* No overflow: hidden: it would clip the buttons left of the first chip
+       of a line (.filter-chip-actions). The chips shrink to the row without it */
 }
 
 .filter-set-head {
@@ -618,7 +620,7 @@ frameset {
 
 /* Why a rule isn't applied: under the chips of its set, across the row */
 .filter-note {
-    padding: 0 0 2pt 20dip; /* under the chips */
+    padding: 0 0 2pt 40dip; /* under the chips */
     font-size: 0.85em;
     color: var(--log-error);
 }
@@ -682,42 +684,79 @@ frameset {
     background: var(--tab-close-hover);
 }
 
-/* The buttons of a rule (✎, ×): a tab over the chip, of its width, in its
-   hover color and without a border: a part of the chip, not another one.
-   Only while the mouse is on the chip or the tab (a child of the chip: its
-   :hover holds). Out of the chip's width: the chips stay narrow */
+/* The buttons of a rule (×, ✎): a tab on the left of the chip, its
+   continuation: of its height, in its hover color, with its border but no
+   right one. Only while the mouse is on the chip or the tab (a child of the
+   chip: its :hover holds). Out of the chip's width: the chips stay narrow; the
+   indent of .filter-chips makes room for it left of the first chip of a line.
+   .filter-chip-actions is a window as wide as the tab, its right edge over the
+   chip's left border (the tab wipes the border out); the tab
+   (.filter-chip-tab) slides out of the chip through it on hover and back in
+   on leave. The window, though empty, would take the mouse over the chip on
+   its left: it is hidden, and kept shown by an animation while the tab
+   slides back (Sciter: a transition doesn't delay visibility) */
 .filter-chip-actions {
     position: absolute;
-    left: 0; /* the chip's width and right on it (measured) */
-    right: 0;
-    top: -16dip;
-    width: auto;
-    height: 16dip;
-    flow: horizontal;
-    vertical-align: middle;
-    border-spacing: 4dip;
-    border-radius: 3dip 3dip 0 0;
-    background: var(--page-filters-hover);
+    right: 100%; /* of the chip's padding box from its border box: over its left border */
+    top: 0;
+    bottom: 0;
+    width: max-content;
+    height: auto;
+    overflow: hidden;
     z-index: 1;
     visibility: hidden;
+    animation: filter-tab-keep 200ms;
+}
+
+.filter-chip:hover > .filter-chip-actions {
+    visibility: visible;
+    animation: none;
+}
+
+@keyframes filter-tab-keep {
+    from { visibility: visible; }
+    to { visibility: visible; }
+}
+
+.filter-chip-tab {
+    display: block; /* a span */
+    width: max-content;
+    height: *;
+    box-sizing: border-box;
+    flow: horizontal;
+    vertical-align: middle;
+    border-spacing: 2dip;
+    padding: 0 1dip 0 3dip; /* the right one over the chip's border */
+    border: 1dip solid var(--chip-border);
+    border-right: none;
+    border-radius: 3dip 0 0 3dip;
+    background: var(--page-filters-hover);
+    transform: translate(100%, 0dip); /* Sciter: 0 needs a unit */
+    transition: transform cubic-out 200ms;
+}
+
+.filter-chip:hover .filter-chip-tab {
+    transform: translate(0dip, 0dip);
+}
+
+.filter-chip.error .filter-chip-tab {
+    border-color: var(--log-error);
 }
 
 /* Over a chip of a rule's color: the tab in that color, its buttons in the
    chip's text color (set by the script) */
-.filter-chip.colored > .filter-chip-actions {
+.filter-chip.colored .filter-chip-tab {
     background: var(--chip-color);
 }
 
-.filter-chip.colored > .filter-chip-actions > .filter-button {
+.filter-chip.colored .filter-chip-tab > .filter-button {
     color: inherit;
 }
 
-/* Sciter: flexible margins center the buttons in the tab */
-.filter-chip-actions > :first-child { margin-left: *; }
-.filter-chip-actions > :last-child { margin-right: *; }
-
-.filter-chip:hover > .filter-chip-actions {
-    visibility: visible;
+/* The tab joins the chip: no rounding between them */
+.filter-chip:hover {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
 }
 
 /* A set switched off: its name muted, its chips faded whole (their text stays
