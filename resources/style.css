@@ -562,12 +562,79 @@ frameset > splitter:active {
     opacity: 1;
 }
 
+/* A button in the look of a link: a real button (focus, Enter, Space) whose
+   whole look is its background, so it has none: the text in the accent color,
+   underlined on hover */
+.link-button {
+    background: none;
+    border: none;
+    padding: 0 2dip;
+    color: var(--border-focus);
+    cursor: pointer;
+}
+
+.link-button:hover {
+    background: none;
+    text-decoration: underline;
+}
+
+.link-button:focus {
+    outline: 1dip dotted var(--border-focus);
+}
+
+/* A chip with a gray label and link-buttons after it ("Load | file... | folder..."), to
+   put into a line of text: it takes the font and the line of the text around it and sizes
+   itself in em, so it scales with the text and adds nothing to the height of the line.
+   A rounded outline; the label on a gray ground of its own, then the buttons on the
+   ground of an input. `.text-chip-sep` is the bar between buttons */
+.text-chip {
+    display: inline-block;
+    border: 1dip solid var(--chip-border);
+    border-radius: 0.8em;
+    background: var(--bg-input);
+    white-space: nowrap;
+}
+
+/* The parts take the line of the chip's text: no height of their own (a button has one
+   by default), the room above and below the text is in em */
+.text-chip .text-chip-label,
+.text-chip .text-chip-body,
+.text-chip .text-chip-sep,
+.text-chip button {
+    display: inline;
+    height: auto;
+    min-height: 0;
+    margin: 0;
+    font: inherit;
+    line-height: inherit;
+}
+
+.text-chip .text-chip-label {
+    display: inline-block; /* a gray ground with a room above and below the text */
+    padding: 0.1em 0.5em 0.1em 0.65em;
+    border-right: 1dip solid var(--chip-border);
+    border-radius: 0.8em 0 0 0.8em;
+    background: var(--bg-tab-inactive);
+    color: var(--text-label);
+}
+
+.text-chip .text-chip-body {
+    display: inline-block;
+    padding: 0.1em 0.65em 0.1em 0.5em;
+}
+
+.text-chip .text-chip-sep {
+    margin: 0 0.2em;
+    color: var(--chip-border);
+}
+
 /* ---- The Filters page: FilterPanel (filter-panel.js) ---- */
 
 .filter-toolbar {
     vertical-align: middle;
-    padding: 4dip;
+    padding: 4dip 4dip 4dip 8dip;
     margin-bottom: 0;
+    border-spacing: 16dip;
 }
 
 /* The message of the last command: an error, whole, wrapped (shown by the
@@ -908,10 +975,19 @@ frameset > splitter:active {
     color: var(--log-error);
 }
 
-.file-info .descriptions-buttons {
+/* One line of inline children (a baseline for all), not a flow row: the gaps are margins */
+.file-info .descriptions-line > * + * {
+    margin-left: 8dip;
+}
+
+/* "None" is in italics: no FIBEX */
+.file-info .descriptions-path.none {
+    font-style: italic;
+}
+
+.file-info .descriptions-note {
     flow: horizontal;
-    border-spacing: 3pt;
-    margin-top: 3pt;
+    border-spacing: 8dip;
 }
 
 /* Settings Dialog */

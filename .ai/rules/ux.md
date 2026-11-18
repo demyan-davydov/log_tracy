@@ -46,6 +46,15 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
    ("Search in payload") and nothing more: no keys that do the expected thing (Enter runs,
    → moves on), no instructions for basic editing. Behaviour should be self-evident.
 
+46. **A control that opens a dialog ends in three dots.** A button or a menu item that opens a
+    window of its own (a modal dialog, a system file dialog) is written with `...` at the end,
+    three dots as in the menu (`Open File...`, `Go to Message...`), not the `…` character: New
+    Filter..., Load Filter.... A control that acts at once has none (Remove, Close). If the
+    same words mean something else elsewhere (a new set is named "New Filter"), the button
+    gets a key of its own for the translation. Exceptions: a button that is a part of a
+    phrase (the word "Open" in "Open a DLT log with ⌘O" on the start screen) and one whose
+    label is an icon, which has a tooltip instead.
+
 ## Shapes and Drawing
 
 10. **No overflow scrollbars.** Elements shrink to fit their container instead of causing a

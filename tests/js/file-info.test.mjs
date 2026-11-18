@@ -65,14 +65,14 @@ test("a log that takes no FIBEX has no FIBEX row", () => {
 
 test("the FIBEX row last: none, nothing to unload", () => {
     assert.deepEqual(fibexRow(none), {
-        label: "FIBEX", value: "None", descriptions: { kind: "", muted: true, note: "", error: false, canUnload: false },
+        label: "FIBEX", value: "None", descriptions: { kind: "", muted: true, none: true, note: "", error: false, hasPath: false, canUnload: false },
     });
 });
 
 test("a FIBEX taken: its path and whether it is a file or a folder", () => {
     const file = fibexRow({ ...none, taken: "/fibex/ecu.xml", choice: "/fibex/ecu.xml" });
     assert.equal(file.value, "/fibex/ecu.xml");
-    assert.deepEqual(file.descriptions, { kind: "file", muted: false, note: "", error: false, canUnload: true });
+    assert.deepEqual(file.descriptions, { kind: "file", muted: false, none: false, note: "", error: false, hasPath: true, canUnload: true });
     const folder = fibexRow({ ...none, taken: "/fibex", folder: true, choice: "/fibex" });
     assert.equal(folder.descriptions.kind, "folder");
 });
@@ -80,7 +80,7 @@ test("a FIBEX taken: its path and whether it is a file or a folder", () => {
 test("a remembered FIBEX being read at the open: its path muted, reading", () => {
     const row = fibexRow({ ...none, choice: "/fibex/ecu.xml", read: "/fibex/ecu.xml", reading: true });
     assert.equal(row.value, "/fibex/ecu.xml");
-    assert.deepEqual(row.descriptions, { kind: "", muted: true, note: "Reading...", error: false, canUnload: true });
+    assert.deepEqual(row.descriptions, { kind: "", muted: true, none: false, note: "Reading...", error: false, hasPath: true, canUnload: true });
 });
 
 test("another FIBEX being read: the one taken shown, the one read named", () => {
@@ -93,13 +93,13 @@ test("another FIBEX being read: the one taken shown, the one read named", () => 
 test("a remembered FIBEX that can't be read: its path muted, why in the error color", () => {
     const row = fibexRow({ ...none, choice: "/fibex/ecu.xml", read: "/fibex/ecu.xml", problem: "can't read it" });
     assert.equal(row.value, "/fibex/ecu.xml");
-    assert.deepEqual(row.descriptions, { kind: "", muted: true, note: "can't read it", error: true, canUnload: true });
+    assert.deepEqual(row.descriptions, { kind: "", muted: true, none: false, note: "can't read it", error: true, hasPath: true, canUnload: true });
 });
 
 test("a FIBEX loaded that can't be read: the one before stays, why under it", () => {
     const taken = fibexRow({ ...none, taken: "/fibex/a.xml", choice: "/fibex/a.xml", read: "/fibex/b.xml", problem: "not FIBEX" });
     assert.equal(taken.value, "/fibex/a.xml");
-    assert.deepEqual(taken.descriptions, { kind: "file", muted: false, note: "not FIBEX", error: true, canUnload: true });
+    assert.deepEqual(taken.descriptions, { kind: "file", muted: false, none: false, note: "not FIBEX", error: true, hasPath: true, canUnload: true });
     const without = fibexRow({ ...none, read: "/fibex/b.xml", problem: "not FIBEX" });
     assert.equal(without.value, "None");
     assert.equal(without.descriptions.canUnload, true, "Unload drops the note too");

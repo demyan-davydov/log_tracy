@@ -15,7 +15,7 @@ import { allFiles, fileFilter } from "file-types.js";
 import { anchorRefusalText } from "pane-commands.js";
 import { SelectionFollower } from "row-selection.js";
 import { rowLookStep, keptRowStep, searchViewKey } from "pane-state.js";
-import { tr } from "i18n/i18n.js";
+import { tr, trc } from "i18n/i18n.js";
 import { translateTree } from "i18n/dom.js";
 import { fileInfoRows } from "file-info.js";
 import { rememberJump } from "go-to-message.js";
@@ -123,8 +123,8 @@ function renderPane(splitters) {
             {/* The filters as chips: filter-panel.js */}
             <div class="bottom-page filter-page" data-page="filters" style="display:none;">
                 <div class="toolbar filter-toolbar">
-                    <button class="btn-new-dlf" data-tr="New Filter" />
-                    <button class="btn-dlf" data-tr="Load Filter" />
+                    <button class="link-button btn-new-dlf" data-tr="New Filter..." />
+                    <button class="link-button btn-dlf" data-tr="Load Filter..." />
                     <div class="filter-message" style="display:none;"></div>
                 </div>
                 <div class="filter-sets"></div>
@@ -456,17 +456,29 @@ export class DocumentPane {
         const focusedButton = focused && isInside(focused, cell) ? focused.className : null;
         cell.innerHTML = "";
         // JSX gives a description of the elements, not elements: built whole, then appended
-        cell.append(<div class="descriptions-value">
-            <span class={d.muted ? "descriptions-path muted" : "descriptions-path"}>{row.value}</span>
+        // One line: the FIBEX (or "None", in italics), its × (unload: only with a FIBEX),
+        // the chip "Load file | folder" that loads one. A note goes under it; a failed load with no FIBEX
+        // keeps its × on the note, the only way to drop the note
+        const unload = <button class="link-button btn-fibex-unload" title={tr("Unload")}>×</button>;
+        cell.append(<div class="descriptions-line">
+            <span class={(d.muted ? "descriptions-path muted" : "descriptions-path") + (d.none ? " none" : "")}>{row.value}</span>
             {d.kind ? <span class="descriptions-kind">{d.kind}</span> : []}
+            {d.hasPath ? unload : []}
+            <span class="text-chip">
+                <span class="text-chip-label">{tr("Load")}</span>
+                <span class="text-chip-body">
+                    <button class="link-button btn-fibex-file">{trc("object", "file...")}</button>
+                    <span class="text-chip-sep">|</span>
+                    <button class="link-button btn-fibex-folder">{trc("object", "folder...")}</button>
+                </span>
+            </span>
         </div>);
-        if (d.note) cell.append(<div class={d.error ? "descriptions-note error" : "descriptions-note"}>{d.note}</div>);
-        cell.append(<div class="descriptions-buttons">
-            <button class="btn-fibex-file">{tr("Load File...")}</button>
-            <button class="btn-fibex-folder">{tr("Load Folder...")}</button>
-            <button class="btn-fibex-unload">{tr("Unload")}</button>
-        </div>);
-        cell.$(".btn-fibex-unload").state.disabled = !d.canUnload;
+        if (d.note) {
+            cell.append(<div class={d.error ? "descriptions-note error" : "descriptions-note"}>
+                <span>{d.note}</span>
+                {d.canUnload && !d.hasPath ? <button class="link-button btn-fibex-unload" title={tr("Unload")}>×</button> : []}
+            </div>);
+        }
         const refocus = focusedButton && cell.$("." + focusedButton.split(" ")[0]);
         if (refocus && !refocus.state.disabled) refocus.state.focus = true;
     }

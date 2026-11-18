@@ -72,8 +72,10 @@ function descriptionsRow(d) {
         descriptions: {
             kind: !d.taken ? "" : d.folder ? tr("folder") : tr("file"),
             muted: !d.taken,
+            none: !shown, // nothing to show: "None", in italics
             note,
             error: !d.reading && !!d.problem,
+            hasPath: !!shown, // a FIBEX to show: its × is on the line
             canUnload: !!(shown || d.reading || d.problem), // drops a note of a failed load too
         },
     };
