@@ -9,7 +9,7 @@ import { lastUsedText } from "recent-time.js";
 import { clickOpensRecentFile, recentFileMenu } from "recent-file-menu.js";
 import { DocumentPane } from "document-pane.js";
 import { paneChanges, tabProgress } from "pane-state.js";
-import { TabStrip } from "tabs.js";
+import { TabStrip, NEW_TAB_ID } from "tabs.js";
 import { PressFocus } from "press-focus.js";
 import * as backend from "backend.js";
 import * as platform from "platform.js";
@@ -453,6 +453,19 @@ function setupEvents() {
             <li class="column-settings">{tr("Customize Table...")}</li>
         </menu>);
         return true;
+    });
+    // Context menu of a document's tab (not the + one): Copy Path and Copy File Name, of its file
+    document.on("contextmenu", `#tabs-container > .tab:not(#${NEW_TAB_ID})`, (evt, tab) => {
+        evt.source = Element.create(<menu class="context">
+            <li class="copy-tab-path" docid={tab.id}>{tr("Copy Path")}</li>
+            <li class="copy-tab-name" docid={tab.id}>{tr("Copy File Name")}</li>
+        </menu>);
+        return true;
+    });
+    document.on("click", "menu.context > li.copy-tab-path, menu.context > li.copy-tab-name", (evt, item) => {
+        const info = backend.documentInfo(parseInt(item.getAttribute("docid")));
+        const text = item.classList.contains("copy-tab-name") ? info?.name : info?.path;
+        if (text) platform.copyText(text);
     });
     document.on("click", "menu.context > li.column-settings", () => openSettingsAction("table"));
     document.on("click", "menu.context > li.copy-row, menu.context > li.copy-text", (evt, item) => {
