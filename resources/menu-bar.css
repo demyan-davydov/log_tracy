@@ -66,6 +66,7 @@ menu menu
 
 /* menu item in popup menus */
 menu li {
+    border-radius: 0;
     width: *;
     display: block;
     flow: horizontal;
@@ -74,8 +75,10 @@ menu li {
     /* room for icon */
     padding-right: 12dip;
     /* room for the arrow */
-    padding-top: 4dip;
-    padding-bottom: 4dip;
+    /* More above the text than below: the line box has the room of a descender under
+       the baseline, so equal paddings leave the text low in the item; in em, with the font */
+    padding-top: 0.45em;
+    padding-bottom: 0.15em;
     foreground-repeat: no-repeat;
     foreground-position: left 2dip top 50%;
     color: var(--text-main);
@@ -133,6 +136,7 @@ menu li:has-child-of-type(menu):rtl {
 /* current menu item */
 menu li:hover:owns-popup,
 menu li:current {
+    border-radius: 0; /* the menu has square corners; Sciter's own highlight is rounded */
     background-color: var(--btn-primary-bg);
     color: var(--btn-primary-text);
 }
