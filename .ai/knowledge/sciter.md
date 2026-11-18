@@ -209,6 +209,17 @@ agent can't drive it. In scapp a plain
   dialog is then no longer kept above the parent: a click on the parent hides it under it.
   Not acceptable as is; a fix has to keep it on top (not tried: a higher `level` of the
   dialog, ordering it above the parent on the parent's activation).
+- macOS (6.0.5.5, 2026-11-18): the same child-window link is why a modal dialog dragged to
+  another display vanishes (two displays with separate Spaces): it stays in `NSApp.windows`
+  (isVisible 1, screen the other display, parentWindow the main window, no Visible bit in
+  occlusionState), the modal loop keeps the main window blocked and nothing closes the dialog.
+  After `[main removeChildWindow:dialog]` (from lldb, before the drag) it moves to the other
+  display, stays visible and modal, and the main window moves independently, but it is no longer
+  kept above the main window: a click on the main window makes it flicker (below, then back),
+  dragging the main window over it puts it below until a click on it. Same dead end as the lag:
+  the fix has to keep it on top without the child link. Looking at it: CGWindowListCopyWindowInfo
+  (the windows of a pid, also off-screen ones) and lldb over `[[NSApplication sharedApplication] windows]`;
+  the frame of a window in lldb needs a struct of four doubles declared in the same expression.
 
 - Text cut with `text-overflow: ellipsis/path-ellipsis` gets an automatic tooltip
   `popup[role=overflow-tooltip]` (besides `title` → `popup[role=tooltip]`). Tooltip popups
