@@ -97,8 +97,13 @@ ViewState scrollBy(ViewState state, double pixels, double viewHeight, size_t tot
     {
         const rows = cast(long)(pixels / mean); // truncated toward zero
         const first = cast(long) state.first + rows;
-        state.first = first < 0 ? 0 : cast(size_t) first;
-        state.offset += pixels - rows * mean;
+        if (first < 0)
+            state = ViewState(0, 0); // past the start: the start, not what was left of the row the scroll began in
+        else
+        {
+            state.first = cast(size_t) first;
+            state.offset += pixels - rows * mean;
+        }
     }
     else
         state.offset += pixels;
@@ -241,6 +246,13 @@ unittest
     const state = scrollBy(ViewState(0, 0), 20_000, 100, 100_000, counting, 20);
     assert(state.first == 1000 && state.offset == 0, "20000 px of 20 px rows");
     assert(asked < 50, "no row passed one by one");
+}
+
+@("scrollBy: a far scroll past the start lands on the start, not a part of a row below it")
+unittest
+{
+    const state = scrollBy(ViewState(50, 40), -100_000, 100, 1000, heights(20), 20);
+    assert(state == ViewState(0, 0), "the offset the row had is not kept when the first row was clamped");
 }
 
 @("thumbOf: nothing to scroll has no thumb")
