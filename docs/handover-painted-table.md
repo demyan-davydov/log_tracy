@@ -3,6 +3,50 @@
 Written at the end of the sessions of 2026-11-18/19 (four sessions), kept in the repository so it travels with the branch. Everything a new session
 (on any account) needs is here or in the files named here; the user wants replies **in Russian**.
 
+## START HERE (end of the sixth session, 2026-11-19): the task list to carry to another account
+
+**This section supersedes the "START HERE" below where they differ.** Replies to the owner in **Russian**. The older sections are history and rules; the tasks are here.
+
+**State.** Branch `row-paint-d`, worktree `.claude/worktrees/row-paint-d-7a60b4` of `/Users/demiandavidov/prj/log_tracy`; working tree clean (all committed, last commit
+`cbb56fe`); nothing merged or pushed; 30 commits since the squash `cb1288d`. The main checkout is on `row-pool-squash`: do not touch it, nor `row-paint-proto`,
+`mcp`, `mcp-squash`. A bundle for another machine: `git bundle create /Users/demiandavidov/prj/log_tracy-row-paint-d.bundle row-paint-d` (then
+`git fetch <bundle> row-paint-d:row-paint-d`), or push (ask the owner first). Checks: `node scripts/test.mjs --brief` (all green at `cbb56fe`),
+`node scripts/utils/check-ai-context.mjs`. The old SIGBUS of the whole run is **fixed** (`b7ea26f`): a test of `ptable.table` kept a `StatsCollector` on its stack, the
+GC finalized a `RowWindow` later and wrote into the dead frame.
+
+**What was done in this session (all committed, tests green; the owner saw the app only for the items marked seen):**
+- the frame of the current row is drawn over the cells (`Painter.paintRowOver`), seen; a far scroll past the start lands on the start (`scrollBy`, `6b2dcf8`);
+- column widths by the rows on the screen: `RowStore.fitToWindow`, `RowGrow.needs`, the first fit of a layout may narrow, the next ones of it only widen, narrowing only when the window
+  moved or the rows changed (`81f5ae7`, `e38848e`, `187d56c`); `Table.stats.fitRounds`;
+- the least widths of the columns from CSS (`d48fc44`): `--column-min-width`, `-anchor`, `-index`, `-payload` and `--column-min-width-<format>-<column>` in `resources/table.css`, in em of a
+  12.5pt font; D lists the names (`ui/log_table/column_widths.d`, xcall `logTableMinWidthNames`), the script reads them into `look.minWidths`, D multiplies by the text scale;
+- `Table.tableHasFocus` (setter, repaints on a change) is told to the painter as a parameter `tableHasFocus` of `paintRow`, `paintRowOver`, `paintCell`, `paintGroup`,
+  `paintTextSelection`; `LogTableBehavior` sets it on `FOCUS_GOT`/`FOCUS_LOST` and from `:focus` at attach. **Nothing draws by it yet.** The owner's decision: the focus is the focus of
+  the element only, the activity of the window is not part of it.
+
+**The tasks, in order:**
+1. **BLOCKER: the app hangs when an anchor is set** (reproduces with `big.dlt` made by `node scripts/build.mjs gen-log <file> --format dlt --size 1G`): the main and the search table of a document share
+   one `ColumnLayout` and ping-pong on a column width. The cure is **one column host per document** (`ptable/columnhost.d`), the verdict of the architect and the owner: the full
+   task, plan and tests are in `docs/backlog.md`, section "Единый хост колонок для связанных таблиц". The owner does this task himself on another account; do **not** start it unasked. A temporary
+   way out if the app must be used before: switch `fitToWindow` off in `Table.layout()` (the widths only grow again). Open question for the owner in it: whether a column with a width the user set
+   is left out of the fitting (like Excel); today the fit undoes a drag at once.
+2. **Look at the app** what the owner has not seen: the least widths from CSS (is `1.5em` = 25 dip and `3.5em` = 58 dip in `style.variable` as meant? if not, the code falls back to 24/58), the narrowing of
+   columns on a real big log with a 64 KB cell (the owner's scenario: single-line view, scroll right, then wrap view, scroll to the top), the focus flag (nothing visible yet). Ask the owner first; **never launch the app unasked.**
+3. **Draw by the focus** (the owner's idea, `docs/backlog.md` "Рисование: передавать таблице состояние «в фокусе»"): the colors without the focus (`selectedInactive`, `textSelectedInactive`, ...
+   in the palette, the CSS variables of both themes, `paletteVariables`), the frame of the current row only in a focused table (the old `tbody:focus > tr[row-selected]`); the focus taken by the behavior
+   on a press instead of the `mousedown` of `log-table-view.js`. The owner said: nothing is changed by the focus until he asks; a debug fill only, never committed.
+4. Rest of `docs/backlog.md`: `scrollPosition` of `AppSettings` is a dead field, a hidden mode for the tables, the rendering remarks, the horizontal bar after the fit (the original "scrolls too far" was
+   the same root: a column held wide by a long text), per-format values of the least widths in `table.css` (all are the default now).
+5. Squash the 30 commits after `cb1288d` into fewer commits: **ask the owner first**; make a new bundle after.
+
+**Rules the owner repeated this session (they matter most):**
+- **Ask the owner before doing**: for a design decision (and the `architecture-reviewer` agent) show a plan and wait for a yes; he said "when you have a mood to do some nonsense, we rewrite it all day". Do not start
+  a change after a review report without showing the changed plan.
+- **Do not test in the running app, take screenshots or launch it unless he asks** ("stop testing instead of me"); unit tests are fine. He runs the app he wants to look at; do not kill a copy he may be using.
+- Tests first; small commits `painted table: ...` lower-case with `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`; never `pkill` his own app (denied); use `node scripts/utils/app.mjs`
+  for a copy of your own.
+- Answers in Russian; no half-measures; an option one function needs is its parameter (not a class field); his questions deserve an honest "I do not know yet" before a guess.
+
 ## START HERE (end of the fourth session, 2026-11-19): the state in one screen
 
 - Branch `row-paint-d`, worktree `.claude/worktrees/row-paint-d-7a60b4` of `/Users/demiandavidov/prj/log_tracy`; working tree clean; nothing merged or
