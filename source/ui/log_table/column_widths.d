@@ -1,7 +1,8 @@
 //! The least widths of the columns of the log table as the CSS of the application gives them: a variable of `.log-table-view` for the
 //! columns that every table has (`--column-min-width-anchor`, `-index`, `-payload`), one for each column of each format
 //! (`--column-min-width-<format>-<column>`, the ids the settings know: `--column-min-width-dlt-time`) and `--column-min-width` for a
-//! column no variable names. The script reads the variables by the names this module lists and tells D the widths by their keys
+//! column no variable names. A width is of the content of a cell, as `min-width` in CSS: the paddings of the cell and the line between
+//! the columns come on top. The script reads the variables by the names this module lists and tells D the widths by their keys
 //! (the name without the prefix, `default` for the plain one). Free of Sciter. See docs/stories/painted-table.md.
 module ui.log_table.column_widths;
 
@@ -97,4 +98,21 @@ unittest
     assert(!names.canFind("column-min-width-dlt-payload"), "the Payload is the same in every format");
     foreach (name; names)
         assert(names.count(name) == 1, name ~ " is listed twice");
+}
+
+@("minWidthVariables: every least width the CSS of the application gives is of a name D knows: a mistyped one would be read by nobody")
+unittest
+{
+    import std.algorithm.searching : canFind;
+    import std.regex : ctRegex, matchAll;
+
+    enum css = import("table.css");
+    const names = minWidthVariables();
+    size_t found;
+    foreach (m; matchAll(css, ctRegex!`--(column-min-width[\w-]*)\s*:`))
+    {
+        ++found;
+        assert(names.canFind(m[1]), "table.css gives --" ~ m[1] ~ ", a name D does not read");
+    }
+    assert(found > 0, "the variables are found in table.css");
 }

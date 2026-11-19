@@ -59,7 +59,7 @@ GC finalized a `RowWindow` later and wrote into the dead frame.
    in the palette, the CSS variables of both themes, `paletteVariables`), the frame of the current row only in a focused table (the old `tbody:focus > tr[row-selected]`); the focus taken by the behavior
    on a press instead of the `mousedown` of `log-table-view.js`. The owner said: nothing is changed by the focus until he asks; a debug fill only, never committed.
 4. Rest of `docs/backlog.md`: `scrollPosition` of `AppSettings` is a dead field, a hidden mode for the tables, the rendering remarks, the horizontal bar after the fit (the original "scrolls too far" was
-   the same root: a column held wide by a long text), per-format values of the least widths in `table.css` (all are the default now).
+   the same root: a column held wide by a long text), per-format values of the least widths in `table.css` (done: those of the DOM table, as the width of the content).
 5. Squash the 30 commits after `cb1288d` into fewer commits: **ask the owner first**; make a new bundle after.
 
 **Rules the owner repeated this session (they matter most):**
