@@ -14,6 +14,8 @@ final class LogTableTarget
     private size_t _id;
     private bool _singleLine;
     private ColumnHost[int] _hosts;
+    /// The anchor and the Index columns stay at the left when the columns scroll sideways (pinned), in the hosts made from now on
+    bool pinServiceColumns = true;
     private LogLook _look;
 
     /// The next log table shows the view of the document `doc`; answers the number it gets (the script talks to a table by it): a new one each time
@@ -47,9 +49,15 @@ final class LogTableTarget
     /// The column host of `doc`: one for both its tables
     ColumnHost hostOf(int doc)
     {
+        import ptable.layout : Pin;
+
         if (auto have = doc in _hosts)
             return *have;
-        return _hosts[doc] = new ColumnHost;
+        auto host = new ColumnHost;
+        if (pinServiceColumns)
+            foreach (id; ["anchor", "index"]) // the ids of `logColumns`: the first two columns of every log table
+                host.layout.setPin(id, Pin.left);
+        return _hosts[doc] = host;
     }
 
     /// The document is closed: its host goes
@@ -74,4 +82,18 @@ unittest
     auto old = target.hostOf(3);
     target.forget(3);
     assert(target.hostOf(3) !is old, "a closed document's host is not kept");
+}
+
+@("LogTableTarget: the host of a document pins the anchor and the Index columns at the left, unless told not to")
+unittest
+{
+    import ptable.layout : Pin;
+
+    auto target = new LogTableTarget;
+    auto host = target.hostOf(1);
+    assert(host.layout.pin("anchor") == Pin.left && host.layout.pin("index") == Pin.left, "they stay when the columns scroll");
+    assert(host.layout.pin("time") == Pin.none, "the columns of the format scroll");
+    target.pinServiceColumns = false;
+    auto plain = target.hostOf(2);
+    assert(plain.layout.pin("anchor") == Pin.none && plain.layout.pin("index") == Pin.none, "not pinned when told not to");
 }
