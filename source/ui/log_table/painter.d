@@ -144,11 +144,18 @@ class LogPainter : Painter
         const color = row.state.selected ? _palette.selected : found ? (row.state.odd ? _palette.foundStripe : _palette.found)
             : (row.state.odd ? _palette.stripe : _palette.row);
         canvas.fillRect(row.area, color);
-        if (row.state.focused) // the row the keys move from: a line over it and one under it
-        {
-            canvas.fillRect(Rect(row.area.x, row.area.y, row.area.w, 1), _palette.currentRow);
-            canvas.fillRect(Rect(row.area.x, row.area.bottom - 1, row.area.w, 1), _palette.currentRow);
-        }
+    }
+
+    // The row the keys move from has a frame over its cells, so the borders of the columns do not cross it
+    override void paintRowOver(Canvas canvas, ref const RowContext row)
+    {
+        if (!row.state.focused)
+            return;
+        const a = row.area;
+        canvas.fillRect(Rect(a.x, a.y, a.w, 1), _palette.currentRow);
+        canvas.fillRect(Rect(a.x, a.bottom - 1, a.w, 1), _palette.currentRow);
+        canvas.fillRect(Rect(a.x, a.y + 1, 1, a.h - 2), _palette.currentRow);
+        canvas.fillRect(Rect(a.right - 1, a.y + 1, 1, a.h - 2), _palette.currentRow);
     }
 
     override void paintPinnedEdge(Canvas canvas, Rect area, bool leftEdge)
@@ -430,7 +437,7 @@ unittest
     assert(canvas.calls == ["text:7", "fill"] && canvas.colors[0] == Color(0, 0, 0), "no background over a selected row, its ink");
 }
 
-@("LogPainter: the row the keys move from has a line over it and one under it in the color of the current row")
+@("LogPainter: the row the keys move from has a frame over its cells in the color of the current row")
 unittest
 {
     static final class Fills : Canvas
@@ -452,12 +459,16 @@ unittest
     row.area = Rect(0, 100, 300, 16);
     auto plain = new Fills;
     painter.paintRow(plain, row);
+    painter.paintRowOver(plain, row);
     assert(plain.areas.length == 1, "the row only");
     row.state.focused = true;
     auto marked = new Fills;
     painter.paintRow(marked, row);
-    assert(marked.areas.length == 3 && marked.colors[1] == Color(1, 2, 3) && marked.areas[1] == Rect(0, 100, 300, 1)
-        && marked.areas[2] == Rect(0, 115, 300, 1));
+    assert(marked.areas.length == 1, "the frame is not under the cells");
+    painter.paintRowOver(marked, row);
+    assert(marked.areas.length == 5 && marked.colors[1] == Color(1, 2, 3) && marked.areas[1] == Rect(0, 100, 300, 1)
+        && marked.areas[2] == Rect(0, 115, 300, 1) && marked.areas[3] == Rect(0, 101, 1, 14) && marked.areas[4] == Rect(299, 101, 1, 14),
+        "four sides, over the cells");
 }
 
 @("LogPainter: an anchored row has a circle with the anchor in it in the anchor column, a row without one has nothing")

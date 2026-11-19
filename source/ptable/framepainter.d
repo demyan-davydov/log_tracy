@@ -193,6 +193,13 @@ final class FramePainter
                 paintCellAt(canvas, e, row, 0, row.area, false, false);
             return;
         }
+        paintRowCells(canvas, e, row, p, picked);
+        _painter.paintRowOver(canvas, row);
+    }
+
+    // The cells of a row of data: the middle, then the pinned strips over it
+    private void paintRowCells(Canvas canvas, Entry* e, ref const RowContext row, ref const Placements p, ref const Picked picked)
+    {
         const pinned = p.leftWidth > 0 || p.rightWidth > 0;
         const clipped = Rect(_space.regions.rows.x + p.leftWidth, row.area.y, p.middleWidth, row.area.h);
         if (pinned)
@@ -300,6 +307,7 @@ version (unittest)
         override void endFrame(Canvas canvas) { calls ~= "end"; }
         override void paintBackground(Canvas canvas, Rect area) { calls ~= "background"; }
         override void paintRow(Canvas canvas, ref const RowContext row) { calls ~= "row"; }
+        override void paintRowOver(Canvas canvas, ref const RowContext row) { calls ~= "over"; }
         override void paintCell(Canvas canvas, ref CellContext cell) { calls ~= cell.isHeader ? "title" : "cell"; }
         override void paintHeader(Canvas canvas, Rect area) { calls ~= "header"; }
         override void paintPinnedEdge(Canvas canvas, Rect area, bool leftEdge) { calls ~= leftEdge ? "edge-left" : "edge-right"; }
@@ -337,8 +345,8 @@ unittest
     const p = f.store.places();
     const picked = Picked.init;
     f.painterOfFrame.paint(new RecordingCanvas, slots, p, picked);
-    assert(f.painter.calls == ["begin 0 2", "background", "row", "cell", "cell", "row", "cell", "cell", "end", "header", "title", "title"],
-        "the rows come top down between the begin and the end of the frame, the header after them");
+    assert(f.painter.calls == ["begin 0 2", "background", "row", "cell", "cell", "over", "row", "cell", "cell", "over", "end", "header", "title", "title"],
+        "the rows come top down between the begin and the end of the frame, each over its cells, the header after them");
     assert(f.painterOfFrame.frames == 1);
 }
 
@@ -359,7 +367,7 @@ unittest
     const pinned = f.store.places();
     f.painterOfFrame.paint(new RecordingCanvas, slots, pinned, none);
     // the scrolling cells, then the strip of the pinned area (opaque row), its cell and its edge
-    assert(f.painter.calls[1 .. 8] == ["background", "row", "cell", "row", "cell", "edge-left", "end"], "got ");
+    assert(f.painter.calls[1 .. 9] == ["background", "row", "cell", "row", "cell", "edge-left", "over", "end"], "got ");
 }
 
 @("FramePainter: the row under the mouse and the cell under it are told to the painter, the others are not")

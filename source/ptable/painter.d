@@ -104,6 +104,11 @@ class Painter
     {
     }
 
+    /// What goes over a row once its cells (and the pinned strips) are drawn: a frame the lines of the columns must not cross
+    void paintRowOver(Canvas canvas, ref const RowContext row)
+    {
+    }
+
     /// What the painter adds to a cell (its border) after its column drew it (`TableColumn.draw`, `drawHeader`)
     void paintCell(Canvas canvas, ref CellContext cell)
     {
