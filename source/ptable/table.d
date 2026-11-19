@@ -116,6 +116,7 @@ final class Table
     /// an edge, by a jump): 0, the row at the edge, by default
     double revealMargin = 0;
 
+    private bool _tableHasFocus = true; // the host says it (`tableHasFocus`): told to the painter with the hooks that may draw by it
     private bool _followEndAble; // `followEnd`: the table may follow the end of its rows
     private EndFollow _follow; // whether it does now
     private ViewState _placed = ViewState(size_t.max, 0); // where the rows stood when the table last put them (invalid: not yet): another place is a move of another's
@@ -583,7 +584,7 @@ final class Table
         refreshHover(); // the rows may have moved under a mouse that did not
         const p = places();
         const picked = Picked(_picker.rows, _picker.currentRow, _picker.text.hasText, _picker.text.range, _picker.hover.row, _picker.hover.column,
-            _picker.cellPress.row, _picker.cellPress.column);
+            _picker.cellPress.row, _picker.cellPress.column, _tableHasFocus);
         _frame.paint(canvas, _viewport.slots, p, picked);
         if (p.scrollX != _store.layout.scrollX)
             _store.layout.setScrollX(p.scrollX); // the scroll the columns have after the clamp: the layout keeps it, it does not run ahead
@@ -1056,6 +1057,22 @@ final class Table
         return step.active;
     }
 
+    /// Whether the table has the focus, as the host said (it has until the host says it has not)
+    bool tableHasFocus() const
+    {
+        return _tableHasFocus;
+    }
+
+    /// The host says whether the table has the focus: a change repaints, the same again does not. The painter is told with every hook that
+    /// may draw by it; the table itself draws nothing by it
+    void tableHasFocus(bool on)
+    {
+        if (on == _tableHasFocus)
+            return;
+        _tableHasFocus = on;
+        invalidate();
+    }
+
     /// The window lost the mouse or the focus with a button down: the press is over, with no click and no scroll
     void cancelPress()
     {
@@ -1365,7 +1382,7 @@ unittest
     static final class Spy : Painter
     {
         long hoverRow = -2;
-        override void paintRow(Canvas canvas, ref const RowContext row)
+        override void paintRow(Canvas canvas, ref const RowContext row, bool tableHasFocus)
         {
             if (row.state.hover)
                 hoverRow = row.index;
@@ -1610,8 +1627,8 @@ unittest
     static class Reading : Painter
     {
         ulong[] rows, cells;
-        override void paintRow(Canvas canvas, ref const RowContext row) { rows ~= row.data.extra.bits; }
-        override void paintCell(Canvas canvas, ref CellContext cell)
+        override void paintRow(Canvas canvas, ref const RowContext row, bool tableHasFocus) { rows ~= row.data.extra.bits; }
+        override void paintCell(Canvas canvas, ref CellContext cell, bool tableHasFocus)
         {
             if (!cell.isHeader)
                 cells ~= cell.data.extra.bits;
@@ -2153,8 +2170,8 @@ unittest
     {
         string[] calls;
         override TableGeometry geometry() { TableGeometry g; g.groupHeight = 20; return g; }
-        override void paintCell(Canvas canvas, ref CellContext cell) { if (cell.isHeader) calls ~= "title"; }
-        override void paintGroup(Canvas canvas, ref GroupContext group) { calls ~= "group"; }
+        override void paintCell(Canvas canvas, ref CellContext cell, bool tableHasFocus) { if (cell.isHeader) calls ~= "title"; }
+        override void paintGroup(Canvas canvas, ref GroupContext group, bool tableHasFocus) { calls ~= "group"; }
     }
 
     auto painter = new Seen;
@@ -2309,8 +2326,8 @@ unittest
             return g;
         }
 
-        override void paintRow(Canvas canvas, ref const RowContext row) { rowAreas ~= row.area; }
-        override void paintCell(Canvas canvas, ref CellContext cell) { if (!cell.isHeader) cellAreas ~= cell.area; }
+        override void paintRow(Canvas canvas, ref const RowContext row, bool tableHasFocus) { rowAreas ~= row.area; }
+        override void paintCell(Canvas canvas, ref CellContext cell, bool tableHasFocus) { if (!cell.isHeader) cellAreas ~= cell.area; }
         override void paintEmpty(Canvas canvas, Rect area, EmptyZone zone) { if (zone == EmptyZone.marginLeft || zone == EmptyZone.marginRight) beside ~= area; }
     }
 
@@ -2588,7 +2605,7 @@ unittest
     static final class Marks : Painter
     {
         size_t[] focused;
-        override void paintRow(Canvas canvas, ref const RowContext row)
+        override void paintRow(Canvas canvas, ref const RowContext row, bool tableHasFocus)
         {
             if (row.state.focused)
                 focused ~= row.index;
@@ -2765,6 +2782,41 @@ unittest
         table.paint(canvas);
         assert(invalidations == before && table.stats.fitRounds <= 1, "a paint with nothing changed asks for no other");
     }
+}
+
+@("Table: the host says whether the table has the focus: a change repaints, the same again does not, and every hook of the painter is told")
+unittest
+{
+    import std.algorithm.searching : all;
+
+    static final class Telling : Painter
+    {
+        bool[] told; // what each hook was told, in the order they were called
+        override void paintRow(Canvas canvas, ref const RowContext row, bool tableHasFocus) { told ~= tableHasFocus; }
+        override void paintRowOver(Canvas canvas, ref const RowContext row, bool tableHasFocus) { told ~= tableHasFocus; }
+        override void paintCell(Canvas canvas, ref CellContext cell, bool tableHasFocus) { told ~= tableHasFocus; }
+        override void paintTextSelection(Canvas canvas, Rect area, bool tableHasFocus) { told ~= tableHasFocus; }
+    }
+
+    auto painter = new Telling;
+    auto layout = new ColumnLayout;
+    auto table = new Table(new NumbersModel(20), layout, portsOf(painter));
+    table.resize(400, 121);
+    size_t invalidations;
+    table.events.invalidate = () { ++invalidations; };
+    auto canvas = new RecordingCanvas;
+    assert(table.tableHasFocus, "a table has the focus until the host says it has not");
+    table.selectBetween(1, 0, 20, 5);
+    table.paint(canvas);
+    assert(painter.told.length > 0 && painter.told.all!(a => a), "told that it has");
+    invalidations = 0;
+    table.tableHasFocus = false;
+    assert(!table.tableHasFocus && invalidations == 1, "a change repaints");
+    table.tableHasFocus = false;
+    assert(invalidations == 1, "the same again does not");
+    painter.told = null;
+    table.paint(canvas);
+    assert(painter.told.length > 0 && painter.told.all!(a => !a), "every hook: no focus");
 }
 
 @("Table: the size of the room of the rows, the rows and the cells in sight, and the height of a row")

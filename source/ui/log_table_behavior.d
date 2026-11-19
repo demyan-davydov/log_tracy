@@ -154,8 +154,18 @@ final class LogTableBehavior : SciterEventHandler
         _host.attach(he);
         if (_log is null)
             build();
+        _log.table.tableHasFocus = elementHasFocus(he); // the element may have it already when the table is made
         if (_hooks.attached !is null)
             _hooks.attached(_control);
+    }
+
+    // Whether the element is the one in focus now (`:focus`)
+    private static bool elementHasFocus(HELEMENT he)
+    {
+        import sciter.capi.dom : ELEMENT_STATE_BITS, SCDOM_OK;
+
+        UINT bits;
+        return sciterApi().SciterGetElementState(he, &bits) == SCDOM_OK && (bits & ELEMENT_STATE_BITS.STATE_FOCUS) != 0;
     }
 
     override protected void handleDetached(HELEMENT he)
@@ -207,9 +217,17 @@ final class LogTableBehavior : SciterEventHandler
 
     override protected bool handleEvent(HELEMENT he, FOCUS_PARAMS* params)
     {
+        if (_log is null)
+            return false;
+        // the table has the focus as long as its element has: the painter is told (the element is focusable by its tabindex, set where it is made)
+        if (params.cmd == FOCUS_EVENTS.FOCUS_GOT)
+            _log.table.tableHasFocus = true;
         // the focus went elsewhere with a button down: the press is over (no mouse up will come)
-        if (_log !is null && params.cmd == FOCUS_EVENTS.FOCUS_LOST)
+        else if (params.cmd == FOCUS_EVENTS.FOCUS_LOST)
+        {
+            _log.table.tableHasFocus = false;
             _log.table.cancelPress();
+        }
         return false;
     }
 

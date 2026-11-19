@@ -34,6 +34,7 @@ struct Picked
     size_t hoverColumn; /// the column of the model under it: with the row, `CellContext.hover`
     long pressedRow = -1; /// the row of the cell a button is down on (a clickable column): `CellContext.pressed`
     size_t pressedColumn;
+    bool tableHasFocus = true; /// the table has the focus (the host says it): told to the painter with every hook that may draw by it
 }
 
 final class FramePainter
@@ -78,15 +79,15 @@ final class FramePainter
             paintRow(canvas, slot, p, picked);
         canvas.popClip();
         _painter.endFrame(canvas); // the rows were given top down: what the painter learned of them is complete
-        paintHeader(canvas, p);
-        paintGroups(canvas, slots, p);
+        paintHeader(canvas, p, picked.tableHasFocus);
+        paintGroups(canvas, slots, p, picked.tableHasFocus);
         if (regions.footer.h > 0)
             _painter.paintFooter(canvas, regions.footer);
     }
 
     // The groups: the margins across the rows, with the heads that changed in the cells of their columns; then, over the
     // title of each column that groups, only in its cell, the head of the rows on top and the margins going up over it
-    private void paintGroups(Canvas canvas, const(RowSlot)[] slots, ref const Placements p)
+    private void paintGroups(Canvas canvas, const(RowSlot)[] slots, ref const Placements p, bool tableHasFocus)
     {
         import std.math : round;
 
@@ -114,7 +115,7 @@ final class FramePainter
         void paintHead(size_t k, const(wchar)[] head, Rect column, double top, double h, bool sticky)
         {
             auto group = GroupContext(head, Rect(column.x, top, column.w, h), sticky, _store.columns.column(groups[k]));
-            _painter.paintGroup(canvas, group);
+            _painter.paintGroup(canvas, group, tableHasFocus);
         }
 
         canvas.pushClip(rows);
@@ -162,7 +163,7 @@ final class FramePainter
         }
     }
 
-    private void paintHeader(Canvas canvas, ref const Placements p)
+    private void paintHeader(Canvas canvas, ref const Placements p, bool tableHasFocus)
     {
         _painter.paintHeader(canvas, _space.regions.header);
         RowContext row;
@@ -173,7 +174,7 @@ final class FramePainter
         {
             auto ctx = _rows.headerCellAt(row, c);
             ctx.column.drawHeader(canvas, ctx.area, HeaderState(ctx.hover, ctx.pressed));
-            _painter.paintCell(canvas, ctx);
+            _painter.paintCell(canvas, ctx, tableHasFocus);
         }
         canvas.popClip();
     }
@@ -184,17 +185,17 @@ final class FramePainter
         auto row = _rows.rowContextAt(e, slot.index, slot, picked.rows);
         row.state.focused = cast(long) slot.index == picked.current;
         row.state.hover = cast(long) slot.index == picked.hoverRow;
-        _painter.paintRow(canvas, row);
+        _painter.paintRow(canvas, row, picked.tableHasFocus);
         if (!e.valid)
             return;
         if (e.data.kind == ItemKind.virtual_)
         {
             if (_store.columns.length)
-                paintCellAt(canvas, e, row, 0, row.area, false, false);
+                paintCellAt(canvas, e, row, 0, row.area, false, false, picked.tableHasFocus);
             return;
         }
         paintRowCells(canvas, e, row, p, picked);
-        _painter.paintRowOver(canvas, row);
+        _painter.paintRowOver(canvas, row, picked.tableHasFocus);
     }
 
     // The cells of a row of data: the middle, then the pinned strips over it
@@ -208,7 +209,7 @@ final class FramePainter
         if (pinned)
             canvas.popClip();
         if (picked.hasText)
-            paintSelectedText(canvas, e, row, p, picked.text);
+            paintSelectedText(canvas, e, row, p, picked.text, picked.tableHasFocus);
         if (pinned)
             canvas.pushClip(clipped);
         foreach (c; p.columns)
@@ -226,7 +227,7 @@ final class FramePainter
             const x = side == 0 ? _space.regions.rows.x : _space.regions.rows.x + _space.regions.rows.w - width;
             RowContext strip = row;
             strip.area = Rect(x, row.area.y, width, row.area.h);
-            _painter.paintRow(canvas, strip); // opaque: the middle goes under it
+            _painter.paintRow(canvas, strip, picked.tableHasFocus); // opaque: the middle goes under it
             paintCellBacks(canvas, e, row, p, area);
             foreach (c; p.columns)
                 if (c.area == area)
@@ -253,11 +254,11 @@ final class FramePainter
     private void paintCellOf(Canvas canvas, Entry* e, ref const RowContext row, ref const Placement c, ref const Picked picked)
     {
         paintCellAt(canvas, e, row, c.defIndex, Rect(c.x, row.area.y, c.width, row.area.h), row.state.hover && c.defIndex == picked.hoverColumn,
-            cast(long) row.index == picked.pressedRow && c.defIndex == picked.pressedColumn);
+            cast(long) row.index == picked.pressedRow && c.defIndex == picked.pressedColumn, picked.tableHasFocus);
     }
 
     // The cell `defIndex` of the row in `area`: its column draws it, the painter adds its border
-    private void paintCellAt(Canvas canvas, Entry* e, ref const RowContext row, size_t defIndex, Rect area, bool hover, bool pressed)
+    private void paintCellAt(Canvas canvas, Entry* e, ref const RowContext row, size_t defIndex, Rect area, bool hover, bool pressed, bool tableHasFocus)
     {
         auto ctx = _rows.cellContextAt(e, row, defIndex, area);
         ctx.hover = hover;
@@ -268,7 +269,7 @@ final class FramePainter
             const state = DrawState(area, ctx.clip, row.state, hover, pressed);
             ctx.column.draw(canvas, cell, state);
         }
-        _painter.paintCell(canvas, ctx);
+        _painter.paintCell(canvas, ctx, tableHasFocus);
     }
 
     // The part of a cell's `area` on the screen: a column of a tall cell draws only the lines that meet it
@@ -279,12 +280,12 @@ final class FramePainter
         return Rect(area.x, top, area.w, max(0.0, bottom - top));
     }
 
-    private void paintSelectedText(Canvas canvas, Entry* e, ref const RowContext row, ref const Placements p, TextRange text)
+    private void paintSelectedText(Canvas canvas, Entry* e, ref const RowContext row, ref const Placements p, TextRange text, bool tableHasFocus)
     {
         if (row.index < text.start.row || row.index > text.end.row)
             return; // the cells are not even looked at for a row the selection does not touch
         auto focused = _rows.focused(e, row, _store.columns.selectable(p));
-        _rows.selectionRects(focused, text, row.index, (Rect area) { _painter.paintTextSelection(canvas, area); });
+        _rows.selectionRects(focused, text, row.index, (Rect area) { _painter.paintTextSelection(canvas, area, tableHasFocus); });
     }
 }
 
@@ -306,12 +307,12 @@ version (unittest)
         override void beginFrame(Canvas canvas, size_t firstRow, size_t rowCount) { calls ~= "begin " ~ firstRow.to!string ~ " " ~ rowCount.to!string; }
         override void endFrame(Canvas canvas) { calls ~= "end"; }
         override void paintBackground(Canvas canvas, Rect area) { calls ~= "background"; }
-        override void paintRow(Canvas canvas, ref const RowContext row) { calls ~= "row"; }
-        override void paintRowOver(Canvas canvas, ref const RowContext row) { calls ~= "over"; }
-        override void paintCell(Canvas canvas, ref CellContext cell) { calls ~= cell.isHeader ? "title" : "cell"; }
+        override void paintRow(Canvas canvas, ref const RowContext row, bool tableHasFocus) { calls ~= "row"; }
+        override void paintRowOver(Canvas canvas, ref const RowContext row, bool tableHasFocus) { calls ~= "over"; }
+        override void paintCell(Canvas canvas, ref CellContext cell, bool tableHasFocus) { calls ~= cell.isHeader ? "title" : "cell"; }
         override void paintHeader(Canvas canvas, Rect area) { calls ~= "header"; }
         override void paintPinnedEdge(Canvas canvas, Rect area, bool leftEdge) { calls ~= leftEdge ? "edge-left" : "edge-right"; }
-        override void paintTextSelection(Canvas canvas, Rect area) { calls ~= "selected"; }
+        override void paintTextSelection(Canvas canvas, Rect area, bool tableHasFocus) { calls ~= "selected"; }
     }
 
     private struct Frame
@@ -376,8 +377,8 @@ unittest
     static final class Hovering : Painter
     {
         string[] seen;
-        override void paintRow(Canvas canvas, ref const RowContext row) { if (row.state.hover) seen ~= "row " ~ row.index.to!string; }
-        override void paintCell(Canvas canvas, ref CellContext cell)
+        override void paintRow(Canvas canvas, ref const RowContext row, bool tableHasFocus) { if (row.state.hover) seen ~= "row " ~ row.index.to!string; }
+        override void paintCell(Canvas canvas, ref CellContext cell, bool tableHasFocus)
         {
             if (!cell.isHeader && cell.hover)
                 seen ~= "cell " ~ cell.row.index.to!string ~ "," ~ cell.columnIndex.to!string;
@@ -523,7 +524,7 @@ unittest
             return g;
         }
 
-        override void paintCell(Canvas canvas, ref CellContext cell)
+        override void paintCell(Canvas canvas, ref CellContext cell, bool tableHasFocus)
         {
             auto clips = cast(ClipCanvas) canvas;
             if (cell.isHeader)
@@ -587,7 +588,7 @@ version (unittest)
             clips ~= (cast(Clips) canvas).stack[$ - 1];
             places ~= area;
         }
-        override void paintGroup(Canvas canvas, ref GroupContext group)
+        override void paintGroup(Canvas canvas, ref GroupContext group, bool tableHasFocus)
         {
             seen ~= (group.sticky ? "sticky " : "") ~ group.head.to!string ~ " " ~ (group.cell.y - rowsTop).to!string;
             clips ~= (cast(Clips) canvas).stack[$ - 1];
@@ -696,7 +697,7 @@ unittest
         Rect[] bands, plates;
         override TableGeometry geometry() { TableGeometry g; g.groupHeight = 20; g.groupPadTop = 6; return g; }
         override void paintGroupBand(Canvas canvas, Rect area) { bands ~= area; }
-        override void paintGroup(Canvas canvas, ref GroupContext group) { if (!group.sticky) plates ~= group.cell; }
+        override void paintGroup(Canvas canvas, ref GroupContext group, bool tableHasFocus) { if (!group.sticky) plates ~= group.cell; }
     }
 
     auto painter = new Padded;
@@ -761,7 +762,7 @@ unittest
     {
         Rect[] areas;
         override TableGeometry geometry() { TableGeometry g; g.groupHeight = 20; return g; }
-        override void paintRow(Canvas canvas, ref const RowContext row) { areas ~= row.area; }
+        override void paintRow(Canvas canvas, ref const RowContext row, bool tableHasFocus) { areas ~= row.area; }
         override void paintPinnedEdge(Canvas canvas, Rect area, bool leftEdge) { areas ~= area; }
     }
 

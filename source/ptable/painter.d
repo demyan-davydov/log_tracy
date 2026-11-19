@@ -99,18 +99,21 @@ class Painter
         canvas.fillRect(area, Color(255, 255, 255));
     }
 
+    /// Every hook that may draw by whether the table has the focus (`Table.tableHasFocus`, as the host said) is told it as `tableHasFocus`: a
+    /// painter that draws the same with or without it ignores it. It is not part of the state of a row: it is the table's.
+
     /// A row's background; its cells follow through `paintCell`
-    void paintRow(Canvas canvas, ref const RowContext row)
+    void paintRow(Canvas canvas, ref const RowContext row, bool tableHasFocus)
     {
     }
 
     /// What goes over a row once its cells (and the pinned strips) are drawn: a frame the lines of the columns must not cross
-    void paintRowOver(Canvas canvas, ref const RowContext row)
+    void paintRowOver(Canvas canvas, ref const RowContext row, bool tableHasFocus)
     {
     }
 
     /// What the painter adds to a cell (its border) after its column drew it (`TableColumn.draw`, `drawHeader`)
-    void paintCell(Canvas canvas, ref CellContext cell)
+    void paintCell(Canvas canvas, ref CellContext cell, bool tableHasFocus)
     {
     }
 
@@ -130,7 +133,7 @@ class Painter
 
     /// A head of a group, in the cell of its column: in its margin, or over the title (`TableGeometry.groupHeight` high);
     /// once for each column whose head changed
-    void paintGroup(Canvas canvas, ref GroupContext group)
+    void paintGroup(Canvas canvas, ref GroupContext group, bool tableHasFocus)
     {
     }
 
@@ -151,7 +154,7 @@ class Painter
     }
 
     /// A rectangle of the text selected, under the texts
-    void paintTextSelection(Canvas canvas, Rect area)
+    void paintTextSelection(Canvas canvas, Rect area, bool tableHasFocus)
     {
         canvas.fillRect(area, Color(0x7f, 0xdc, 0x94));
     }
@@ -190,7 +193,7 @@ unittest
 {
     class Mine : Painter
     {
-        override void paintCell(Canvas canvas, ref CellContext cell)
+        override void paintCell(Canvas canvas, ref CellContext cell, bool tableHasFocus)
         {
             canvas.drawText(0, cell.data.text, cell.area.x, cell.area.y, Color(0, 0, 0));
         }
@@ -204,7 +207,7 @@ unittest
     CellContext cell;
     cell.data = &data;
     cell.area = Rect(1, 2, 3, 4);
-    painter.paintCell(canvas, cell);
+    painter.paintCell(canvas, cell, true);
     assert(canvas.calls == ["fill", "text:hi"], "the background is the default, the empty room is left alone");
 }
 

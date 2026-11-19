@@ -114,7 +114,7 @@ class LogPainter : Painter
     // A head is a plate in the cell of its column, colored as the header it goes up to. In the margin it stands left of
     // the border of its column and opens onto the rows of its group: under it the line under the margin is the room's
     // ground. Over the header it is a title, with a title's border
-    override void paintGroup(Canvas canvas, ref GroupContext group)
+    override void paintGroup(Canvas canvas, ref GroupContext group, bool tableHasFocus)
     {
         const cell = group.cell;
         const plate = group.sticky ? cell : Rect(cell.x, cell.y, cell.w - 1, cell.h);
@@ -138,7 +138,7 @@ class LogPainter : Painter
         canvas.fillRect(area, _palette.header);
     }
 
-    override void paintRow(Canvas canvas, ref const RowContext row)
+    override void paintRow(Canvas canvas, ref const RowContext row, bool tableHasFocus)
     {
         const found = row.data !is null && (row.data.extra.bits & foundMark) != 0;
         const color = row.state.selected ? _palette.selected : found ? (row.state.odd ? _palette.foundStripe : _palette.found)
@@ -147,7 +147,7 @@ class LogPainter : Painter
     }
 
     // The row the keys move from has a frame over its cells, so the borders of the columns do not cross it
-    override void paintRowOver(Canvas canvas, ref const RowContext row)
+    override void paintRowOver(Canvas canvas, ref const RowContext row, bool tableHasFocus)
     {
         if (!row.state.focused)
             return;
@@ -163,13 +163,13 @@ class LogPainter : Painter
         canvas.fillRect(area, _palette.border);
     }
 
-    override void paintTextSelection(Canvas canvas, Rect area)
+    override void paintTextSelection(Canvas canvas, Rect area, bool tableHasFocus)
     {
         canvas.fillRect(area, _palette.textSelected);
     }
 
     // A cell is drawn by its column (`TableColumn.draw`, `drawHeader`); the painter adds its right border (the row's own look is `paintRow`)
-    override void paintCell(Canvas canvas, ref CellContext cell)
+    override void paintCell(Canvas canvas, ref CellContext cell, bool tableHasFocus)
     {
         if (!cell.isHeader && cell.data is null)
             return;
@@ -192,7 +192,7 @@ version (unittest)
             const cell = inputOf(ctx), state = stateOf(ctx);
             ctx.column.draw(canvas, cell, state);
         }
-        painter.paintCell(canvas, ctx);
+        painter.paintCell(canvas, ctx, true);
     }
 
     private CellInput inputOf(ref const CellContext ctx)
@@ -309,12 +309,12 @@ unittest
     }
     auto areas = new Areas;
     auto margin = GroupContext("2026/11/18"w, Rect(60, 46, 90, 22), false, new TextColumn(ColumnDef("time", "Time")));
-    painter.paintGroup(areas, margin);
+    painter.paintGroup(areas, margin, true);
     assert(areas.areas == [Rect(60, 46, 89, 22), Rect(60, 68, 89, 1)],
         "the plate left of the border of its column; under it the line is the room's ground: the plate opens onto its rows");
     canvas.calls = null;
     auto sticky = GroupContext("2026/11/18"w, Rect(60, 0, 90, 22), true, new TextColumn(ColumnDef("time", "Time")));
-    painter.paintGroup(canvas, sticky);
+    painter.paintGroup(canvas, sticky, true);
     assert(canvas.calls == ["fill", "clip", "text:2026/11/18", "unclip", "fill"], "over the title: the border of a title");
 }
 
@@ -344,13 +344,13 @@ unittest
     RowContext row;
     row.data = &data;
     row.state.odd = true;
-    painter.paintRow(canvas, row);
+    painter.paintRow(canvas, row, true);
     row.state.odd = false;
-    painter.paintRow(canvas, row);
+    painter.paintRow(canvas, row, true);
     row.state.selected = true;
-    painter.paintRow(canvas, row);
+    painter.paintRow(canvas, row, true);
     painter.paintPinnedEdge(canvas, Rect(0, 0, 1, 10), true);
-    painter.paintTextSelection(canvas, Rect(0, 0, 5, 10));
+    painter.paintTextSelection(canvas, Rect(0, 0, 5, 10), true);
     assert(canvas.colors == [palette.row, palette.header, palette.stripe, palette.row, palette.selected, palette.border,
         palette.textSelected]);
 }
@@ -379,7 +379,7 @@ unittest
     auto canvas = new Fills;
     painter.paintGroupBand(canvas, Rect(0, 40, 300, 30));
     auto margin = GroupContext("2026/11/18"w, Rect(60, 46, 90, 23), false, new TextColumn(ColumnDef("time", "Time"), look)); // the column inks its head
-    painter.paintGroup(canvas, margin);
+    painter.paintGroup(canvas, margin, true);
     assert(canvas.colors == [palette.groupBand, palette.groupLine, palette.groupLine, palette.groupPlate, palette.groupBand,
         palette.groupInk]);
 }
@@ -458,14 +458,14 @@ unittest
     RowContext row;
     row.area = Rect(0, 100, 300, 16);
     auto plain = new Fills;
-    painter.paintRow(plain, row);
-    painter.paintRowOver(plain, row);
+    painter.paintRow(plain, row, true);
+    painter.paintRowOver(plain, row, true);
     assert(plain.areas.length == 1, "the row only");
     row.state.focused = true;
     auto marked = new Fills;
-    painter.paintRow(marked, row);
+    painter.paintRow(marked, row, true);
     assert(marked.areas.length == 1, "the frame is not under the cells");
-    painter.paintRowOver(marked, row);
+    painter.paintRowOver(marked, row, true);
     assert(marked.areas.length == 5 && marked.colors[1] == Color(1, 2, 3) && marked.areas[1] == Rect(0, 100, 300, 1)
         && marked.areas[2] == Rect(0, 115, 300, 1) && marked.areas[3] == Rect(0, 101, 1, 14) && marked.areas[4] == Rect(299, 101, 1, 14),
         "four sides, over the cells");
@@ -516,7 +516,7 @@ unittest
     paintAll(quiet, painter, ctx);
     assert(quiet.calls == ["fill"], "the mouse is elsewhere: nothing");
     const before = asked;
-    painter.paintCell(new RecordingCanvas, ctx);
+    painter.paintCell(new RecordingCanvas, ctx, true);
     assert(asked == before, "the document is not asked about a cell nobody points at");
     ctx.hover = true;
     full = false;
