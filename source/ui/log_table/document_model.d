@@ -80,6 +80,7 @@ TableColumn[] logColumns(const(ColumnInfo)[] columns, LogColumnLook look = LogCo
             column.style.cell.padLeft = column.style.header.padLeft = look.payloadPadLeft;
             column.style.wrap = look.wrapPayload;
         }
+        column.style.group.halign = Halign.center; // the head of a group of rows (the date) stands in the middle of its plate
         if (c.kind == ColumnKind.Time)
             column.parts = timeParts;
         made ~= column;
@@ -319,6 +320,7 @@ unittest
     assert(defs[2].def.id == "time" && !defs[2].def.flex);
     assert(defs[2].cellParts.hasHead && defs[2].cellParts.head("2026/11/18 12:34:56.000001"w) == "2026/11/18"
         && defs[2].cellParts.body("2026/11/18 12:34:56.000001"w) == "12:34:56.000001", "the date heads the rows of its day");
+    assert(styleOf(defs[2]).group.halign == Halign.center, "the head of a group, the date, stands in the middle of its plate");
     assert(defs[2].cellParts.head("12.345678"w).length == 0, "a time since boot has no date");
     assert(!defs[1].cellParts.hasHead && !defs[3].cellParts.hasHead && !defs[4].cellParts.hasHead);
     assert(defs[4].def.id == "payload" && defs[4].def.flex && defs[4].def.minWidth == 200);
