@@ -161,12 +161,15 @@ final class SciterTextCache
         if (_read)
             return;
         _read = true;
+        // The advance of a glyph of a monospace font is read off a run of them: Sciter rounds the width of a layout, and the rounding of one
+        // glyph, times the length of a text, would move a text aligned to the right of its cell (a time: some pixels) off its edge
+        enum run = "0000000000000000000000000000000000000000000000000000000000000000"w;
         foreach (font; 0 .. _look.fonts.length)
         {
-            auto layout = TextLayout.create(_he, "0", styleOf(cast(uint) font, _look.ink, false, false, 0));
+            auto layout = TextLayout.create(_he, run, styleOf(cast(uint) font, _look.ink, false, false, 0));
             const m = layout.metrics();
             _ascent[font] = round(m.ascent);
-            _advance[font] = m.maxWidth;
+            _advance[font] = m.maxWidth / run.length;
             _lineHeights[font] = ceil(m.height);
             layout.release();
         }
