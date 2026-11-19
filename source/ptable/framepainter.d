@@ -105,8 +105,8 @@ final class FramePainter
             return;
         const rows = _space.regions.rows, header = _space.regions.header;
         const pad = _space.fonts.geometry.groupPadTop; // the plate of the heads is the lower part of a margin
-        // the place of the column that groups `k`th over the header, cut by the block of the columns as the titles are;
-        // empty if it is not shown or scrolled out of the block
+        // the place of the column that groups `k`th over the header, cut by its area as the titles are (the middle, or its pinned strip: a
+        // column scrolled under a pinned one never covers it); empty if it is not shown or scrolled out of its area
         Rect placeOf(size_t k)
         {
             import std.algorithm.comparison : max, min;
@@ -114,7 +114,8 @@ final class FramePainter
             foreach (c; p.columns)
                 if (c.defIndex == groups[k])
                 {
-                    const left = max(c.x, rows.x), right = min(c.x + c.width, rows.x + rows.w); // in the cell, not on the line beside it
+                    const area = areaOf(c.area, p, rows.x, rows.w);
+                    const left = max(c.x, area.x), right = min(c.x + c.width, area.x + area.w); // in the cell, not on the line beside it
                     return right > left ? Rect(left, header.y, right - left, header.h) : Rect.init;
                 }
             return Rect.init;
@@ -144,7 +145,11 @@ final class FramePainter
             {
                 const column = placeOf(k);
                 if (column.w > 0 && (e.changed >> k & 1) && e.heads[k].length)
+                {
+                    canvas.pushClip(Rect(column.x, rows.y, column.w, rows.h)); // the head in its column's area only
                     paintHead(k, e.heads[k], column, top + pad, height, false);
+                    canvas.popClip();
+                }
             }
         }
         canvas.popClip();
@@ -179,20 +184,43 @@ final class FramePainter
 
     private void paintHeader(Canvas canvas, ref const Placements p, bool tableHasFocus)
     {
-        _painter.paintHeader(canvas, _space.regions.header);
+        const header = _space.regions.header, rows = _space.regions.rows;
+        _painter.paintHeader(canvas, header);
         RowContext row;
-        row.area = _space.regions.header;
-        // the titles stand in the block of the columns like the cells: scrolled out of it they are not drawn over the margins
-        canvas.pushClip(Rect(_space.regions.rows.x, _space.regions.header.y, _space.regions.rows.w, _space.regions.header.h));
-        foreach (c; p.columns)
+        row.area = header;
+        // the titles stand as the cells do: the middle ones in the middle (scrolled out of it they are not drawn over the margins nor
+        // under a pinned strip), the pinned ones over them on their strips, with the edge of the strip
+        foreach (area; [Pin.none, Pin.left, Pin.right])
         {
-            auto ctx = _rows.headerCellAt(row, c);
-            ctx.column.drawHeader(canvas, ctx.area, HeaderState(ctx.hover, ctx.pressed));
-            _painter.paintCell(canvas, ctx, tableHasFocus);
-            if (c.lineAfter > 0 || c.lineBefore > 0)
-                _painter.paintColumnLine(canvas, columnLineOf(c, _space.regions.header, 0), ctx.column, true);
+            const strip = areaOf(area, p, rows.x, rows.w);
+            if (strip.w <= 0)
+                continue;
+            canvas.pushClip(Rect(strip.x, header.y, strip.w, header.h));
+            foreach (c; p.columns)
+                if (c.area == area)
+                {
+                    auto ctx = _rows.headerCellAt(row, c);
+                    ctx.column.drawHeader(canvas, ctx.area, HeaderState(ctx.hover, ctx.pressed));
+                    _painter.paintCell(canvas, ctx, tableHasFocus);
+                    if (c.lineAfter > 0 || c.lineBefore > 0)
+                        _painter.paintColumnLine(canvas, columnLineOf(c, header, 0), ctx.column, true);
+                }
+            canvas.popClip();
+            if (area != Pin.none)
+                _painter.paintPinnedEdge(canvas, Rect(area == Pin.left ? strip.right : strip.x - 1, header.y, 1, header.h), area == Pin.left);
         }
-        canvas.popClip();
+    }
+
+    // Where the columns of `area` stand across the block of the columns that starts at `x`, `width` wide: the middle between the pinned
+    // strips, or a strip; no width if it has none
+    private static Rect areaOf(Pin area, ref const Placements p, double x, double width)
+    {
+        final switch (area)
+        {
+        case Pin.none: return Rect(x + p.leftWidth, 0, p.middleWidth, 0);
+        case Pin.left: return Rect(x, 0, p.leftWidth, 0);
+        case Pin.right: return Rect(x + width - p.rightWidth, 0, p.rightWidth, 0);
+        }
     }
 
     private void paintRow(Canvas canvas, ref const RowSlot slot, ref const Placements p, ref const Picked picked)
@@ -590,7 +618,7 @@ unittest
     assert(painter.titleLines == [Rect(60, header.y, 2, header.h)], "the line of the header");
 }
 
-@("FramePainter: with margins and a scroll the titles are drawn in the block of the columns and the pinned strips stand at its edges")
+@("FramePainter: with margins and a scroll the titles are drawn as the cells are: the middle ones in the middle, the pinned ones over them on their strip, its edge in the header too")
 unittest
 {
     import ptable.painter : TableGeometry;
@@ -638,10 +666,10 @@ unittest
     const none = Picked.init;
     frame.paint(new ClipCanvas, slots, p, none);
     assert(painter.zones == ["left", "right"], "the margins are their own zones");
-    assert(painter.titleClips.length == 2, "a title is drawn for each column");
-    foreach (clip; painter.titleClips)
-        assert(clip == Rect(20, 0, 370, 21), "the titles are clipped to the block of the columns, not the table");
-    assert(painter.edges.length == 1 && painter.edges[0].x == 20 + 60, "the pinned strip stands at the left edge of the block");
+    assert(painter.titleClips == [Rect(20 + 60, 0, 370 - 60, 21), Rect(20, 0, 60, 21)],
+        "the scrolled title in the middle, not over the pinned one; the pinned title after it on its strip");
+    assert(painter.edges.length == 2 && painter.edges[0].x == 20 + 60 && painter.edges[1] == Rect(20 + 60, 0, 1, 21),
+        "the edge of the pinned strip in the row and in the header (painted after the rows)");
     assert(p.columns[0].x == 20 && p.columns[1].x == 20 + 60 - 100, "pinned at the origin, the middle one scrolled");
 }
 
@@ -734,7 +762,7 @@ unittest
     assert(f.painter.seen == ["band 48", "d1 48", "sticky d0 -21"], "the first row has no margin: from the start its head is over the title");
     assert(f.painter.places[0] == Rect(rows.x, rows.y + 48, rows.w, 20) && f.painter.places[1] == Rect(time.x, rows.y + 48, time.width, 20),
         "the band across the rows, the head in the cell of its column");
-    assert(f.painter.clips[0] == rows && f.painter.clips[1] == rows, "in the rows");
+    assert(f.painter.clips[0] == rows && f.painter.clips[1] == Rect(time.x, rows.y, time.width, rows.h), "in the rows, the head in its column");
     assert(f.painter.clips[2] == Rect(time.x, header.y, time.width, header.h), "only over the column's title, not over the line right of it");
 
     f.paint(1, -5);
@@ -842,6 +870,70 @@ unittest
     assert(painter.calls == ["band", "top", "bottom", "plate"], "over the band, under the plate");
 }
 
+@("FramePainter: the head of a group of a column scrolled under a pinned one is cut by the middle: it never covers the pinned column")
+unittest
+{
+    import ptable.column : TableColumn;
+    import ptable.layout : ColumnDef;
+    import ptable.model : CellData, ModelListener, RowData;
+    import ptable.testing : DatedModel, withBoxes;
+
+    // the rows of a `DatedModel` with a column of numbers before them
+    static final class Numbered : TableModel
+    {
+        DatedModel dated;
+        TableColumn[] all;
+        this()
+        {
+            dated = new DatedModel(100, 3);
+            all = withBoxes([ColumnDef("n", "N")]) ~ dated.columns();
+        }
+        size_t itemCount() { return dated.itemCount; }
+        TableColumn[] columns() { return all; }
+        bool item(size_t index, ref RowData row, const(bool)[] wanted)
+        {
+            if (!dated.item(index, row, wanted.length > 1 ? wanted[1 .. $] : null))
+                return false;
+            row.cells = [CellData("1"w)] ~ row.cells;
+            row.fragments = null;
+            return true;
+        }
+        bool indexOf(ulong rowId, out size_t index) { return dated.indexOf(rowId, index); }
+        size_t subscribe(ModelListener listener) { return 0; }
+        void unsubscribe(size_t handle) {}
+    }
+
+    auto layout = new ColumnLayout;
+    auto painter = new Groups;
+    auto store = new RowStore(new Numbered, new ColumnHost(layout), portsOf(painter));
+    bool widthChanged;
+    store.resize(400, 300, widthChanged);
+    layout.setWidth("n", 40);
+    layout.setWidth("time", 100);
+    layout.setPin("n", Pin.left);
+    layout.setScrollX(50); // the time column starts 10 under the pinned one
+    store.ensure();
+    painter.rowsTop = store.space.regions.rows.y;
+    auto frame = new FramePainter(painter, store, new RowView(RowEnv(store.columns, store.space)), store.space);
+    RowSlot[] slots;
+    double top = 0;
+    foreach (i; 0 .. 6)
+    {
+        slots ~= RowSlot(i, top, store.heightOf(i));
+        top += store.heightOf(i);
+    }
+    const none = Picked.init;
+    frame.paint(new Clips, slots, store.places(), none);
+    const rows = store.space.regions.rows;
+    assert(painter.places.length > 1, "heads were drawn");
+    foreach (i, place; painter.places)
+        if (painter.seen[i].length < 4 || painter.seen[i][0 .. 4] != "band")
+        {
+            assert(place.x >= rows.x + 40, "a head is in the middle, right of the pinned column: " ~ painter.seen[i]);
+            assert(painter.clips[i].x >= rows.x + 40, "and cut there: " ~ painter.seen[i]);
+        }
+}
+
 @("FramePainter: a head scrolled sideways out of the block of the columns is cut by it, over the header as its title")
 unittest
 {
@@ -900,7 +992,8 @@ unittest
     const none = Picked.init;
     frame.paint(new RecordingCanvas, slots, p, none);
     const rowsTop = store.space.regions.rows.y;
-    assert(painter.areas.length == 3, "the row, the strip of the pinned column, its edge");
-    foreach (area; painter.areas)
+    assert(painter.areas.length == 4, "the row, the strip of the pinned column, its edge, and the edge in the header");
+    foreach (area; painter.areas[0 .. 3])
         assert(area.y == rowsTop + 20 && area.h == 16, "under the margin, as high as the row");
+    assert(painter.areas[3].y == store.space.regions.header.y, "the edge of the strip goes on in the header");
 }
