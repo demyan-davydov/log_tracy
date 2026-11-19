@@ -26,7 +26,7 @@ import ui.log_table.look_json : applyLookJson;
 import ui.log_table.paint_target : PaintTarget;
 import ui.log_table.log_table : TableSource;
 import ui.painted_table : PaintedTable, paintRowsBehavior, runScript, TableHooks;
-import ui.table_script : CurrentControl;
+import ui.table_script : TableControl, TableRegistry;
 import ui.table_rows : columnsJson, rowLength, writeRow;
 
 import std.algorithm : startsWith;
@@ -45,7 +45,7 @@ class MainWindow : SciterWindow
 {
     private AppSession _session;
     private PaintTarget _paint = new PaintTarget; // what the next painted table (paint-rows) shows
-    private CurrentControl _paintControl; // the painted table the script talks to
+    private TableRegistry _tables; // the painted tables the script talks to, by their numbers
 
     /// The files of the interface are built in (`this://app/...`), for the dialogs too
     override protected immutable(ubyte)[] onLoadData(string uri)
@@ -61,8 +61,10 @@ class MainWindow : SciterWindow
     {
         if (name != paintRowsBehavior)
             return null;
-        return new PaintedTable(TableSource(_session, _session.findDocument(_paint.doc), _paint.search, _paint.layoutOf(_paint.doc)), _paint.look,
-            TableHooks(&_paintControl.attach, &_paintControl.detach), he);
+        const id = _paint.id;
+        auto source = TableSource(_session, _session.findDocument(_paint.doc), _paint.search, _paint.layoutOf(_paint.doc), false, _paint.singleLine);
+        return new PaintedTable(source, _paint.look,
+            TableHooks(id, (TableControl control) { _tables.attach(id, control); }, (TableControl control) { _tables.detach(control); }), he);
     }
 
     /// The menu bar of the window on `platform`, in the language of the interface
@@ -234,22 +236,29 @@ class MainWindow : SciterWindow
             return true;
 
         case "paintD":
-            // paintD(method, args...): a call to the table drawn by D (ui/painted_table), null if none
-            // setLook(json) is the application's look, not a table's: it applies with no table attached too
-            if (params.argc >= 1 && param!string(0) == "setLook")
+            // paintD(tableId, method, args...): a call to the table drawn by D (ui/painted_table) that `setPaintTarget` gave that number; null if
+            // there is none (not attached yet, or no more)
             {
-                if (params.argc >= 2)
-                    applyLookJson(_paint.look, param!string(1));
-                return true;
+                auto table = params.argc >= 2 ? _tables.get(param!int(0)) : null;
+                if (table is null)
+                    resultView.set(SciterValue.makeNull());
+                else
+                    runScript(table, param!string(1), params.argv + 2, params.argc - 2, &params.result);
             }
-            if (_paintControl.get is null || params.argc < 1)
-                resultView.set(SciterValue.makeNull());
-            else
-                runScript(_paintControl.get, param!string(0), params.argv + 1, params.argc - 1, &params.result);
+            return true;
+        case "paintSetLook":
+            // paintSetLook(json): the look of the application: every painted table has it, one that is not attached yet too
+            if (params.argc >= 1)
+                applyLookJson(_paint.look, param!string(0));
+            return true;
+        case "paintSingleLine":
+            // paintSingleLine(on): the rows of the painted tables are one line high (the setting of the application): every table now, the next ones from the start
+            _paint.singleLine = param!bool(0);
+            _tables.each((TableControl table) { table.singleLine(_paint.singleLine); });
             return true;
         case "setPaintTarget":
-            // setPaintTarget(docId, search): the next element with `behavior: paint-rows` shows that view
-            _paint.set(param!int(0), param!bool(1));
+            // setPaintTarget(docId, search): the next element with `behavior: paint-rows` shows that view; answers the number of that table
+            resultView = cast(int) _paint.set(param!int(0), param!bool(1));
             return true;
 
         // ── The views ───────────────────────────────────────────────────────

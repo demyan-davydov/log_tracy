@@ -200,29 +200,47 @@ bool dispatch(TableControl control, const(char)[] method, ScriptArgs args, out S
     }
 }
 
-/// The table the script talks to: the one attached last that is still attached. A table that is detached leaves only
-/// if it is the one registered (another one attached since stays).
-struct CurrentControl
+/// The tables the script talks to, by the number each got when its target was set (`PaintTarget.set`): a table is there from its attach to its detach
+struct TableRegistry
 {
-    private TableControl _control;
+    private TableControl[size_t] _controls;
 
-    /// A table was attached
-    void attach(TableControl control)
+    /// The table `control` was attached as `id`
+    void attach(size_t id, TableControl control)
     {
-        _control = control;
+        _controls[id] = control;
     }
 
-    /// A table was detached
+    /// The table `control` was detached (whichever number it has; twice, or one never attached: nothing)
     void detach(TableControl control)
     {
-        if (_control is control)
-            _control = null;
+        size_t[] gone;
+        foreach (id, held; _controls)
+            if (held is control)
+                gone ~= id;
+        foreach (id; gone)
+            _controls.remove(id);
     }
 
-    /// The table the script talks to, null if none
-    TableControl get()
+    /// The table with the number `id`, null if there is none
+    TableControl get(size_t id)
     {
-        return _control;
+        if (auto found = id in _controls)
+            return *found;
+        return null;
+    }
+
+    /// Every table there is: what is told to all of them (the setting of the single line)
+    void each(scope void delegate(TableControl) call)
+    {
+        foreach (control; _controls.values)
+            call(control);
+    }
+
+    /// How many tables there are
+    size_t length() const
+    {
+        return _controls.length;
     }
 }
 
@@ -331,19 +349,24 @@ unittest
     assert(result.kind == ScriptResult.Kind.nothing && control.calls.length == 0);
 }
 
-@("CurrentControl: a table that is detached leaves only if it is the one registered")
+@("TableRegistry: tables by their numbers, a detach takes away only its own, a call to all reaches each")
 unittest
 {
-    CurrentControl current;
+    TableRegistry tables;
     auto a = new Noting, b = new Noting;
-    assert(current.get is null);
-    current.attach(a);
-    current.attach(b);
-    assert(current.get is b, "the one attached last");
-    current.detach(a);
-    assert(current.get is b, "another table's detach does not take the current one away");
-    current.detach(b);
-    assert(current.get is null);
-    current.detach(b); // twice, or with nothing attached
-    assert(current.get is null);
+    assert(tables.get(1) is null && tables.length == 0);
+    tables.attach(1, a);
+    tables.attach(2, b);
+    assert(tables.get(1) is a && tables.get(2) is b && tables.get(3) is null && tables.length == 2);
+    tables.detach(a);
+    assert(tables.get(1) is null && tables.get(2) is b, "another table's detach does not take this one away");
+    tables.detach(a); // twice, or one never attached
+    assert(tables.length == 1);
+    tables.attach(3, a);
+    size_t told;
+    tables.each((TableControl c) { ++told; c.singleLine(true); });
+    assert(told == 2 && a.calls == ["singleLine true"] && b.calls == ["singleLine true"]);
+    tables.detach(b);
+    tables.detach(a);
+    assert(tables.length == 0);
 }

@@ -31,6 +31,7 @@ struct TableSource
     bool search;
     ColumnLayout layout;
     bool demo;
+    bool singleLine; /// the rows are one line high (the setting of the application) from the start
 }
 
 /// What follows a change of the look, in the order that matters: when the metrics changed (the fonts, their sizes, the

@@ -1,4 +1,4 @@
-//! The look of the painted log table as the script collects it for D (`paintCall("setLook", json)`): the colors of the
+//! The look of the painted log table as the script collects it for D (`paintSetLook(json)`): the colors of the
 //! theme's CSS variables by the names of the fields of the palette (source/ui/log_table/log_look.d, LogPalette), the
 //! lengths of the variables of `.log-table` in dips by the names of the fields of the spacing (LogSpacing) and the
 //! scale of the text. Pure: the value of a variable comes from the `read` function the caller gives, so this is

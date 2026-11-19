@@ -42,6 +42,7 @@ enum double panScale = 1.2;
 /// What the window hears of a table: it can be talked to from the attach on and no longer after the detach
 struct TableHooks
 {
+    size_t id; /// the number the script talks to the table by (`PaintTarget.set`)
     void delegate(TableControl) attached;
     void delegate(TableControl) detached;
 }
@@ -93,6 +94,7 @@ final class PaintedTable : SciterEventHandler
         _host = new SciterHost(he, look.text);
         _look = look;
         _source = source;
+        _singleLine = source.singleLine;
         _hooks = hooks;
         _control = new Control; // once: the window holds it through the hooks
     }
@@ -121,7 +123,7 @@ final class PaintedTable : SciterEventHandler
         ulong id;
         if (!table.isClickable(column) || !table.rowId(item, id))
             return; // a click on text is no business of the script, and a row that is gone since the press is nobody's click
-        JSONValue click = ["item": JSONValue(item), "id": JSONValue(id), "column": JSONValue(table.columnId(column)),
+        JSONValue click = ["table": JSONValue(_hooks.id), "item": JSONValue(item), "id": JSONValue(id), "column": JSONValue(table.columnId(column)),
             "anchored": JSONValue((table.rowExtra(item) & anchoredMark) != 0)];
         Rect area;
         if (table.cellRect(item, column, area)) // where the cell is in the table, for what the script shows by it (a notice)

@@ -77,10 +77,13 @@ export const closeTab = docId => xcall("closeTab", docId);
 export const reorderTab = (docId, index) => xcall("reorderTab", docId, index);
 
 // PROTOTYPE (painted-table-d.js, docs/experiments/2026-11-19-painted-rows-d.md): the table drawn by D.
-// The next element with `behavior: paint-rows` shows the view of `docId`; a call to the table
-// drawn now (ui/painted_table.d), null if none
+// The next element with `behavior: paint-rows` shows the view of `docId`, and the number this answers is how the script talks to that
+// table: a call to the table (ui/painted_table.d) of that number, null if there is none (not attached yet, or no more)
 export const setPaintTarget = (docId, search) => Window.this.xcall("setPaintTarget", docId, search);
-export const paintCall = (method, ...args) => Window.this.xcall("paintD", method, ...args);
+export const paintCall = (tableId, method, ...args) => Window.this.xcall("paintD", tableId, method, ...args);
+// What is the application's, not a table's: the look of every table, and whether the rows of all of them are one line high
+export const paintSetLook = json => Window.this.xcall("paintSetLook", json);
+export const paintSingleLine = on => Window.this.xcall("paintSingleLine", on);
 
 // ── The views ────────────────────────────────────────────────────────────────
 

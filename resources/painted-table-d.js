@@ -5,7 +5,7 @@
 //! element's methods (el.xcall): jump(row, now), scrollBy(px, now), pan(px), panEnd(), setWrap(0|1), setWheelScale(k),
 //! resetStats(), stats(), copyText(whole = 1: whole cells with their dates, as Cmd+C; 0: as shown),
 //! demo(on = 1: the demo of rows grouped by two columns in place of the log; 0: the log again).
-import { setAnchor, setPaintTarget, paintCall } from "backend.js";
+import { setAnchor, setPaintTarget, paintCall as callTable, paintSetLook, paintSingleLine } from "backend.js";
 import { collectLook } from "paint-look.js";
 import { lockAxis } from "paint-gesture.js";
 import { anchorClickPlan, rowMoved } from "anchor-click.js";
@@ -17,6 +17,8 @@ let overlay = null;
 let watched = null;
 let fitWatch = null;
 let shown = { docId: 0, search: false }; // the view the table draws: its anchors are set through the backend
+let tableId = 0; // the number D gave the table (`setPaintTarget`): every call to it says it
+const paintCall = (method, ...args) => callTable(tableId, method, ...args);
 
 // The overlay leaves what lies in the container under the table (the progress of a filter or a search and its Cancel,
 // ux.md 21a): its bottom edge stands where the table's ends. The table's size changes so when the progress shows or
@@ -41,7 +43,7 @@ function stop() {
 globalThis.paintLookChanged = (percent = globalThis.paintTableFontSize ?? 100) => {
     if (!overlay || !watched) return;
     const style = watched.style;
-    paintCall("setLook", JSON.stringify(collectLook(name => style.variable(name), percent)));
+    paintSetLook(JSON.stringify(collectLook(name => style.variable(name), percent)));
 };
 
 // paintProtoD(true, "search") draws the search results instead of the main view; the two share the widths of the columns
@@ -51,7 +53,7 @@ globalThis.paintProtoD = (on = true, view = "main") => {
     const table = [...document.querySelectorAll(`.log-table.${view}-view`)].find(t => t.getBoundingClientRect().height > 0);
     if (!table) return false;
     shown = { docId: table.$("tbody").docId, search: view === "search" };
-    setPaintTarget(shown.docId, shown.search);
+    tableId = setPaintTarget(shown.docId, shown.search);
     // Over the table in its own container, by its edges as the status views (tab-content.css): its size follows the
     // window's while it is resized, not only once the resize ends as a script listening to "sizechange" saw it
     // (.ai/knowledge/sciter.md); its bottom leaves the progress under the table (`fit`)
@@ -107,18 +109,13 @@ globalThis.paintProtoD = (on = true, view = "main") => {
         return true;
     });
     overlay.state.focus = true;
-    paintCall("singleLine", globalThis.paintSingleLineRows ? 1 : 0);
     globalThis.paintedD = overlay;
     globalThis.paintLookChanged();
     return true;
 };
 
-// The setting "every row one line" (Settings): the Payload is cut at its cell, or wrapped. script.js tells it when it
-// changes and keeps it in `paintSingleLineRows` for a table that starts later.
-globalThis.paintSingleLine = on => {
-    globalThis.paintSingleLineRows = on === true;
-    if (overlay) paintCall("singleLine", on ? 1 : 0);
-};
+// The setting "every row one line" (Settings): the Payload is cut at its cell, or wrapped. script.js tells it when it changes
+globalThis.paintSingleLine = on => paintSingleLine(on === true); // D keeps it for every table, those that start later too
 
 // A call to the table drawn by D: paintD("stats"), paintD("jump", row, true)
 globalThis.paintD = paintCall;
@@ -137,7 +134,7 @@ document.on("click", "menu.context > li.paint-copy", (evt, item) => {
 // every table of the document, and `paintAnchorRows` below is how this one hears of it. A refusal says why in a notice right of the cell.
 globalThis.paintCellClicked = json => {
     const click = JSON.parse(json);
-    if (click.column !== "anchor" || !overlay) return;
+    if (click.column !== "anchor" || !overlay || click.table !== tableId) return; // a click of another table is that table's
     const answer = setAnchor(shown.docId, click.id, !click.anchored);
     const { rows, notice } = anchorClickPlan(click, answer, anchorRefusalText);
     if (rows) globalThis.onAnchorApplied?.(shown.docId, JSON.stringify(rows));
