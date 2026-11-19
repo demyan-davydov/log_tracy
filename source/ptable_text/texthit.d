@@ -107,8 +107,8 @@ version (unittest)
         CellText cell(size_t col)
         {
             if (col == 0)
-                return CellText(CellInput(0, 0, &abc), Rect(0, top, 50, 28), plain);
-            return CellText(CellInput(0, 1, &defghij), Rect(50, top, 40, 28), wrapped);
+                return CellText(CellInput(0, 0, &abc), Rect(0, top, 50, 28), Rect(0, top, 50, 28), plain);
+            return CellText(CellInput(0, 1, &defghij), Rect(50, top, 40, 28), Rect(50, top, 40, 28), wrapped);
         }
     }
 }
@@ -152,7 +152,7 @@ unittest
         static immutable CellData data = CellData("abc"w);
         size_t length() { return 1; }
         double right(size_t col) { return 50; }
-        CellText cell(size_t col) { return CellText(CellInput(0, 0, &data), Rect(0, 100, 50, 44), column); }
+        CellText cell(size_t col) { return CellText(CellInput(0, 0, &data), Rect(0, 100, 50, 44), Rect(0, 100, 50, 44), column); }
     }
     auto cells = new Lowered;
     cells.column = flush(null, Valign.middle); // (44 - 14) / 2 = 15 lower
@@ -171,7 +171,7 @@ unittest
         double top = 0;
         size_t length() { return 1; }
         double right(size_t col) { return 40; }
-        CellText cell(size_t col) { return CellText(CellInput(0, 0, &data), Rect(0, top, 40, 40), column); }
+        CellText cell(size_t col) { return CellText(CellInput(0, 0, &data), Rect(0, top, 40, 40), Rect(0, top, 40, 40), column); }
     }
     auto ruler = new FakeMeasurer;
     ruler.line = 20;

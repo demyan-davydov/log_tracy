@@ -13,10 +13,10 @@ version (unittest)
 
     private immutable RowRanges noRows;
 }
-import ptable.layout : Placement;
+import ptable.layout : Placement, Placements;
 import ptable.painter : CellContext, Painter, RowContext, RowState;
 import ptable.ports : Rect;
-import ptable.regions : cellIn;
+import ptable.regions : Panes, cellIn, panesOf, seenOf;
 import ptable.rowcache : Entry, RowCache;
 import ptable.rowlayout : RowSlot;
 import ptable.tablespace : TableSpace;
@@ -24,7 +24,6 @@ import ptable.rowranges : RowRanges;
 import ptable.selection : Position, TextRange;
 import ptable.texthit : CellText, selectionRects, textPositionAt;
 
-import std.algorithm.comparison : max, min;
 import std.math : ceil, round;
 
 /// What a row is made of, the surroundings the table gives the view
@@ -56,8 +55,9 @@ final class RowView
         return row;
     }
 
-    /// The context of a cell of an entry in a row: the painter draws its border by it, the hit tests find it by it
-    CellContext cellContextAt(Entry* e, ref const RowContext row, size_t defIndex, Rect area)
+    /// The context of a cell of an entry in a row in `area`, seen in `pane` (`paneOf`): the painter draws its border by it, the hit tests
+    /// find it by it
+    CellContext cellContextAt(Entry* e, ref const RowContext row, size_t defIndex, Rect area, Rect pane)
     {
         const space = _env.space;
         CellContext ctx;
@@ -67,9 +67,7 @@ final class RowView
         if (defIndex < e.data.cells.length)
             ctx.data = &e.data.cells[defIndex];
         ctx.area = area;
-        // the part of the cell on the screen: a column of a tall cell draws only the lines that meet it
-        const top = max(area.y, space.regions.rows.y), bottom = min(area.bottom, space.regions.rows.bottom);
-        ctx.clip = Rect(area.x, top, area.w, max(0.0, bottom - top));
+        ctx.clip = seenOf(area, pane); // a column of a tall cell draws only the lines that meet it, a text kept in view aligns in it
         return ctx;
     }
 
@@ -101,17 +99,25 @@ final class RowView
         return ctx;
     }
 
-    /// The text of the cell placed at `c` as the hit tests see it: its input, its area in the row, its column
-    CellText cellText(Entry* e, ref const RowContext row, ref const Placement c)
+    /// The text of the cell placed at `c`, seen in `pane`, as the hit tests see it: its input, its area in the row and the part of it seen, its
+    /// column
+    CellText cellText(Entry* e, ref const RowContext row, ref const Placement c, Rect pane)
     {
-        return CellText(cellInputAt(e, row, c.defIndex), cellIn(c, row.area, _env.space.fonts.geometry.rowBorder), _env.columns.column(c.defIndex));
+        const area = cellIn(c, row.area, _env.space.fonts.geometry.rowBorder);
+        return CellText(cellInputAt(e, row, c.defIndex), area, seenOf(area, pane), _env.columns.column(c.defIndex));
     }
 
-    /// The selectable cells `cells` of the row `row` of the entry `e`, for the hit tests and the selection. The texts it
-    /// gives are valid until the next `cell` of any `FocusedRow` (the wrapped lines are made in a buffer of the view).
-    FocusedRow focused(Entry* e, const RowContext row, const(Placement)[] cells)
+    /// Where the cells of each area placed by `p` are seen among the rows (`panesOf`)
+    Panes panesOf(ref const Placements p) const
     {
-        return FocusedRow(this, e, row, cells);
+        return .panesOf(p, _env.space.regions.rows);
+    }
+
+    /// The selectable cells `cells` of the row `row` of the entry `e`, seen in `panes`, for the hit tests and the selection. The texts it
+    /// gives are valid until the next `cell` of any `FocusedRow` (the wrapped lines are made in a buffer of the view).
+    FocusedRow focused(Entry* e, const RowContext row, const(Placement)[] cells, Panes panes)
+    {
+        return FocusedRow(this, e, row, cells, panes);
     }
 
     /// The text position in the row `focused` under (`x`, `y`), in the table's coordinates
@@ -134,10 +140,11 @@ struct FocusedRow
     private Entry* _entry;
     private RowContext _row;
     private const(Placement)[] _cells;
+    private Panes _panes;
 
     size_t length() { return _cells.length; }
     double right(size_t col) { return _cells[col].x + _cells[col].width; }
-    CellText cell(size_t col) { return _view.cellText(_entry, _row, _cells[col]); }
+    CellText cell(size_t col) { return _view.cellText(_entry, _row, _cells[col], _panes[_cells[col].area]); }
 }
 
 @("RowView: a row's state follows the selection and its parity; a title is placed in the header")
@@ -191,8 +198,41 @@ unittest
     const slot = RowSlot(0, 0, 16);
     const row = view.rowContextAt(&entry, 0, slot, noRows);
     const cells = [Placement("a", 10, 50, Placement.init.area, 0), Placement("b", 60, 80, Placement.init.area, 1)];
-    auto focused = view.focused(&entry, row, cells);
+    Placements p;
+    p.middleWidth = 300;
+    auto focused = view.focused(&entry, row, cells, view.panesOf(p));
     assert(focused.length == 2 && focused.right(0) == 60 && focused.right(1) == 140);
     assert(focused.cell(1).text == "two" && focused.cell(0).text == "one");
 }
 
+
+@("FocusedRow: a cell of a pinned strip is seen in its strip, a cell of the middle under a strip is cut by it")
+unittest
+{
+    import ptable.layout : ColumnDef, ColumnLayout, Pin;
+    import ptable.model : CellData;
+
+    auto columns = new ColumnSet(new ColumnLayout);
+    columns.refresh(withBoxes([ColumnDef("a", "A"), ColumnDef("b", "B"), ColumnDef("c", "C")]));
+    TableSpace space;
+    space.restyle(new Painter);
+    bool widthChanged;
+    space.resize(300, 200, widthChanged);
+    space.refresh();
+    auto view = new RowView(RowEnv(columns, &space));
+
+    Entry entry;
+    entry.data.cells = [CellData("one"w), CellData("two"w), CellData("three"w)];
+    const slot = RowSlot(0, 0, 16);
+    const row = view.rowContextAt(&entry, 0, slot, noRows);
+    Placements p;
+    p.leftWidth = 50;
+    p.rightWidth = 40;
+    p.middleWidth = 210;
+    p.viewportWidth = 300;
+    const cells = [Placement("a", 0, 50, Pin.left, 0), Placement("b", 30, 100, Pin.none, 1), Placement("c", 260, 40, Pin.right, 2)];
+    auto focused = view.focused(&entry, row, cells, view.panesOf(p));
+    assert(focused.cell(0).view.x == 0 && focused.cell(0).view.w == 50, "the left strip: seen whole");
+    assert(focused.cell(1).view.x == 50 && focused.cell(1).view.w == 80, "the middle one: 30..50 under the left strip");
+    assert(focused.cell(2).view.x == 260 && focused.cell(2).view.w == 40, "the right strip: seen whole");
+}

@@ -41,7 +41,7 @@ final class AnchorColumn : TextColumn
         const palette = look.palette;
         const style = this.style.cell;
         const area = state.area;
-        const spot = spotOf(cell, area);
+        const spot = spotOf(cell, area, state.clip);
         auto measurer = this.measurer;
         const marks = marksOf(cell);
         Color rule;
@@ -55,20 +55,22 @@ final class AnchorColumn : TextColumn
             const mark = "⊘"w;
             const body = cellMetrics, sign = measurer !is null ? measurer.metrics(LogFont.sign) : body;
             const middle = spot.baseline + (body.descent - body.ascent) / 2; // of the line of the cell
-            const x = alignedX(style.halign, area.x, area.w, widthOf(LogFont.sign, mark), style.left(sidePad), style.right(sidePad));
+            const x = alignedAcross(widthOf(LogFont.sign, mark), area, state.clip);
             canvas.drawText(LogFont.sign, mark, x, middle + (sign.ascent - sign.descent) / 2, palette.anchorRefused);
             return;
         }
         if (!anchored && !state.hover)
             return;
         const mark = full ? "⊘"w : "⚓"w;
+        const markWidth = widthOf(spot.font, mark);
+        const x = alignedAcross(markWidth, area, state.clip);
         if (anchored)
         {
-            const metrics = cellMetrics;
-            canvas.fillCircle(area.x + area.w / 2, spot.baseline + (metrics.descent - metrics.ascent) / 2, 7.5 * unit, palette.anchorFill,
+            // the middle of the cell, moved as the mark is when it is kept in view
+            const metrics = cellMetrics, moved = x - alignedX(style.halign, area.x, area.w, markWidth, style.left(sidePad), style.right(sidePad));
+            canvas.fillCircle(area.x + area.w / 2 + moved, spot.baseline + (metrics.descent - metrics.ascent) / 2, 7.5 * unit, palette.anchorFill,
                 palette.anchorLine);
         }
-        const x = alignedX(style.halign, area.x, area.w, widthOf(spot.font, mark), style.left(sidePad), style.right(sidePad));
         canvas.drawText(spot.font, mark, x, spot.baseline, anchored ? inkOf(false) : full ? palette.anchorRefused : palette.anchorFaint);
     }
 }
@@ -130,7 +132,7 @@ final class LevelColumn : TextColumn
         if (level == LogLevel.Fatal && !selected)
         {
             // the badge grows with the font: its paddings are fractions of the line
-            const spot = spotOf(cell, state.area);
+            const spot = spotOf(cell, state.area, state.clip);
             const side = round(4 * unit), inset = max(1.0, round(unit));
             const width = measurer !is null ? measurer.width(spot.font, cell.data.text) : 0;
             canvas.fillRect(Rect(spot.x - side, spot.top + inset, round(width) + 2 * side, spot.line - 2 * inset), palette.fatalBg);

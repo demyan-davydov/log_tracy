@@ -114,7 +114,7 @@ class TextColumn : TextCell
         const chips = look.palette.match[];
         const text = cell.data.text;
         const lines = linesOf(cell, state.area.w);
-        const spot = spotOf(cell, state.area, lines.length);
+        const spot = spotOf(cell, state.area, state.clip, lines.length);
         foreach (fragment; cell.fragments)
         {
             const color = chips[fragment.extra.bits % chips.length];

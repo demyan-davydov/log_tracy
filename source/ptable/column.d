@@ -191,14 +191,15 @@ class TableColumn
     void draw(Canvas canvas, ref const CellInput cell, ref const DrawState state) {}
 
     /// The place in the cell in `area` nearest to the point (`x`, `y`, in the table's coordinates): a caret in a text; `Position.begin` for a
-    /// content with no places
-    size_t hitTest(ref const CellInput cell, Rect area, double x, double y)
+    /// content with no places. `view` is the part of `area` seen (a content that keeps in view stands where it was drawn: `DrawState.clip`)
+    size_t hitTest(ref const CellInput cell, Rect area, Rect view, double x, double y)
     {
         return Position.begin;
     }
 
-    /// The rectangles the range [`from`, `to`) of the cell in `area` takes (one per line of text), in the table's coordinates
-    void rects(ref const CellInput cell, Rect area, size_t from, size_t to, scope void delegate(Rect) emit) {}
+    /// The rectangles the range [`from`, `to`) of the cell in `area` takes (one per line of text), in the table's coordinates; `view` as for
+    /// `hitTest`
+    void rects(ref const CellInput cell, Rect area, Rect view, size_t from, size_t to, scope void delegate(Rect) emit) {}
 
     /// The rows `first`..`last` (not including) of the model changed
     void rowsChanged(size_t first, size_t last) {}
@@ -248,12 +249,12 @@ version (unittest)
             canvas.fillRect(state.area, Color(cast(ubyte) cell.row, 0, 0));
         }
 
-        override size_t hitTest(ref const CellInput cell, Rect area, double x, double y)
+        override size_t hitTest(ref const CellInput cell, Rect area, Rect view, double x, double y)
         {
             return x < area.x + area.w / 2 ? 0 : 1;
         }
 
-        override void rects(ref const CellInput cell, Rect area, size_t from, size_t to, scope void delegate(Rect) emit)
+        override void rects(ref const CellInput cell, Rect area, Rect view, size_t from, size_t to, scope void delegate(Rect) emit)
         {
             const half = area.w / 2;
             if (from < 1)
@@ -291,9 +292,9 @@ unittest
     state.area = Rect(0, 0, 40, 16);
     content.draw(canvas, cell, state);
     assert(canvas.colors == [Color(3, 0, 0)]);
-    assert(content.hitTest(cell, Rect(0, 0, 40, 16), 30, 4) == 1);
+    assert(content.hitTest(cell, Rect(0, 0, 40, 16), Rect(0, 0, 40, 16), 30, 4) == 1);
     Rect[] seen;
-    content.rects(cell, Rect(0, 0, 40, 16), Position.begin, Position.end, (Rect r) { seen ~= r; });
+    content.rects(cell, Rect(0, 0, 40, 16), Rect(0, 0, 40, 16), Position.begin, Position.end, (Rect r) { seen ~= r; });
     assert(seen == [Rect(0, 0, 20, 16), Rect(20, 0, 20, 16)]);
     content.rowsChanged(2, 5); // the empty default for a content that keeps nothing, and this one counts
     assert((cast(Swatch) content).changedRows == 3);

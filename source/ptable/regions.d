@@ -3,7 +3,7 @@
 //! moves them in one place. Pure. See docs/stories/painted-table.md.
 module ptable.regions;
 
-import ptable.layout : Placement;
+import ptable.layout : Pin, Placement, Placements;
 import ptable.painter : TableGeometry;
 import ptable.ports : Rect;
 
@@ -58,6 +58,82 @@ Rect cellIn(ref const Placement c, Rect band, double rowBorder) pure nothrow @no
     import std.algorithm.comparison : max;
 
     return Rect(c.x, band.y, c.width, max(0.0, band.h - rowBorder));
+}
+
+/// Where the columns of each area are seen among the rows: across, the middle between the pinned strips or a strip (no width if it has
+/// none), where the placements put them; down, the rows. Made once a frame (or a hit), read for every cell
+struct Panes
+{
+    Rect middle, left, right;
+
+    /// The pane of the columns of `area`
+    Rect opIndex(Pin area) const pure nothrow @nogc @safe
+    {
+        final switch (area)
+        {
+        case Pin.none: return middle;
+        case Pin.left: return left;
+        case Pin.right: return right;
+        }
+    }
+}
+
+/// The panes of the columns placed by `p` among the rows `rows`
+Panes panesOf(ref const Placements p, Rect rows) pure nothrow @nogc @safe
+{
+    Panes panes;
+    panes.left = Rect(p.originX, rows.y, p.leftWidth, rows.h);
+    panes.middle = Rect(p.originX + p.leftWidth, rows.y, p.middleWidth, rows.h);
+    panes.right = Rect(p.originX + p.viewportWidth - p.rightWidth, rows.y, p.rightWidth, rows.h);
+    return panes;
+}
+
+/// The part of `cell` seen in `pane` (a cell under a pinned strip, out of the rows, cut by their edge); no size if none of it is
+Rect seenOf(Rect cell, Rect pane) pure nothrow @nogc @safe
+{
+    const across = cell.across.meet(pane.across), down = cell.down.meet(pane.down);
+    return Rect(across.start, down.start, across.length, down.length);
+}
+
+@("panesOf, seenOf: the middle is between the pinned strips, a strip is its own; a cell is seen in its pane only")
+unittest
+{
+    Placements p;
+    p.leftWidth = 50;
+    p.rightWidth = 30;
+    p.middleWidth = 300;
+    p.originX = 10;
+    p.viewportWidth = 380;
+    const rows = Rect(10, 21, 380, 100);
+    const panes = panesOf(p, rows);
+    assert(panes[Pin.none] == Rect(60, 21, 300, 100));
+    assert(panes[Pin.left] == Rect(10, 21, 50, 100));
+    assert(panes[Pin.right] == Rect(360, 21, 30, 100));
+    const middle = panes.middle;
+    assert(seenOf(Rect(100, 40, 80, 20), middle) == Rect(100, 40, 80, 20), "seen whole");
+    assert(seenOf(Rect(20, 110, 80, 20), middle) == Rect(60, 110, 40, 11), "under the left strip and cut by the bottom of the rows");
+    assert(seenOf(Rect(340, 10, 80, 20), middle) == Rect(340, 21, 20, 9), "under the right strip and cut by the top of the rows");
+    const none = seenOf(Rect(0, 40, 50, 20), middle);
+    assert(none.w == 0 && none.h == 20, "all of it under a strip: no width");
+    assert(seenOf(Rect(100, 200, 80, 20), middle).h == 0, "under the rows: no height");
+}
+
+@("panesOf: a table wider than the room of its column host has its panes where the columns were placed, not at its own right edge")
+unittest
+{
+    import ptable.layout : ColumnDef, ColumnLayout, placeColumns;
+
+    auto layout = new ColumnLayout;
+    layout.setPin("r", Pin.right);
+    const defs = [ColumnDef("a", "A"), ColumnDef("r", "R")];
+    const p = placeColumns(defs, layout, 300, 10); // the host's room: 300 from 10
+    const panes = panesOf(p, Rect(10, 21, 500, 100)); // the rows of this table: 500
+    Rect placed;
+    foreach (c; p.columns)
+        if (c.id == "r")
+            placed = Rect(c.x, 21, c.width, 100);
+    assert(seenOf(placed, panes[Pin.right]) == placed, "the right pinned column is seen whole in its strip");
+    assert(panes.right.right == 310 && panes.middle.right == panes.right.x);
 }
 
 /// The line between the column placed at `c` and the next one on the screen, as high as its cell (no width: it has none)

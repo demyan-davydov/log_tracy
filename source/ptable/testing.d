@@ -71,7 +71,7 @@ version (unittest)
             return def.flex && wrapping;
         }
 
-        override size_t hitTest(ref const CellInput cell, Rect area, double x, double y)
+        override size_t hitTest(ref const CellInput cell, Rect area, Rect view, double x, double y)
         {
             import std.algorithm.comparison : max, min;
             import std.math : round;
@@ -80,7 +80,7 @@ version (unittest)
             return cast(size_t) max(0.0, min(cast(double) length, round((x - area.x - pad) / glyph)));
         }
 
-        override void rects(ref const CellInput cell, Rect area, size_t from, size_t to, scope void delegate(Rect) emit)
+        override void rects(ref const CellInput cell, Rect area, Rect view, size_t from, size_t to, scope void delegate(Rect) emit)
         {
             emit(Rect(area.x + pad + from * glyph, area.y, (to - from) * glyph, area.h));
         }

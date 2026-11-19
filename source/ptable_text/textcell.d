@@ -8,8 +8,8 @@ module ptable_text.textcell;
 import ptable.column : CellInput, CellLayout, DrawState, GroupInput, Measured, TableColumn, Unit;
 import ptable.layout : ColumnDef;
 import ptable.memory : Arena;
-import ptable.ports : Canvas, Color, FontId, Rect;
-import ptable_text.columnstyle : ColumnStyle, Halign, alignOffset, alignedX, noFont;
+import ptable.ports : Canvas, Color, FontId, Rect, Span;
+import ptable_text.columnstyle : ColumnStyle, Halign, alignOffset, alignedTopInView, alignedX, alignedXInView, noFont;
 import ptable_text.measurer : FontMetrics, TextMeasurer;
 import ptable_text.texthit : TextSpot, caretInText, rectsInText, unitInText;
 import ptable_text.wrap : LineSpan, firstLineWidth, glyphWidth, wrapLines;
@@ -181,20 +181,37 @@ class TextCell : TableColumn
     }
 
     /// The text of the cell in `area` with `lines` lines: aligned by the style between its paddings, its lines in the middle of the room above and
-    /// under them unless the style puts them at the top or the bottom
-    protected final Spot spotOf(ref const CellInput cell, Rect area, size_t lines = 1)
+    /// under them unless the style puts them at the top or the bottom; aligned in the part `view` of the cell that is seen (`DrawState.clip`)
+    /// on an axis the style keeps in view
+    protected final Spot spotOf(ref const CellInput cell, Rect area, Rect view, size_t lines = 1)
     {
         const style = this.style.cell;
         Spot spot;
         spot.font = fontOf(cell);
         spot.line = ceil(_metrics.cell.lineHeight);
         const text = cell.data !is null ? cell.data.text : ""w;
-        const width = style.halign == Halign.left || style.halign == Halign.inherit || _measurer is null ? 0.0 : _measurer.width(spot.font, text);
-        spot.x = alignedX(style.halign, area.x, area.w, width, style.left(sidePad), style.right(sidePad));
+        const atLeft = style.halign == Halign.left || style.halign == Halign.inherit;
+        const width = atLeft && !style.keepInViewX || _measurer is null ? 0.0 : _measurer.width(spot.font, text); // kept in view: it stops at the far side
+        spot.x = alignedAcross(width, area, view);
         const above = style.top(linePad), under = style.bottom(linePad);
-        spot.top = area.y + above + alignOffset(style.valign, area.h - above - under, max(1, lines) * spot.line);
+        // a paragraph's lines are the host's: asked only where they move it, so a column not kept in view stands as it did
+        const paragraphLines = _paragraph && style.keepInViewY && _measurer !is null ? _measurer.wrappedLines(spot.font, text, style.inner(area.w, sidePad)) : 0;
+        const content = max(1, lines, paragraphLines) * spot.line;
+        spot.top = style.keepInViewY ? alignedTopInView(style.valign, area.y, area.h, content, above, under, view.down)
+            : area.y + above + alignOffset(style.valign, area.h - above - under, content);
         spot.baseline = spot.top + round(_metrics.cell.ascent);
         return spot;
+    }
+
+    /// Where a content `width` wide starts across the cell `area` seen in `view`: by the alignment of the style between its paddings, in the
+    /// part seen if the style keeps it in view across. The text of the cell stands so (`spotOf`); a column that draws marks of its own places
+    /// them by it
+    protected final double alignedAcross(double width, Rect area, Rect view) const
+    {
+        const style = this.style.cell;
+        const left = style.left(sidePad), right = style.right(sidePad);
+        return style.keepInViewX ? alignedXInView(style.halign, area.x, area.w, width, left, right, view.across)
+            : alignedX(style.halign, area.x, area.w, width, left, right);
     }
 
     /// Whether the host wraps the cells (a paragraph, drawn by `Canvas.drawParagraph`): its lines are not the column's to know
@@ -240,7 +257,7 @@ class TextCell : TableColumn
         if (text.length == 0)
             return;
         const lines = linesOf(cell, state.area.w);
-        const spot = spotOf(cell, state.area, lines.length);
+        const spot = spotOf(cell, state.area, state.clip, lines.length);
         if (_paragraph)
         {
             canvas.drawParagraph(spot.font, text, spot.x, spot.top, style.cell.inner(state.area.w, sidePad), paragraphInk);
@@ -271,30 +288,30 @@ class TextCell : TableColumn
         drawText(canvas, cell, state, Color(0, 0, 0), Color(0, 0, 0));
     }
 
-    /// Where the text of the cell lies in `area`, for the hit tests and the selection
-    private TextSpot textSpotOf(ref const CellInput cell, Rect area)
+    /// Where the text of the cell lies in `area` seen in `view`, for the hit tests and the selection
+    private TextSpot textSpotOf(ref const CellInput cell, Rect area, Rect view)
     {
         const lines = linesOf(cell, area.w);
-        const spot = spotOf(cell, area, lines.length);
+        const spot = spotOf(cell, area, view, lines.length);
         return TextSpot(spot.font, spot.x, spot.top, spot.line, lines);
     }
 
     /// The caret nearest to the point in the text of the cell: in the line the height says, between the two characters nearest to it
-    override size_t hitTest(ref const CellInput cell, Rect area, double x, double y)
+    override size_t hitTest(ref const CellInput cell, Rect area, Rect view, double x, double y)
     {
         const text = cell.data !is null ? cell.data.text : ""w;
         if (_measurer is null)
             return 0;
-        const spot = textSpotOf(cell, area);
+        const spot = textSpotOf(cell, area, view);
         return caretInText(text, spot, _measurer, x, y);
     }
 
     /// The rectangles of a part of the text: one for a cell of one line, one for each line a part of a wrapped cell touches
-    override void rects(ref const CellInput cell, Rect area, size_t from, size_t to, scope void delegate(Rect) emit)
+    override void rects(ref const CellInput cell, Rect area, Rect view, size_t from, size_t to, scope void delegate(Rect) emit)
     {
         if (_measurer is null || cell.data is null)
             return;
-        const spot = textSpotOf(cell, area);
+        const spot = textSpotOf(cell, area, view);
         rectsInText(cell.data.text, spot, _measurer, from, to, emit);
     }
 
@@ -348,4 +365,77 @@ class TextCell : TableColumn
         }
         return width;
     }
+}
+
+@("TextCell: a text kept in view aligns in the part of the cell seen, on each axis on its own; the hit test finds it where it is drawn")
+unittest
+{
+    import ptable.model : CellData;
+    import ptable_text.columnstyle : Valign;
+    import ptable_text.testing : TestText;
+
+    auto column = new TestText(ColumnDef("c", "C"));
+    column.style.cell.halign = Halign.center;
+    column.style.cell.valign = Valign.middle;
+    const data = CellData("ab"w); // 20 wide, a line of 14, 1 above and under it
+    const cell = CellInput(0, 0, &data);
+    const area = Rect(100, 100, 60, 60), cut = Rect(130, 130, 30, 30); // the left and the top of the cell are not seen
+    Rect where(Rect view)
+    {
+        Rect r;
+        column.rects(cell, area, view, 0, 2, (Rect got) { r = got; });
+        return r;
+    }
+
+    assert(where(area) == Rect(120, 123, 20, 14) && where(cut) == Rect(120, 123, 20, 14), "not kept in view: where it is");
+    column.style.cell.keepInViewX = true;
+    assert(where(area) == Rect(120, 123, 20, 14), "seen whole: where it is");
+    assert(where(cut) == Rect(135, 123, 20, 14), "across only: the middle of the part seen, the same height");
+    column.style.cell.keepInViewY = true;
+    assert(where(cut) == Rect(135, 138, 20, 14), "both");
+    assert(column.hitTest(cell, area, cut, 145, 140) == 1, "between the two glyphs where they are drawn");
+    column.style.cell.halign = Halign.left;
+    assert(where(cut) == Rect(133, 138, 20, 14), "the left one stays at the left of the part seen");
+}
+
+@("TextCell: a paragraph the host wraps is kept in view by all of its lines, not as one")
+unittest
+{
+    import ptable.memory : Arena;
+    import ptable.model : CellData;
+    import ptable_text.columnstyle : Valign;
+    import ptable_text.measurer : FontMetrics;
+    import ptable_text.testing : TestText;
+
+    static final class Wraps : TextMeasurer // the host wraps every text into 3 lines of 14
+    {
+        FontMetrics metrics(FontId font) { return FontMetrics(11, 3, 14); }
+        double width(FontId font, const(wchar)[] text) { return text.length * 10.0; }
+        int wrappedLines(FontId font, const(wchar)[] text, double width) { return 3; }
+    }
+
+    static final class Top : Canvas
+    {
+        double top = double.nan;
+        void fillRect(Rect area, Color color) {}
+        void drawText(FontId font, const(wchar)[] text, double x, double baseline, Color color) {}
+        void drawParagraph(FontId font, const(wchar)[] text, double x, double top, double width, Color color) { this.top = top; }
+        void fillCircle(double cx, double cy, double radius, Color fill, Color line) {}
+        void pushClip(Rect area) {}
+        void popClip() {}
+    }
+
+    auto column = new TestText(ColumnDef("text", "Text", 24, true), new Wraps);
+    column.style.cell.valign = Valign.middle;
+    column.style.cell.keepInViewY = true;
+    const data = CellData("a long text"w);
+    const cell = CellInput(0, 0, &data);
+    Arena arena;
+    column.layout(cell, 60, arena); // 3 lines: a paragraph of the host
+    auto canvas = new Top;
+    DrawState state;
+    state.area = Rect(100, 100, 60, 60); // the room 101..159, the paragraph 42 high
+    state.clip = Rect(100, 130, 60, 30); // the top of the cell is not seen
+    column.draw(canvas, cell, state);
+    assert(canvas.top == 159 - 42, "it stops at the bottom padding with all of its lines in the cell");
 }

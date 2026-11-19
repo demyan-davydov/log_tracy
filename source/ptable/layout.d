@@ -261,6 +261,9 @@ struct Placements
     double contentWidth = 0; /// what the scrolling columns need
     double scrollX = 0; /// the scroll after the clamp
     double maxScrollX = 0;
+    /// Where the columns were placed from and the room they were placed in (the column host's: a table wider than it has room right of
+    /// them); the right strip ends at `originX + viewportWidth`
+    double originX = 0, viewportWidth = 0;
 }
 
 /// The layout data of a column: the definition itself, or the one a column object holds
@@ -327,6 +330,8 @@ Placements placeColumns(C)(const(C)[] columns, const ColumnLayout layout, double
     result.leftWidth = sum(left);
     result.rightWidth = sum(right);
     result.middleWidth = max(0.0, viewportWidth - result.leftWidth - result.rightWidth);
+    result.originX = originX;
+    result.viewportWidth = viewportWidth;
     // the flex column takes what the others of the middle and the lines between them leave
     double fixedMiddle = 0;
     foreach (i; middle)

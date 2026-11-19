@@ -19,6 +19,7 @@ struct CellText
 {
     CellInput input;
     Rect area;
+    Rect view; /// the part of `area` seen (`seenOf`)
     TableColumn column;
 
     /// The text of the cell, none if the model gave none
@@ -47,7 +48,7 @@ bool textPositionAt(Cells)(auto ref Cells cells, size_t row, double x, double y,
             break;
         }
     auto info = cells.cell(col);
-    at = Position(row, col, info.column.hitTest(info.input, info.area, x, y));
+    at = Position(row, col, info.column.hitTest(info.input, info.area, info.view, x, y));
     return true;
 }
 
@@ -62,7 +63,7 @@ void selectionRects(Cells)(auto ref Cells cells, TextRange range, size_t row, sc
         const part = cellPart(range, row, col, info.text.length);
         if (!part.any)
             continue;
-        info.column.rects(info.input, info.area, part.from, part.to, emit);
+        info.column.rects(info.input, info.area, info.view, part.from, part.to, emit);
     }
 }
 
@@ -73,9 +74,9 @@ unittest
     {
         this() { super(ColumnDef("f", "F")); }
 
-        override size_t hitTest(ref const CellInput cell, Rect area, double x, double y) { return 42; }
+        override size_t hitTest(ref const CellInput cell, Rect area, Rect view, double x, double y) { return 42; }
 
-        override void rects(ref const CellInput cell, Rect area, size_t from, size_t to, scope void delegate(Rect) emit)
+        override void rects(ref const CellInput cell, Rect area, Rect view, size_t from, size_t to, scope void delegate(Rect) emit)
         {
             emit(Rect(from, to, area.y, 1));
         }
@@ -87,7 +88,7 @@ unittest
         static immutable CellData data = CellData("abcdef"w);
         size_t length() { return 1; }
         double right(size_t col) { return 100; }
-        CellText cell(size_t col) { return CellText(CellInput(0, 0, &data), Rect(0, 20, 100, 16), column); }
+        CellText cell(size_t col) { return CellText(CellInput(0, 0, &data), Rect(0, 20, 100, 16), Rect(0, 20, 100, 16), column); }
     }
 
     auto cells = new Own;
@@ -106,14 +107,14 @@ unittest
     {
         size_t length() { return 1; }
         double right(size_t col) { return 50; }
-        CellText cell(size_t col) { return CellText(CellInput.init, Rect(0, 0, 50, 16), plainText); }
+        CellText cell(size_t col) { return CellText(CellInput.init, Rect(0, 0, 50, 16), Rect(0, 0, 50, 16), plainText); }
     }
 
     final class None
     {
         size_t length() { return 0; }
         double right(size_t col) { return 0; }
-        CellText cell(size_t col) { return CellText(CellInput.init, Rect.init, plainText); }
+        CellText cell(size_t col) { return CellText(CellInput.init, Rect.init, Rect.init, plainText); }
     }
 
     Position at;

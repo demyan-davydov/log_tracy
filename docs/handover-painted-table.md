@@ -3,6 +3,13 @@
 Written at the end of the sessions of 2026-11-18/19 (four sessions), kept in the repository so it travels with the branch. Everything a new session
 (on any account) needs is here or in the files named here; the user wants replies **in Russian**.
 
+## Later (2026-11-20): text kept in view
+
+`CellStyle.keepInViewX`/`keepInViewY` (off by default): the text of a cell cut by the edge of the rows aligns in the part seen, every alignment,
+never out of its paddings. The table gives the part seen (`regions.panesOf`/`seenOf`) as `DrawState.clip` and as the new `view` parameter of
+`TableColumn.hitTest`/`rects`; `TextCell.spotOf` aligns by it. The decisions: `docs/stories/painted-table.md`, "Выравнивание по видимой части
+ячейки". The log table keeps every column but the Payload in view down (`logColumns`), none across.
+
 ## START HERE (end of the seventh session, 2026-11-19): the column host is done
 
 **This section supersedes the ones below where they differ.** Replies to the owner in **Russian**.

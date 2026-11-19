@@ -84,6 +84,7 @@ TableColumn[] logColumns(const(ColumnInfo)[] columns, LogColumnLook look = LogCo
     index.style.cell.halign = Halign.right;
     anchor.style.header.halign = index.style.header.halign = Halign.center;
     anchor.style.cell.font = index.style.cell.font = LogFont.aux;
+    anchor.style.cell.keepInViewY = index.style.cell.keepInViewY = true; // in a row the Payload makes tall, they stay in the part seen
     TableColumn[] made = [anchor, index];
     foreach (i, ref c; columns)
     {
@@ -95,6 +96,7 @@ TableColumn[] logColumns(const(ColumnInfo)[] columns, LogColumnLook look = LogCo
         column.style.cell.halign = c.kind == ColumnKind.Level ? Halign.center : Halign.right;
         column.style.cell.font = c.kind == ColumnKind.Level ? LogFont.body : LogFont.aux;
         column.style.header.halign = Halign.center;
+        column.style.cell.keepInViewY = !def.flex; // the Payload makes the row tall, the others stay in the part of it seen
         if (def.flex)
         {
             column.style.cell.halign = column.style.header.halign = Halign.left;
@@ -355,6 +357,9 @@ unittest
     assert(defs[2].cellParts.head("12.345678"w).length == 0, "a time since boot has no date");
     assert(!defs[1].cellParts.hasHead && !defs[3].cellParts.hasHead && !defs[4].cellParts.hasHead);
     assert(defs[4].def.id == "payload" && defs[4].def.flex && defs[4].def.minWidth == 58);
+    foreach (column; defs[0 .. 4])
+        assert(styleOf(column).cell.keepInViewY && !styleOf(column).cell.keepInViewX, "a cell but the Payload stays in the part of a tall row seen");
+    assert(!styleOf(defs[4]).cell.keepInViewY, "the Payload makes the row tall: it is not kept");
 }
 
 @("documentColumns: the anchor mark has no text, the Index and the columns of the format write their cell; the anchor, the Index and the level carry the marks of the row")

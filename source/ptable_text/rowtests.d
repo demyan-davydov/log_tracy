@@ -244,3 +244,77 @@ unittest
     assert(table.stats.rowsOnScreen == 7, "one line each: 100 / 16 rounded up");
     assert(table.position.first == 300, "the place is kept");
 }
+
+@("Table: a cell kept in view stays in the part of its tall row on the screen, and a click there finds its text")
+unittest
+{
+    import ptable.columnhost : ColumnHost;
+    import ptable.painter : Painter;
+    import ptable.ports : Canvas, Color, Rect;
+    import ptable.table : Table;
+    import ptable.tablehit : HitKind;
+    import ptable.testing : portsOf;
+    import ptable_text.columnstyle : Halign, Valign;
+    import ptable_text.testing : styleOf;
+    import std.array : replicate;
+
+    static final class Tall : NumbersModel
+    {
+        bool keep;
+        this() { super(3); }
+        override TableColumn[] columns()
+        {
+            auto columns = withText([ColumnDef("n", "N"), ColumnDef("text", "Text", 24, true)]);
+            styleOf(columns[0]).cell.halign = Halign.center;
+            styleOf(columns[0]).cell.valign = Valign.middle;
+            styleOf(columns[0]).cell.keepInViewY = keep;
+            return columns;
+        }
+        override bool item(size_t index, ref RowData row, const(bool)[] wanted)
+        {
+            if (!super.item(index, row, wanted))
+                return false;
+            if (index == 0)
+                row.cells[1] = CellData("ab "w.replicate(300)); // tens of lines: the row is far taller than the screen
+            return true;
+        }
+    }
+
+    static final class Where : Canvas
+    {
+        double x = double.nan, baseline = double.nan; // of the text "0"
+        void fillRect(Rect area, Color color) {}
+        void drawText(FontId font, const(wchar)[] text, double x, double baseline, Color color)
+        {
+            if (text == "0")
+            {
+                this.x = x;
+                this.baseline = baseline;
+            }
+        }
+        void drawParagraph(FontId font, const(wchar)[] text, double x, double top, double width, Color color) {}
+        void fillCircle(double cx, double cy, double radius, Color fill, Color line) {}
+        void pushClip(Rect area) {}
+        void popClip() {}
+    }
+
+    double[2] drawn(bool keep, out Table table)
+    {
+        auto model = new Tall;
+        model.keep = keep;
+        table = new Table(model, new ColumnHost, portsOf(new Painter, null));
+        table.resize(200, 121); // the rows 21..121
+        auto canvas = new Where;
+        table.paint(canvas);
+        table.scrollBy(600); // the middle of the first row is far above the screen, its cells cover all of it
+        table.paint(canvas);
+        return [canvas.x, canvas.baseline];
+    }
+
+    Table table;
+    assert(drawn(false, table)[1] < 21, "not kept in view: in the middle of the row, above the screen");
+    const at = drawn(true, table);
+    assert(at[1] > 21 + 14 && at[1] < 121, "kept in view: on the screen");
+    const hit = table.hitTest(at[0] + 3, at[1] - 5);
+    assert(hit.kind == HitKind.cell && hit.row == 0 && hit.column == "n" && hit.onText, "the click finds the text where it is drawn");
+}

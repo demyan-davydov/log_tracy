@@ -13,7 +13,7 @@ import ptable.layout : Pin, Placement, Placements;
 import ptable.model : ItemKind;
 import ptable.painter : EmptyZone, GroupContext, Painter, RowContext;
 import ptable.ports : Canvas, Color, Rect;
-import ptable.regions : cellIn, columnLineOf, rowLineOf;
+import ptable.regions : Panes, cellIn, columnLineOf, panesOf, rowLineOf, seenOf;
 import ptable.rowcache : Entry;
 import ptable.rowlayout : RowSlot;
 import ptable.rowstore : RowStore;
@@ -82,21 +82,22 @@ final class FramePainter
             _painter.paintEmpty(canvas, regions.marginLeft, EmptyZone.marginLeft);
         if (regions.marginRight.w > 0)
             _painter.paintEmpty(canvas, regions.marginRight, EmptyZone.marginRight);
+        const panes = panesOf(p, regions.rows); // where the cells of each area are seen, once a frame
         canvas.pushClip(Rect(regions.rows.x, regions.rows.y, regions.rows.w, regions.rows.h));
         foreach (ref slot; slots)
-            paintRow(canvas, slot, p, picked);
+            paintRow(canvas, slot, p, panes, picked);
         canvas.popClip();
         _painter.endFrame(canvas); // the rows were given top down: what the painter learned of them is complete
-        paintHeader(canvas, p, picked.tableHasFocus);
-        paintGroups(canvas, slots, p, picked.tableHasFocus);
-        paintPinnedShadows(canvas, p);
+        paintHeader(canvas, p, panes, picked.tableHasFocus);
+        paintGroups(canvas, slots, p, panes, picked.tableHasFocus);
+        paintPinnedShadows(canvas, p, panes);
         if (regions.footer.h > 0)
             _painter.paintFooter(canvas, regions.footer);
     }
 
     // The groups: the margins across the rows, with the heads that changed in the cells of their columns; then, over the
     // title of each column that groups, only in its cell, the head of the rows on top and the margins going up over it
-    private void paintGroups(Canvas canvas, const(RowSlot)[] slots, ref const Placements p, bool tableHasFocus)
+    private void paintGroups(Canvas canvas, const(RowSlot)[] slots, ref const Placements p, ref const Panes panes, bool tableHasFocus)
     {
         import std.math : round;
 
@@ -115,7 +116,7 @@ final class FramePainter
             foreach (c; p.columns)
                 if (c.defIndex == groups[k])
                 {
-                    const area = areaOf(c.area, p, rows.x, rows.w);
+                    const area = panes[c.area];
                     const left = max(c.x, area.x), right = min(c.x + c.width, area.x + area.w); // in the cell, not on the line beside it
                     return right > left ? Rect(left, header.y, right - left, header.h) : Rect.init;
                 }
@@ -183,9 +184,9 @@ final class FramePainter
         }
     }
 
-    private void paintHeader(Canvas canvas, ref const Placements p, bool tableHasFocus)
+    private void paintHeader(Canvas canvas, ref const Placements p, ref const Panes panes, bool tableHasFocus)
     {
-        const header = _space.regions.header, rows = _space.regions.rows;
+        const header = _space.regions.header;
         _painter.paintHeader(canvas, header);
         RowContext row;
         row.area = header;
@@ -193,7 +194,7 @@ final class FramePainter
         // under a pinned strip), the pinned ones over them on their strips, with the edge of the strip
         foreach (area; [Pin.none, Pin.left, Pin.right])
         {
-            const strip = areaOf(area, p, rows.x, rows.w);
+            const strip = panes[area];
             if (strip.w <= 0)
                 continue;
             canvas.pushClip(Rect(strip.x, header.y, strip.w, header.h));
@@ -212,14 +213,14 @@ final class FramePainter
 
     // A pinned strip casts a shadow over the columns that went under it, from the header down: none while nothing is under it (the line
     // between the columns alone), wider and darker the more is, at its full past `shadowFull`. The table's own look, not the painter's.
-    private void paintPinnedShadows(Canvas canvas, ref const Placements p)
+    private void paintPinnedShadows(Canvas canvas, ref const Placements p, ref const Panes panes)
     {
         const rows = _space.regions.rows, header = _space.regions.header;
         const top = header.y, height = rows.bottom - header.y;
         if (p.leftWidth > 0)
-            paintShadow(canvas, rows.x + p.leftWidth, top, height, p.scrollX, true);
+            paintShadow(canvas, panes.left.right, top, height, p.scrollX, true);
         if (p.rightWidth > 0)
-            paintShadow(canvas, rows.x + rows.w - p.rightWidth, top, height, p.maxScrollX - p.scrollX, false);
+            paintShadow(canvas, panes.right.x, top, height, p.maxScrollX - p.scrollX, false);
     }
 
     private enum double shadowWidth = 4, shadowFull = 15; // dips: the widest shadow, the scroll that makes it so
@@ -242,19 +243,7 @@ final class FramePainter
         }
     }
 
-    // Where the columns of `area` stand across the block of the columns that starts at `x`, `width` wide: the middle between the pinned
-    // strips, or a strip; no width if it has none
-    private static Rect areaOf(Pin area, ref const Placements p, double x, double width)
-    {
-        final switch (area)
-        {
-        case Pin.none: return Rect(x + p.leftWidth, 0, p.middleWidth, 0);
-        case Pin.left: return Rect(x, 0, p.leftWidth, 0);
-        case Pin.right: return Rect(x + width - p.rightWidth, 0, p.rightWidth, 0);
-        }
-    }
-
-    private void paintRow(Canvas canvas, ref const RowSlot slot, ref const Placements p, ref const Picked picked)
+    private void paintRow(Canvas canvas, ref const RowSlot slot, ref const Placements p, ref const Panes panes, ref const Picked picked)
     {
         auto e = _store.entry(slot.index);
         auto row = _rows.rowContextAt(e, slot.index, slot, picked.rows);
@@ -267,57 +256,57 @@ final class FramePainter
         if (e.data.kind == ItemKind.virtual_)
         {
             if (_store.columns.length)
-                paintCellAt(canvas, e, row, 0, Rect(row.area.x, row.area.y, row.area.w, max(0.0, row.area.h - rowBorder)), false, false,
-                    picked.tableHasFocus); // one cell across the row
+                paintCellAt(canvas, e, row, 0, Rect(row.area.x, row.area.y, row.area.w, max(0.0, row.area.h - rowBorder)), _space.regions.rows,
+                    false, false, picked.tableHasFocus); // one cell across the row
             if (rowBorder > 0)
                 _painter.paintRowLine(canvas, rowLineOf(row.area, rowBorder), row);
             return;
         }
-        paintRowCells(canvas, e, row, p, picked);
+        paintRowCells(canvas, e, row, p, panes, picked);
         if (rowBorder > 0)
             _painter.paintRowLine(canvas, rowLineOf(row.area, rowBorder), row);
         _painter.paintRowOver(canvas, row, picked.tableHasFocus);
     }
 
     // The cells of a row of data: the middle, then the pinned strips over it
-    private void paintRowCells(Canvas canvas, Entry* e, ref const RowContext row, ref const Placements p, ref const Picked picked)
+    private void paintRowCells(Canvas canvas, Entry* e, ref const RowContext row, ref const Placements p, ref const Panes panes,
+        ref const Picked picked)
     {
         const pinned = p.leftWidth > 0 || p.rightWidth > 0;
-        const clipped = Rect(_space.regions.rows.x + p.leftWidth, row.area.y, p.middleWidth, row.area.h);
+        const clipped = Rect(panes.middle.x, row.area.y, panes.middle.w, row.area.h);
         if (pinned)
             canvas.pushClip(clipped);
-        paintCellBacks(canvas, e, row, p, Pin.none);
+        paintCellBacks(canvas, e, row, p, panes, Pin.none);
         if (pinned)
             canvas.popClip();
         if (picked.hasText)
-            paintSelectedText(canvas, e, row, p, picked.text, picked.tableHasFocus);
+            paintSelectedText(canvas, e, row, p, panes, picked.text, picked.tableHasFocus);
         if (pinned)
             canvas.pushClip(clipped);
         foreach (c; p.columns)
             if (c.area == Pin.none)
-                paintCellOf(canvas, e, row, c, picked);
+                paintCellOf(canvas, e, row, c, panes, picked);
         if (!pinned)
             return;
         canvas.popClip();
         foreach (side; 0 .. 2)
         {
             const area = side == 0 ? Pin.left : Pin.right;
-            const width = side == 0 ? p.leftWidth : p.rightWidth;
-            if (width <= 0)
+            const pane = panes[area];
+            if (pane.w <= 0)
                 continue;
-            const x = side == 0 ? _space.regions.rows.x : _space.regions.rows.x + _space.regions.rows.w - width;
             RowContext strip = row;
-            strip.area = Rect(x, row.area.y, width, row.area.h);
+            strip.area = Rect(pane.x, row.area.y, pane.w, row.area.h);
             _painter.paintRow(canvas, strip, picked.tableHasFocus); // opaque: the middle goes under it
-            paintCellBacks(canvas, e, row, p, area);
+            paintCellBacks(canvas, e, row, p, panes, area);
             foreach (c; p.columns)
                 if (c.area == area)
-                    paintCellOf(canvas, e, row, c, picked);
+                    paintCellOf(canvas, e, row, c, panes, picked);
         }
     }
 
     // The backs of the cells in `area` that have fragments, the others are not even given a context
-    private void paintCellBacks(Canvas canvas, Entry* e, ref const RowContext row, ref const Placements p, Pin area)
+    private void paintCellBacks(Canvas canvas, Entry* e, ref const RowContext row, ref const Placements p, ref const Panes panes, Pin area)
     {
         if (e.data.fragments.length == 0)
             return;
@@ -326,25 +315,26 @@ final class FramePainter
             {
                 const cell = _rows.cellInputAt(e, row, c.defIndex);
                 const place = cellIn(c, row.area, _space.fonts.geometry.rowBorder);
-                const state = DrawState(place, clipOf(place), row.state);
+                const state = DrawState(place, seenOf(place, panes[area]), row.state);
                 _store.columns.column(c.defIndex).drawBack(canvas, cell, state);
             }
     }
 
-    private void paintCellOf(Canvas canvas, Entry* e, ref const RowContext row, ref const Placement c, ref const Picked picked)
+    private void paintCellOf(Canvas canvas, Entry* e, ref const RowContext row, ref const Placement c, ref const Panes panes, ref const Picked picked)
     {
         const rowBorder = _space.fonts.geometry.rowBorder;
-        paintCellAt(canvas, e, row, c.defIndex, cellIn(c, row.area, rowBorder),
+        paintCellAt(canvas, e, row, c.defIndex, cellIn(c, row.area, rowBorder), panes[c.area],
             row.state.hover && c.defIndex == picked.hoverColumn, cast(long) row.index == picked.pressedRow && c.defIndex == picked.pressedColumn,
             picked.tableHasFocus);
         if (c.lineAfter > 0 || c.lineBefore > 0)
             _painter.paintColumnLine(canvas, columnLineOf(c, row.area, rowBorder), _store.columns.column(c.defIndex), false);
     }
 
-    // The cell `defIndex` of the row in `area`: its column draws it, the painter adds its border
-    private void paintCellAt(Canvas canvas, Entry* e, ref const RowContext row, size_t defIndex, Rect area, bool hover, bool pressed, bool tableHasFocus)
+    // The cell `defIndex` of the row in `area`, seen in `pane`: its column draws it, the painter adds its border
+    private void paintCellAt(Canvas canvas, Entry* e, ref const RowContext row, size_t defIndex, Rect area, Rect pane, bool hover, bool pressed,
+        bool tableHasFocus)
     {
-        auto ctx = _rows.cellContextAt(e, row, defIndex, area);
+        auto ctx = _rows.cellContextAt(e, row, defIndex, area, pane);
         ctx.hover = hover;
         ctx.pressed = pressed;
         if (ctx.data !is null)
@@ -356,19 +346,12 @@ final class FramePainter
         _painter.paintCell(canvas, ctx, tableHasFocus);
     }
 
-    // The part of a cell's `area` on the screen: a column of a tall cell draws only the lines that meet it
-    private Rect clipOf(Rect area) const
-    {
-        const rows = _space.regions.rows;
-        const top = max(area.y, rows.y), bottom = min(area.bottom, rows.bottom);
-        return Rect(area.x, top, area.w, max(0.0, bottom - top));
-    }
-
-    private void paintSelectedText(Canvas canvas, Entry* e, ref const RowContext row, ref const Placements p, TextRange text, bool tableHasFocus)
+    private void paintSelectedText(Canvas canvas, Entry* e, ref const RowContext row, ref const Placements p, ref const Panes panes, TextRange text,
+        bool tableHasFocus)
     {
         if (row.index < text.start.row || row.index > text.end.row)
             return; // the cells are not even looked at for a row the selection does not touch
-        auto focused = _rows.focused(e, row, _store.columns.selectable(p));
+        auto focused = _rows.focused(e, row, _store.columns.selectable(p), panes);
         _rows.selectionRects(focused, text, row.index, (Rect area) { _painter.paintTextSelection(canvas, area, tableHasFocus); });
     }
 }

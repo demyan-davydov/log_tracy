@@ -624,3 +624,42 @@ unittest
     column.draw(canvas, none, state);
     assert(canvas.calls == ["circle", "text"], "no rule: the anchor only");
 }
+
+@("AnchorColumn: kept in view across, the anchor and its circle stand in the middle of the part of the cell seen")
+unittest
+{
+    import ptable.column : CellInput, DrawState;
+    import ptable.model : CellData;
+    import ptable.ports : Canvas, Color, FontId;
+    import ptable_text.columnstyle : Halign;
+    import ptable_text.testing : FakeMeasurer;
+
+    static final class Where : Canvas
+    {
+        double textX = double.nan, circleX = double.nan;
+        void fillRect(Rect area, Color color) {}
+        void drawText(FontId font, const(wchar)[] text, double x, double baseline, Color color) { textX = x; }
+        void drawParagraph(FontId font, const(wchar)[] text, double x, double top, double width, Color color) {}
+        void fillCircle(double cx, double cy, double radius, Color fill, Color line) { circleX = cx; }
+        void pushClip(Rect area) {}
+        void popClip() {}
+    }
+
+    auto column = new AnchorColumn(ColumnDef("anchor", "⚓", 24, false, false), defaultLogLook(), null, null, new FakeMeasurer);
+    column.style.cell.halign = Halign.center;
+    column.lookChanged();
+    LogMarks anchored;
+    anchored.anchored = true;
+    const data = CellData(""w, packMarks(anchored));
+    const cell = CellInput(0, 0, &data);
+    DrawState state;
+    state.area = Rect(100, 100, 60, 16); // the anchor is 10 wide
+    state.clip = Rect(130, 100, 30, 16); // the left half is under a pinned strip
+    auto plain = new Where;
+    column.draw(plain, cell, state);
+    assert(plain.textX == 125 && plain.circleX == 130, "not kept in view: the middle of the whole cell");
+    column.style.cell.keepInViewX = true;
+    auto kept = new Where;
+    column.draw(kept, cell, state);
+    assert(kept.textX == 140 && kept.circleX == 145, "the middle of the part seen, the circle with it");
+}

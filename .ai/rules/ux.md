@@ -275,3 +275,8 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     and a red line under its set's chips says why (rule name: error). New Filter and Load Filter
     are in the page's toolbar. In a narrow window the chips shrink to the row, a long name
     cut; a switch toggled keeps the focus.
+45. **Cells of a tall row stay in view.** When the Payload makes a row taller than the text of
+    the other cells, the text of every other column (the anchor, the Index, the columns of the
+    format; their marks with it) stays aligned in the part of its cell on the screen while the
+    row is cut by the top or the bottom of the rows, never out of its cell's paddings. The
+    Payload does not move.

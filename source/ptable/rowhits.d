@@ -117,7 +117,8 @@ final class RowHits
         Position at;
         if (!rowUnder(y, selected, under) || !hit(under, x, y, at))
             return false;
-        auto cells = _rows.focused(under.entry, under.row, _store.columns.selectable(_store.places()));
+        const p = _store.places();
+        auto cells = _rows.focused(under.entry, under.row, _store.columns.selectable(p), _rows.panesOf(p));
         auto info = cells.cell(at.col);
         const text = info.text;
         const range = info.column.expand(info.input, at.at, Unit.word);
@@ -125,7 +126,7 @@ final class RowHits
         if (to <= from)
             return false;
         bool on;
-        info.column.rects(info.input, info.area, from, to, (Rect r) { on = on || (x >= r.x && x < r.right && y >= r.y && y < r.bottom); });
+        info.column.rects(info.input, info.area, info.view, from, to, (Rect r) { on = on || (x >= r.x && x < r.right && y >= r.y && y < r.bottom); });
         if (!on)
             return false;
         offset = cast(long) at.at;
@@ -135,7 +136,8 @@ final class RowHits
 
     private bool hit(ref RowUnder under, double x, double y, out Position at)
     {
-        auto cells = _rows.focused(under.entry, under.row, _store.columns.selectable(_store.places()));
+        const p = _store.places();
+        auto cells = _rows.focused(under.entry, under.row, _store.columns.selectable(p), _rows.panesOf(p));
         if (cells.length == 0)
             return false;
         return _rows.hit(cells, under.slot.index, x, y, at);
@@ -187,7 +189,8 @@ final class RowHits
         any = false;
         if (!rowUnder(y, selected, under) || !hit(under, x, y, at))
             return false;
-        auto cells = _rows.focused(under.entry, under.row, _store.columns.selectable(_store.places()));
+        const p = _store.places();
+        auto cells = _rows.focused(under.entry, under.row, _store.columns.selectable(p), _rows.panesOf(p));
         auto info = cells.cell(at.col);
         const range = info.column.expand(info.input, at.at, word ? Unit.word : Unit.cell);
         const length = info.text.length;
