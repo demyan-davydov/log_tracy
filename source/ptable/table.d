@@ -299,7 +299,7 @@ final class Table
     private void layout()
     {
         prepare();
-        _viewport.layoutSettled(() => _store.cache.growths);
+        _viewport.layoutSettled(() { _store.fitToWindow(_viewport.slots); return _store.cache.growths; });
     }
 
     // ---- scrolling ----
@@ -2651,6 +2651,53 @@ version (unittest)
 
         return a.row == b.row && a.column == b.column && abs(a.dy - b.dy) < 1e-4 && abs(a.dx - b.dx) < 1e-4;
     }
+}
+
+@("Table: a column is as wide as the texts of the rows on the screen need: it grows to a long one, narrows when it is out of sight, a row below the window sets nothing, the user's width stays")
+unittest
+{
+    static class LongModel : NumbersModel
+    {
+        size_t longRow = 3;
+        this() { super(100); }
+        override bool item(size_t index, ref RowData row, const(bool)[] wanted)
+        {
+            const ok = super.item(index, row, wanted);
+            if (index == longRow)
+                row.cells[0] = CellData("x"w ~ "0123456789012345678901234567890123456789"w);
+            return ok;
+        }
+    }
+
+    auto model = new LongModel;
+    auto layout = new ColumnLayout;
+    auto table = new Table(model, layout, portsOf(new Painter));
+    table.resize(400, 121); // 7 rows
+    auto canvas = new RecordingCanvas;
+    table.paint(canvas);
+    assert(layout.fitWidth("n") == 41 * 10 + 6 + 1, "row 3 is on the screen: the column is as wide as its text");
+    table.scrollToPosition(CellPosition(50, 0, 0, 0), double.nan);
+    table.paint(canvas);
+    assert(layout.fitWidth("n") < 40, "row 3 is out of sight: the column narrowed to the rows now on the screen");
+    model.longRow = 56; // in the window
+    table.scrollToPosition(CellPosition(0, 0, 0, 0), double.nan);
+    table.paint(canvas);
+    model.longRow = 8; // just below the window of rows 0 .. 6
+    table.scrollToPosition(CellPosition(1, 0, 0, 0), double.nan);
+    table.paint(canvas);
+    table.scrollToPosition(CellPosition(0, 0, 0, 0), double.nan);
+    table.paint(canvas);
+    assert(layout.fitWidth("n") < 40, "a row below the window sets no width");
+    model.longRow = 3;
+    table.scrollToPosition(CellPosition(50, 0, 0, 0), double.nan);
+    table.paint(canvas);
+    layout.setWidth("n", 200);
+    table.scrollToPosition(CellPosition(0, 0, 0, 0), double.nan);
+    table.paint(canvas);
+    assert(layout.explicitWidth("n") == 200 && layout.width("n") == 417, "what the user set stays, the longer text still widens it");
+    table.scrollToPosition(CellPosition(50, 0, 0, 0), double.nan);
+    table.paint(canvas);
+    assert(layout.explicitWidth("n") == 200 && layout.width("n") == 200, "and holds when the text is gone");
 }
 
 @("Table: the size of the room of the rows, the rows and the cells in sight, and the height of a row")

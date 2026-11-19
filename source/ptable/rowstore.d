@@ -6,13 +6,14 @@ module ptable.rowstore;
 
 version (unittest) import ptable.testing : portsOf;
 import std.algorithm.comparison : max;
-import ptable.column : GroupInput;
+import ptable.column : GroupInput, TableColumn;
 import ptable.columnset : ColumnSet;
 import ptable.layout : ColumnLayout, LayoutChange, Placements;
 import ptable.memory : mallocAllocator;
 import ptable.model : ModelChange, TableModel;
 import ptable.painter : CellContext, Painter;
 import ptable.rowcache : Entry, RowCache;
+import ptable.rowlayout : RowSlot;
 import ptable.tablespace : TableSpace;
 import ptable.subscriptions : Subscriptions;
 import ptable.tableports : TablePorts;
@@ -25,6 +26,11 @@ final class RowStore
     private ColumnSet _columns; // what the model's columns are and where they stand
     private RowCache _cache;
     private Painter _painter;
+    private double[] _titles; // what the title of each column needs, measured when the columns are read
+    private double[] _needs; // what the rows in the window need of each column (`fitToWindow`), kept to allocate once
+    private size_t _fitFirst = size_t.max - 1, _fitCount; // the window the widths were fit to
+    private bool _fitDirty = true; // something the widths are fit to changed: the rows, the columns, a width set by the user, the fonts
+    private bool _fitting; // `fitToWindow` is changing widths: the layout tells it back
     private TableSpace _space; // the size, the fonts and the regions: the store makes them current, the others read them
 
     this(TableModel model, ColumnLayout layout, TablePorts ports)
@@ -77,6 +83,7 @@ final class RowStore
     /// fonts and the columns are read again
     void restyle()
     {
+        _fitDirty = true;
         layout.resetFit();
         _space.restyle(_painter);
         _columns.markStale();
@@ -85,6 +92,7 @@ final class RowStore
     /// The model told a change; true if what was picked in the text is no longer where it was
     bool modelChanged(const ModelChange change)
     {
+        _fitDirty = true;
         final switch (change.kind)
         {
         case ModelChange.Kind.everything:
@@ -104,6 +112,8 @@ final class RowStore
     /// The layout told a change; true if the cells the text is picked by have moved
     bool layoutChanged(const LayoutChange change)
     {
+        if (!_fitting)
+            _fitDirty = true;
         if (change.kind == LayoutChange.Kind.visibility)
             _columns.visibilityChanged(); // the model need not format what is hidden
         return change.kind == LayoutChange.Kind.visibility || change.kind == LayoutChange.Kind.pin;
@@ -129,7 +139,12 @@ final class RowStore
         bool wantedChanged;
         const wanted = _columns.wanted(wantedChanged);
         if (wantedChanged)
+        {
             _cache.setWanted(wanted);
+            _fitDirty = true;
+        }
+        if (columnsRefreshed)
+            _fitDirty = true;
         if (_columns.hasFlex)
             _cache.setFlexWidth(_columns.flexWidth(places()));
     }
@@ -146,13 +161,61 @@ final class RowStore
         _space.fitHeader(tallest);
         _cache.configure(_columns.columns, _columns.flexIndex, _space.fonts.geometry);
         // the titles are a minimum of the widths too (and the border of the column)
+        _titles.length = _columns.columns.length;
         foreach (i, column; _columns.columns)
         {
-            const def = &column.def;
             const title = column.measureHeader();
-            if (!def.flex && layout.visible(def.id) && title.maxWidth > 0)
-                layout.grow(def.id, title.maxWidth + 1);
+            _titles[i] = !column.def.flex && title.maxWidth > 0 ? title.maxWidth + 1 : 0; // and the border of the column
+            if (layout.visible(column.def.id) && _titles[i] > 0)
+                layout.grow(column.def.id, _titles[i]);
         }
+    }
+
+    // What the title of column `i` needs; 0 for the flex column, a hidden one and a column with no title
+    private double titleFit(size_t i)
+    {
+        return layout.visible(_columns.columns[i].def.id) ? _titles[i] : 0;
+    }
+
+    /// The columns take the width the rows in the window (`slots`, the rows on the screen) need, never less than their titles: a text
+    /// that is out of sight no longer holds a column wide. What the user set is not touched; a column no row measured (it wraps, or there
+    /// are no rows) stays. Done when the window, the rows or the columns changed, not at every frame. True if a width changed: the rows
+    /// are laid out again (`growths`).
+    bool fitToWindow(const(RowSlot)[] slots)
+    {
+        const first = slots.length ? slots[0].index : size_t.max;
+        if (!_fitDirty && first == _fitFirst && slots.length == _fitCount)
+            return false;
+        ensure();
+        _fitDirty = false;
+        _fitFirst = first;
+        _fitCount = slots.length;
+        if (slots.length == 0)
+            return false;
+        _needs.length = _columns.columns.length;
+        _needs[] = 0;
+        foreach (slot; slots)
+        {
+            auto e = entry(slot.index);
+            if (e.valid)
+                _cache.needs(*e, _needs);
+        }
+        _fitting = true;
+        scope (exit)
+            _fitting = false;
+        bool changed;
+        foreach (i, column; _columns.columns)
+        {
+            const id = column.def.id;
+            if (_needs[i] <= 0)
+                continue;
+            const before = layout.width(id);
+            layout.setFit(id, max(_needs[i], titleFit(i)));
+            changed = changed || layout.width(id) != before;
+        }
+        if (changed)
+            _cache.fitted();
+        return changed;
     }
 
     /// The place of the columns: made again only when the layout, the width or the columns changed

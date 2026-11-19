@@ -43,9 +43,9 @@ final class RowCache
     this(TableModel model, ColumnLayout layout, RCIAllocator source = mallocAllocator())
     {
         _wrap = new RowWrap(&_spec);
-        _grow = new RowGrow(layout, &_spec);
+        _grow = new RowGrow(&_spec);
         _reader = new RowReader(model, &_spec, _wrap);
-        _geometry = new RowGeometry(_reader, _grow, &_spec, source);
+        _geometry = new RowGeometry(_reader, &_spec, source);
         _window = new RowWindow(_reader, _geometry, source);
     }
 
@@ -123,7 +123,19 @@ final class RowCache
         return _reader.fetches;
     }
 
-    /// Counts the widths grown: a layout made before one is made again
+    /// What the row `e` needs of each column (`RowGrow.needs`)
+    void needs(ref Entry e, double[] into)
+    {
+        _grow.needs(e, into);
+    }
+
+    /// The widths of the columns changed to what the rows need: the rows are laid out again
+    void fitted()
+    {
+        _grow.fitted();
+    }
+
+    /// Counts the widths changed: a layout made before one is made again
     uint growths() const
     {
         return _grow.growths;
@@ -278,8 +290,10 @@ unittest
     TableGeometry geometry;
     geometry.groupHeight = 20;
     cache.configure(model.columns(), 1, geometry);
-    cache.entry(5);
-    assert(layout.width("time") >= "a long day 1".length * 10 + 2 * 3, "the head's width");
+    auto needs = new double[model.columns().length];
+    needs[] = 0;
+    cache.needs(*cache.entry(5), needs);
+    assert(needs[0] >= "a long day 1".length * 10 + 2 * 3, "the head's width: the first column is the time");
 }
 
 @("RowCache: a row keeps the head of every column that groups; it has a margin when any changed, and says which")
@@ -299,7 +313,10 @@ unittest
     assert(cache.entry(10).changed == 0b01 && cache.entry(9).changed == 0b10, "the day alone, the shift alone");
     assert(cache.entry(11).changed == 0 && cache.entry(11).margin == 0, "neither");
     assert(cache.headsOf(14) == ["D2"w, "S4"w]);
-    assert(layout.width("day") >= "D3".length * 10 && layout.width("shift") >= "S5".length * 10, "each as wide as its heads");
+    auto needs = new double[2];
+    needs[] = 0;
+    cache.needs(*both, needs);
+    assert(needs[0] >= "D3".length * 10 && needs[1] >= "S5".length * 10, "each needs the width of its heads");
 }
 
 @("RowCache: the margin of a group is the room above its plate, the plate and the room under it")

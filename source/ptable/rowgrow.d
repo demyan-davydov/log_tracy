@@ -1,80 +1,83 @@
-//! The widths the columns grow to by the texts the rows show (a minimum, as in the table of the DOM): what each cell and each head
-//! of a group measures (`TableColumn.measure`, `measureGroup`), a column that wraps not at all. `growths` counts the widths
-//! grown, so a layout made before one is made again. See docs/stories/painted-table.md.
+//! What the rows in the window need of the widths of the columns (a minimum, as in the table of the DOM): what each cell and each head
+//! of a group measures (`TableColumn.measure`, `measureGroup`), a column that wraps not at all. The columns take that width as it is now
+//! (`RowStore.fitToWindow`): it grows and narrows with the rows in sight. `growths` counts the widths changed, so a layout made before
+//! one is made again. See docs/stories/painted-table.md.
 module ptable.rowgrow;
 
 version (unittest) import ptable.testing : BoxColumn, withBoxes;
-import ptable.layout : ColumnLayout;
 import ptable.model : ItemKind;
 import ptable.rowentry : Entry;
 import ptable.column : CellInput, GroupInput;
 import ptable.rowspec : RowSpec, maxFitWidth;
 
-import std.algorithm.comparison : min;
+import std.algorithm.comparison : max, min;
 
 final class RowGrow
 {
-    private ColumnLayout _layout;
     private RowSpec* _spec;
 
-    uint growths; /// counts the widths grown
+    uint growths; /// counts the widths changed
 
-    this(ColumnLayout layout, RowSpec* spec)
+    this(RowSpec* spec)
     {
-        _layout = layout;
         _spec = spec;
     }
 
-    /// The columns grow to the texts of the row `e`: to the width each cell measures and its border, never more than `maxFitWidth` (a line of
-    /// a megabyte would make a column nobody can scroll along); a column that wraps does not grow
-    void grow(ref Entry e)
+    /// A width was changed by what the rows need
+    void fitted()
+    {
+        growths++;
+    }
+
+    /// What the row `e` needs of each column, into `needs` (one per column, only raised): the width of its cell and its border, never
+    /// more than `maxFitWidth` (a line of a megabyte would make a column nobody can scroll along), and of its head (a head stands in the
+    /// cell of its column, as the column measures it, and is never cut); 0 where it needs nothing (a column that wraps, one not
+    /// wanted, a virtual row)
+    void needs(ref Entry e, double[] needs)
     {
         if (e.data.kind == ItemKind.virtual_)
             return;
         auto spec = _spec;
         foreach (i, column; spec.columns)
         {
-            if (column.wraps() || i >= e.data.cells.length || (i < spec.wanted.length && !spec.wanted[i]))
+            if (i >= needs.length || column.wraps() || i >= e.data.cells.length || (i < spec.wanted.length && !spec.wanted[i]))
                 continue;
-            const def = &column.def;
             const cell = CellInput(0, cast(uint) i, &e.data.cells[i]);
-            if (_layout.grow(def.id, min(column.measure(cell, 0, true).maxWidth + 1, maxFitWidth)))
-                growths++;
-            // a head stands in the cell of its column, as the column measures it, and the border: it is never cut
+            needs[i] = max(needs[i], min(column.measure(cell, 0, true).maxWidth + 1, maxFitWidth));
             const slot = e.heads.length ? spec.groups.slotOf(i) : size_t.max;
-            if (slot != size_t.max && e.heads[slot].length && _layout.grow(def.id, column.measureGroup(GroupInput(e.heads[slot])).maxWidth + 1))
-                growths++;
+            if (slot != size_t.max && e.heads[slot].length)
+                needs[i] = max(needs[i], column.measureGroup(GroupInput(e.heads[slot])).maxWidth + 1);
         }
     }
 }
 
-@("RowGrow: the columns grow to the texts of a row, once; a virtual row grows nothing; the flex column that does not wrap grows too")
+@("RowGrow: needs gives what a row needs of each column, raised over rows; a virtual row and a column that wraps need nothing")
 unittest
 {
-    import ptable.layout : ColumnDef, ColumnLayout;
+    import ptable.layout : ColumnDef;
     import ptable.model : CellData, ItemKind;
     import ptable.painter : TableGeometry;
+
     auto columns = withBoxes([ColumnDef("n", "N"), ColumnDef("t", "T", 24, true)]);
-    auto layout = new ColumnLayout;
     RowSpec spec;
     spec.columns = columns;
     spec.flexDef = 1;
     TableGeometry geometry;
     spec.geometry = geometry;
-    auto grow = new RowGrow(layout, &spec);
-    Entry e;
-    e.data.kind = ItemKind.real_;
-    e.data.cells = [CellData("12345"w), CellData("text"w)];
-    grow.grow(e);
-    assert(layout.width("n") == 5 * 10 + 6 + 1 && grow.growths == 1, "the column grew to its text; the flex one that wraps does not");
-    grow.grow(e);
-    assert(grow.growths == 1, "the same text: nothing grows again");
-    Entry separator;
+    auto grow = new RowGrow(&spec);
+    Entry a, b, separator;
+    a.data.kind = b.data.kind = ItemKind.real_;
+    a.data.cells = [CellData("12345"w), CellData("t"w)];
+    b.data.cells = [CellData("12"w), CellData("t"w)];
     separator.data.kind = ItemKind.virtual_;
     separator.data.cells = [CellData("123456789"w), CellData("x"w)];
-    grow.grow(separator);
-    assert(grow.growths == 1 && layout.width("n") == 57, "a virtual row grows nothing");
+    auto needs = new double[2];
+    needs[] = 0;
+    grow.needs(a, needs);
+    grow.needs(b, needs);
+    grow.needs(separator, needs);
+    assert(needs[0] == 5 * 10 + 6 + 1 && needs[1] == 0, "the widest row of the column; the flex one that wraps needs nothing ");
     (cast(BoxColumn) columns[1]).wrapping = false;
-    grow.grow(e);
-    assert(layout.width("t") == 4 * 10 + 6 + 1 && grow.growths == 2, "the flex column that does not wrap grows to its text");
+    grow.needs(a, needs);
+    assert(needs[1] == 1 * 10 + 6 + 1, "the flex column that does not wrap needs its text");
 }

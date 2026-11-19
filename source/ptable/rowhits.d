@@ -236,7 +236,7 @@ version (unittest)
         rig.viewport.height(rig.store.space.regions.rows.h);
         rig.viewport.count(rig.store.itemCount);
         rig.viewport.restorePlace();
-        rig.viewport.layoutSettled(() => rig.store.cache.growths);
+        rig.viewport.layoutSettled(() { rig.store.fitToWindow(rig.viewport.slots); return rig.store.cache.growths; });
         return rig;
     }
 }

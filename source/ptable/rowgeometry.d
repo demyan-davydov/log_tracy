@@ -1,13 +1,12 @@
 //! How much room the rows take, kept for the rows near the window: the height, the lines of the flex cell, the margin a
 //! group's first row has above it. Small (no text), in a ring whose size follows the window (the rows in sight and a reserve
-//! above and below them, no fixed limit). A row not in it is measured: read, its texts let the columns grow, its row above
+//! above and below them, no fixed limit). A row not in it is measured: read, its row above
 //! read for the heads of the groups; then the texts are let go. Not thread safe. See docs/stories/painted-table.md.
 module ptable.rowgeometry;
 
 import ptable.memory : Arena;
 import ptable.model : ItemKind;
 import ptable.rowgroups : RowGroups;
-import ptable.rowgrow : RowGrow;
 import ptable.rowreader : RowReader;
 import ptable.rowspec : RowSpec;
 
@@ -28,17 +27,15 @@ struct RowGeom
 final class RowGeometry
 {
     private RowReader _reader;
-    private RowGrow _grow;
     private const(RowSpec)* _spec;
     private RowGeom[] _ring; // [item & (length - 1)]: the length is a power of two
     private Arena _probe, _above; // where a row and the row above it are read to be measured
 
     private enum size_t minCapacity = 64; // the least the ring has: rows
 
-    this(RowReader reader, RowGrow grow, const(RowSpec)* spec, RCIAllocator source)
+    this(RowReader reader, const(RowSpec)* spec, RCIAllocator source)
     {
         _reader = reader;
-        _grow = grow;
         _spec = spec;
         _probe = Arena(source);
         _above = Arena(source);
@@ -97,7 +94,7 @@ final class RowGeometry
         _ring = null;
     }
 
-    // Reads the row, lets the columns grow to it, finds its margin: nothing of the row is kept
+    // Reads the row, finds its margin: nothing of the row is kept
     private RowGeom measure(size_t index)
     {
         _probe.reset();
@@ -109,7 +106,6 @@ final class RowGeometry
         geom.height = e.height;
         if (!e.valid)
             return geom;
-        _grow.grow(*e);
         if (_spec.groups.grouping(_spec.geometry.groupHeight) && index > 0)
         {
             _above.reset();
@@ -171,7 +167,7 @@ unittest
     assert(model.reads.get(150, 0) == 1, "300 rows are in a ring of 512: the second round reads nothing");
 }
 
-@("RowGeometry: a row measured makes the columns grow to its text, once; the pass reading it again does not")
+@("RowGeometry: a row measured sets no width of a column")
 unittest
 {
     auto layout = new ColumnLayout;
@@ -181,10 +177,8 @@ unittest
     cache.configure(model.columns(), 1, geometry);
     cache.setFlexWidth(200);
     cache.heightOf(5);
-    const grown = cache.growths;
-    assert(grown > 0 && layout.width("time") > 0, "the time column grew to its text when the row was first seen");
     cache.entry(5);
-    assert(cache.growths == grown, "a row read for the pass grows nothing");
+    assert(cache.growths == 0 && layout.width("time") == 0, "the rows that are read set no width: the window does (RowStore.fitToWindow)");
 }
 
 @("RowGeometry: the ring grows at once and shrinks only when four times less would do, so a window at the edge of a size does not make it anew")
