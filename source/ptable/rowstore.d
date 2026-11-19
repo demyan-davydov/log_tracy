@@ -114,8 +114,8 @@ final class RowStore
     /// The layout told a change; true if the cells the text is picked by have moved
     bool layoutChanged(const LayoutChange change)
     {
-        if (!_fitting)
-            _fitDirty = true;
+        if (!_fitting && change.kind == LayoutChange.Kind.width)
+            _fitDirty = true; // a width set by the user: a scroll, a pin or a visibility is no change of what the widths are fit to
         if (change.kind == LayoutChange.Kind.visibility)
             _columns.visibilityChanged(); // the model need not format what is hidden
         return change.kind == LayoutChange.Kind.visibility || change.kind == LayoutChange.Kind.pin;
@@ -197,12 +197,15 @@ final class RowStore
         if (!_fitDirty && first == _fitFirst && slots.length == _fitCount)
             return false;
         ensure();
+        // The columns narrow when the window moved to other rows or the rows changed; a window that only got lower or higher (the bar of
+        // the columns came or went, the table was resized) keeps the widths it has and only widens them: else the bar would come and go
+        const moved = _fitDirty || first != _fitFirst;
         _fitDirty = false;
         _fitFirst = first;
         _fitCount = slots.length;
         if (slots.length == 0)
             return false;
-        const narrow = _fitNarrow;
+        const narrow = _fitNarrow && moved;
         _fitNarrow = false;
         _needs.length = _columns.columns.length;
         _needs[] = 0;
@@ -324,6 +327,54 @@ unittest
     layout.setWidth("n", 50);
     assert(heardModel == 1 && heardLayout == 1, "nobody listens any more");
     assert(store.model is model && store.layout is layout);
+}
+
+@("RowStore: the widths narrow only when the window moved or the rows changed, not when only its height changed or the layout scrolled")
+unittest
+{
+    import ptable.model : CellData, NumbersModel, RowData;
+    import ptable.testing : BoxColumn;
+
+    static final class LongRow : NumbersModel
+    {
+        this() { super(100); }
+        override bool item(size_t index, ref RowData row, const(bool)[] wanted)
+        {
+            const ok = super.item(index, row, wanted);
+            if (index == 3)
+                row.cells[0] = CellData("0123456789012345678901234567890123456789"w);
+            return ok;
+        }
+    }
+
+    RowSlot[] rows(size_t first, size_t count)
+    {
+        RowSlot[] slots;
+        foreach (i; 0 .. count)
+            slots ~= RowSlot(first + i, i * 16.0, 16);
+        return slots;
+    }
+
+    auto layout = new ColumnLayout;
+    auto store = storeOf(new LongRow, layout);
+    store.ensure();
+    store.fitRestart();
+    assert(store.fitToWindow(rows(0, 7)), "row 3 is in the window: the column grows to its text");
+    const wide = layout.fitWidth("n");
+    assert(wide > 400);
+    store.fitRestart();
+    store.fitToWindow(rows(0, 2));
+    assert(layout.fitWidth("n") == wide, "the window got lower (a bar came, the window was made smaller): the rows are the same ones, no narrowing");
+    const column = cast(BoxColumn) store.columns.columns[0];
+    store.fitRestart();
+    store.fitToWindow(rows(0, 7));
+    const measured = column.measures;
+    store.layoutChanged(LayoutChange(LayoutChange.Kind.scroll, ""));
+    store.fitRestart();
+    store.fitToWindow(rows(0, 7));
+    assert(column.measures == measured, "a scroll of the layout is no change of what the widths are fit to: nothing measured again");
+    store.fitRestart();
+    assert(store.fitToWindow(rows(5, 7)) && layout.fitWidth("n") < wide, "the window moved: the column narrows to the rows now in it");
 }
 
 @("RowStore: a change of the layout says the pick is lost when the cells moved, and a restyle forgets the fitted widths")
