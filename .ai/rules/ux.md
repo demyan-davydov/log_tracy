@@ -160,14 +160,15 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     the row context menu offers "Copy" while text is selected, "Copy Cell" and "Copy Row" (a
     right click on a row not picked picks it, on one picked keeps the rows; the text stays).
     Selected text is painted over the match colors (`--bg-text-selected`).
-30. **A table at its end follows it, as a terminal does.** The lines a file being written adds come
-    into the table by themselves. A table scrolled to its end (the last row wholly in view) follows
-    the end from then on: whatever comes, its last row stays in view; scrolling up (the wheel, the
-    bar, the keys, a jump) lets it go, scrolling back to the end brings it back. The selection has
-    nothing to do with it. A table that fills the window follows at once (a short file that grows);
-    a new list or a view that a load, a filter or a search fills is not at its end unless the user went
-    there. The other table doesn't follow these moves. A line cut by the end of the file is shown once the
-    file is quiet for a second; a file emptied by a rotation is opened anew in its tab.
+30. **A table at its end follows it, as a terminal does.** The rows that come into the table (a file
+    being written, a load, a filter or a search filling it) are followed by a table at its end: its
+    last row stays in view whatever comes. A table that fills the window is at its end (also an empty
+    one: a view being filled shows the newest rows as they come); a table scrolled to its end (the last
+    row wholly in view) follows from then on. Scrolling up (the wheel, the bar, the keys, a jump) lets
+    it go, scrolling back to the end brings it back. The selection has nothing to do with it. A new
+    list (another filter or search, a file opened anew) starts at its top. The other table doesn't
+    follow these moves. A line cut by the end of the file is shown once the file is quiet for a second;
+    a file emptied by a rotation is opened anew in its tab.
 
 ## Search
 
