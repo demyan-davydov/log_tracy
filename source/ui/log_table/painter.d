@@ -159,11 +159,6 @@ class LogPainter : Painter
         canvas.fillRect(Rect(a.right - 1, a.y + 1, 1, a.h - 2), _palette.currentRow);
     }
 
-    override void paintPinnedEdge(Canvas canvas, Rect area, bool leftEdge)
-    {
-        canvas.fillRect(area, _palette.border);
-    }
-
     override void paintTextSelection(Canvas canvas, Rect area, bool tableHasFocus)
     {
         canvas.fillRect(area, _palette.textSelected);
@@ -352,7 +347,7 @@ unittest
     assert(painter.geometry().columnBorder == 1 && painter.geometry().rowBorder == 0, "a line between the columns; the rows are told apart by their backs");
 }
 
-@("LogPainter: the background, the header, the rows striped, selected and found, the edge of a pinned area and the text selected are its own colors")
+@("LogPainter: the background, the header, the rows striped, selected and found and the text selected are its own colors")
 unittest
 {
     import ptable.model : RowData;
@@ -383,9 +378,8 @@ unittest
     painter.paintRow(canvas, row, true);
     row.state.selected = true;
     painter.paintRow(canvas, row, true);
-    painter.paintPinnedEdge(canvas, Rect(0, 0, 1, 10), true);
     painter.paintTextSelection(canvas, Rect(0, 0, 5, 10), true);
-    assert(canvas.colors == [palette.row, palette.header, palette.stripe, palette.row, palette.selected, palette.border,
+    assert(canvas.colors == [palette.row, palette.header, palette.stripe, palette.row, palette.selected,
         palette.textSelected]);
 }
 

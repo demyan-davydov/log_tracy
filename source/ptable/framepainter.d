@@ -12,7 +12,7 @@ import ptable.column : DrawState, HeaderState;
 import ptable.layout : Pin, Placement, Placements;
 import ptable.model : ItemKind;
 import ptable.painter : EmptyZone, GroupContext, Painter, RowContext;
-import ptable.ports : Canvas, Rect;
+import ptable.ports : Canvas, Color, Rect;
 import ptable.regions : cellIn, columnLineOf, rowLineOf;
 import ptable.rowcache : Entry;
 import ptable.rowlayout : RowSlot;
@@ -89,6 +89,7 @@ final class FramePainter
         _painter.endFrame(canvas); // the rows were given top down: what the painter learned of them is complete
         paintHeader(canvas, p, picked.tableHasFocus);
         paintGroups(canvas, slots, p, picked.tableHasFocus);
+        paintPinnedShadows(canvas, p);
         if (regions.footer.h > 0)
             _painter.paintFooter(canvas, regions.footer);
     }
@@ -206,8 +207,38 @@ final class FramePainter
                         _painter.paintColumnLine(canvas, columnLineOf(c, header, 0), ctx.column, true);
                 }
             canvas.popClip();
-            if (area != Pin.none)
-                _painter.paintPinnedEdge(canvas, Rect(area == Pin.left ? strip.right : strip.x - 1, header.y, 1, header.h), area == Pin.left);
+        }
+    }
+
+    // A pinned strip casts a shadow over the columns that went under it, from the header down: none while nothing is under it (the line
+    // between the columns alone), wider and darker the more is, at its full past `shadowFull`. The table's own look, not the painter's.
+    private void paintPinnedShadows(Canvas canvas, ref const Placements p)
+    {
+        const rows = _space.regions.rows, header = _space.regions.header;
+        const top = header.y, height = rows.bottom - header.y;
+        if (p.leftWidth > 0)
+            paintShadow(canvas, rows.x + p.leftWidth, top, height, p.scrollX, true);
+        if (p.rightWidth > 0)
+            paintShadow(canvas, rows.x + rows.w - p.rightWidth, top, height, p.maxScrollX - p.scrollX, false);
+    }
+
+    private enum double shadowWidth = 4, shadowFull = 15; // dips: the widest shadow, the scroll that makes it so
+    private enum double shadowAlpha = 64; // of the darkest band, at the strip
+
+    // The shadow at `edge` of a strip, over the side away from it (`rightward`: the strip is left of the edge), for `hidden` dips under it
+    private static void paintShadow(Canvas canvas, double edge, double top, double height, double hidden, bool rightward)
+    {
+        import std.math : round;
+
+        const strength = min(max(0.0, hidden), shadowFull) / shadowFull;
+        if (strength <= 0)
+            return;
+        const bands = max(1, cast(int) round(shadowWidth * strength));
+        foreach (i; 0 .. bands)
+        {
+            const alpha = cast(ubyte) round(shadowAlpha * strength * (bands - i) / bands);
+            const x = rightward ? edge + i : edge - i - 1;
+            canvas.fillRect(Rect(x, top, 1, height), Color(0, 0, 0, alpha));
         }
     }
 
@@ -282,7 +313,6 @@ final class FramePainter
             foreach (c; p.columns)
                 if (c.area == area)
                     paintCellOf(canvas, e, row, c, picked);
-            _painter.paintPinnedEdge(canvas, Rect(side == 0 ? x + width : x - 1, row.area.y, 1, row.area.h), side == 0);
         }
     }
 
@@ -366,7 +396,6 @@ version (unittest)
         override void paintRowOver(Canvas canvas, ref const RowContext row, bool tableHasFocus) { calls ~= "over"; }
         override void paintCell(Canvas canvas, ref CellContext cell, bool tableHasFocus) { calls ~= cell.isHeader ? "title" : "cell"; }
         override void paintHeader(Canvas canvas, Rect area) { calls ~= "header"; }
-        override void paintPinnedEdge(Canvas canvas, Rect area, bool leftEdge) { calls ~= leftEdge ? "edge-left" : "edge-right"; }
         override void paintTextSelection(Canvas canvas, Rect area, bool tableHasFocus) { calls ~= "selected"; }
     }
 
@@ -406,7 +435,7 @@ unittest
     assert(f.painterOfFrame.frames == 1);
 }
 
-@("FramePainter: a row that is not there is only its background, a pinned column is drawn over the others with an edge")
+@("FramePainter: a row that is not there is only its background, a pinned column is drawn over the others")
 unittest
 {
     auto f = frameOf(10);
@@ -422,8 +451,8 @@ unittest
     f.store.ensure();
     const pinned = f.store.places();
     f.painterOfFrame.paint(new RecordingCanvas, slots, pinned, none);
-    // the scrolling cells, then the strip of the pinned area (opaque row), its cell and its edge
-    assert(f.painter.calls[1 .. 9] == ["background", "row", "cell", "row", "cell", "edge-left", "over", "end"], "got ");
+    // the scrolling cells, then the strip of the pinned area (opaque row) and its cell
+    assert(f.painter.calls[1 .. 8] == ["background", "row", "cell", "row", "cell", "over", "end"]);
 }
 
 @("FramePainter: the row under the mouse and the cell under it are told to the painter, the others are not")
@@ -618,14 +647,14 @@ unittest
     assert(painter.titleLines == [Rect(60, header.y, 2, header.h)], "the line of the header");
 }
 
-@("FramePainter: with margins and a scroll the titles are drawn as the cells are: the middle ones in the middle, the pinned ones over them on their strip, its edge in the header too")
+@("FramePainter: with margins and a scroll the titles are drawn as the cells are: the middle ones in the middle, the pinned ones over them on their strip")
 unittest
 {
     import ptable.painter : TableGeometry;
 
     class Margined : Painter
     {
-        Rect[] titleClips, cellAreas, edges;
+        Rect[] titleClips, cellAreas;
         string[] zones;
 
         override TableGeometry geometry()
@@ -646,7 +675,6 @@ unittest
         }
 
         override void paintEmpty(Canvas canvas, Rect area, EmptyZone zone) { zones ~= zone == EmptyZone.marginLeft ? "left" : zone == EmptyZone.marginRight ? "right" : "other"; }
-        override void paintPinnedEdge(Canvas canvas, Rect area, bool leftEdge) { edges ~= area; }
     }
 
     auto painter = new Margined;
@@ -668,8 +696,6 @@ unittest
     assert(painter.zones == ["left", "right"], "the margins are their own zones");
     assert(painter.titleClips == [Rect(20 + 60, 0, 370 - 60, 21), Rect(20, 0, 60, 21)],
         "the scrolled title in the middle, not over the pinned one; the pinned title after it on its strip");
-    assert(painter.edges.length == 2 && painter.edges[0].x == 20 + 60 && painter.edges[1] == Rect(20 + 60, 0, 1, 21),
-        "the edge of the pinned strip in the row and in the header (painted after the rows)");
     assert(p.columns[0].x == 20 && p.columns[1].x == 20 + 60 - 100, "pinned at the origin, the middle one scrolled");
 }
 
@@ -976,7 +1002,6 @@ unittest
         Rect[] areas;
         override TableGeometry geometry() { TableGeometry g; g.groupHeight = 20; return g; }
         override void paintRow(Canvas canvas, ref const RowContext row, bool tableHasFocus) { areas ~= row.area; }
-        override void paintPinnedEdge(Canvas canvas, Rect area, bool leftEdge) { areas ~= area; }
     }
 
     auto painter = new Rows;
@@ -992,8 +1017,7 @@ unittest
     const none = Picked.init;
     frame.paint(new RecordingCanvas, slots, p, none);
     const rowsTop = store.space.regions.rows.y;
-    assert(painter.areas.length == 4, "the row, the strip of the pinned column, its edge, and the edge in the header");
-    foreach (area; painter.areas[0 .. 3])
+    assert(painter.areas.length == 2, "the row and the strip of the pinned column");
+    foreach (area; painter.areas)
         assert(area.y == rowsTop + 20 && area.h == 16, "under the margin, as high as the row");
-    assert(painter.areas[3].y == store.space.regions.header.y, "the edge of the strip goes on in the header");
 }

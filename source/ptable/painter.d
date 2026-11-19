@@ -168,11 +168,6 @@ class Painter
     {
     }
 
-    /// The edge of a pinned area when the middle is scrolled under it
-    void paintPinnedEdge(Canvas canvas, Rect area, bool leftEdge)
-    {
-    }
-
     /// The sizes and fonts the layout needs
     TableGeometry geometry()
     {
