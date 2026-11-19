@@ -1,5 +1,5 @@
 //! The parts of a table's area: the header on top, the footer at the bottom, the body between them with
-//! the room above and under the rows (the padding of the table). A scroll bar is not a part of it. Everything that needs a coordinate of the rows takes it from here, so a part added later
+//! the margins around the rows (above and under them the table's own, left and right those of its column host). A scroll bar is not a part of it. Everything that needs a coordinate of the rows takes it from here, so a part added later
 //! moves them in one place. Pure. See docs/stories/painted-table.md.
 module ptable.regions;
 
@@ -7,19 +7,26 @@ import ptable.layout : Placement;
 import ptable.painter : TableGeometry;
 import ptable.ports : Rect;
 
+/// The margins left and right of the rows: the columns, and their titles, stand between them. The column host's, the same for its tables
+struct SideMargins
+{
+    double left = 0, right = 0;
+}
+
 /// Where the parts of a table of `width` x `height` are
 struct Regions
 {
     Rect header; /// the titles
     Rect footer; /// empty (no height) if there is none
     Rect body; /// between the header and the footer, all of the width
-    Rect rows; /// where the rows lie: the body less the padding above and under (a scroll bar is the host's, outside)
-    Rect padAbove, padBelow; /// the padding of the body (no height if there is none)
+    Rect rows; /// where the rows lie: the body less the margins around them (a scroll bar is the host's, outside, along the body)
+    Rect marginTop, marginBottom; /// the margins above and under the rows, all of the width (no height if there is none)
     Rect marginLeft, marginRight; /// the margins left and right of the rows, as high as the body (no width if there is none)
 }
 
-/// The regions for the size and the geometry given; never negative in size
-Regions regionsOf(double width, double height, ref const TableGeometry g) pure nothrow @nogc @safe
+/// The regions for the size, the geometry and the margins left and right given; never negative in size: a margin takes no more than
+/// the room there is, the one under (right of) the rows what the one above (left of) them left
+Regions regionsOf(double width, double height, ref const TableGeometry g, SideMargins sides = SideMargins.init) pure nothrow @nogc @safe
 {
     import std.algorithm.comparison : max;
 
@@ -31,12 +38,12 @@ Regions regionsOf(double width, double height, ref const TableGeometry g) pure n
     const bodyTop = g.headerHeight;
     const bodyHeight = max(0.0, height - g.headerHeight - footerHeight);
     r.body = Rect(0, bodyTop, w, bodyHeight);
-    const above = max(0.0, min2(g.padTop, bodyHeight));
-    const below = max(0.0, min2(g.padBottom, bodyHeight - above));
-    r.padAbove = Rect(0, bodyTop, w, above);
-    r.padBelow = Rect(0, bodyTop + bodyHeight - below, w, below);
-    const left = max(0.0, min2(g.marginLeft, w));
-    const right = max(0.0, min2(g.marginRight, w - left));
+    const above = max(0.0, min2(g.marginTop, bodyHeight));
+    const below = max(0.0, min2(g.marginBottom, bodyHeight - above));
+    r.marginTop = Rect(0, bodyTop, w, above);
+    r.marginBottom = Rect(0, bodyTop + bodyHeight - below, w, below);
+    const left = max(0.0, min2(sides.left, w));
+    const right = max(0.0, min2(sides.right, w - left));
     r.marginLeft = Rect(0, bodyTop, left, bodyHeight);
     r.marginRight = Rect(w - right, bodyTop, right, bodyHeight);
     r.rows = Rect(left, bodyTop + above, w - left - right, bodyHeight - above - below);
@@ -102,20 +109,20 @@ unittest
     assert(r.header == Rect(0, 0, 400, 21));
     assert(r.body == Rect(0, 21, 400, 100));
     assert(r.rows == Rect(0, 21, 400, 100));
-    assert(r.footer.h == 0 && r.padAbove.h == 0 && r.padBelow.h == 0);
+    assert(r.footer.h == 0 && r.marginTop.h == 0 && r.marginBottom.h == 0);
 }
 
-@("regionsOf: a footer and the padding take room from the rows, and the parts stay inside")
+@("regionsOf: a footer and the margins above and under the rows take room from the rows, and the parts stay inside")
 unittest
 {
     TableGeometry g;
     g.footerHeight = 20;
-    g.padTop = 4;
-    g.padBottom = 10;
+    g.marginTop = 4;
+    g.marginBottom = 10;
     const r = regionsOf(400, 200, g);
     assert(r.footer == Rect(0, 180, 400, 20));
     assert(r.body == Rect(0, 21, 400, 159));
-    assert(r.padAbove == Rect(0, 21, 400, 4) && r.padBelow == Rect(0, 170, 400, 10));
+    assert(r.marginTop == Rect(0, 21, 400, 4) && r.marginBottom == Rect(0, 170, 400, 10));
     assert(r.rows == Rect(0, 25, 400, 145), "159 less 4 and 10");
 }
 
@@ -132,13 +139,24 @@ unittest
 unittest
 {
     TableGeometry g;
-    g.marginLeft = 10;
-    g.marginRight = 6;
-    const r = regionsOf(400, 121, g);
+    const r = regionsOf(400, 121, g, SideMargins(10, 6));
     assert(r.rows == Rect(10, 21, 384, 100), "the rows stand between the margins");
     assert(r.marginLeft == Rect(0, 21, 10, 100) && r.marginRight == Rect(394, 21, 6, 100));
     assert(r.header == Rect(0, 0, 400, 21), "the header is as wide as the table");
-    g.marginLeft = 500;
-    const wide = regionsOf(400, 121, g);
+    const wide = regionsOf(400, 121, g, SideMargins(500, 6));
     assert(wide.rows.w == 0 && wide.marginLeft.w == 400 && wide.marginRight.w == 0, "the margins stay inside");
+}
+
+@("regionsOf: the margins above and under the rows take no more than the body, the rows are left with no height and nothing is negative")
+unittest
+{
+    TableGeometry g;
+    g.marginTop = 500;
+    g.marginBottom = 10;
+    const tall = regionsOf(400, 121, g);
+    assert(tall.marginTop == Rect(0, 21, 400, 100) && tall.marginBottom.h == 0 && tall.rows.h == 0 && tall.rows.y == 121);
+    g.marginTop = 60;
+    g.marginBottom = 60;
+    const both = regionsOf(400, 121, g);
+    assert(both.marginTop.h == 60 && both.marginBottom == Rect(0, 81, 400, 40) && both.rows.h == 0, "the bottom one takes what the top one left");
 }

@@ -101,6 +101,8 @@ class LogPainter : Painter
         g.groupPadTop = _look.spacing.groupPadTop; // with room above it: the groups stand apart
         g.groupPadBottom = _look.spacing.groupPadBottom;
         g.groupOutline = 1; // a line under the row above a margin and one over the rows of the group, under the plate
+        g.marginTop = _look.spacing.rowsMarginTop; // room above the first row and under the last one: the background of the table fills it
+        g.marginBottom = _look.spacing.rowsMarginBottom;
         return g;
     }
 
@@ -420,6 +422,18 @@ unittest
     auto painter = new LogPainter(look);
     look.setSpacing(LogSpacing(9, 2));
     assert(painter.geometry().groupPadTop == 9 && painter.geometry().groupPadBottom == 2);
+}
+
+@("LogPainter: the margins above and under the rows are the look's spacing")
+unittest
+{
+    auto look = defaultLogLook();
+    auto painter = new LogPainter(look);
+    LogSpacing spacing;
+    spacing.rowsMarginTop = 3;
+    spacing.rowsMarginBottom = 8;
+    look.setSpacing(spacing);
+    assert(painter.geometry().marginTop == 3 && painter.geometry().marginBottom == 8);
 }
 
 @("LogPainter: a column's style gives the ink and the background of its cells, a selected row keeps its own colors")

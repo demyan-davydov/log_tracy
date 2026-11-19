@@ -83,7 +83,7 @@ final class ScrolledTable
         return _acrossShown ? across.width : 0;
     }
 
-    // The strip and the track of the bar at the right: the track is the rows' height of the table
+    // The strip and the track of the bar at the right: the track is the body of the table (the margins around the rows are no matter of the bar)
     private Rect strip() const
     {
         return Rect(_width - bar.width, 0, bar.width, _height - belowHeight);
@@ -91,8 +91,8 @@ final class ScrolledTable
 
     private Rect track()
     {
-        const rows = table.rowsArea;
-        return Rect(_width - bar.width, rows.y, bar.width, rows.h);
+        const body = table.bodyArea;
+        return Rect(_width - bar.width, body.y, bar.width, body.h);
     }
 
     // The strip of the bar at the bottom, under the table; its track is all of it
@@ -224,6 +224,49 @@ unittest
     assert(!scrolled.bar.dragging);
     assert(scrolled.mouseDown(100, 21 + 3) && scrolled.mouseUp(100, 21 + 3));
     assert(table.selected >= 0, "a press on the rows is the table's");
+}
+
+@("ScrolledTable: the bars are the table's, the margins around the rows do not change them: the track runs along the body")
+unittest
+{
+    import ptable.painter : TableGeometry;
+    import ptable.regions : SideMargins;
+    import ptable.scrollbar : ScrollBarPainter;
+
+    static class Spaced : Painter
+    {
+        override TableGeometry geometry()
+        {
+            auto g = super.geometry();
+            g.marginTop = 4;
+            g.marginBottom = 10;
+            return g;
+        }
+    }
+
+    static class Tracks : ScrollBarPainter
+    {
+        Rect[] tracks;
+        override void paint(Canvas canvas, Rect strip, Rect track, Rect thumb, bool hover, bool dragging, Orientation orientation = Orientation.vertical)
+        {
+            tracks ~= track;
+        }
+    }
+
+    Rect trackOf(Painter painter, SideMargins sides)
+    {
+        auto host = new ColumnHost;
+        host.setMargins(sides);
+        auto tracks = new Tracks;
+        auto scrolled = new ScrolledTable(new Table(new NumbersModel(1000), host, portsOf(painter)), new ScrollBar(tracks));
+        scrolled.resize(410, 121);
+        scrolled.paint(new RecordingCanvas);
+        return tracks.tracks[$ - 1];
+    }
+
+    const plain = trackOf(new Painter, SideMargins.init);
+    assert(plain == Rect(400, 21, 10, 100), "under the header, all of the body");
+    assert(trackOf(new Spaced, SideMargins(20, 10)) == plain, "the margins are room of the rows, not of the bar");
 }
 
 @("ScrolledTable: a bar at the bottom comes when the columns do not fit, cuts the table's height, scrolls the columns, and goes")

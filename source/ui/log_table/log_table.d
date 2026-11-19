@@ -7,6 +7,7 @@ import domain.document_id : DocumentId;
 import domain.document_item : DocumentItem;
 import ptable.columnar : ColumnarModel;
 import ptable.columnhost : ColumnHost;
+import ptable.regions : SideMargins;
 import ptable.lookchange : LookChange;
 import ptable.model : TableModel;
 import ptable.ports : Clipboard;
@@ -88,14 +89,22 @@ final class LogTable
         _painter.anchorsFull = anchorsFull;
         auto ports = TablePorts(_painter, clipboard);
         ports.copyFormat = logCopyFormat;
+        host.setMargins(sidesOf(look)); // the same for the tables of a document: each gives the look's, the host keeps one
         _table = new Table(model, host, ports);
         _table.revealMargin = 24; // a row that comes into view has 24 dips of room from the edge it came from
         _table.followEnd(!source.demo); // the rows of a document grow (a file being written): the table at its end follows it, as a terminal does
         _scrolled = new ScrolledTable(_table, new ScrollBar(new LogScrollBarPainter(look)), new ScrollBar(new LogScrollBarPainter(look)));
         _look = look;
         _lookHandle = look.subscribe((const LookChange change) {
+            host.setMargins(sidesOf(look)); // nothing told when they are the same
             applyLookChange(change, beforeMetrics, (LookChange c) { _table.restyle(c); });
         });
+    }
+
+    // The margins left and right of the rows the look asks for
+    private static SideMargins sidesOf(LogLook look)
+    {
+        return SideMargins(look.spacing.rowsMarginLeft, look.spacing.rowsMarginRight);
     }
 
     /// Every row one line (the Payload is cut where its cell ends) or as many as the Payload wraps to
@@ -166,5 +175,25 @@ unittest
     log.table.scrollToEnd();
     log.table.paint(new RecordingCanvas);
     assert(!log.table.isFollowingEnd, "the demo does not follow an end: its rows do not grow");
+    log.dispose();
+}
+
+@("LogTable: the margins left and right of the rows in the look are those of its column host, from the start and after a change of the look")
+unittest
+{
+    import ptable_text.testing : FakeMeasurer;
+    import ui.log_table.log_look : LogSpacing, defaultLogLook;
+
+    auto look = defaultLogLook();
+    LogSpacing spacing;
+    spacing.rowsMarginLeft = 10;
+    spacing.rowsMarginRight = 20;
+    look.setSpacing(spacing);
+    auto log = new LogTable(TableSource(null, DocumentId.init, false, new ColumnHost, true), look, new FakeMeasurer, null);
+    log.table.resize(400, 300);
+    assert(log.table.rowsArea.x == 10 && log.table.rowsArea.w == 370);
+    spacing.rowsMarginLeft = 5;
+    look.setSpacing(spacing);
+    assert(log.table.rowsArea.x == 5 && log.table.rowsArea.w == 375);
     log.dispose();
 }

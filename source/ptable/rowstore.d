@@ -104,7 +104,7 @@ final class RowStore : ColumnClient
         host.attach(this);
         _fitDirty = true;
         ensure();
-        host.resize(this, _space.regions.rows.w);
+        host.resize(this, _space.regions.body.w);
     }
 
     /// The look changed (the metrics): the painter's geometry, the fonts and the columns are read again, and the widths are fit
@@ -152,7 +152,7 @@ final class RowStore : ColumnClient
     /// ones, the place of the columns and the width of the flex one. Cheap when nothing changed.
     void ensure()
     {
-        const refreshed = _space.refresh();
+        const refreshed = _space.refresh(host.margins);
         if (refreshed.fontsLoaded)
             _columns.markStale();
         bool regionsMade = refreshed.regionsMade;
@@ -161,10 +161,10 @@ final class RowStore : ColumnClient
         {
             columnsRefreshed = true;
             refreshColumns();
-            regionsMade = _space.refresh().regionsMade || regionsMade; // the header may have grown to the font of a title
+            regionsMade = _space.refresh(host.margins).regionsMade || regionsMade; // the header may have grown to the font of a title
         }
         if (regionsMade && !_detached)
-            host.resize(this, _space.regions.rows.w); // the room of the columns is the host's: the least its tables have
+            host.resize(this, _space.regions.body.w); // the room of the columns is the host's: the least body of its tables less its margins
         bool wantedChanged;
         const wanted = _columns.wanted(wantedChanged);
         if (wantedChanged)

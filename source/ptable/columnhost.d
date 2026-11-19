@@ -1,14 +1,16 @@
 //! The columns the tables of one list of columns share (`ColumnHost`): the definitions, the layout (widths, visibility,
-//! pinning, the horizontal scroll), the width of the room of the columns and their places in it, and the fit of the widths
+//! pinning, the horizontal scroll), the margins left and right the columns stand between, the width of the room of the columns and
+//! their places in it, and the fit of the widths
 //! to the rows the tables show (`settle`). The tables (`ColumnClient`) only lay out their rows and tell what they need: the
 //! widths are decided here, once for all of them, so two tables never argue over a width. Invariants: the clients of a host
 //! show one list of columns (tables that need other columns have a host of their own), and the room of the columns is the
-//! same for all of them (the least the clients have: a wider one leaves its edge empty, none cuts a column). Pure: no Sciter,
+//! same for all of them (the least width of the clients less the margins: a wider one leaves its edge empty, none cuts a column). Pure: no Sciter,
 //! no log. See docs/stories/painted-table.md.
 module ptable.columnhost;
 
 import ptable.layout : ColumnDef, ColumnLayout, LayoutChange, LayoutListener, Placements, placeColumns;
 import ptable.listeners : Listeners;
+import ptable.regions : SideMargins;
 
 import std.algorithm.comparison : max, min;
 
@@ -27,7 +29,7 @@ final class ColumnHost
     private struct Client
     {
         ColumnClient client;
-        double width; // the room of the columns it has, NaN: not told yet
+        double width; // the width of its body (the margins in), NaN: not told yet
     }
 
     private ColumnLayout _layout;
@@ -35,6 +37,7 @@ final class ColumnHost
     private size_t[string] _index; // the index of a column by its id
     private double[] _least; // the least width of each column as a whole
     private double _columnBorder = 0; // the line between two columns on the screen
+    private SideMargins _margins; // left and right of the rows of every client
     private Client[] _clients;
     private double[] _fits; // the widths `settle` fits, by the index of the column
     private double[] _needs; // what the clients told in a round of `settle`, kept to allocate once
@@ -108,6 +111,19 @@ final class ColumnHost
     /// The line between two columns on the screen (none left of the first and right of the last)
     double columnBorder() const { return _columnBorder; }
 
+    /// The margins left and right of the rows of the clients: the columns stand between them
+    SideMargins margins() const { return _margins; }
+
+    /// The margins left and right of the rows are `margins` now: the room of the columns follows at once, for every client; a change is
+    /// told as one of the room (`LayoutChange.Kind.room`: the clients lay out their rows again), the same margins tell nothing
+    void setMargins(SideMargins margins)
+    {
+        if (margins == _margins)
+            return;
+        _margins = margins;
+        _listeners.tell(LayoutChange(LayoutChange.Kind.room, "")); // told even when the width is the same: the place of the columns is not
+    }
+
     /// The rounds the last `settle` took
     size_t rounds() const { return _rounds; }
 
@@ -131,7 +147,7 @@ final class ColumnHost
             settle(_least);
     }
 
-    /// The room of the columns `client` has is `width` now
+    /// The body of `client` (where its rows and the margins around them are) is `width` wide now
     void resize(ColumnClient client, double width)
     {
         const at = find(client);
@@ -141,14 +157,18 @@ final class ColumnHost
         toldRoom(room);
     }
 
-    /// The room of the columns of every client: the least the clients told, 0 if none did
+    /// The room of the columns of every client: the least width the clients told less the margins left and right, 0 if none told
     double width() const
     {
         double least = double.infinity;
         foreach (ref c; _clients)
             if (c.width == c.width) // told
                 least = min(least, c.width);
-        return least == double.infinity ? 0 : least;
+        if (least == double.infinity)
+            return 0;
+        const left = max(0.0, min(_margins.left, least)); // as `regionsOf` takes them off a body
+        const right = max(0.0, min(_margins.right, least - left));
+        return least - left - right;
     }
 
     /// Where the columns stand in the room of the host whose left edge is `originX` from a table's: made again only when the layout,
@@ -409,4 +429,17 @@ unittest
     assert(host.places.columns[0].width == 67, "placed no narrower before any fit");
     host.setColumns([ColumnDef("time", "Time", 60), ColumnDef("text", "T", 50, true)], [70, 57], 1);
     assert(host.least == [70, 57], "the same columns with other least widths (a font of another size): the least widths are new");
+}
+
+@("ColumnHost: the margins left and right of the rows are the host's, for all its tables: a change is told as one of the room, the same margins tell nothing")
+unittest
+{
+    import ptable.regions : SideMargins;
+
+    auto host = hostOf(ColumnDef("a", "A", 40));
+    assert(host.margins == SideMargins.init, "none by default");
+    const told = toldBy(host, { host.setMargins(SideMargins(20, 10)); });
+    assert(host.margins == SideMargins(20, 10));
+    assert(told.length == 1 && told[0].kind == LayoutChange.Kind.room, "the tables lay out their rows again");
+    assert(toldBy(host, { host.setMargins(SideMargins(20, 10)); }).length == 0, "the same margins: nothing told");
 }

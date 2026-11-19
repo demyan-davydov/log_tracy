@@ -448,11 +448,18 @@ final class Table
         return _viewport.state;
     }
 
-    /// Where the rows lie in the table (a scroll bar of the host runs along it)
+    /// Where the rows lie in the table: the body less the margins around them
     Rect rowsArea()
     {
-        _store.ensure(); // the regions, not a new pass: a host asks this on every mouse move over its bar
+        _store.ensure(); // the regions, not a new pass
         return _store.space.regions.rows;
+    }
+
+    /// The body of the table, between the header and the footer, the margins around the rows in it (a scroll bar of the host runs along it)
+    Rect bodyArea()
+    {
+        _store.ensure(); // the regions, not a new pass: a host asks this on every mouse move over its bar
+        return _store.space.regions.body;
     }
 
     /// What a scroll bar of the host shows (in items); `events.scrolled` tells when it changes
@@ -1590,7 +1597,7 @@ unittest
     assert(clickedItem == size_t.max, "a drag is not a click");
 }
 
-@("Table: the footer and the padding of the table are painted by the painter, the rows lie between them")
+@("Table: the footer and the margins above and under the rows are painted by the painter, the rows lie between them")
 unittest
 {
     static class Padded : Painter
@@ -1601,13 +1608,13 @@ unittest
         {
             TableGeometry g;
             g.footerHeight = 20;
-            g.padTop = 4;
-            g.padBottom = 10;
+            g.marginTop = 4;
+            g.marginBottom = 10;
             return g;
         }
 
         override void paintFooter(Canvas canvas, Rect area) { seen ~= "footer"; }
-        override void paintEmpty(Canvas canvas, Rect area, EmptyZone zone) { seen ~= zone == EmptyZone.above ? "above" : "below"; }
+        override void paintEmpty(Canvas canvas, Rect area, EmptyZone zone) { seen ~= zone == EmptyZone.marginTop ? "above" : "below"; }
     }
 
     auto model = new NumbersModel(1000);
@@ -2357,7 +2364,7 @@ unittest
     assert(table.position.first == 0 && table.copyText()[0 .. 3] == "t0\t", "at the top, selected from the first row");
 }
 
-@("Table: with margins the columns, the rows and a hit stand between them, and the margins are painted as room")
+@("Table: with the margins of its host the columns, the rows and a hit stand between them, and the margins are painted as room")
 unittest
 {
     class Margined : Painter
@@ -2366,21 +2373,15 @@ unittest
         Rect[] cellAreas;
         Rect[] beside;
 
-        override TableGeometry geometry()
-        {
-            auto g = super.geometry();
-            g.marginLeft = 20;
-            g.marginRight = 10;
-            return g;
-        }
-
         override void paintRow(Canvas canvas, ref const RowContext row, bool tableHasFocus) { rowAreas ~= row.area; }
         override void paintCell(Canvas canvas, ref CellContext cell, bool tableHasFocus) { if (!cell.isHeader) cellAreas ~= cell.area; }
         override void paintEmpty(Canvas canvas, Rect area, EmptyZone zone) { if (zone == EmptyZone.marginLeft || zone == EmptyZone.marginRight) beside ~= area; }
     }
 
     auto painter = new Margined;
-    auto table = new Table(new NumbersModel(100), new ColumnHost, portsOf(painter));
+    auto host = new ColumnHost;
+    host.setMargins(SideMargins(20, 10));
+    auto table = new Table(new NumbersModel(100), host, portsOf(painter));
     table.resize(400, 121);
     table.paint(new RecordingCanvas);
     assert(painter.rowAreas[0].x == 20 && painter.rowAreas[0].w == 370, "a row spans the block between the margins");
@@ -2390,6 +2391,103 @@ unittest
     // a press in the left margin is left of the columns: the first column, the first character
     assert(table.selectAt(3, 30, false), "a hit in the margin finds the row");
     assert(table.hasTextSelected());
+}
+
+@("Table: the tables of one host stand between its margins left and right, and a change of them moves both")
+unittest
+{
+    auto host = new ColumnHost;
+    auto main = new Table(new NumbersModel(100), host, portsOf(new Painter));
+    auto search = new Table(new NumbersModel(3), host, portsOf(new Painter));
+    main.resize(400, 121);
+    search.resize(400, 121);
+    auto canvas = new RecordingCanvas;
+    main.paint(canvas);
+    search.paint(canvas);
+    assert(main.rowsArea() == Rect(0, 21, 400, 100) && search.rowsArea() == Rect(0, 21, 400, 100), "no margins by default");
+    host.setMargins(SideMargins(20, 10));
+    main.paint(canvas);
+    search.paint(canvas);
+    assert(main.rowsArea() == Rect(20, 21, 370, 100) && search.rowsArea() == Rect(20, 21, 370, 100), "both between the new margins");
+    Rect cell;
+    assert(main.cellRect(0, 0, cell) && cell.x == 20 && search.cellRect(0, 0, cell) && cell.x == 20, "the columns of both start at the margin");
+    size_t rooms;
+    host.subscribe((const LayoutChange change) { if (change.kind == LayoutChange.Kind.room) ++rooms; });
+    host.setMargins(SideMargins(0, 0));
+    assert(host.width == 400, "narrower margins: the room of the columns is known at once, before a table lays out again");
+    main.paint(canvas);
+    search.paint(canvas);
+    assert(rooms == 1, "told once: the room of the tables themselves did not change");
+    assert(main.rowsArea() == Rect(0, 21, 400, 100) && search.rowsArea() == Rect(0, 21, 400, 100));
+}
+
+@("Table: margins wider and higher than the table leave the rows no room: it paints, scrolls and is hit with none")
+unittest
+{
+    class Spaced : Painter
+    {
+        override TableGeometry geometry()
+        {
+            auto g = super.geometry();
+            g.marginTop = 300;
+            return g;
+        }
+    }
+
+    auto tall = new Table(new NumbersModel(100), new ColumnHost, portsOf(new Spaced));
+    tall.resize(400, 121);
+    auto canvas = new RecordingCanvas;
+    tall.paint(canvas);
+    assert(tall.rowsArea().h == 0 && tall.stats.rowsOnScreen == 0);
+    tall.scrollBy(50);
+    tall.scrollToEnd();
+    tall.paint(canvas);
+    assert(!tall.selectAt(50, 60, false), "no row to hit");
+
+    auto host = new ColumnHost;
+    host.setMargins(SideMargins(300, 300));
+    auto wide = new Table(new NumbersModel(100), host, portsOf(new Painter));
+    wide.resize(400, 121);
+    wide.paint(canvas);
+    assert(wide.rowsArea().w == 0 && host.width == 0, "the columns have no room");
+    wide.scrollXBy(50);
+    wide.paint(canvas);
+    wide.selectAt(50, 30, false);
+}
+
+@("Table: the margins above and under the rows are always there, and the scroll counts them: the end of the rows stands over the bottom one")
+unittest
+{
+    class Spaced : Painter
+    {
+        override TableGeometry geometry()
+        {
+            auto g = super.geometry();
+            g.marginTop = 4;
+            g.marginBottom = 10;
+            return g;
+        }
+    }
+
+    auto table = new Table(new NumbersModel(100), new ColumnHost, portsOf(new Spaced));
+    table.resize(400, 121); // the rows 21 + 4 .. 121 - 10: 86 high, rows of 16
+    auto canvas = new RecordingCanvas;
+    table.paint(canvas);
+    assert(table.rowsArea() == Rect(0, 25, 400, 86));
+    Rect cell;
+    assert(table.cellRect(0, 0, cell) && cell.y == 25, "the first row under the top margin");
+    assert(table.scrollMetrics.visible == 5, "the rows in 86 px, not in 100");
+    table.scrollToEnd();
+    table.paint(canvas);
+    assert(table.cellRect(99, 0, cell) && cell.bottom == 111, "the last row ends where the bottom margin begins");
+    table.scrollBy(50);
+    table.paint(canvas);
+    assert(table.cellRect(99, 0, cell) && cell.bottom == 111, "and no further");
+    table.reveal(0);
+    table.paint(canvas);
+    table.reveal(99);
+    table.paint(canvas);
+    assert(table.cellRect(99, 0, cell) && cell.bottom <= 111, "a row brought into view comes over the bottom margin");
 }
 
 @("Table: the host is told the current row: at once for a click and a selection asked for, delayed for a drag over rows and for the keys")

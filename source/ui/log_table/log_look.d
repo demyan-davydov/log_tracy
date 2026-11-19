@@ -159,6 +159,10 @@ struct LogSpacing
     double groupPadTop = 6, groupPadBottom = 0;
     double payloadPadLeft = 5.33; /// the room left of the Payload text and of its title (4pt), the other columns have the text column's own 3
     double[string] minWidths; /// the least widths of the columns in dips, by the keys of `ui.log_table.column_widths`, times the scale of the text
+    /// The room above the first row and under the last one, always there (none by default)
+    double rowsMarginTop = 0, rowsMarginBottom = 0;
+    /// The room left and right of the rows: the column host's (`LogTable` gives it), the same for the tables of a document (none by default)
+    double rowsMarginLeft = 0, rowsMarginRight = 0;
 }
 
 /// The look of the log table: its text, its colors and its spacing

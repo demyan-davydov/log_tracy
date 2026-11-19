@@ -69,6 +69,14 @@ test("every name the script gives is a field of the palette in D, and every vari
     }
 });
 
+test("the margins around the rows are collected as spacing in dips", () => {
+    const length = (text, dips) => ({ toString: () => text, valueOf: () => dips });
+    const values = { "rows-margin-top": length("2dip", 2), "rows-margin-bottom": length("6dip", 6),
+        "rows-margin-left": length("10dip", 10), "rows-margin-right": length("20dip", 20) };
+    assert.deepEqual(collectLook(name => values[name], 100).spacing,
+        { rowsMarginTop: 2, rowsMarginBottom: 6, rowsMarginLeft: 10, rowsMarginRight: 20 });
+});
+
 test("the spacing of the groups is collected as numbers in dips, as Sciter gives a length; a value that is no length is left out", () => {
     const length = (text, dips) => ({ toString: () => text, valueOf: () => dips }); // a length of Sciter: its text, its dips
     const values = { "group-pad-top": length("9pt", 12), "group-pad-bottom": length("1dip", 1) };

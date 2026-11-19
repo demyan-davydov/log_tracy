@@ -384,6 +384,8 @@ unittest
     assert(look.spacing.groupPadTop == 40 && look.spacing.groupPadBottom == 0, "held to the limits");
     applyLookJson(look, `{"spacing": {"groupPadTop": "a lot"}}`);
     assert(look.spacing.groupPadTop == 40, "no number: as it was");
+    applyLookJson(look, `{"spacing": {"rowsMarginTop": 2, "rowsMarginBottom": 6}}`);
+    assert(look.spacing.rowsMarginTop == 2 && look.spacing.rowsMarginBottom == 6, "the margins around the rows");
 }
 
 @("minWidthsFromJson: the least widths by their keys, times the scale; a wrong one is left out, the ones not named stay")

@@ -74,10 +74,10 @@ final class FramePainter
         const regions = _space.regions;
         _painter.beginFrame(canvas, slots.length ? slots[0].index : 0, slots.length);
         _painter.paintBackground(canvas, Rect(0, 0, _space.width, _space.height));
-        if (regions.padAbove.h > 0)
-            _painter.paintEmpty(canvas, regions.padAbove, EmptyZone.above);
-        if (regions.padBelow.h > 0)
-            _painter.paintEmpty(canvas, regions.padBelow, EmptyZone.below);
+        if (regions.marginTop.h > 0)
+            _painter.paintEmpty(canvas, regions.marginTop, EmptyZone.marginTop);
+        if (regions.marginBottom.h > 0)
+            _painter.paintEmpty(canvas, regions.marginBottom, EmptyZone.marginBottom);
         if (regions.marginLeft.w > 0)
             _painter.paintEmpty(canvas, regions.marginLeft, EmptyZone.marginLeft);
         if (regions.marginRight.w > 0)
@@ -650,20 +650,12 @@ unittest
 @("FramePainter: with margins and a scroll the titles are drawn as the cells are: the middle ones in the middle, the pinned ones over them on their strip")
 unittest
 {
-    import ptable.painter : TableGeometry;
+    import ptable.regions : SideMargins;
 
     class Margined : Painter
     {
         Rect[] titleClips, cellAreas;
         string[] zones;
-
-        override TableGeometry geometry()
-        {
-            auto g = super.geometry();
-            g.marginLeft = 20;
-            g.marginRight = 10;
-            return g;
-        }
 
         override void paintCell(Canvas canvas, ref CellContext cell, bool tableHasFocus)
         {
@@ -679,7 +671,9 @@ unittest
 
     auto painter = new Margined;
     auto layout = new ColumnLayout;
-    auto store = new RowStore(new NumbersModel(10), new ColumnHost(layout), portsOf(painter));
+    auto host = new ColumnHost(layout);
+    host.setMargins(SideMargins(20, 10));
+    auto store = new RowStore(new NumbersModel(10), host, portsOf(painter));
     bool widthChanged;
     store.resize(400, 121, widthChanged);
     layout.setWidth("n", 60);
