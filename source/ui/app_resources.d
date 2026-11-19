@@ -66,7 +66,7 @@ private enum string[] builtIn = [
     "geometry.js",
     "log-table-gesture.js",
     "painted-table.js",
-    "log-table.js",
+    "log-table-view.js",
     "table.css",
     "tabs.js",
     "text-selection.js",

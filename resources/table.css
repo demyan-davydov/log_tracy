@@ -1,5 +1,27 @@
 /* Table Styles */
 
+/* The room a log table fills in a panel (document-pane.js), and the table: an element of the native behavior `log-table`
+   (source/ui/log_table_behavior.d) that draws the rows itself. Its CSS variables are those the script reads for its look
+   (resources/log-table-look.js) */
+.log-table-slot {
+    display: block;
+    width: *;
+    height: *;
+}
+
+.log-table-view {
+    --group-pad-top: 4.5pt; /* 6dip */
+    --group-pad-bottom: 1dip;
+    /* the room left of the text of the Payload column and of its title */
+    --payload-pad-left: 4pt; /* 5.33dip */
+    display: block;
+    width: *;
+    height: *;
+    background: var(--bg-table);
+    color: var(--text-main);
+    behavior: log-table;
+}
+
 .log-table {
     /* a group of rows in the log table (a day): room above and under the plate of its head (resources/log-table-look.js) */
     --group-pad-top: 4.5pt; /* 6dip */
