@@ -38,15 +38,16 @@ final class RowGrow
         if (e.data.kind == ItemKind.virtual_)
             return;
         auto spec = _spec;
+        const border = spec.geometry.columnBorder; // the line between the columns is a part of the width of each
         foreach (i, column; spec.columns)
         {
             if (i >= needs.length || column.wraps() || i >= e.data.cells.length || (i < spec.wanted.length && !spec.wanted[i]))
                 continue;
             const cell = CellInput(0, cast(uint) i, &e.data.cells[i]);
-            needs[i] = max(needs[i], min(column.measure(cell, 0, true).maxWidth + 1, maxFitWidth));
+            needs[i] = max(needs[i], min(column.measure(cell, 0, true).maxWidth + border, maxFitWidth));
             const slot = e.heads.length ? spec.groups.slotOf(i) : size_t.max;
             if (slot != size_t.max && e.heads[slot].length)
-                needs[i] = max(needs[i], column.measureGroup(GroupInput(e.heads[slot])).maxWidth + 1);
+                needs[i] = max(needs[i], column.measureGroup(GroupInput(e.heads[slot])).maxWidth + border);
         }
     }
 }
@@ -80,4 +81,25 @@ unittest
     (cast(BoxColumn) columns[1]).wrapping = false;
     grow.needs(a, needs);
     assert(needs[1] == 1 * 10 + 6 + 1, "the flex column that does not wrap needs its text");
+}
+
+@("RowGrow: the line between the columns is as wide as the geometry of the painter says")
+unittest
+{
+    import ptable.layout : ColumnDef;
+    import ptable.model : CellData, ItemKind;
+    import ptable.painter : TableGeometry;
+
+    RowSpec spec;
+    spec.columns = withBoxes([ColumnDef("n", "N"), ColumnDef("t", "T", 24, true)]);
+    spec.flexDef = 1;
+    spec.geometry.columnBorder = 3;
+    auto grow = new RowGrow(&spec);
+    Entry a;
+    a.data.kind = ItemKind.real_;
+    a.data.cells = [CellData("12345"w), CellData("t"w)];
+    auto needs = new double[2];
+    needs[] = 0;
+    grow.needs(a, needs);
+    assert(needs[0] == 5 * 10 + 6 + 3, "the text, its paddings and a line of 3");
 }

@@ -189,19 +189,20 @@ final class RowStore : ColumnClient
             tallest = max(tallest, column.measureHeader().height, column.measureGroup(GroupInput.init).height);
         _space.fitHeader(tallest);
         _cache.configure(_columns.columns, _columns.flexIndex, _space.fonts.geometry);
-        // the titles are a minimum of the widths too (and the border of the column): told to the host with what the rows need
+        // the titles are a minimum of the widths too, the flex one's as well (and the line between the columns): told to the host with what
+        // the rows need
         _titles.length = _columns.columns.length;
         auto defs = new ColumnDef[_columns.columns.length];
         foreach (i, column; _columns.columns)
         {
             const title = column.measureHeader();
-            _titles[i] = !column.def.flex && title.maxWidth > 0 ? title.maxWidth + 1 : 0; // and the border of the column
+            _titles[i] = title.maxWidth > 0 ? title.maxWidth + _space.fonts.geometry.columnBorder : 0;
             defs[i] = column.def;
         }
         host.setColumns(defs);
     }
 
-    // What the title of column `i` needs; 0 for the flex column, a hidden one and a column with no title
+    // What the title of column `i` needs with the line between the columns; 0 for a hidden column and one with no title
     private double titleFit(size_t i)
     {
         return layout.visible(_columns.columns[i].def.id) ? _titles[i] : 0;
@@ -417,4 +418,31 @@ unittest
     host.settle(host.least);
     store.layoutChanged(LayoutChange(LayoutChange.Kind.fit, ""));
     assert(store.fitStart(null) is null, "a fit of the host is no change of what the widths are fit to");
+}
+
+@("RowStore: the titles need their column with the line the geometry of the painter gives, the flex one too")
+unittest
+{
+    import ptable.painter : TableGeometry;
+
+    static final class Bordered : Painter
+    {
+        override TableGeometry geometry()
+        {
+            TableGeometry g;
+            g.columnBorder = 3;
+            return g;
+        }
+    }
+
+    auto host = new ColumnHost;
+    auto store = new RowStore(new NumbersModel(0), host, portsOf(new Bordered));
+    bool widthChanged;
+    store.resize(400, 200, widthChanged);
+    store.ensure();
+    auto needs = new double[2];
+    needs[] = 0;
+    store.measure(needs);
+    assert(needs[0] == 3 + 1 * 10 + 3 + 3, "the title N, its paddings and a line of 3");
+    assert(needs[1] == 3 + 4 * 10 + 3 + 3, "the title of the flex column holds it as wide too");
 }

@@ -103,7 +103,7 @@ unittest
     TableGeometry geometry;
     cache.configure(withText(defs, null, styles), 1, geometry);
     cache.setFlexWidth(400);
-    assert(cache.entry(1).height == 40, "the line and the padding are 16");
+    assert(cache.entry(1).height == 40 + 2, "the least height is of the content, the paddings (1 above, 1 under) come on top");
     cache.setWanted([false, true]);
     assert(cache.entry(1).height == 16, "the column is not shown: it asks for nothing");
 }

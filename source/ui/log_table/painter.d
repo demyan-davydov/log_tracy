@@ -117,7 +117,8 @@ class LogPainter : Painter
     override void paintGroup(Canvas canvas, ref GroupContext group, bool tableHasFocus)
     {
         const cell = group.cell;
-        const plate = group.sticky ? cell : Rect(cell.x, cell.y, cell.w - 1, cell.h);
+        const border = geometry().columnBorder;
+        const plate = group.sticky ? cell : Rect(cell.x, cell.y, cell.w - border, cell.h);
         canvas.fillRect(plate, _palette.groupPlate);
         if (!group.sticky)
             canvas.fillRect(Rect(plate.x, plate.bottom, plate.w, geometry().groupPadBottom), _palette.groupBand);
@@ -125,7 +126,7 @@ class LogPainter : Painter
         group.column.drawGroup(canvas, GroupInput(group.head), plate); // the head, in the ink and on the back its style gives
         canvas.popClip();
         if (group.sticky)
-            canvas.fillRect(Rect(cell.right - 1, cell.y, 1, cell.h), _palette.border);
+            canvas.fillRect(Rect(cell.right - border, cell.y, border, cell.h), _palette.border);
     }
 
     override void paintBackground(Canvas canvas, Rect area)
@@ -175,7 +176,10 @@ class LogPainter : Painter
             return;
         const area = cell.area;
         if (!cell.column.def.flex)
-            canvas.fillRect(Rect(area.right - 1, area.y, 1, area.h), _palette.border);
+        {
+            const border = geometry().columnBorder; // the line the table left for it in the width of the column
+            canvas.fillRect(Rect(area.right - border, area.y, border, area.h), _palette.border);
+        }
     }
 }
 

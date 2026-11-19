@@ -400,6 +400,31 @@ unittest
     assert(column.measure(cell, 100, false).maxWidth == 0, "no widths asked: none measured");
 }
 
+@("TextColumn.measure: the least width of the column is that of its text, the paddings come on top, in a cell and in the title alike")
+unittest
+{
+    import ptable.model : CellData;
+    import ptable.ports : FontId;
+    import ptable_text.measurer : FontMetrics;
+    import ui.log_table.log_look : LogFont, defaultLogLook;
+
+    static final class Ruler : TextMeasurer
+    {
+        FontMetrics metrics(FontId font) { return FontMetrics(11, 3, 14); }
+        double width(FontId font, const(wchar)[] text) { return text.length * (font == LogFont.header ? 7.0 : 6.0); }
+        int wrappedLines(FontId font, const(wchar)[] text, double width) { return -1; }
+    }
+
+    auto column = new TextColumn(ColumnDef("time", "Time", 60), defaultLogLook(), new Ruler);
+    column.style.cell.padLeft = column.style.header.padLeft = 5;
+    column.lookChanged();
+    const short_ = CellData("12345"w), long_ = CellData("123456789012345"w);
+    const shortCell = CellInput(0, 0, &short_), longCell = CellInput(0, 0, &long_);
+    assert(column.measure(shortCell, 100, true).maxWidth == 5 + 60 + 3, "a short text: the least width and the paddings");
+    assert(column.measure(longCell, 100, true).maxWidth == 5 + 15 * 6.0 + 3, "a longer text than the least width: the text");
+    assert(column.measureHeader().maxWidth == 5 + 60 + 3, "a short title: the least width and the paddings of the header");
+}
+
 @("TextColumn: a title stands where the painter and the table placed it, by the header style of the column, and measures what they measured")
 unittest
 {

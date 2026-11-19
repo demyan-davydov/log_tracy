@@ -22,7 +22,8 @@ final class RowWrap
         _spec = spec;
     }
 
-    /// Lays the flex cell of `e` out by its column (the lines in `arena`) and makes the row as high as its tallest wanted cell
+    /// Lays the flex cell of `e` out by its column (the lines in `arena`) and makes the row as high as its tallest wanted cell and the line
+    /// under it (`TableGeometry.rowBorder`)
     void wrap(ref Entry e, ref Arena arena)
     {
         auto spec = _spec;
@@ -35,13 +36,13 @@ final class RowWrap
             e.height = done.height;
             laidOut = true;
         }
-        e.height = max(laidOut ? e.height : 0, tallestCell(e.data.cells, laidOut ? spec.flexDef : size_t.max));
+        e.height = max(laidOut ? e.height : 0, tallestCell(e.data.cells, laidOut ? spec.flexDef : size_t.max)) + spec.geometry.rowBorder;
     }
 
     /// The height of a row with no data, as high as the wanted columns make an empty cell: a row not read yet is guessed so
     double emptyHeight()
     {
-        return tallestCell(null, size_t.max);
+        return tallestCell(null, size_t.max) + _spec.geometry.rowBorder;
     }
 
     // The tallest of the wanted cells `cells` (a column past them measures an empty cell) but the one `skip`; 1 if no column has a height
@@ -124,5 +125,27 @@ unittest
     hidden.data.cells = e.data.cells;
     wrap.wrap(hidden, arena);
     assert(flex.layouts == 1, "no width: not laid out");
+    arena.release();
+}
+
+@("RowWrap: the line between the rows is as high as the geometry of the painter says, under the tallest cell and under an empty row too")
+unittest
+{
+    import ptable.layout : ColumnDef;
+    import ptable.model : CellData;
+
+    RowSpec spec;
+    spec.columns = withBoxes([ColumnDef("n", "N"), ColumnDef("t", "T", 24, true)]);
+    spec.flexDef = 1;
+    spec.flexWidth = 400;
+    spec.geometry.rowBorder = 2;
+    auto wrap = new RowWrap(&spec);
+    auto arena = Arena(mallocAllocator());
+    Entry e;
+    e.data.kind = ItemKind.real_;
+    e.data.cells = [CellData("1"w), CellData("a"w)];
+    wrap.wrap(e, arena);
+    assert(e.height == 14 + 2 + 2, "a line of 14, the room of 1 above and under it, the line of 2 under the row");
+    assert(wrap.emptyHeight == 14 + 2 + 2, "a row not read yet is guessed with its line too");
     arena.release();
 }

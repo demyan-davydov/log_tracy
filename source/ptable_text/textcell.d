@@ -120,7 +120,7 @@ class TextCell : TableColumn
             const font = fontOf(cell);
             const text = cell.data.text;
             const textWidth = def.flex ? firstLineWidth(text, (const(wchar)[] t) => _measurer.width(font, t)) : _measurer.width(font, text);
-            m.maxWidth = m.minWidth = style.left(sidePad) + textWidth + style.right(sidePad);
+            m.maxWidth = m.minWidth = style.left(sidePad) + max(textWidth, def.minWidth) + style.right(sidePad); // the least width is of the text
         }
         return m;
     }
@@ -135,7 +135,7 @@ class TextCell : TableColumn
     private double heightOf(size_t lines) const
     {
         const style = this.style.cell;
-        return max(this.style.minHeight, lines * ceil(_metrics.cell.lineHeight) + style.top(linePad) + style.bottom(linePad));
+        return max(this.style.minHeight, lines * ceil(_metrics.cell.lineHeight)) + style.top(linePad) + style.bottom(linePad); // the least height is of the lines
     }
 
     /// The title: one line in the header font of the style, with the room of the header around it
@@ -144,7 +144,7 @@ class TextCell : TableColumn
         const style = this.style.header;
         const textWidth = _measurer !is null ? _measurer.width(headerFont, _title) : 0;
         Measured m;
-        m.maxWidth = m.minWidth = style.left(sidePad) + textWidth + style.right(sidePad);
+        m.maxWidth = m.minWidth = style.left(sidePad) + max(textWidth, def.minWidth) + style.right(sidePad); // the least width of the column, as a cell
         m.height = ceil(_metrics.header.lineHeight) + style.top(titlePad) + style.bottom(titlePad);
         return m;
     }
