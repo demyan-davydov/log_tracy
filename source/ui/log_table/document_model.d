@@ -1,6 +1,7 @@
 //! The rows of a view of a document for the log table (ptable): the view as a `RowSource` (`DocumentRows`,
 //! which tells the changes of the document), the columns as the log table shows them (`documentColumns`:
-//! ui/row_cells), the level, found and anchored marks as extra data, and the model both tables of a
+//! ui/row_cells), the marks of a row (`LogMarks`: its level, found, anchored, the rule it matches) found once when the row is read and
+//! given to the row and the cells that draw by them, and the model both tables of a
 //! document are made of (`documentTableModel`, a `ColumnarModel` of ptable). Free of Sciter.
 //! docs/stories/painted-table.md.
 module ui.log_table.document_model;
@@ -10,6 +11,7 @@ import domain.document : DocumentView;
 import domain.document_item : DocumentItem;
 import log_core.log_format : ColumnInfo, ColumnKind;
 import log_core.log_level : LogLevel;
+import log_core.rule_filter : RuleId;
 import log_core.search_filter : MatchBuffer;
 import ptable.columnar : Column, ColumnarModel, RowSource;
 import ptable.column : TableColumn;
@@ -19,6 +21,7 @@ import ptable.layout : ColumnDef;
 import ptable.listeners : Listeners;
 import ptable.memory : Buffer, mallocAllocator;
 import ptable.model;
+import ptable.ports : Color;
 import ui.app_session : AppSession;
 import ui.log_table.text_column : TextColumn;
 import ui.log_table.marks;
@@ -48,6 +51,21 @@ struct LogColumnLook
     TextMeasurer measurer; /// what the columns measure their texts and fonts by; null: nothing (a test)
     string formatId; /// the format of the document: its columns have the least widths the CSS names by it (`dlt-time`)
     double[string] minWidths; /// the least widths of the columns in dips by their keys (`ui.log_table.column_widths`); none: those of the code
+    bool delegate(RuleId rule, out Color color) ruleColor; /// the color of a filter rule the anchor and the Index show; null: none
+}
+
+/// A row of a view of a document as the log table reads it: the record and its marks, found once when it is read (`DocumentRows.fetch`):
+/// the columns draw by them and need not look for the rule again
+struct LogRow
+{
+    DocumentItem item;
+    LogMarks marks;
+}
+
+/// The marks of a row whose record is `item` and matches the filter rule `rule` (not valid: none)
+LogMarks logMarksOf(ref const DocumentItem item, RuleId rule)
+{
+    return LogMarks(item.message.level, item.found, item.anchored, rule);
 }
 
 /// The columns of a table of the log: a column of the anchor marks, the Index, the columns of the
@@ -59,9 +77,10 @@ TableColumn[] logColumns(const(ColumnInfo)[] columns, LogColumnLook look = LogCo
     auto anchorDef = ColumnDef("anchor", "⚓", minWidthOf(look.minWidths, "anchor", anchorMinWidth));
     anchorDef.selectable = false;
     anchorDef.clickable = true; // a click sets or clears the anchor
-    auto anchor = new AnchorColumn(anchorDef, palette, look.anchorsFull, look.measurer);
+    auto anchor = new AnchorColumn(anchorDef, palette, look.anchorsFull, look.ruleColor, look.measurer);
     anchor.style.cell.halign = Halign.center; // the mark stands in the middle of its cell
-    auto index = new IndexColumn(ColumnDef("index", "Index", minWidthOf(look.minWidths, "index", indexMinWidth)), palette, look.measurer);
+    auto index = new IndexColumn(ColumnDef("index", "Index", minWidthOf(look.minWidths, "index", indexMinWidth)), palette, look.ruleColor,
+        look.measurer);
     index.style.cell.halign = Halign.right;
     anchor.style.header.halign = index.style.header.halign = Halign.center;
     anchor.style.cell.font = index.style.cell.font = LogFont.aux;
@@ -93,24 +112,24 @@ TableColumn[] logColumns(const(ColumnInfo)[] columns, LogColumnLook look = LogCo
 }
 
 
-/// The columns of a table of the log as ptable's columns of a `DocumentItem`: the anchor marks (no text),
-/// the Index, and a column of the format each. `indexExtra` is what the Index cell carries (the rule color).
-Column!DocumentItem[] documentColumns(const(ColumnInfo)[] infos, immutable TimeZone zone, Extra delegate(ref const DocumentItem) indexExtra,
-    LogColumnLook look = LogColumnLook.init, void delegate(ref const DocumentItem, ref Buffer!Fragment) payloadFragments = null)
+/// The columns of a table of the log as ptable's columns of a `LogRow`: the anchor marks (no text), the Index, and a column of the format
+/// each. The anchor, the Index and the level draw by the marks of the row: their cells carry them; the Payload by the fragments it is told.
+Column!LogRow[] documentColumns(const(ColumnInfo)[] infos, immutable TimeZone zone, LogColumnLook look = LogColumnLook.init,
+    void delegate(ref const LogRow, ref Buffer!Fragment) payloadFragments = null)
 {
     auto made = logColumns(infos, look);
-    auto columns = new Column!DocumentItem[made.length];
+    auto columns = new Column!LogRow[made.length];
     foreach (i, column; made)
         columns[i].column = column;
-    columns[1].text = (ref const DocumentItem item, ref Buffer!wchar into) { putNumber(into, item.realIndex); };
-    columns[1].extra = indexExtra;
-    // what a column that draws more than text draws by is in the data of its own cell, not of the row: the anchor and the level
-    columns[0].extra = (ref const DocumentItem item) => Extra(item.anchored ? anchoredMark : 0);
+    columns[1].text = (ref const LogRow row, ref Buffer!wchar into) { putNumber(into, row.item.realIndex); };
+    // what a column that draws more than text draws by is in the data of its own cell, not of the row
+    Extra delegate(ref const LogRow) marks = (ref const LogRow row) => packMarks(row.marks);
+    columns[0].extra = columns[1].extra = marks;
     foreach (i; 0 .. infos.length)
     {
         columns[2 + i].text = formatColumnText(infos, i, zone);
         if (infos[i].kind == ColumnKind.Level)
-            columns[2 + i].extra = (ref const DocumentItem item) => Extra(cast(ulong) item.message.level);
+            columns[2 + i].extra = marks;
     }
     columns[$ - 1].fragments = payloadFragments; // what the search found shows in the Payload, the last column
     return columns;
@@ -118,22 +137,22 @@ Column!DocumentItem[] documentColumns(const(ColumnInfo)[] infos, immutable TimeZ
 
 // The writer of the cell of the column `at` of the format. A function of its own: a closure made in a loop
 // shares the variables of the loop's function (every column would write the last one's text)
-private void delegate(ref const DocumentItem, ref Buffer!wchar) formatColumnText(const(ColumnInfo)[] infos, size_t at, immutable TimeZone zone)
+private void delegate(ref const LogRow, ref Buffer!wchar) formatColumnText(const(ColumnInfo)[] infos, size_t at, immutable TimeZone zone)
 {
-    return (ref const DocumentItem item, ref Buffer!wchar into) {
-        putColumnText(into, item.message, infos[at], zone);
+    return (ref const LogRow row, ref Buffer!wchar into) {
+        putColumnText(into, row.item.message, infos[at], zone);
     };
 }
 
-/// The extra data of a row of the log: its level and the marks the search and the anchors put on it
-Extra rowExtraOf(ref const DocumentItem item)
+/// The extra data of a row of the log: its marks
+Extra rowExtraOf(ref const LogRow row)
 {
-    return Extra(cast(ulong) item.message.level | (item.found ? foundMark : 0) | (item.anchored ? anchoredMark : 0));
+    return packMarks(row.marks);
 }
 
 /// A view of a document as the rows of a table; tells the changes of the document by the rule of
 /// ReadyView.dataVersion: rows appended under one version, everything for a new one
-final class DocumentRows : RowSource!DocumentItem
+final class DocumentRows : RowSource!LogRow
 {
     private AppSession _session;
     private DocumentId _docId;
@@ -161,14 +180,18 @@ final class DocumentRows : RowSource!DocumentItem
         return view().itemsCount();
     }
 
-    bool fetch(size_t index, ref DocumentItem row)
+    /// The record at `index` and its marks: the filter rule it matches is looked for here, once a row
+    bool fetch(size_t index, ref LogRow row)
     {
-        return view().fetchItem(index, row);
+        if (!view().fetchItem(index, row.item))
+            return false;
+        row.marks = logMarksOf(row.item, _session.ruleOf(_docId, row.item));
+        return true;
     }
 
-    ulong idOf(ref const DocumentItem row)
+    ulong idOf(ref const LogRow row)
     {
-        return row.realIndex;
+        return row.item.realIndex;
     }
 
     bool indexOf(ulong rowId, out size_t position)
@@ -235,7 +258,7 @@ final class DocumentColumns
     private AppSession _session;
     private DocumentId _docId;
     private const(ColumnInfo)[] _infos;
-    private Column!DocumentItem[] _columns;
+    private Column!LogRow[] _columns;
     private immutable TimeZone _zone;
     private LogColumnLook delegate() _look; // the look and the settings of the columns: they may change
     private LogColumnLook _made; // what the columns were made with
@@ -248,44 +271,47 @@ final class DocumentColumns
         _look = look;
     }
 
-    Column!DocumentItem[] get()
+    Column!LogRow[] get()
     {
         const now = _session.tableColumns(_session.doc(_docId));
         auto look = _look !is null ? _look() : LogColumnLook.init;
         look.formatId = _session.doc(_docId).formatInfo.id;
+        look.ruleColor = &ruleColor; // the same delegate each time: the columns are not made again for it
         if (_columns.length == 0 || now.ptr !is _infos.ptr || now.length != _infos.length || look != _made)
         {
             _infos = now;
             _made = look;
-            _columns = documentColumns(now, _zone, (ref const DocumentItem item) {
-                // the rule color a record matches shows in its Index cell only (.ai/rules/ux.md, 27)
-                const rule = _session.ruleOf(_docId, item);
-                return rule.isValid() ? Extra(ruleColorBits(_session.ruleColor(_docId, rule))) : Extra.init;
-            }, look, (ref const DocumentItem item, ref Buffer!Fragment into) {
+            _columns = documentColumns(now, _zone, look, (ref const LogRow row, ref Buffer!Fragment into) {
                 // what the chips of the search found in the payload of a row the search found (a row it did not find costs a test)
                 MatchBuffer found;
-                foreach (match; _session.matchesOf(_docId, item, found[]))
+                foreach (match; _session.matchesOf(_docId, row.item, found[]))
                     into.put(Fragment(match.start, match.end, Extra(match.chip)));
             });
         }
         return _columns;
     }
+
+    // The color of the filter rule `rule` of the document
+    private bool ruleColor(RuleId rule, out Color color)
+    {
+        return ruleColorOf(_session.ruleColor(_docId, rule), color);
+    }
 }
 
 /// The model of a view of a document (the main one, or the search results) for a log table
-ColumnarModel!DocumentItem documentTableModel(AppSession session, DocumentId docId, bool search, LogColumnLook delegate() look = null)
+ColumnarModel!LogRow documentTableModel(AppSession session, DocumentId docId, bool search, LogColumnLook delegate() look = null)
 {
     DocumentRows rows;
     return documentTableModel(session, docId, search, rows, look);
 }
 
 /// The same, and the rows of the view too: they are told what the model cannot know (an anchor changed some rows)
-ColumnarModel!DocumentItem documentTableModel(AppSession session, DocumentId docId, bool search, out DocumentRows rows,
+ColumnarModel!LogRow documentTableModel(AppSession session, DocumentId docId, bool search, out DocumentRows rows,
     LogColumnLook delegate() look = null)
 {
     auto columns = new DocumentColumns(session, docId, look);
     rows = new DocumentRows(session, docId, search);
-    return new ColumnarModel!DocumentItem(rows, &columns.get, (ref const DocumentItem item) => rowExtraOf(item));
+    return new ColumnarModel!LogRow(rows, &columns.get, (ref const LogRow row) => rowExtraOf(row));
 }
 
 version (unittest)
@@ -331,38 +357,50 @@ unittest
     assert(defs[4].def.id == "payload" && defs[4].def.flex && defs[4].def.minWidth == 58);
 }
 
-@("documentColumns: the anchor mark has no text, the Index and the columns of the format write their cell")
+@("documentColumns: the anchor mark has no text, the Index and the columns of the format write their cell; the anchor, the Index and the level carry the marks of the row")
 unittest
 {
     import std.datetime.timezone : UTC;
+    import log_core.rule_filter : RuleId;
 
     const ColumnInfo[] infos = [
         ColumnInfo("level", "Level", ColumnKind.Level),
         ColumnInfo("payload", "Payload", ColumnKind.Payload),
     ];
-    auto columns = documentColumns(infos, UTC(), (ref const DocumentItem item) => Extra(item.realIndex));
+    auto columns = documentColumns(infos, UTC());
     assert(columns.length == 4 && columns[0].text is null && columns[0].column.def.id == "anchor");
     assert(columns[1].column.def.id == "index" && columns[2].column.def.id == "level" && columns[3].column.def.id == "payload", "the order of logColumns");
-    DocumentItem item;
-    item.realIndex = 12;
+    LogRow row;
+    row.item.realIndex = 12;
+    row.marks = LogMarks(LogLevel.Warn, true, true, RuleId(3));
     auto buffer = Buffer!wchar(mallocAllocator());
     wstring written(size_t i)
     {
         buffer.clear();
-        columns[i].text(item, buffer);
+        columns[i].text(row, buffer);
         return buffer[].idup;
     }
 
     assert(written(1) == "12", "the Index; the texts of the format are those of putColumnText (ui/row_cells)");
     assert(columns[2].text !is null && columns[3].column.def.flex);
     assert(columns[2].text.ptr !is columns[3].text.ptr, "each column has a writer of its own, not the last one's");
-    assert(columns[1].extra(item).bits == 12);
+    foreach (i; 0 .. 3)
+        assert(marksOf(columns[i].extra(row)) == row.marks, "the anchor, the Index and the level draw by the marks of the row");
+    assert(columns[3].extra is null, "the Payload draws by its text and its fragments");
+}
+
+@("logMarksOf: the marks of a row are those of its record and the rule it matches")
+unittest
+{
+    import log_core.rule_filter : RuleId;
+
+    DocumentItem item;
+    item.found = true;
     item.anchored = true;
-    assert(columns[0].extra(item).bits == anchoredMark, "the anchor's cell says whether the record has one");
-    assert(columns[2].extra !is null && columns[2].extra(item).bits == item.message.level,
-        "the level's cell says the level of the record, whatever its text");
-    item.anchored = false;
-    assert(columns[0].extra(item).bits == 0);
+    const marks = logMarksOf(item, RuleId(7));
+    assert(marks == LogMarks(item.message.level, true, true, RuleId(7)));
+    item.found = item.anchored = false;
+    assert(logMarksOf(item, RuleId.init) == LogMarks(item.message.level, false, false, RuleId.init));
 }
 
 @("documentColumns: the Payload, the last column, gives the fragments it is told of; no other column does")
@@ -374,14 +412,14 @@ unittest
         ColumnInfo("level", "Level", ColumnKind.Level),
         ColumnInfo("payload", "Payload", ColumnKind.Payload),
     ];
-    auto columns = documentColumns(infos, UTC(), (ref const DocumentItem item) => Extra.init, LogColumnLook.init,
-        (ref const DocumentItem item, ref Buffer!Fragment into) { into.put(Fragment(2, 5, Extra(3))); });
-    DocumentItem item;
+    auto columns = documentColumns(infos, UTC(), LogColumnLook.init,
+        (ref const LogRow row, ref Buffer!Fragment into) { into.put(Fragment(2, 5, Extra(3))); });
+    LogRow row;
     auto into = Buffer!Fragment(mallocAllocator());
     assert(columns[0].fragments is null && columns[1].fragments is null && columns[2].fragments is null);
-    columns[3].fragments(item, into);
+    columns[3].fragments(row, into);
     assert(into[] == [Fragment(2, 5, Extra(3))]);
-    assert(documentColumns(infos, UTC(), (ref const DocumentItem item) => Extra.init)[3].fragments is null, "none told: none");
+    assert(documentColumns(infos, UTC())[3].fragments is null, "none told: none");
 }
 
 @("timeParts: the date that putTime writes heads the rows of its day, the rest is the body; a time of no date has no head")

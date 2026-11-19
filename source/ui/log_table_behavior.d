@@ -10,6 +10,7 @@
 //! goes on the frames Sciter gives (`Table.tick`).
 module ui.log_table_behavior;
 
+import ptable.model : Extra;
 import ptable.navigation : Key;
 import ptable.ports : Rect;
 import ptable.scrollplace : CellPosition;
@@ -22,7 +23,7 @@ import sciter.graphics : GfxCanvas = Canvas;
 import sciter.value;
 import ui.frame_stats : FrameStats, statsJson, usSince;
 import ui.log_table.log_table : LogTable, TableSource;
-import ui.log_table.marks : anchoredMark;
+import ui.log_table.marks : marksOf;
 import ui.log_table.log_look : LogLook;
 import ui.sciter_table.frame_request : FrameRequest;
 import ui.sciter_table.input : wheelIsAcross, cursorOf, isCopy, isOurEvent, isSelectAll, keyPickMode, pickMode, startsPickPress, tableKey, wheelPixels;
@@ -125,7 +126,7 @@ final class LogTableBehavior : SciterEventHandler
         if (!table.isClickable(column) || !table.rowId(item, id))
             return; // a click on text is no business of the script, and a row that is gone since the press is nobody's click
         JSONValue click = ["table": JSONValue(_hooks.id), "item": JSONValue(item), "id": JSONValue(id), "column": JSONValue(table.columnId(column)),
-            "anchored": JSONValue((table.rowExtra(item) & anchoredMark) != 0)];
+            "anchored": JSONValue(marksOf(Extra(table.rowExtra(item))).anchored)];
         Rect area;
         if (table.cellRect(item, column, area)) // where the cell is in the table, for what the script shows by it (a notice)
             click["rect"] = [area.x, area.y, area.w, area.h];

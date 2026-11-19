@@ -141,7 +141,7 @@ class LogPainter : Painter
 
     override void paintRow(Canvas canvas, ref const RowContext row, bool tableHasFocus)
     {
-        const found = row.data !is null && (row.data.extra.bits & foundMark) != 0;
+        const found = row.data !is null && marksOf(row.data.extra).found;
         const color = row.state.selected ? _palette.selected : found ? (row.state.odd ? _palette.foundStripe : _palette.found)
             : (row.state.odd ? _palette.stripe : _palette.row);
         canvas.fillRect(row.area, color);
@@ -231,7 +231,7 @@ unittest
     auto column = ColumnDef("level", "Level", 24, false, true);
     auto columnColumn = new LevelColumn(column, defaultLogLook());
     RowData data;
-    const cell = CellData("Whatever"w, Extra(cast(ulong) LogLevel.Fatal)); // not the name of a level: the cell's data says it is Fatal
+    const cell = CellData("Whatever"w, packMarks(LogMarks(LogLevel.Fatal))); // not the name of a level: the cell's marks say it is Fatal
     RowContext row;
     row.data = &data;
     CellContext ctx;
@@ -246,8 +246,8 @@ unittest
 @("LogPainter: the color of a filter rule is a gradient in the Index cell only, the other cells have none")
 unittest
 {
+    import log_core.rule_filter : RuleId;
     import ptable.model : CellData, Extra, RowData;
-    import ui.log_table.marks : ruleColorBits;
 
     auto painter = new LogPainter;
     RowData data;
@@ -258,8 +258,16 @@ unittest
     ctx.area = Rect(0, 0, 60, 16);
     auto canvas = new RecordingCanvas;
     auto index = ColumnDef("index", "Index", 24, false, true);
-    auto indexColumn = new IndexColumn(index);
-    const colored = CellData("5"w, Extra(ruleColorBits("#ff0000")));
+    bool red(RuleId rule, out Color color)
+    {
+        color = Color(255, 0, 0);
+        return rule == RuleId(5);
+    }
+
+    auto indexColumn = new IndexColumn(index, null, &red);
+    LogMarks marks;
+    marks.rule = RuleId(5);
+    const colored = CellData("5"w, packMarks(marks));
     ctx.column = indexColumn;
     ctx.data = &colored;
     paintAll(canvas, painter, ctx);
@@ -502,7 +510,6 @@ unittest
 unittest
 {
     import ptable.model : CellData, Extra, RowData;
-    import ui.log_table.marks : anchoredMark;
 
     auto painter = new LogPainter;
     RowData data;
@@ -516,12 +523,14 @@ unittest
     auto anchor = ColumnDef("anchor", "⚓", 24, false, false);
     auto anchorColumn = new AnchorColumn(anchor, defaultLogLook(), () { ++asked; return full; });
     ctx.column = anchorColumn;
-    auto cell = CellData(""w, Extra(anchoredMark)); // the cell's data says whether the record has an anchor
+    LogMarks anchored;
+    anchored.anchored = true;
+    auto cell = CellData(""w, packMarks(anchored)); // the cell's marks say whether the record has an anchor
     ctx.data = &cell;
     auto canvas = new RecordingCanvas;
     paintAll(canvas, painter, ctx);
     assert(canvas.calls == ["circle", "text:⚓"], "the circle under the anchor");
-    cell.extra = Extra(0);
+    cell.extra = packMarks(LogMarks.init);
     auto empty = new RecordingCanvas;
     paintAll(empty, painter, ctx);
     assert(empty.calls.length == 0, "no anchor: nothing");
@@ -550,7 +559,7 @@ unittest
     auto room = new RecordingCanvas;
     paintAll(room, painter, ctx);
     assert(room.calls == ["text:⚓"], "room again: the faint anchor, as the document says now");
-    cell.extra = Extra(anchoredMark);
+    cell.extra = packMarks(anchored);
     auto anchoredFull = new RecordingCanvas;
     paintAll(anchoredFull, painter, ctx);
     assert(anchoredFull.calls == ["circle", "text:⚓"], "an anchor that is there is shown as before");

@@ -9,30 +9,27 @@ import ptable.layout : ColumnDef;
 import ptable.ports : Canvas, Color, FontId, Rect;
 import ptable_text.measurer : TextMeasurer;
 import log_core.log_level : LogLevel;
-import ui.log_table.marks : anchoredMark, levelOf, ruleColorFlag;
+import log_core.rule_filter : RuleId;
+import ui.log_table.marks : marksOf;
 import ui.log_table.log_look : LogFont, LogLook, levelFontOf, levelInkOf;
 import ui.log_table.text_column : TextColumn;
 
 import std.algorithm.comparison : max;
 import std.math : round;
 
-// What the model put in the data of the cell for the column that draws by it (the anchor, the level)
-private ulong bitsOf(ref const CellInput cell)
-{
-    return cell.data !is null ? cell.data.extra.bits : 0;
-}
-
 /// The column of the anchor marks: it has no text, a click on it sets or clears the anchor of the message
 final class AnchorColumn : TextColumn
 {
     private bool delegate() _anchorsFull;
+    private bool delegate(RuleId, out Color) _ruleColor;
 
     /// `anchorsFull` says whether no room is left for another anchor, asked of the document only when it matters (a cell with none under the
-    /// mouse or pressed), so what it answers is the truth; null: there is always room
-    this(ColumnDef def, LogLook look, bool delegate() anchorsFull, TextMeasurer measurer = null)
+    /// mouse or pressed), so what it answers is the truth; null: there is always room. `ruleColor` gives the color of a filter rule; null: none
+    this(ColumnDef def, LogLook look, bool delegate() anchorsFull, bool delegate(RuleId, out Color) ruleColor = null, TextMeasurer measurer = null)
     {
         super(def, look, measurer);
         _anchorsFull = anchorsFull;
+        _ruleColor = ruleColor;
     }
 
     // An anchor is in a grey circle (the colors of the theme) in the middle of its cell; the mouse over a cell with none shows a faint one with no
@@ -45,7 +42,7 @@ final class AnchorColumn : TextColumn
         const area = state.area;
         const spot = spotOf(cell, area);
         auto measurer = this.measurer;
-        const anchored = (bitsOf(cell) & anchoredMark) != 0;
+        const anchored = marksOf(cell).anchored;
         const full = !anchored && (state.hover || state.pressed) && _anchorsFull !is null && _anchorsFull();
         double widthOf(FontId font, const(wchar)[] text) { return measurer !is null ? measurer.width(font, text) : 0; }
         if (full && state.pressed)
@@ -74,9 +71,13 @@ final class AnchorColumn : TextColumn
 /// The Index column: the number of the message, with the color of the filter rule it matches behind it, fading out from the left edge
 final class IndexColumn : TextColumn
 {
-    this(ColumnDef def, LogLook look = null, TextMeasurer measurer = null)
+    private bool delegate(RuleId, out Color) _ruleColor;
+
+    /// `ruleColor` gives the color of a filter rule a record matches; null: none is shown
+    this(ColumnDef def, LogLook look = null, bool delegate(RuleId, out Color) ruleColor = null, TextMeasurer measurer = null)
     {
         super(def, look, measurer);
+        _ruleColor = ruleColor;
     }
 
     // A gradient from the left edge fading out at about a third of the cell, the background of the row stays (ux.md 27); the bands of the steps
@@ -84,15 +85,16 @@ final class IndexColumn : TextColumn
     override void draw(Canvas canvas, ref const CellInput cell, ref const DrawState state)
     {
         fillBack(canvas, state);
-        if (cell.data !is null && (cell.data.extra.bits & ruleColorFlag) != 0)
+        const rule = marksOf(cell).rule;
+        Color color;
+        if (rule.isValid() && _ruleColor !is null && _ruleColor(rule, color))
         {
-            const rgb = cast(uint)(cell.data.extra.bits & 0xFFFFFF);
             enum steps = 8;
             const area = state.area;
             const bandWidth = area.w / 3 / steps;
             foreach (i; 0 .. steps)
                 canvas.fillRect(Rect(area.x + i * bandWidth, area.y, bandWidth + 0.5, area.h),
-                    Color((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF, cast(ubyte)(220 - i * 220 / steps)));
+                    Color(color.r, color.g, color.b, cast(ubyte)(220 - i * 220 / steps)));
         }
         drawText(canvas, cell, state, inkOf(state.row.selected));
     }
@@ -109,7 +111,7 @@ final class LevelColumn : TextColumn
     /// The bold font must have the metrics of the column's (the same size): the row's height does not depend on its data
     protected override FontId fontOf(ref const CellInput cell) const
     {
-        return levelFontOf(bitsOf(cell));
+        return levelFontOf(marksOf(cell).level);
     }
 
     override void draw(Canvas canvas, ref const CellInput cell, ref const DrawState state)
@@ -119,7 +121,7 @@ final class LevelColumn : TextColumn
             return;
         const palette = look.palette;
         const selected = state.row.selected;
-        const level = levelOf(bitsOf(cell));
+        const level = marksOf(cell).level;
         if (level == LogLevel.Fatal && !selected)
         {
             // the badge grows with the font: its paddings are fractions of the line

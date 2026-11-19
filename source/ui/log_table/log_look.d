@@ -6,7 +6,6 @@ module ui.log_table.log_look;
 import log_core.log_level : LogLevel;
 import ptable_text.columnstyle : ColorId, noColor;
 import ptable.ports : Color, FontId;
-import ui.log_table.marks : levelOf;
 import ui.look : FontSpec, Look, TextLook;
 
 /// The fonts of the table (`FontId`s): the family and the size by role; a host turns them into its fonts
@@ -148,9 +147,8 @@ Color levelInkOf(ref const LogPalette palette, LogLevel level, bool selected)
 }
 
 /// The font of a level: the louder ones are bold; it is the level of the row, not the name of it, that tells
-FontId levelFontOf(ulong rowBits)
+FontId levelFontOf(LogLevel level)
 {
-    const level = levelOf(rowBits);
     return level == LogLevel.Fatal || level == LogLevel.Error || level == LogLevel.Warn ? LogFont.bodyBold : LogFont.body;
 }
 

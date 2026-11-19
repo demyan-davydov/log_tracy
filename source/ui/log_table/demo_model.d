@@ -48,7 +48,7 @@ private final class DemoRows : RowSource!size_t
 Column!size_t[] demoColumns(LogLook look = null, TextMeasurer measurer = null)
 {
     auto columns = new Column!size_t[4];
-    columns[0].column = new IndexColumn(ColumnDef("n", "N"), look, measurer);
+    columns[0].column = new IndexColumn(ColumnDef("n", "N"), look, null, measurer);
     columns[0].text = (ref const size_t row, ref Buffer!wchar into) { putNumber(into, row); };
     columns[1].column = new TextColumn(ColumnDef("day", "Day"), look, measurer).withParts(headed);
     columns[1].text = (ref const size_t row, ref Buffer!wchar into) {
