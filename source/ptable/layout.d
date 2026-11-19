@@ -25,7 +25,7 @@ struct ColumnDef
     bool flex; /// takes the room the other columns leave (the Payload), never less than its width in the layout
     bool selectable = true; /// its text can be selected and copied (a column of marks is not)
     bool clickable; /// its cells are for a click (the pointer over them is a hand); the host reacts to the click, the table picks nothing
-    double minWidth = 24; /// the least width of the column, whatever the layout says (how its cells look is its column's style)
+    double minWidth = 24; /// the least width of the content of its cells and its title, as `min-width` in CSS: the paddings and the line between the columns come on top (`TableColumn.leastWidth`)
     /// A column of the title `title` and the least width `minWidth`
     this(string id, string title, double minWidth = 24, bool flex = false, bool selectable = true)
     {
@@ -274,8 +274,9 @@ ref const(ColumnDef) defOf(const TableColumn column) pure nothrow @nogc @safe
 
 /// Places the visible `columns` (in their order) in a viewport of `viewportWidth`: the pinned ones at
 /// the edges, the others between them scrolled by the layout's scroll, a flex column filling the
-/// room that is left.
-Placements placeColumns(C)(const(C)[] columns, const ColumnLayout layout, double viewportWidth, double originX = 0)
+/// room that is left. A column is as wide as the layout says, never less than `least` (its least width
+/// as a whole, the column host's: its content, its paddings and the line between the columns; none: no floor).
+Placements placeColumns(C)(const(C)[] columns, const ColumnLayout layout, double viewportWidth, double originX = 0, const(double)[] least = null)
 {
     import std.algorithm.comparison : max, min;
 
@@ -292,7 +293,7 @@ Placements placeColumns(C)(const(C)[] columns, const ColumnLayout layout, double
         const def = &defOf(column);
         if (!layout.visible(def.id))
             continue;
-        auto item = Item(def, max(layout.width(def.id), def.minWidth), index);
+        auto item = Item(def, max(layout.width(def.id), index < least.length ? least[index] : 0), index);
         // a flex column scrolls with the middle: it takes what the others leave, which a pinned one could not
         final switch (def.flex ? Pin.none : layout.pin(def.id))
         {
@@ -441,16 +442,16 @@ unittest
     assert(seen.length == 4, "an unsubscribed listener hears nothing");
 }
 
-@("placeColumns: columns side by side in their order, a width at least the least one")
+@("placeColumns: columns side by side in their order, a width at least the least one given (of the column as a whole), not the least width of its content")
 unittest
 {
     auto layout = new ColumnLayout;
     layout.setWidth("a", 50);
-    const columns = [ColumnDef("a", "A"), ColumnDef("b", "B", 30), ColumnDef("c", "C")];
-    const p = placeColumns(columns, layout, 400);
+    const columns = [ColumnDef("a", "A", 10), ColumnDef("b", "B", 23), ColumnDef("c", "C", 17)];
+    const p = placeColumns(columns, layout, 400, 0, [24, 30, 24]);
     assert(p.columns.length == 3);
     assert(p.columns[0] == Placement("a", 0, 50, Pin.none, 0));
-    assert(p.columns[1] == Placement("b", 50, 30, Pin.none, 1), "no width: the least");
+    assert(p.columns[1] == Placement("b", 50, 30, Pin.none, 1), "no width: the least given");
     assert(p.columns[2].x == 80 && p.columns[2].width == 24);
     assert(p.maxScrollX == 0 && p.scrollX == 0);
 }

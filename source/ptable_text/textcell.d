@@ -126,6 +126,13 @@ class TextCell : TableColumn
     }
 
     /// The flex column breaks its cells into lines unless its style says it does not (the single-line view)
+    /// The least width of the content and the paddings of a cell or of the title, the wider: the column holds both
+    override double leastWidth() const
+    {
+        const cell = style.cell.left(sidePad) + style.cell.right(sidePad), title = style.header.left(sidePad) + style.header.right(sidePad);
+        return max(cell, title) + def.minWidth;
+    }
+
     override bool wraps() const
     {
         return def.flex && style.wrap;

@@ -175,7 +175,7 @@ unittest
     assert(set.wanted(changed) == [true, false, true] && changed);
     layout.setVisible("a", true);
     set.visibilityChanged();
-    const p = placeColumns(set.columns, layout, 300);
+    const p = placeColumns(set.columns, layout, 300, 0, [20, 40, 50]); // the least widths of the columns as a whole
     assert(set.selectable(p).length == 2 && set.selectable(p)[0].id == "a");
     assert(set.columnAt(p, 5) == 0 && set.columnAt(p, 10_000) == 2);
     assert(set.idOf(1) == "a" && set.idOf(2) == "text" && set.idOf(3) == "", "no column: no id");

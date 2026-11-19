@@ -193,13 +193,15 @@ final class RowStore : ColumnClient
         // the rows need
         _titles.length = _columns.columns.length;
         auto defs = new ColumnDef[_columns.columns.length];
+        auto least = new double[_columns.columns.length];
         foreach (i, column; _columns.columns)
         {
             const title = column.measureHeader();
             _titles[i] = title.maxWidth > 0 ? title.maxWidth + _space.fonts.geometry.columnBorder : 0;
             defs[i] = column.def;
+            least[i] = column.leastWidth + _space.fonts.geometry.columnBorder; // the column as a whole: the line between the columns too
         }
-        host.setColumns(defs);
+        host.setColumns(defs, least);
     }
 
     // What the title of column `i` needs with the line between the columns; 0 for a hidden column and one with no title
@@ -445,4 +447,28 @@ unittest
     store.measure(needs);
     assert(needs[0] == 3 + 1 * 10 + 3 + 3, "the title N, its paddings and a line of 3");
     assert(needs[1] == 3 + 4 * 10 + 3 + 3, "the title of the flex column holds it as wide too");
+}
+
+@("RowStore: the host is told the least widths of the columns as a whole: of the column and the line the geometry of the painter gives")
+unittest
+{
+    import ptable.painter : TableGeometry;
+
+    static final class Bordered : Painter
+    {
+        override TableGeometry geometry()
+        {
+            TableGeometry g;
+            g.columnBorder = 3;
+            return g;
+        }
+    }
+
+    auto host = new ColumnHost;
+    auto store = new RowStore(new NumbersModel(0), host, portsOf(new Bordered));
+    bool widthChanged;
+    store.resize(400, 200, widthChanged);
+    store.ensure();
+    const columns = store.columns.columns;
+    assert(host.least == [columns[0].leastWidth + 3, columns[1].leastWidth + 3]);
 }

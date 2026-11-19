@@ -425,6 +425,18 @@ unittest
     assert(column.measureHeader().maxWidth == 5 + 60 + 3, "a short title: the least width and the paddings of the header");
 }
 
+@("TextColumn.leastWidth: the least width of the content and the wider paddings of a cell and of the title")
+unittest
+{
+    import ui.log_table.log_look : defaultLogLook;
+
+    auto column = new TextColumn(ColumnDef("time", "Time", 60), defaultLogLook(), null);
+    column.style.cell.padLeft = 5;
+    column.style.header.padLeft = 8;
+    column.lookChanged();
+    assert(column.leastWidth == 8 + 60 + 3, "the paddings of the title are wider: 8 left and the 3 of the table right");
+}
+
 @("TextColumn: a title stands where the painter and the table placed it, by the header style of the column, and measures what they measured")
 unittest
 {

@@ -150,6 +150,13 @@ class TableColumn
         return [Position.begin, Position.end];
     }
 
+    /// The least width of the column as a whole: its least width of the content (`ColumnDef.minWidth`) and the paddings its cells and its
+    /// title have (the line between the columns is the table's, not the column's)
+    double leastWidth() const
+    {
+        return def.minWidth;
+    }
+
     /// The size of the title (nothing: no title to draw, the header is as the painter makes it)
     Measured measureHeader()
     {
