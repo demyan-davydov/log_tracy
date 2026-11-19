@@ -9,7 +9,6 @@ import { anchorClickPlan, rowMoved } from "anchor-click.js";
 import { anchorRefusalText } from "pane-commands.js";
 import { showNoticeAt } from "notice.js";
 import { tr } from "i18n/i18n.js";
-import { wholeRows } from "pane-state.js";
 
 // The tables there are, by the number D gave each: what D tells the script (a click on an anchor, an item of a menu) names its table
 const views = new Map();
@@ -72,18 +71,10 @@ export class LogTableView {
         return row === null ? null : row.id;
     }
 
-    // The rows wholly in view and how many it has room for, as `jumpStep` takes them (see wholeRows, pane-state.js)
-    visibleRows() {
-        return wholeRows(JSON.parse(this.call("view")), row => Number(this.call("rowHeight", row)));
-    }
-
-    // Shows the row of a step of `jumpStep` (pane-state.js): the row picked alone, quietly (the other table is not told, the keyboard stays where it
-    // is), and scrolled to when it is not in view: the row `step.top` first, the columns where they are, by a glide (D jumps over the far part)
+    // Shows the row of a step of `jumpStep` (pane-state.js): the table brings it into view when it is not (with room on the side it came from, or
+    // at the top if it does not fit), by a glide; and the row is picked alone, quietly (the other table is not told, the keyboard stays where it is)
     showRow(step) {
-        if (step.top !== null) {
-            const { first } = JSON.parse(this.call("view"));
-            this.call("scrollTo", step.top, first.column, 0, first.dx, 1);
-        }
+        this.call("reveal", step.position, 1);
         this.call("pickRow", step.position);
     }
 

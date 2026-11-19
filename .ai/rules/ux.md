@@ -145,9 +145,11 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     of their chips.
 28. **The other table follows the selected row.** A row selected in the main or the search
     table is shown in the other one if it has that message: selected there, scrolled only if
-    not already on screen (near the top then; the far part of the way is jumped over, the last
-    half screen or so scrolls animated, so the eye sees which way the rows went; Go to Message
-    scrolls the same way). Multiple
+    not already wholly on screen: a row from below comes in with about 24 dips of room under it,
+    one from above with the same over it, a row that does not fit the window with that room goes
+    to the top of the window, one taller than the window that covers it stays (the far part of the
+    way is jumped over, the last screen or so scrolls animated, so the eye sees which way the
+    rows went; Go to Message and the keys bring a row into view the same way). Multiple
     selection: the last
     clicked/dragged-to/arrowed row. A click follows at once; a drag and the arrow keys only
     after the row rests 500 ms. The keyboard focus stays in the table where the user selects.

@@ -1,7 +1,6 @@
 // What the panel of a document does with its tables and how the panels follow
 // the open documents. Pure, so it can be tested with node.
 // Tests: tests/js/pane-state.test.mjs.
-import { scrollTarget } from "./row-selection.js";
 
 // What a table of a document shows: { loaded } once it has shown rows,
 // { dataVersion } of the view they come from, null while the view isn't a table
@@ -142,35 +141,18 @@ export function showsRowsOf(shown, vm) {
 
 // Where a row selected in one table takes the other one (the same rules both
 // ways): { position: the row of the message there, made current and the only
-// one selected, top: the first row to show so that it is near the top, null
-// if it is on screen already and stays where it is }, or null if that table
-// doesn't show the message or doesn't show rows of the content of its view
-// (showsRowsOf): a status instead of rows, or the rows of a content being
-// replaced, whose positions are of another content; the backend is not asked
-// then. While a load, a filter or a search fills that table it goes to the
-// rows found so far.
+// one selected }, or null if that table doesn't show the message or doesn't
+// show rows of the content of its view (showsRowsOf): a status instead of rows,
+// or the rows of a content being replaced, whose positions are of another
+// content; the backend is not asked then. While a load, a filter or a search
+// fills that table it goes to the rows found so far. Whether the row is in
+// view and where it is brought to is the table's (`reveal`, ptable).
 // @param shown - what that table shows (see tableStep)
 // @param vm - the view of that table
 // @param positionOf - () => the row of the message there, null if none (the backend)
-// @param visibleRange - [first, last] rows wholly on screen there (not cut by an edge), null if none
-// @param visibleRows - the rows that table has room for
-export function jumpStep(shown, vm, positionOf, { visibleRange, visibleRows }) {
+export function jumpStep(shown, vm, positionOf) {
     if (!showsRowsOf(shown, vm)) return null;
     const position = positionOf();
     if (position === null || position === undefined) return null;
-    const onScreen = visibleRange && position >= visibleRange[0] && position <= visibleRange[1];
-    return { position, top: onScreen ? null : scrollTarget(position, visibleRows) };
+    return { position };
 }
-
-// The rows of a table wholly in view and how many it has room for, from what the table says of itself (`view` of D: `first` and `last`, the first
-// and the last row in sight with where their tops are, `rows` [first, past the last), `size`): `visibleRange` [first, last] of the rows not cut
-// by an edge, null if none; `visibleRows` the rows in sight, the ones cut included. What `jumpStep` is given.
-// @param heightOf - (row) => the height of the row, asked for the last row only
-export function wholeRows(view, heightOf) {
-    const [firstRow, past] = view.rows;
-    if (past <= firstRow) return { visibleRange: null, visibleRows: 0 };
-    const first = view.first.dy >= 0 ? firstRow : firstRow + 1;
-    const last = view.last.dy + heightOf(view.last.row) <= view.size.h + 1e-6 ? past - 1 : past - 2;
-    return { visibleRange: first <= last ? [first, last] : null, visibleRows: past - firstRow };
-}
-

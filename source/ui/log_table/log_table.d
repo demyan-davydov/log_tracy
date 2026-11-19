@@ -89,6 +89,7 @@ final class LogTable
         auto ports = TablePorts(_painter, clipboard);
         ports.copyFormat = logCopyFormat;
         _table = new Table(model, layout, ports);
+        _table.revealMargin = 24; // a row that comes into view has 24 dips of room from the edge it came from
         _table.followEnd(!source.demo); // the rows of a document grow (a file being written): the table at its end follows it, as a terminal does
         _scrolled = new ScrolledTable(_table, new ScrollBar(new LogScrollBarPainter(look)), new ScrollBar(new LogScrollBarPainter(look)));
         _look = look;

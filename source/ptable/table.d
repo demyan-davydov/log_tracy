@@ -111,6 +111,9 @@ final class Table
 
     private RowViewport _viewport; // the window on the rows: what is on the screen and the scroll
     private ReportedScroll _reported; // what the host was told of the scrolls last
+    /// The room, in pixels, a row that is brought into view is left from the edge it came from (a row picked by the keys, by a click on one cut by
+    /// an edge, by a jump): 0, the row at the edge, by default
+    double revealMargin = 0;
 
     private bool _followEndAble; // `followEnd`: the table may follow the end of its rows
     private EndFollow _follow; // whether it does now
@@ -931,21 +934,32 @@ final class Table
     // `tick`), so the eye sees where they go; else, and for a row far off, they are moved now
     private void revealRow(size_t index, double timestampMs)
     {
-        import std.math : isFinite, isNaN;
+        import std.algorithm.comparison : max;
+        import std.math : abs, isFinite, isNaN;
 
-        const distance = _viewport.revealDistance(index);
-        if (distance.isNaN)
-            _viewport.scrollTo(index);
-        else if (distance != 0)
+        const plan = _viewport.revealPlan(index, revealMargin);
+        if (!plan.needed)
+            return;
+        if (plan.top.isNaN)
+            _viewport.scrollToRow(index, plan.dy); // far off: it stands there at once
+        else if (events.needFrame !is null && timestampMs.isFinite)
         {
-            if (events.needFrame !is null && timestampMs.isFinite)
-            {
-                if (_motion.wheel(distance, timestampMs, _store.space.regions.rows.h))
-                    events.needFrame();
-            }
-            else
-                _viewport.scrollBy(distance, _store.fallbackHeight);
+            const distance = plan.top - plan.dy;
+            if (_motion.wheel(distance, timestampMs, max(_store.space.regions.rows.h, abs(distance))))
+                events.needFrame();
         }
+        else
+            _viewport.scrollBy(plan.top - plan.dy, _store.fallbackHeight);
+    }
+
+    /// The row `index` is shown: when it is not in view the rows move so that it stands with `revealMargin` pixels left on the side it came
+    /// from, or at the top of the window if it does not fit with them (see `RowViewport.revealPlan`). With the time of the host the rows glide
+    void reveal(size_t index, double timestampMs = double.nan)
+    {
+        _motion.stop();
+        layout();
+        revealRow(index, timestampMs);
+        invalidate();
     }
 
     // ---- input ----
@@ -2345,6 +2359,45 @@ unittest
     assert(!f.table.isSelected(1_000_000) && f.table.selectedCount > 0, "a row that is not there is not picked");
 }
 
+@("Table.reveal: a row below the window comes in with the margin under it, one above with the margin over it; a row in view stays; a far one jumps there")
+unittest
+{
+    auto f = make(1000, 100, 121); // the window is 100 high, the rows 16
+    f.table.revealMargin = 24;
+    f.table.paint(f.canvas);
+    f.table.reveal(2);
+    f.table.paint(f.canvas);
+    assert(f.table.firstVisible == CellPosition(0, 0, 0, 0), "in view: nothing moves");
+    f.table.reveal(8); // 128: below the window
+    f.table.paint(f.canvas);
+    assert(f.table.firstVisible == CellPosition(4, 0, -4, 0), "row 8 at 60: 100 - 24 - 16, with 24 under it");
+    f.table.reveal(2); // above the window
+    f.table.paint(f.canvas);
+    assert(f.table.firstVisible == CellPosition(0, 0, -8, 0), "row 2 at 24, the margin over it (the first rows are 8 above)");
+    f.table.reveal(500);
+    f.table.paint(f.canvas);
+    assert(f.table.firstVisible == CellPosition(496, 0, -4, 0), "far off below: the same place, by a jump");
+    f.table.reveal(10);
+    f.table.paint(f.canvas);
+    assert(f.table.firstVisible == CellPosition(8, 0, -8, 0), "far off above: row 10 at 24");
+}
+
+@("Table.reveal: a row that does not fit the window with its margin is brought to the top; with no margin set it comes to the edge it came from")
+unittest
+{
+    auto f = make(100, 100, 41); // the window is 20 high: a row of 16 and a margin of 24 do not fit
+    f.table.revealMargin = 24;
+    f.table.paint(f.canvas);
+    f.table.reveal(5);
+    f.table.paint(f.canvas);
+    assert(f.table.firstVisible == CellPosition(5, 0, 0, 0));
+    auto g = make(1000, 100, 121);
+    g.table.paint(g.canvas);
+    g.table.reveal(8); // no margin: the bottom of the row at the bottom of the window
+    g.table.paint(g.canvas);
+    assert(g.table.firstVisible == CellPosition(2, 0, -12, 0), "row 8 ends at 100: 84 + 16");
+}
+
 @("Table: a click on a row taller than the window that covers it does not scroll it, twice or more; one cut at an edge is brought to cover it")
 unittest
 {
@@ -2371,7 +2424,7 @@ unittest
     f.table.mouseDown(30, 21.0 + 2);
     f.table.mouseUp(30, 21.0 + 2);
     f.table.paint(f.canvas);
-    assert(f.table.firstVisible == CellPosition(2, 0, -6, 0), "cut at the top: its bottom comes to the bottom of the window (16 - 10)");
+    assert(f.table.firstVisible == CellPosition(2, 0, 0, 0), "cut at the top: it does not fit, its top comes to the top of the window");
 }
 
 @("Table: a click on a row picks it alone, a click on a picked one too (lets go of nothing), one on another row picks only that")

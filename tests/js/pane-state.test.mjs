@@ -3,7 +3,7 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { noTable, tableStep, paneChanges, anchorEdit, rowLookStep, keptRowStep, searchViewKey, jumpStep, showsRowsOf, wholeRows } from "../../resources/pane-state.js";
+import { noTable, tableStep, paneChanges, anchorEdit, rowLookStep, keptRowStep, searchViewKey, jumpStep, showsRowsOf } from "../../resources/pane-state.js";
 
 const ready = (dataVersion) => ({ status: "ready", dataVersion });
 
@@ -197,24 +197,15 @@ test("searchViewKey: another status, result or progress gives another key", () =
 });
 
 const at = (position) => () => position;
-const screen = { visibleRange: [200, 229], visibleRows: 30 };
 
-test("jumpStep: the row of the message becomes the only one selected, near the top", () => {
-    assert.deepEqual(jumpStep(table(1), ready(1), at(100), screen), { position: 100, top: 98 });
-    assert.deepEqual(jumpStep(table(1), ready(1), at(1), screen), { position: 1, top: 0 }, "no rows above the first");
-    assert.deepEqual(jumpStep(table(1), ready(1), at(0), screen), { position: 0, top: 0 }, "the first row is a position too");
-    assert.deepEqual(jumpStep(table(1), ready(1), at(5), { visibleRange: null, visibleRows: 30 }), { position: 5, top: 3 }, "no rows on screen");
-});
-
-test("jumpStep: a row already on screen is selected where it is", () => {
-    assert.deepEqual(jumpStep(table(1), ready(1), at(200), screen), { position: 200, top: null }, "the first on screen");
-    assert.deepEqual(jumpStep(table(1), ready(1), at(229), screen), { position: 229, top: null }, "the last on screen");
-    assert.equal(jumpStep(table(1), ready(1), at(230), screen).top, 228, "just below");
+test("jumpStep: the row of the message becomes the only one selected", () => {
+    assert.deepEqual(jumpStep(table(1), ready(1), at(100)), { position: 100 });
+    assert.deepEqual(jumpStep(table(1), ready(1), at(0)), { position: 0 }, "the first row is a position too");
 });
 
 test("jumpStep: nowhere to go when the other table doesn't show the message", () => {
-    assert.equal(jumpStep(table(1), ready(1), at(null), screen), null, "not in that view");
-    assert.equal(jumpStep(table(1), ready(1), at(undefined), screen), null, "no answer");
+    assert.equal(jumpStep(table(1), ready(1), at(null)), null, "not in that view");
+    assert.equal(jumpStep(table(1), ready(1), at(undefined)), null, "no answer");
 });
 
 test("jumpStep: nowhere to go while the other table shows a status, the backend isn't asked", () => {
@@ -223,23 +214,23 @@ test("jumpStep: nowhere to go while the other table shows a status, the backend 
     const position = () => { asked.push(1); return 5; };
     const covered = { loaded: true, dataVersion: null };
     for (const status of ["searching", "filtering", "loadingFile", "searchCancelled", "sourceLost"])
-        assert.equal(jumpStep(covered, { status, dataVersion: 1 }, position, screen), null, status);
-    assert.equal(jumpStep(table(1), null, position, screen), null, "no view yet");
-    assert.equal(jumpStep(noTable, ready(1), position, screen), null, "no rows shown yet");
+        assert.equal(jumpStep(covered, { status, dataVersion: 1 }, position), null, status);
+    assert.equal(jumpStep(table(1), null, position), null, "no view yet");
+    assert.equal(jumpStep(noTable, ready(1), position), null, "no rows shown yet");
     assert.equal(asked.length, 0);
 });
 
 test("jumpStep: while a load, a filter or a search fills the other table, it goes to the rows found so far", () => {
     // the content of one dataVersion only grows: a position found now stays right
     for (const status of ["loadingFile", "filtering", "searching"])
-        assert.deepEqual(jumpStep(table(1), { status, dataVersion: 1 }, at(100), screen), { position: 100, top: 98 }, status);
+        assert.deepEqual(jumpStep(table(1), { status, dataVersion: 1 }, at(100)), { position: 100 }, status);
 });
 
 test("jumpStep: nowhere to go while the other table still shows the content being replaced", () => {
     const asked = [];
     const position = () => { asked.push(1); return 5; };
-    assert.equal(jumpStep(table(1), { status: "filtering", dataVersion: 2 }, position, screen), null, "a new filter");
-    assert.equal(jumpStep(table(1), ready(2), position, screen), null, "rebuilt, not reloaded yet");
+    assert.equal(jumpStep(table(1), { status: "filtering", dataVersion: 2 }, position), null, "a new filter");
+    assert.equal(jumpStep(table(1), ready(2), position), null, "rebuilt, not reloaded yet");
     assert.equal(asked.length, 0);
 });
 
@@ -252,21 +243,3 @@ test("showsRowsOf: the rows on screen are of the content of the view", () => {
     assert.equal(showsRowsOf(noTable, ready(1)), false, "nothing shown yet");
     assert.equal(showsRowsOf(table(1), null), false, "no view");
 });
-
-// What the table says of itself (`view` of D: the first and the last row in sight with their offsets, the rows in sight as [first, past the last),
-// the room): the rows wholly in view and how many it has room for
-const viewOf = (first, last, h) => ({ first: { row: first[0], dy: first[1] }, last: { row: last[0], dy: last[1] },
-    rows: [first[0], last[0] + 1], size: { w: 900, h } });
-
-test("the rows wholly in view: the first one cut at the top and the last one cut at the bottom are out", () => {
-    const sixteen = () => 16;
-    assert.deepEqual(wholeRows(viewOf([10, -5], [16, 96], 100), sixteen), { visibleRange: [11, 15], visibleRows: 7 }, "96 + 16 > 100: cut");
-    assert.deepEqual(wholeRows(viewOf([10, 0], [15, 80], 100), sixteen), { visibleRange: [10, 15], visibleRows: 6 }, "the last one ends at 96: whole");
-});
-
-test("the rows wholly in view: none when one row fills or overflows the window, or the table is empty", () => {
-    assert.deepEqual(wholeRows(viewOf([4, -20], [4, -20], 100), () => 300), { visibleRange: null, visibleRows: 1 }, "a row taller than the window");
-    assert.deepEqual(wholeRows({ first: { row: 0, dy: 0 }, last: { row: 0, dy: 0 }, rows: [0, 0], size: { w: 900, h: 100 } }, () => 16),
-        { visibleRange: null, visibleRows: 0 }, "no rows");
-});
-

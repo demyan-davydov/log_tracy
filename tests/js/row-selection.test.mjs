@@ -2,15 +2,7 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { scrollTarget, followDelay, SelectionFollower } from "../../resources/row-selection.js";
-
-test("a row shown from a search result keeps rows above it only if the view has room", () => {
-    assert.equal(scrollTarget(100, 30), 98, "two rows above it");
-    assert.equal(scrollTarget(1, 30), 0, "not above the first row");
-    assert.equal(scrollTarget(100, 5), 99, "a low view: one row");
-    assert.equal(scrollTarget(100, 3), 100, "a very low view: the row itself at the top");
-    assert.equal(scrollTarget(100, 0), 100);
-});
+import { followDelay, SelectionFollower } from "../../resources/row-selection.js";
 
 function fakeTimers() {
     const timers = new Map();

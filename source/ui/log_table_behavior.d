@@ -315,6 +315,8 @@ final class LogTableBehavior : SciterEventHandler
 
         void pickRow(size_t row) { _log.table.pickRow(row); }
 
+        void reveal(size_t row, bool smooth) { _log.table.reveal(row, smooth ? nowMs() : double.nan); }
+
         wstring currentRow()
         {
             import std.json : JSONValue;

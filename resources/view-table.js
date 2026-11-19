@@ -153,11 +153,11 @@ export class ViewTable {
         return this.logTable.followedMessage();
     }
 
-    // Shows the row of message `index` if the view has it: selected, near the top unless it is on screen (jumpStep). The keyboard stays where it is.
+    // Shows the row of message `index` if the view has it: selected, brought into view by the table when it is not (jumpStep). The keyboard stays where it is.
     // Also while a load, a filter or a search fills it: the rows found so far. By the view of the machine, not currentView(): a search view before
     // any search has no rows to look the message up in.
     showMessage(index) {
-        const step = jumpStep(this.shown, this.view, () => this.positionOf(index), this.logTable.visibleRows());
+        const step = jumpStep(this.shown, this.view, () => this.positionOf(index));
         if (step) this.logTable.showRow(step);
     }
 }
@@ -208,10 +208,10 @@ export class MainViewTable extends ViewTable {
     }
 
     // Go to Message: the row of message `index`, or of the first one after it the table shows (hidden by the filters), else its last row: selected,
-    // the keyboard in the table, near the top unless it is on screen (jumpStep); the search table follows it as a click (the panel's).
+    // the keyboard in the table, brought into view when it is not (jumpStep); the search table follows it as a click (the panel's).
     // Nothing while the table shows no rows (a status view covers it). @returns true if it went
     goToMessage(index) {
-        const step = jumpStep(this.shown, this.currentView(), () => backend.mainViewNearestPosition(this.docId, index), this.logTable.visibleRows());
+        const step = jumpStep(this.shown, this.currentView(), () => backend.mainViewNearestPosition(this.docId, index));
         if (!step) return false;
         this.logTable.showRow(step);
         this.logTable.element.state.focus = true;

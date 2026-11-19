@@ -62,6 +62,10 @@ interface TableControl
     /// The height of the row `index`, as text
     wstring rowHeight(size_t index);
 
+    /// The row `row` is shown: when it is not in view it comes in with a margin on the side it came from, or at the top if it does not fit
+    /// (`Table.reveal`); `smooth`: by a glide on the frames, else at once
+    void reveal(size_t row, bool smooth);
+
     /// The row `row` is picked alone, quietly: nobody is told and nothing scrolls (the script scrolls by itself)
     void pickRow(size_t row);
 
@@ -131,6 +135,9 @@ bool dispatch(TableControl control, const(char)[] method, ScriptArgs args, out S
         return true;
     case "view":
         result = ScriptResult.ofText(control.view());
+        return true;
+    case "reveal":
+        control.reveal(cast(size_t) args.number(0), args.number(1) != 0);
         return true;
     case "pickRow":
         control.pickRow(cast(size_t) args.number(0));
@@ -269,6 +276,7 @@ version (unittest)
         wstring view() { calls ~= "view"; return `{"first":{}}`w; }
         wstring rowHeight(size_t index) { calls ~= "rowHeight " ~ index.to!string; return "16"w; }
         void pickRow(size_t row) { calls ~= "pickRow " ~ row.to!string; }
+        void reveal(size_t row, bool smooth) { calls ~= "reveal " ~ row.to!string ~ " " ~ smooth.to!string; }
         wstring currentRow() { calls ~= "currentRow"; return `{"row":3,"id":30}`w; }
         void scrollTo(size_t row, size_t column, double dy, double dx, bool smooth)
         {
@@ -335,7 +343,8 @@ unittest
     assert(dispatch(control, "scrollTo", ScriptArgs([3, 0, 0, 0]), result));
     assert(dispatch(control, "pickRow", ScriptArgs([7]), result) && result.kind == ScriptResult.Kind.nothing);
     assert(dispatch(control, "currentRow", ScriptArgs(), result) && result == ScriptResult.ofText(`{"row":3,"id":30}`w));
-    assert(control.calls == ["view", "rowHeight 5", "scrollTo 12 1 -5 40 true", "scrollTo 3 0 0 0 false", "pickRow 7", "currentRow"]);
+    assert(dispatch(control, "reveal", ScriptArgs([9, 1]), result) && dispatch(control, "reveal", ScriptArgs([4]), result));
+    assert(control.calls == ["view", "rowHeight 5", "scrollTo 12 1 -5 40 true", "scrollTo 3 0 0 0 false", "pickRow 7", "currentRow", "reveal 9 true", "reveal 4 false"]);
 }
 
 @("dispatch: what a call leaves out is the default, a word is 0 and a cell 1, a value that is no number is the default")

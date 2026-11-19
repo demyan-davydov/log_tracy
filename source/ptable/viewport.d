@@ -19,6 +19,14 @@ struct ScrollMetrics
     double position; /// the first item plus the part of it scrolled away, 0 .. total
 }
 
+/// How an item is to be shown (`RowViewport.revealPlan`)
+struct RevealPlan
+{
+    bool needed; /// it is not shown yet
+    double dy = 0; /// where its top is to stand, from the top of the window
+    double top = double.nan; /// where its top stands now; NaN if it is more than two screens off
+}
+
 /// A place of the window to keep when the heights of the rows change (a font, the width of the window): the
 /// row, the point of it (a fraction of its height from its top) and where in the window that point is
 struct ScrollAnchor
@@ -205,74 +213,26 @@ final class RowViewport
         _state = ViewState(index, 0);
     }
 
-    /// How far (pixels, down is positive) the rows are to move to show the item `index` by the least scroll: 0 if it is shown,
-    /// NaN if it is more than two screens off the window (the caller then jumps to it). An item taller than the window is shown when it
-    /// covers the window (there is no more of it to bring in): else the least scroll that makes it cover it, from the side it is cut at
-    /// (a second click on it does not scroll it to its other end)
-    double revealDistance(size_t index)
+    /// How the item `index` is to be shown: whether it has to be, where it is to stand, and where it stands now. Shown already: wholly in the window, or
+    /// taller than the window and covering it (a second click on it does not scroll it). Else it is brought in with `margin` pixels left on the
+    /// side it came from: under it if it came from below, above it if from above; one that does not fit the window with its margin is brought to
+    /// the top of the window. `top`: where it stands now from the top of the window, NaN if it is more than two screens off (the caller jumps to it)
+    RevealPlan revealPlan(size_t index, double margin)
     {
-        foreach (ref slot; _slots)
-            if (slot.index == index)
-            {
-                if (slot.height > _height)
-                {
-                    if (slot.top <= 0 && slot.top + slot.height >= _height)
-                        return 0;
-                    return slot.top > 0 ? slot.top : slot.top + slot.height - _height;
-                }
-                if (slot.top < 0)
-                    return slot.top;
-                return slot.top + slot.height > _height ? slot.top + slot.height - _height : 0;
-            }
-        if (_slots.length == 0)
-            return double.nan;
-        const limit = 2 * _height;
-        const last = _slots[$ - 1], first = _slots[0];
-        if (index > last.index && _heightOf(index) > _height)
+        import std.math : isNaN;
+
+        const height = _heightOf(index);
+        const top = topOf(index);
+        if (!top.isNaN)
         {
-            double top = last.top + last.height; // where the item starts, from the top of the window: it is brought up to it
-            foreach (i; last.index + 1 .. index)
-            {
-                top += _heightOf(i);
-                if (top > _height + limit)
-                    return double.nan;
-            }
-            return top;
+            if (top >= 0 && top + height <= _height)
+                return RevealPlan(false, 0, top);
+            if (height > _height && top <= 0 && top + height >= _height)
+                return RevealPlan(false, 0, top);
         }
-        if (index > last.index)
-        {
-            double distance = max(0.0, last.top + last.height - _height); // what the last item is below the window
-            foreach (i; last.index + 1 .. index + 1)
-            {
-                distance += _heightOf(i);
-                if (distance > limit)
-                    return double.nan;
-            }
-            return distance;
-        }
-        if (index < first.index && _heightOf(index) > _height)
-        {
-            double bottom = first.top; // where the item ends, from the top of the window: it is brought down to the bottom of it
-            foreach (i; index + 1 .. first.index)
-            {
-                bottom -= _heightOf(i);
-                if (bottom < -limit)
-                    return double.nan;
-            }
-            return bottom - _height;
-        }
-        if (index < first.index)
-        {
-            double distance = -first.top; // what the first item is above the window
-            foreach (i; index .. first.index)
-            {
-                distance += _heightOf(i);
-                if (distance > limit)
-                    return double.nan;
-            }
-            return -distance;
-        }
-        return double.nan;
+        const above = top.isNaN ? (_slots.length > 0 && index < _slots[0].index) : top < 0;
+        const fits = height + margin <= _height;
+        return RevealPlan(true, fits ? (above ? margin : _height - margin - height) : 0, top);
     }
 
     /// Shows the item `index` by the least scroll if it is among the items on the screen, or not more than two screens off them
@@ -281,11 +241,11 @@ final class RowViewport
     {
         import std.math : isNaN;
 
-        const distance = revealDistance(index);
-        if (distance.isNaN)
+        const plan = revealPlan(index, 0);
+        if (plan.top.isNaN)
             return false;
-        if (distance != 0)
-            scrollBy(distance, fallbackHeight);
+        if (plan.needed)
+            scrollBy(plan.top - plan.dy, fallbackHeight);
         return true;
     }
 
@@ -532,31 +492,60 @@ unittest
     assert(tall.state == ViewState(9, 110), "a last item taller than the window: its bottom is in view");
 }
 
-@("RowViewport.revealDistance: an item taller than the window is shown when it covers the window; else the least scroll that makes it cover it, from the side it is cut at")
+@("RowViewport.revealPlan: an item is brought in with the margin on the side it came from; one that does not fit goes to the top; one shown is left")
 unittest
 {
     auto view = new RowViewport((size_t i) nothrow => i == 5 ? 250.0 : 20.0); // the window is 100: item 5 is taller
+    view.count = 40;
+    view.height = 100;
+    view.layout(); // items 0..4 fill the window
+    auto plan = view.revealPlan(2, 24);
+    assert(!plan.needed && plan.top == 40, "wholly in the window: shown, margins or not");
+    plan = view.revealPlan(5, 24);
+    assert(plan.needed && plan.dy == 0 && plan.top == 100, "taller than the window: its top goes to the top of the window");
+    view.scrollToRow(10, 70); // item 10 is 70 under the top: wholly in the window, items 8 and 9 above it
+    view.layout();
+    assert(!view.revealPlan(10, 24).needed);
+    plan = view.revealPlan(12, 24); // 70 + 20 + 20 = 110: below the window (100), whole item cut
+    assert(plan.needed && plan.top == 110 && plan.dy == 100 - 24 - 20, "from below: 24 under it");
+    view.scrollToRow(10, 0);
+    view.layout();
+    plan = view.revealPlan(9, 24); // 20 above the top
+    assert(plan.needed && plan.top == -20 && plan.dy == 24, "from above: 24 over it");
+    plan = view.revealPlan(14, 24); // 80: cut at the bottom (80 + 20 = 100: not cut)
+    assert(!plan.needed, "ends at the edge: wholly in");
+    view.scrollToRow(10, -5); // item 10 is cut at the top by 5
+    view.layout();
+    plan = view.revealPlan(10, 24);
+    assert(plan.needed && plan.dy == 24 && plan.top == -5, "cut at the top counts as from above");
+    plan = view.revealPlan(30, 24);
+    assert(plan.needed && plan.top != plan.top && plan.dy == 100 - 24 - 20, "far off below: NaN where it stands, the place to stand is known");
+    plan = view.revealPlan(1, 24);
+    assert(plan.needed && plan.top != plan.top && plan.dy == 24, "far off above");
+    assert(view.revealPlan(16, 0).dy == 80 && view.revealPlan(8, 0).dy == 0, "no margin: at the edge it came from");
+    assert(view.revealPlan(16, 90).dy == 0, "a margin that leaves no room for the item: the top");
+}
+
+@("RowViewport.revealPlan: an item taller than the window that covers it is shown, one that does not is brought to the top")
+unittest
+{
+    auto view = new RowViewport((size_t i) nothrow => i == 5 ? 250.0 : 20.0);
     view.count = 20;
     view.height = 100;
-    view.scrollToRow(5, 50); // item 5 starts at 50
+    view.scrollToRow(5, -60); // 60 of it are above, 190 below the bottom
     view.layout();
-    assert(view.revealDistance(5) == 50, "its top is in the window: the top goes to the top of the window");
+    assert(!view.revealPlan(5, 24).needed, "it covers the window");
     view.scrollToRow(5, 0);
     view.layout();
-    assert(view.revealDistance(5) == 0, "its top at the top of the window: it covers it");
-    view.scrollToRow(5, -60); // 60 of it are above, 190 below the bottom of the window
+    assert(!view.revealPlan(5, 24).needed, "its top at the top of the window: it covers it");
+    view.scrollToRow(5, 50); // starts 50 under the top
     view.layout();
-    assert(view.revealDistance(5) == 0, "it covers the window: nothing to scroll (a second click does not move it)");
-    view.scrollToRow(5, -200); // its last 50 are in the window, at its top
+    auto plan = view.revealPlan(5, 24);
+    assert(plan.needed && plan.dy == 0 && plan.top == 50);
+    view.scrollToRow(5, -200); // its last 50 are in the window
     view.layout();
-    assert(view.revealDistance(5) == -50, "its bottom is in the window: the bottom goes to the bottom of the window");
-    view.scrollToRow(0, 0); // items 0..4 fill the window: item 5 is right below it
-    view.layout();
-    assert(view.revealDistance(5) == 100, "from below: the top of the item comes to the top of the window");
-    view.scrollToRow(8, 0);
-    view.layout();
-    assert(view.revealDistance(5) == -140, "from above (its bottom is 40 above the window): the bottom of the item comes to the bottom of the window");
-    assert(view.revealDistance(7) == -20, "an item that is not taller: as before, its top at the top");
+    plan = view.revealPlan(5, 24);
+    assert(plan.needed && plan.dy == 0 && plan.top == -200, "cut at the top: its top comes to the top of the window");
 }
 
 @("RowViewport.topOf: the top of an item in the window or near it, NaN when it is more than two screens away")

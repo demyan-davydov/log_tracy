@@ -1,14 +1,6 @@
 // What the panel does with a row selected in one log table (the table is D's: ui/log_table_behavior.d tells the row chosen): where the
 // other table shows it, and when. Pure, so it can be tested with node. Tests: tests/js/row-selection.test.mjs.
 
-// The first row to show so that the row `position` is near the top of a view
-// of `visibleRows` rows: up to two rows above it stay visible for context, but
-// only as long as the view is high enough to have room for them
-export function scrollTarget(position, visibleRows) {
-    const above = Math.max(0, Math.min(2, Math.floor((visibleRows - 1) / 3)));
-    return Math.max(0, position - above);
-}
-
 // ── Following the current row in the other table ──────────────────────────
 // A new row selected in one log table is shown in the other one, if that one
 // has it (see jumpStep in pane-state.js). See docs/stories/search-highlight.md.
