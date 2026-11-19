@@ -1725,7 +1725,11 @@ unittest
     import std.experimental.allocator.building_blocks.stats_collector : Options, StatsCollector;
     import std.experimental.allocator.mallocator : Mallocator;
 
-    StatsCollector!(Mallocator, Options.bytesUsed) stats;
+    // Static, not a local: the table and its row window are collected later, and what they finalize
+    // gives the blocks back to the allocator, which counts them in `stats`. On the stack of this test
+    // that is a write into the frame of whatever runs there by then (once a SIGBUS in other tests).
+    static StatsCollector!(Mallocator, Options.bytesUsed) stats;
+    stats = typeof(stats).init;
     auto allocator = allocatorObject(&stats);
     const base = stats.bytesUsed; // the object of the allocator is in it
     auto f = make(1000);
