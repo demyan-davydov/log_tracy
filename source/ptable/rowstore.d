@@ -26,10 +26,12 @@ final class RowStore
     private ColumnSet _columns; // what the model's columns are and where they stand
     private RowCache _cache;
     private Painter _painter;
+    size_t fitRounds; /// the rounds the last `Table.layout` took to settle the widths and the heights (a statistic)
     private double[] _titles; // what the title of each column needs, measured when the columns are read
     private double[] _needs; // what the rows in the window need of each column (`fitToWindow`), kept to allocate once
     private size_t _fitFirst = size_t.max - 1, _fitCount; // the window the widths were fit to
     private bool _fitDirty = true; // something the widths are fit to changed: the rows, the columns, a width set by the user, the fonts
+    private bool _fitNarrow; // the next fit may narrow the columns (the first of a settling)
     private bool _fitting; // `fitToWindow` is changing widths: the layout tells it back
     private TableSpace _space; // the size, the fonts and the regions: the store makes them current, the others read them
 
@@ -177,10 +179,18 @@ final class RowStore
         return layout.visible(_columns.columns[i].def.id) ? _titles[i] : 0;
     }
 
+    /// A new settling of the widths and the heights begins (`Table.layout`): the first fit may narrow the columns
+    void fitRestart()
+    {
+        _fitNarrow = true;
+        fitRounds = 0;
+    }
+
     /// The columns take the width the rows in the window (`slots`, the rows on the screen) need, never less than their titles: a text
     /// that is out of sight no longer holds a column wide. What the user set is not touched; a column no row measured (it wraps, or there
-    /// are no rows) stays. Done when the window, the rows or the columns changed, not at every frame. True if a width changed: the rows
-    /// are laid out again (`growths`).
+    /// are no rows) stays. Done when the window, the rows or the columns changed, not at every frame. The first fit after `fitRestart`
+    /// may narrow a column; the next ones of the same settling only widen (the widths cannot fall back below what an earlier window of
+    /// it needed: the rows laid out by them would not come back to it and go again). True if a width changed: the rows are laid out again.
     bool fitToWindow(const(RowSlot)[] slots)
     {
         const first = slots.length ? slots[0].index : size_t.max;
@@ -192,6 +202,8 @@ final class RowStore
         _fitCount = slots.length;
         if (slots.length == 0)
             return false;
+        const narrow = _fitNarrow;
+        _fitNarrow = false;
         _needs.length = _columns.columns.length;
         _needs[] = 0;
         foreach (slot; slots)
@@ -210,7 +222,9 @@ final class RowStore
             if (_needs[i] <= 0)
                 continue;
             const before = layout.width(id);
-            layout.setFit(id, max(_needs[i], titleFit(i)));
+            const target = max(_needs[i], titleFit(i));
+            if (narrow || target > layout.fitWidth(id))
+                layout.setFit(id, target);
             changed = changed || layout.width(id) != before;
         }
         if (changed)

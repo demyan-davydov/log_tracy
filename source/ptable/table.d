@@ -54,6 +54,7 @@ struct TableStats
     size_t frames; /// paints
     size_t rowsOnScreen;
     size_t first; /// the first item on the screen
+    size_t fitRounds; /// the rounds the last layout took to settle the widths and the heights of the rows
 }
 
 /// What the table tells its host; every one may be left null
@@ -145,7 +146,7 @@ final class Table
 
     TableStats stats()
     {
-        return TableStats(_store.cache.fetches, _store.cache.count, _frame.frames, _viewport.slots.length, _viewport.state.first);
+        return TableStats(_store.cache.fetches, _store.cache.count, _frame.frames, _viewport.slots.length, _viewport.state.first, _store.fitRounds);
     }
 
     /// The size of the table in dips
@@ -299,7 +300,16 @@ final class Table
     private void layout()
     {
         prepare();
-        _viewport.layoutSettled(() { _store.fitToWindow(_viewport.slots); return _store.cache.growths; });
+        // The rows on the screen set the widths of the columns, the widths set the heights of the rows, the heights set which rows are on
+        // the screen: the widths of one settling only widen after the first, so it comes to an end (`RowStore.fitToWindow`)
+        _store.fitRestart();
+        _viewport.layout();
+        enum rounds = 16; // a safeguard: the widths only widen and are bounded
+        while (_store.fitRounds < rounds && _store.fitToWindow(_viewport.slots))
+        {
+            ++_store.fitRounds;
+            _viewport.layout();
+        }
     }
 
     // ---- scrolling ----
@@ -2698,6 +2708,63 @@ unittest
     table.scrollToPosition(CellPosition(50, 0, 0, 0), double.nan);
     table.paint(canvas);
     assert(layout.explicitWidth("n") == 200 && layout.width("n") == 200, "and holds when the text is gone");
+}
+
+@("Table: the widths and the heights of wrapped rows settle: a paint takes a few rounds, the next one asks for nothing, wherever the window stands")
+unittest
+{
+    import ptable.column : CellInput, CellLayout;
+    import ptable.memory : Arena;
+    import ptable.testing : BoxColumn;
+    import std.math : ceil;
+
+    // the flex column wraps: a row is as high as its lines, which the width left by the other column gives
+    static final class Lines : BoxColumn
+    {
+        this(ColumnDef def) { super(def); }
+        override CellLayout layout(ref const CellInput cell, double width, ref Arena arena)
+        {
+            CellLayout done;
+            const lines = ceil((cell.data.text.length * glyph + 2 * pad) / (width > 1 ? width : 1));
+            done.height = 16 * (lines < 1 ? 1 : lines);
+            return done;
+        }
+    }
+
+    static final class Wrapped : NumbersModel
+    {
+        this() { super(300); }
+        override TableColumn[] columns()
+        {
+            auto columns = withBoxes([ColumnDef("n", "N"), ColumnDef("text", "Text", 24, true)]);
+            columns[1] = new Lines(columns[1].def);
+            return columns;
+        }
+        override bool item(size_t index, ref RowData row, const(bool)[] wanted)
+        {
+            const ok = super.item(index, row, wanted);
+            // the first column is wide in some rows only, the second is long everywhere: the wider the first, the higher the rows
+            row.cells[0] = CellData(index % 7 == 0 ? "0123456789012345678901234567890"w : index % 3 == 0 ? "0123456789"w : "0"w);
+            row.cells[1] = CellData("a text of a hundred and twenty characters, long enough to break into lines in any column of this table, as it must be"w);
+            return ok;
+        }
+    }
+
+    auto layout = new ColumnLayout;
+    auto table = new Table(new Wrapped, layout, portsOf(new Painter));
+    table.resize(400, 121);
+    size_t invalidations;
+    table.events.invalidate = () { ++invalidations; };
+    auto canvas = new RecordingCanvas;
+    foreach (row; 0 .. 120)
+    {
+        table.scrollToPosition(CellPosition(row, 0, row % 5 * -3.0, 0), double.nan);
+        table.paint(canvas);
+        assert(table.stats.fitRounds <= 8, "the widths of the window settled");
+        const before = invalidations;
+        table.paint(canvas);
+        assert(invalidations == before && table.stats.fitRounds <= 1, "a paint with nothing changed asks for no other");
+    }
 }
 
 @("Table: the size of the room of the rows, the rows and the cells in sight, and the height of a row")
