@@ -55,7 +55,7 @@ struct ModelChange
 {
     enum Kind : ubyte
     {
-        everything, /// start again: the data, the columns, the count
+        everything, /// start again: the data, the columns, the count; the table is at its top (the columns stay where they are)
         count, /// items were added or removed from `first` on
         rows, /// the items from `first` to `last` (not including) changed, their count did not
         columns, /// the columns changed

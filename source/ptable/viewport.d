@@ -135,6 +135,12 @@ final class RowViewport
         }
     }
 
+    /// What was queued and not applied is dropped (the items are other ones)
+    void dropPending()
+    {
+        _pending = 0;
+    }
+
     /// The window moves by `pixels` (down is positive) at the next `applyPending`; what piled up stays
     /// within a screen
     void queueScroll(double pixels)

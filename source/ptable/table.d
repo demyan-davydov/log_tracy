@@ -249,7 +249,10 @@ final class Table
             setSelection(false);
         if (change.kind == ModelChange.Kind.everything)
         {
-            _viewport.forgetPlace(); // the rows are other ones: the place kept would be a row of the old list
+            _motion.stop(); // the rows are other ones: what coasted along the old ones is over, they start at their top
+            _viewport.forgetPlace(); // the place kept would be a row of the old list
+            _viewport.dropPending();
+            _viewport.scrollToRow(0, 0);
             _newList = true;
         }
         invalidate();
@@ -1844,7 +1847,7 @@ unittest
     assert(table.stats.rowsOnScreen == 6);
 }
 
-@("Table: a new list of rows does not bring back the place kept for the old one")
+@("Table: a new list of rows starts at its top and does not bring back the place kept for the old one")
 unittest
 {
     auto model = new NumbersModel(1000);
@@ -1858,7 +1861,24 @@ unittest
     table.restyle(LookChange.metrics); // keeps the place: row 3
     model.tell(ModelChange(ModelChange.Kind.everything)); // and then a filter replaces the list
     table.paint(new RecordingCanvas);
-    assert(table.stats.first == 500, "the place kept for the old list is not put back");
+    assert(table.stats.first == 0, "the new list starts at its top, not at the place kept (row 3) or where the window was (500)");
+}
+
+@("Table: a new list of rows starts at its top whatever coasted or was queued, the columns stay where they are")
+unittest
+{
+    auto f = make(1000, 100, 121);
+    f.layout.setWidth("n", 70);
+    f.layout.setWidth("text", 150);
+    f.table.paint(f.canvas);
+    f.table.scrollToPosition(CellPosition(400, 1, 0, 40)); // the text column 40 from the left: the columns are 30 sideways
+    f.table.queueScroll(300);
+    f.model.tell(ModelChange(ModelChange.Kind.everything));
+    f.table.paint(f.canvas);
+    assert(f.table.firstVisible == CellPosition(0, 0, 0, -30), "the top of the new rows; the columns were scrolled 30 sideways and stay");
+    f.model.append(5);
+    f.table.paint(f.canvas);
+    assert(f.table.firstVisible.row == 0, "rows that come after stay under the top");
 }
 
 @("Table: a hit right after a resize, before any paint, finds the row by the new size")
@@ -2642,7 +2662,7 @@ unittest
     assert(f.table.isFollowingEnd && f.table.lastVisible.row == 29, "the wheel down to the end");
 }
 
-@("Table: following the end: a new list is read again where the rows stand, a short one follows at once")
+@("Table: following the end: a new list starts at the top and not following, a short one follows at once")
 unittest
 {
     auto f = make(1000, 100, 121);
@@ -2653,12 +2673,7 @@ unittest
     assert(f.table.isFollowingEnd);
     f.model.tell(ModelChange(ModelChange.Kind.everything));
     f.table.paint(f.canvas);
-    assert(f.table.isFollowingEnd && f.table.lastVisible.row == 999, "the window stays where it is: at the end, so following");
-    f.table.scrollToPosition(CellPosition(0, 0, 0, 0));
-    f.table.paint(f.canvas);
-    f.model.tell(ModelChange(ModelChange.Kind.everything));
-    f.table.paint(f.canvas);
-    assert(!f.table.isFollowingEnd && f.table.firstVisible.row == 0, "a new list at the top of a long one: not following");
+    assert(!f.table.isFollowingEnd && f.table.firstVisible.row == 0 && f.table.lastVisible.row < 10, "the rows are other ones: the top, not following");
     f.model.count = 3;
     f.model.tell(ModelChange(ModelChange.Kind.everything));
     f.table.paint(f.canvas);
