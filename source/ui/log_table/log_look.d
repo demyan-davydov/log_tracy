@@ -158,7 +158,7 @@ FontId levelFontOf(ulong rowBits)
 /// and under the plate of the heads of a group of rows
 struct LogSpacing
 {
-    double groupPadTop = 6, groupPadBottom = 1;
+    double groupPadTop = 6, groupPadBottom = 0;
     double payloadPadLeft = 5.33; /// the room left of the Payload text and of its title (4pt), the other columns have the text column's own 3
     double[string] minWidths; /// the least widths of the columns in dips, by the keys of `ui.log_table.column_widths`, times the scale of the text
 }

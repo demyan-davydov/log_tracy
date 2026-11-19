@@ -11,7 +11,7 @@
 
 .log-table-view {
     --group-pad-top: 4.5pt; /* 6dip */
-    --group-pad-bottom: 1dip;
+    --group-pad-bottom: 0; /* the plate reaches the bottom of the margin and covers the line there (the outline of a group) */
     /* the room left of the text of the Payload column and of its title */
     --payload-pad-left: 4pt; /* 5.33dip */
     /* The least widths of the columns, of their content as min-width in CSS: the paddings of the cells and the line between the columns

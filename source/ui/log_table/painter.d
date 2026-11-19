@@ -99,28 +99,31 @@ class LogPainter : Painter
         g.columnBorder = 1; // a line between two columns, as the table of the DOM had
         g.groupHeight = -1; // a date over the rows of its day is a plate as high as the header
         g.groupPadTop = _look.spacing.groupPadTop; // with room above it: the groups stand apart
-        g.groupPadBottom = _look.spacing.groupPadBottom; // the line under the margin, which the plate opens through
+        g.groupPadBottom = _look.spacing.groupPadBottom;
+        g.groupOutline = 1; // a line under the row above a margin and one over the rows of the group, under the plate
         return g;
     }
 
-    // The margin of a group is empty, as a row, between two lines in the color of the borders of the columns: one under
-    // the row above it, one over the rows of the group (the plate of the heads, painted after, covers its part of it)
+    // The margin of a group is empty, as a row
     override void paintGroupBand(Canvas canvas, Rect area)
     {
         canvas.fillRect(area, _palette.groupBand);
-        canvas.fillRect(Rect(area.x, area.y, area.w, 1), _palette.groupLine);
-        canvas.fillRect(Rect(area.x, area.bottom - 1, area.w, 1), _palette.groupLine);
     }
 
-    // A head is a plate in the cell of its column (the table leaves the line right of it out), colored as the header it goes up
-    // to. In the margin it opens onto the rows of its group: under it the line under the margin is the room's ground. Over the
-    // header it covers a title, whose line stays beside it
+    // The lines of a margin in the color of the lines of a group: one under the row above it, one over the rows of the group (the plate of
+    // the heads, painted after, covers its part of it)
+    override void paintGroupOutline(Canvas canvas, Rect area, bool top)
+    {
+        canvas.fillRect(area, _palette.groupLine);
+    }
+
+    // A head is a plate in the cell of its column (the line right of it is apart), colored as the header it goes up to. In the
+    // margin it reaches the bottom and covers the line there (the outline of the group): it opens onto the rows of its group.
+    // Over the header it covers a title, whose line stays beside it
     override void paintGroup(Canvas canvas, ref GroupContext group, bool tableHasFocus)
     {
         const plate = group.cell;
         canvas.fillRect(plate, _palette.groupPlate);
-        if (!group.sticky)
-            canvas.fillRect(Rect(plate.x, plate.bottom, plate.w, geometry().groupPadBottom), _palette.groupBand);
         canvas.pushClip(plate);
         group.column.drawGroup(canvas, GroupInput(group.head), plate); // the head, in the ink and on the back its style gives
         canvas.popClip();
@@ -279,16 +282,20 @@ unittest
     assert(other.calls == ["text:5"], "only the Index cell shows the color");
 }
 
-@("LogPainter: a group's margin has room above its plate, a line over it under the row above and one under it over the rows of the group; the plate, as high as the header, borders a title only over the header")
+@("LogPainter: a group's margin has room above its plate and lines at its top and bottom that take no room; the plate, as high as the header, reaches the bottom")
 unittest
 {
     auto painter = new LogPainter;
     const g = painter.geometry();
     assert(g.groupHeight < 0 && g.groupPadTop > 0, "the plate left to the header font, room above it");
-    assert(g.groupPadBottom == 1, "a pixel under the plate, for the line under the margin");
+    assert(g.groupPadBottom == 0 && g.groupOutline == 1, "no room under the plate: the line at the bottom of the margin is under it");
     auto canvas = new RecordingCanvas;
     painter.paintGroupBand(canvas, Rect(0, 40, 300, 28));
-    assert(canvas.calls == ["fill", "fill", "fill"], "the room as a row, the line under the row above, the line over the rows under");
+    assert(canvas.calls == ["fill"], "the room as a row: the lines are apart");
+    canvas.calls = null;
+    painter.paintGroupOutline(canvas, Rect(0, 40, 300, 1), true);
+    painter.paintGroupOutline(canvas, Rect(0, 67, 300, 1), false);
+    assert(canvas.calls == ["fill", "fill"], "the line under the row above and the one over the rows under");
     canvas.calls = null;
     // a canvas that keeps where it fills
     static final class Areas : Canvas
@@ -304,8 +311,7 @@ unittest
     auto areas = new Areas;
     auto margin = GroupContext("2026/11/18"w, Rect(60, 46, 90, 22), false, new TextColumn(ColumnDef("time", "Time")));
     painter.paintGroup(areas, margin, true);
-    assert(areas.areas == [Rect(60, 46, 90, 22), Rect(60, 68, 90, 1)],
-        "the plate in the cell of its column (the line right of it is not a part of it); under it the line is the room's ground: the plate opens onto its rows");
+    assert(areas.areas == [Rect(60, 46, 90, 22)], "the plate in the cell of its column, down to the bottom of the margin: it covers the line there");
     canvas.calls = null;
     auto sticky = GroupContext("2026/11/18"w, Rect(60, 0, 90, 22), true, new TextColumn(ColumnDef("time", "Time")));
     painter.paintGroup(canvas, sticky, true);
@@ -398,10 +404,11 @@ unittest
     auto painter = new LogPainter(look);
     auto canvas = new Fills;
     painter.paintGroupBand(canvas, Rect(0, 40, 300, 30));
-    auto margin = GroupContext("2026/11/18"w, Rect(60, 46, 90, 23), false, new TextColumn(ColumnDef("time", "Time"), look)); // the column inks its head
+    painter.paintGroupOutline(canvas, Rect(0, 40, 300, 1), true);
+    painter.paintGroupOutline(canvas, Rect(0, 69, 300, 1), false);
+    auto margin = GroupContext("2026/11/18"w, Rect(60, 46, 90, 24), false, new TextColumn(ColumnDef("time", "Time"), look)); // the column inks its head
     painter.paintGroup(canvas, margin, true);
-    assert(canvas.colors == [palette.groupBand, palette.groupLine, palette.groupLine, palette.groupPlate, palette.groupBand,
-        palette.groupInk]);
+    assert(canvas.colors == [palette.groupBand, palette.groupLine, palette.groupLine, palette.groupPlate, palette.groupInk]);
 }
 
 @("LogPainter: the room above and under the plate of a group is the look's spacing")

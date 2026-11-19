@@ -134,6 +134,12 @@ final class FramePainter
             if (e.margin <= 0 || top + e.margin <= rows.y)
                 continue;
             _painter.paintGroupBand(canvas, Rect(rows.x, top, rows.w, e.margin));
+            const outline = min(_space.fonts.geometry.groupOutline, e.margin / 2); // in the room of the margin: it takes none of its own
+            if (outline > 0)
+            {
+                _painter.paintGroupOutline(canvas, Rect(rows.x, top, rows.w, outline), true);
+                _painter.paintGroupOutline(canvas, Rect(rows.x, top + e.margin - outline, rows.w, outline), false);
+            }
             foreach (k; 0 .. groups.length)
             {
                 const column = placeOf(k);
@@ -797,6 +803,43 @@ unittest
     const rows = store.space.regions.rows;
     assert(painter.bands == [Rect(rows.x, rows.y + 48, rows.w, 26)], "the margin of row 3: the room and the plate");
     assert(painter.plates == [Rect(p.columns[0].x, rows.y + 48 + 6, p.columns[0].width, 20)], "the plate at its bottom, in the cell");
+}
+
+@("FramePainter: the lines of a margin are at its top and its bottom, in its room: after the band, before the plates, the margin as high as without them")
+unittest
+{
+    import ptable.testing : DatedModel;
+
+    static final class Outlined : Painter
+    {
+        string[] calls;
+        Rect[] lines;
+        Rect band;
+        override TableGeometry geometry() { TableGeometry g; g.groupHeight = 20; g.groupPadTop = 6; g.groupOutline = 2; return g; }
+        override void paintGroupBand(Canvas canvas, Rect area) { calls ~= "band"; band = area; }
+        override void paintGroupOutline(Canvas canvas, Rect area, bool top) { calls ~= top ? "top" : "bottom"; lines ~= area; }
+        override void paintGroup(Canvas canvas, ref GroupContext group, bool tableHasFocus) { if (!group.sticky) calls ~= "plate"; }
+    }
+
+    auto painter = new Outlined;
+    auto store = new RowStore(new DatedModel(100, 3), new ColumnHost, portsOf(painter));
+    bool widthChanged;
+    store.resize(400, 300, widthChanged);
+    store.ensure();
+    auto frame = new FramePainter(painter, store, new RowView(RowEnv(store.columns, store.space)), store.space);
+    RowSlot[] slots;
+    double top = 0;
+    foreach (i; 0 .. 6)
+    {
+        slots ~= RowSlot(i, top, store.heightOf(i));
+        top += store.heightOf(i);
+    }
+    const none = Picked.init;
+    frame.paint(new RecordingCanvas, slots, store.places(), none);
+    const rows = store.space.regions.rows;
+    assert(painter.band == Rect(rows.x, rows.y + 48, rows.w, 26), "the margin of row 3 as high as without the lines: they take no room");
+    assert(painter.lines == [Rect(rows.x, rows.y + 48, rows.w, 2), Rect(rows.x, rows.y + 48 + 26 - 2, rows.w, 2)], "at its top and its bottom");
+    assert(painter.calls == ["band", "top", "bottom", "plate"], "over the band, under the plate");
 }
 
 @("FramePainter: a head scrolled sideways out of the block of the columns is cut by it, over the header as its title")

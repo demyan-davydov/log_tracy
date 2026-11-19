@@ -69,6 +69,9 @@ struct TableGeometry
     double columnBorder = 0;
     /// The line under each row: a part of the height of its row, under its cells; 0: none
     double rowBorder = 0;
+    /// The lines at the top and at the bottom of the margin of a group (`paintGroupOutline`), across the rows: they take no room of their own,
+    /// they are drawn in the margin over its band and under the plates of the heads, so a plate covers the bottom one in its column; 0: none
+    double groupOutline = 0;
 }
 
 /// A part of the table with no rows in it
@@ -145,6 +148,12 @@ class Painter
 
     /// The margin above the first row of a group, across the rows, before its heads: once a margin
     void paintGroupBand(Canvas canvas, Rect area)
+    {
+    }
+
+    /// A line of the margin of a group (`TableGeometry.groupOutline` high, across the rows): at its top (`top`), under the row above, or at
+    /// its bottom, over the rows of the group; after the band, before the heads
+    void paintGroupOutline(Canvas canvas, Rect area, bool top)
     {
     }
 
