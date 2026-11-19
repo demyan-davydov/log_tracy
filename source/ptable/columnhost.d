@@ -155,8 +155,10 @@ final class ColumnHost
         return _placed;
     }
 
-    /// Settles the widths from `start` (`least` or `fits`): every client lays out its rows by the widths and tells what they need,
-    /// the widths widen until no client asks more; the change is told once, at the end (`LayoutChange.Kind.fit`)
+    /// Settles the widths from `start` (`least` to narrow them, `fits` to only widen them): every client lays out its rows by the widths
+    /// now and tells what they need, a column takes the most of `start` and the needs; while that changed a width, the clients lay out
+    /// again by the new widths and the columns only widen. The change is told once, at the end (`LayoutChange.Kind.fit`); nothing is
+    /// told, nor are the places made again, when the widths came out as they were.
     void settle(const(double)[] start)
     {
         assert(!_settling, "a client settled the host from its measure");
@@ -169,31 +171,31 @@ final class ColumnHost
         _layout.fitting({
             if (start.ptr !is _fits.ptr) // `fits` itself: nothing to copy (and a copy onto itself is not allowed)
                 _fits[] = start[];
-            writeFits();
             while (_rounds < maxRounds)
             {
                 ++_rounds;
                 _needs[] = 0;
                 foreach (ref c; _clients)
                     c.client.measure(_needs);
-                bool widened;
                 foreach (i, need; _needs)
-                    if (need > _fits[i])
-                    {
-                        _fits[i] = need;
-                        widened = true;
-                    }
-                if (!widened)
+                    _fits[i] = max(_fits[i], need);
+                if (!writeFits())
                     break;
-                writeFits();
             }
         });
     }
 
-    private void writeFits()
+    // Gives the layout the widths of `_fits`; true if one changed
+    private bool writeFits()
     {
+        bool changed;
         foreach (i, ref column; _columns)
-            _layout.setFit(column.id, _fits[i]);
+            if (_layout.fitWidth(column.id) != _fits[i])
+            {
+                _layout.setFit(column.id, _fits[i]);
+                changed = true;
+            }
+        return changed;
     }
 
     private size_t find(ColumnClient client) const

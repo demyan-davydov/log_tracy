@@ -1,33 +1,34 @@
-//! A table's two ears: its model and its layout, and the listening to them while it lives, let go of when it is
+//! A table's two ears: its model and its column host (the layout and the room of the columns), and the listening to them while it lives, let go of when it is
 //! disposed. Pure.
 module ptable.subscriptions;
 
-import ptable.layout : ColumnLayout, LayoutChange;
+import ptable.columnhost : ColumnHost;
+import ptable.layout : LayoutChange;
 import ptable.model : ModelChange, TableModel;
 
 struct Subscriptions
 {
     private TableModel _model;
-    private ColumnLayout _layout;
+    private ColumnHost _host;
     private size_t _modelHandle, _layoutHandle;
     private bool _listening;
 
-    /// The ears of `model` and `layout`; they hear nothing before `listen`
-    this(TableModel model, ColumnLayout layout)
+    /// The ears of `model` and `host` (its layout and its room); they hear nothing before `listen`
+    this(TableModel model, ColumnHost host)
     {
         _model = model;
-        _layout = layout;
+        _host = host;
     }
 
     TableModel model() { return _model; }
-    ColumnLayout layout() { return _layout; }
+    ColumnHost host() { return _host; }
 
     /// Listens to the model and the layout
     void listen(void delegate(const ModelChange) onModel, void delegate(const LayoutChange) onLayout)
     {
         detach(); // a second listen does not leave the first one listening
         _modelHandle = _model.subscribe(onModel);
-        _layoutHandle = _layout.subscribe(onLayout);
+        _layoutHandle = _host.subscribe(onLayout);
         _listening = true;
     }
 
@@ -37,7 +38,7 @@ struct Subscriptions
         if (!_listening)
             return;
         _model.unsubscribe(_modelHandle);
-        _layout.unsubscribe(_layoutHandle);
+        _host.unsubscribe(_layoutHandle);
         _listening = false;
     }
 }
@@ -50,8 +51,8 @@ unittest
 
     auto model = new NumbersModel(5);
     auto layout = new ColumnLayout;
-    auto ears = Subscriptions(model, layout);
-    assert(ears.model is model && ears.layout is layout);
+    auto ears = Subscriptions(model, new ColumnHost(layout));
+    assert(ears.model is model && ears.host.layout is layout);
     ears.detach(); // nothing listened to
     int heardModel, heardLayout;
     ears.listen((const ModelChange c) { ++heardModel; }, (const LayoutChange c) { ++heardLayout; });

@@ -292,6 +292,7 @@ final class FramePainter
 version (unittest)
 {
     import ptable.layout : ColumnLayout;
+    import ptable.columnhost : ColumnHost;
     import ptable.model : NumbersModel, TableModel;
     import ptable.painter : CellContext, RecordingCanvas, RowContext, TableGeometry;
     import ptable.ports : Color, FontId;
@@ -328,7 +329,7 @@ version (unittest)
         Frame f;
         f.painter = new Noting;
         f.layout = new ColumnLayout;
-        f.store = new RowStore(new NumbersModel(rows), f.layout, portsOf(f.painter));
+        f.store = new RowStore(new NumbersModel(rows), new ColumnHost(f.layout), portsOf(f.painter));
         bool widthChanged;
         f.store.resize(400, 200, widthChanged);
         f.store.ensure();
@@ -388,7 +389,7 @@ unittest
     }
 
     auto painter = new Hovering;
-    auto store = new RowStore(new NumbersModel(10), new ColumnLayout, portsOf(painter));
+    auto store = new RowStore(new NumbersModel(10), new ColumnHost, portsOf(painter));
     bool widthChanged;
     store.resize(400, 200, widthChanged);
     store.ensure();
@@ -450,7 +451,7 @@ unittest
     }
 
     auto f = frameOf(10);
-    f.store = new RowStore(new Marked(10, &f.painter.calls), f.layout, portsOf(f.painter));
+    f.store = new RowStore(new Marked(10, &f.painter.calls), new ColumnHost(f.layout), portsOf(f.painter));
     bool widthChanged;
     f.store.resize(400, 200, widthChanged);
     f.store.ensure();
@@ -539,7 +540,7 @@ unittest
 
     auto painter = new Margined;
     auto layout = new ColumnLayout;
-    auto store = new RowStore(new NumbersModel(10), layout, portsOf(painter));
+    auto store = new RowStore(new NumbersModel(10), new ColumnHost(layout), portsOf(painter));
     bool widthChanged;
     store.resize(400, 121, widthChanged);
     layout.setWidth("n", 60);
@@ -624,7 +625,7 @@ version (unittest)
     {
         GroupFrame f;
         f.painter = new Groups;
-        f.store = new RowStore(model, layout !is null ? layout : new ColumnLayout, portsOf(f.painter));
+        f.store = new RowStore(model, new ColumnHost(layout !is null ? layout : new ColumnLayout), portsOf(f.painter));
         bool widthChanged;
         f.store.resize(width, 300, widthChanged);
         f.store.ensure();
@@ -701,7 +702,7 @@ unittest
     }
 
     auto painter = new Padded;
-    auto store = new RowStore(new DatedModel(100, 3), new ColumnLayout, portsOf(painter));
+    auto store = new RowStore(new DatedModel(100, 3), new ColumnHost, portsOf(painter));
     bool widthChanged;
     store.resize(400, 300, widthChanged);
     store.ensure();
@@ -728,9 +729,9 @@ unittest
 
     auto layout = new ColumnLayout;
     auto f = groupFrameOf(new DatedModel(100, 3), layout, 60); // narrower than the columns: they scroll
-    f.paint(0, 0); // the rows are seen: the columns grow
+    f.paint(0, 0);
+    f.store.host.settle(f.store.host.least); // the titles widen the columns (no table here settles them)
     layout.setScrollX(15);
-    f.store.columns.invalidatePlaces(); // no table here hears the layout
     f.store.ensure();
     f.p = &f.store.places();
     const rows = f.store.space.regions.rows, header = f.store.space.regions.header;
@@ -768,7 +769,7 @@ unittest
 
     auto painter = new Rows;
     auto layout = new ColumnLayout;
-    auto store = new RowStore(new DatedModel(100, 3), layout, portsOf(painter));
+    auto store = new RowStore(new DatedModel(100, 3), new ColumnHost(layout), portsOf(painter));
     bool widthChanged;
     store.resize(400, 300, widthChanged);
     layout.setPin("time", Pin.left);

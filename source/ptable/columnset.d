@@ -1,12 +1,12 @@
 //! The columns a table shows now: the column objects the model gave, their titles, which one is the flex
-//! one, which are wanted (visible), and where they stand for a width. Placements are made again only
-//! when the layout, the width or the columns changed. Free of the table: what the table does with them
-//! (the row cache, the painter) is its own.
+//! one, which are wanted (visible), and what of their placements (made by the column host for all its
+//! tables) a cell is found by. Free of the table: what the table does with them (the row cache, the
+//! painter) is its own.
 module ptable.columnset;
 
 version (unittest) import ptable.testing : withBoxes;
 import ptable.column : TableColumn;
-import ptable.layout : ColumnDef, ColumnLayout, Placement, Placements, placeColumns;
+import ptable.layout : ColumnDef, ColumnLayout, Placement, Placements;
 import ptable.model : CellData;
 
 import std.conv : to;
@@ -21,11 +21,6 @@ final class ColumnSet
     private bool[] _wanted;
     private bool _wantedDirty = true;
     private bool _stale = true; // the model's columns are to be read again
-    private Placements _placed;
-    private uint _placedRevision;
-    private double _placedWidth = -1;
-    private double _placedOrigin = 0;
-    private bool _placedValid;
     private Placement[] _selectable;
 
     this(ColumnLayout layout)
@@ -61,14 +56,7 @@ final class ColumnSet
             if (def.flex)
                 _flexDef = i;
         }
-        _placedValid = false;
         _wantedDirty = true;
-    }
-
-    /// The placements are made again at the next ask (the width of the table changed)
-    void invalidatePlaces()
-    {
-        _placedValid = false;
     }
 
     /// The columns, in the order of the model
@@ -115,20 +103,6 @@ final class ColumnSet
         _wantedDirty = true;
     }
 
-    /// The place of the columns in a viewport of `width` whose left edge is `originX` from the table's
-    ref const(Placements) places(double width, double originX = 0)
-    {
-        if (!_placedValid || _placedRevision != _layout.revision || _placedWidth != width || _placedOrigin != originX)
-        {
-            _placed = placeColumns(_columns, _layout, width, originX);
-            _placedOrigin = originX;
-            _placedRevision = _layout.revision;
-            _placedWidth = width;
-            _placedValid = true;
-        }
-        return _placed;
-    }
-
     /// The width the flex column has in `p`, 0 with none
     double flexWidth(ref const Placements p) const
     {
@@ -165,6 +139,8 @@ final class ColumnSet
 
 version (unittest)
 {
+    import ptable.layout : placeColumns;
+
     private TableColumn[] sample()
     {
         auto mark = ColumnDef("mark", "M", 20);
@@ -184,19 +160,6 @@ unittest
     assert(set.title(1).text == "Alpha");
 }
 
-@("ColumnSet: the placements are kept until the width, the layout or the columns change")
-unittest
-{
-    auto layout = new ColumnLayout;
-    auto set = new ColumnSet(layout);
-    set.refresh(sample());
-    const first = set.places(300).columns.ptr;
-    assert(set.places(300).columns.ptr is first, "kept");
-    assert(set.flexWidth(set.places(300)) > 0);
-    layout.setVisible("a", false);
-    assert(set.places(300).columns.length == 2, "a hidden column is not placed");
-}
-
 @("ColumnSet: the model is asked for the visible columns only; the selectable ones skip the marks")
 unittest
 {
@@ -212,7 +175,7 @@ unittest
     assert(set.wanted(changed) == [true, false, true] && changed);
     layout.setVisible("a", true);
     set.visibilityChanged();
-    const p = set.places(300);
+    const p = placeColumns(set.columns, layout, 300);
     assert(set.selectable(p).length == 2 && set.selectable(p)[0].id == "a");
     assert(set.columnAt(p, 5) == 0 && set.columnAt(p, 10_000) == 2);
     assert(set.idOf(1) == "a" && set.idOf(2) == "text" && set.idOf(3) == "", "no column: no id");

@@ -133,14 +133,14 @@ unittest
 @("TableSelection: the rows given are what is copied when no text is selected")
 unittest
 {
-    import ptable.layout : ColumnLayout;
+    import ptable.layout : ColumnLayout, placeColumns;
     import ptable.columnset : ColumnSet;
     import ptable.model : NumbersModel;
 
     auto model = new NumbersModel(10);
     auto columns = new ColumnSet(new ColumnLayout);
     columns.refresh(model.columns());
-    const p = columns.places(300);
+    const p = placeColumns(columns.columns, new ColumnLayout, 300);
     auto picked = new TableSelection(new RowCopier(model, columns, tabbed), null);
     assert(picked.copyText(null, p, true, null) == ""w, "no rows");
     assert(picked.copyText(null, p, true, [RowRange(2, 2), RowRange(4, 5)]) == "2\trow 2\n4\trow 4\n5\trow 5"w);

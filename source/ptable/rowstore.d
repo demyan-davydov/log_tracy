@@ -7,8 +7,9 @@ module ptable.rowstore;
 version (unittest) import ptable.testing : portsOf;
 import std.algorithm.comparison : max;
 import ptable.column : GroupInput, TableColumn;
+import ptable.columnhost : ColumnClient, ColumnHost;
 import ptable.columnset : ColumnSet;
-import ptable.layout : ColumnLayout, LayoutChange, Placements;
+import ptable.layout : ColumnDef, ColumnLayout, LayoutChange, Placements;
 import ptable.memory : mallocAllocator;
 import ptable.model : ModelChange, TableModel;
 import ptable.painter : CellContext, Painter;
@@ -20,28 +21,31 @@ import ptable.tableports : TablePorts;
 
 import std.experimental.allocator : RCIAllocator;
 
-final class RowStore
+final class RowStore : ColumnClient
 {
     private Subscriptions _ears; // the model and the layout, and the listening to them
     private ColumnSet _columns; // what the model's columns are and where they stand
     private RowCache _cache;
     private Painter _painter;
-    size_t fitRounds; /// the rounds the last `Table.layout` took to settle the widths and the heights (a statistic)
+    private const(RowSlot)[] delegate() _window; // lays out the rows on the screen by the widths now and gives them (the table's)
     private double[] _titles; // what the title of each column needs, measured when the columns are read
-    private double[] _needs; // what the rows in the window need of each column (`fitToWindow`), kept to allocate once
+    private double[] _needs; // what the rows in the window need of each column (`measure`), kept to allocate once
     private size_t _fitFirst = size_t.max - 1, _fitCount; // the window the widths were fit to
     private bool _fitDirty = true; // something the widths are fit to changed: the rows, the columns, a width set by the user, the fonts
-    private bool _fitNarrow; // the next fit may narrow the columns (the first of a settling)
-    private bool _fitting; // `fitToWindow` is changing widths: the layout tells it back
     private TableSpace _space; // the size, the fonts and the regions: the store makes them current, the others read them
 
-    this(TableModel model, ColumnLayout layout, TablePorts ports)
+    /// The rows of `model` in the columns of `host`; `window` lays out the rows on the screen by the widths of the host now and gives
+    /// them (null: no window, the titles only are measured)
+    this(TableModel model, ColumnHost host, TablePorts ports, const(RowSlot)[] delegate() window = null)
     {
-        _ears = Subscriptions(model, layout);
+        _window = window;
+        _ears = Subscriptions(model, host);
+        auto layout = host.layout;
         _painter = ports.painter;
         _space.restyle(_painter);
         _columns = new ColumnSet(layout);
         _cache = new RowCache(model, layout, ports.memory.isNull ? mallocAllocator() : ports.memory);
+        host.attach(this);
     }
 
     /// The room the rows have: read only, made current by `ensure`
@@ -57,7 +61,8 @@ final class RowStore
     }
 
     TableModel model() { return _ears.model; }
-    ColumnLayout layout() { return _ears.layout; }
+    ColumnHost host() { return _ears.host; }
+    ColumnLayout layout() { return _ears.host.layout; }
     ColumnSet columns() { return _columns; }
     RowCache cache() { return _cache; }
 
@@ -74,19 +79,20 @@ final class RowStore
         _ears.listen(onModel, onLayout);
     }
 
-    /// Lets go of the model and the layout, and of the memory of the rows now, not when the collector gets to them
+    /// Lets go of the model and the host (the other tables of the host settle without it), and of the memory of the rows now, not
+    /// when the collector gets to them
     void dispose()
     {
         _ears.detach();
+        host.detach(this);
         _cache.release();
     }
 
-    /// The look changed (the metrics): what the texts needed in width is forgotten, the painter's geometry, the
-    /// fonts and the columns are read again
+    /// The look changed (the metrics): the painter's geometry, the fonts and the columns are read again, and the widths are fit
+    /// anew (from the least ones: what the texts needed in the old fonts is not kept)
     void restyle()
     {
         _fitDirty = true;
-        layout.resetFit();
         _space.restyle(_painter);
         _columns.markStale();
     }
@@ -114,8 +120,10 @@ final class RowStore
     /// The layout told a change; true if the cells the text is picked by have moved
     bool layoutChanged(const LayoutChange change)
     {
-        if (!_fitting && change.kind == LayoutChange.Kind.width)
-            _fitDirty = true; // a width set by the user: a scroll, a pin or a visibility is no change of what the widths are fit to
+        if (change.kind == LayoutChange.Kind.width)
+            _fitDirty = true; // a width set by the user: a fit of the host, a scroll, a pin or a visibility is no change of what they are fit to
+        if (change.kind == LayoutChange.Kind.fit)
+            _cache.fitted();
         if (change.kind == LayoutChange.Kind.visibility)
             _columns.visibilityChanged(); // the model need not format what is hidden
         return change.kind == LayoutChange.Kind.visibility || change.kind == LayoutChange.Kind.pin;
@@ -128,16 +136,16 @@ final class RowStore
         const refreshed = _space.refresh();
         if (refreshed.fontsLoaded)
             _columns.markStale();
-        if (refreshed.regionsMade)
-            _columns.invalidatePlaces();
+        bool regionsMade = refreshed.regionsMade;
         bool columnsRefreshed;
         if (_columns.stale)
         {
             columnsRefreshed = true;
             refreshColumns();
-            if (_space.refresh().regionsMade) // the header may have grown to the font of a title
-                _columns.invalidatePlaces();
+            regionsMade = _space.refresh().regionsMade || regionsMade; // the header may have grown to the font of a title
         }
+        if (regionsMade)
+            host.resize(this, _space.regions.rows.w); // the room of the columns is the host's: the least its tables have
         bool wantedChanged;
         const wanted = _columns.wanted(wantedChanged);
         if (wantedChanged)
@@ -162,15 +170,16 @@ final class RowStore
             tallest = max(tallest, column.measureHeader().height, column.measureGroup(GroupInput.init).height);
         _space.fitHeader(tallest);
         _cache.configure(_columns.columns, _columns.flexIndex, _space.fonts.geometry);
-        // the titles are a minimum of the widths too (and the border of the column)
+        // the titles are a minimum of the widths too (and the border of the column): told to the host with what the rows need
         _titles.length = _columns.columns.length;
+        auto defs = new ColumnDef[_columns.columns.length];
         foreach (i, column; _columns.columns)
         {
             const title = column.measureHeader();
             _titles[i] = !column.def.flex && title.maxWidth > 0 ? title.maxWidth + 1 : 0; // and the border of the column
-            if (layout.visible(column.def.id) && _titles[i] > 0)
-                layout.grow(column.def.id, _titles[i]);
+            defs[i] = column.def;
         }
+        host.setColumns(defs);
     }
 
     // What the title of column `i` needs; 0 for the flex column, a hidden one and a column with no title
@@ -179,35 +188,29 @@ final class RowStore
         return layout.visible(_columns.columns[i].def.id) ? _titles[i] : 0;
     }
 
-    /// A new settling of the widths and the heights begins (`Table.layout`): the first fit may narrow the columns
-    void fitRestart()
-    {
-        _fitNarrow = true;
-        fitRounds = 0;
-    }
-
-    /// The columns take the width the rows in the window (`slots`, the rows on the screen) need, never less than their titles: a text
-    /// that is out of sight no longer holds a column wide. What the user set is not touched; a column no row measured (it wraps, or there
-    /// are no rows) stays. Done when the window, the rows or the columns changed, not at every frame. The first fit after `fitRestart`
-    /// may narrow a column; the next ones of the same settling only widen (the widths cannot fall back below what an earlier window of
-    /// it needed: the rows laid out by them would not come back to it and go again). True if a width changed: the rows are laid out again.
-    bool fitToWindow(const(RowSlot)[] slots)
+    /// What the host is to settle the widths from for the rows on the screen (`slots`): its least widths when the window moved to other
+    /// rows or something the widths are fit to changed (the rows, the columns, a width set by the user, the fonts), its fits when the
+    /// window only got lower or higher (a bar came or went, the table was resized: the widths only widen, else the bar would come and
+    /// go), null when nothing changed. The settling is done at the change, not at every frame.
+    const(double)[] fitStart(const(RowSlot)[] slots)
     {
         const first = slots.length ? slots[0].index : size_t.max;
         if (!_fitDirty && first == _fitFirst && slots.length == _fitCount)
-            return false;
+            return null;
+        return _fitDirty || first != _fitFirst ? host.least : host.fits;
+    }
+
+    /// The rows on the screen laid out by the widths of the host now, and what they and the titles need of each column of the host
+    /// (`ColumnClient`): a text out of sight no longer holds a column wide, a column no row measured (it wraps) needs its title only
+    void measure(double[] needs)
+    {
+        const slots = _window !is null ? _window() : null;
         ensure();
-        // The columns narrow when the window moved to other rows or the rows changed; a window that only got lower or higher (the bar of
-        // the columns came or went, the table was resized) keeps the widths it has and only widens them: else the bar would come and go
-        const moved = _fitDirty || first != _fitFirst;
         _fitDirty = false;
-        _fitFirst = first;
+        _fitFirst = slots.length ? slots[0].index : size_t.max;
         _fitCount = slots.length;
-        if (slots.length == 0)
-            return false;
-        const narrow = _fitNarrow && moved;
-        _fitNarrow = false;
-        _needs.length = _columns.columns.length;
+        const columns = _columns.columns;
+        _needs.length = columns.length;
         _needs[] = 0;
         foreach (slot; slots)
         {
@@ -215,30 +218,18 @@ final class RowStore
             if (e.valid)
                 _cache.needs(*e, _needs);
         }
-        _fitting = true;
-        scope (exit)
-            _fitting = false;
-        bool changed;
-        foreach (i, column; _columns.columns)
+        foreach (i, column; columns)
         {
-            const id = column.def.id;
-            if (_needs[i] <= 0)
-                continue;
-            const before = layout.width(id);
-            const target = max(_needs[i], titleFit(i));
-            if (narrow || target > layout.fitWidth(id))
-                layout.setFit(id, target);
-            changed = changed || layout.width(id) != before;
+            const at = host.indexOf(column.def.id); // the host's columns are these (one list), unless another table read new ones first
+            if (at < needs.length)
+                needs[at] = max(needs[at], _needs[i], titleFit(i));
         }
-        if (changed)
-            _cache.fitted();
-        return changed;
     }
 
     /// The place of the columns: made again only when the layout, the width or the columns changed
     ref const(Placements) places()
     {
-        return _columns.places(_space.regions.rows.w, _space.regions.rows.x);
+        return host.places(_space.regions.rows.x);
     }
 
     /// The row `index` of the pass, read if the pass has not read it. The caller has brought the store up to date (`ensure`, which
@@ -275,7 +266,7 @@ version (unittest)
     import ptable.model : NumbersModel;
     private RowStore storeOf(TableModel model, ColumnLayout layout)
     {
-        auto store = new RowStore(model, layout, portsOf(new Painter));
+        auto store = new RowStore(model, new ColumnHost(layout), portsOf(new Painter));
         bool widthChanged;
         store.resize(400, 200, widthChanged);
         return store;
@@ -329,7 +320,7 @@ unittest
     assert(store.model is model && store.layout is layout);
 }
 
-@("RowStore: the widths narrow only when the window moved or the rows changed, not when only its height changed or the layout scrolled")
+@("RowStore: the host settles from the least widths when the window moved or the rows changed, from the fits when only its height changed, not at all when the layout scrolled")
 unittest
 {
     import ptable.model : CellData, NumbersModel, RowData;
@@ -355,37 +346,56 @@ unittest
         return slots;
     }
 
-    auto layout = new ColumnLayout;
-    auto store = storeOf(new LongRow, layout);
+    RowSlot[] window;
+    auto host = new ColumnHost;
+    auto store = new RowStore(new LongRow, host, portsOf(new Painter), () => cast(const(RowSlot)[]) window);
+    bool widthChanged;
+    store.resize(400, 200, widthChanged);
     store.ensure();
-    store.fitRestart();
-    assert(store.fitToWindow(rows(0, 7)), "row 3 is in the window: the column grows to its text");
-    const wide = layout.fitWidth("n");
-    assert(wide > 400);
-    store.fitRestart();
-    store.fitToWindow(rows(0, 2));
-    assert(layout.fitWidth("n") == wide, "the window got lower (a bar came, the window was made smaller): the rows are the same ones, no narrowing");
+    void show(size_t first, size_t count)
+    {
+        window = rows(first, count);
+        if (auto start = store.fitStart(window))
+            host.settle(start);
+    }
+
+    assert(store.fitStart(rows(0, 7)) is host.least, "nothing fit yet: from the least widths");
+    show(0, 7);
+    const wide = host.layout.width("n");
+    assert(wide > 400, "row 3 is in the window: the column grows to its text");
+    assert(store.fitStart(rows(0, 2)) is host.fits, "the window got lower (a bar came, the window was made smaller): the same rows, only widened");
+    show(0, 2);
+    assert(host.layout.width("n") == wide, "no narrowing");
+    show(0, 7);
     const column = cast(BoxColumn) store.columns.columns[0];
-    store.fitRestart();
-    store.fitToWindow(rows(0, 7));
     const measured = column.measures;
     store.layoutChanged(LayoutChange(LayoutChange.Kind.scroll, ""));
-    store.fitRestart();
-    store.fitToWindow(rows(0, 7));
+    show(0, 7);
     assert(column.measures == measured, "a scroll of the layout is no change of what the widths are fit to: nothing measured again");
-    store.fitRestart();
-    assert(store.fitToWindow(rows(5, 7)) && layout.fitWidth("n") < wide, "the window moved: the column narrows to the rows now in it");
+    assert(store.fitStart(rows(5, 7)) is host.least, "the window moved: from the least widths");
+    show(5, 7);
+    assert(host.layout.width("n") < wide, "the column narrows to the rows now in it");
 }
 
-@("RowStore: a change of the layout says the pick is lost when the cells moved, and a restyle forgets the fitted widths")
+@("RowStore: a change of the layout says the pick is lost when the cells moved; a restyle and a width set by the user fit the widths anew")
 unittest
 {
-    auto layout = new ColumnLayout;
-    auto store = storeOf(new NumbersModel(10), layout);
+    auto host = new ColumnHost;
+    auto store = new RowStore(new NumbersModel(10), host, portsOf(new Painter));
+    bool widthChanged;
+    store.resize(400, 200, widthChanged);
     assert(store.layoutChanged(LayoutChange(LayoutChange.Kind.visibility, "n")));
     assert(store.layoutChanged(LayoutChange(LayoutChange.Kind.pin, "n")));
     assert(!store.layoutChanged(LayoutChange(LayoutChange.Kind.width, "n")));
-    layout.grow("n", 90);
+    store.ensure();
+    host.settle(host.least);
+    assert(store.fitStart(null) is null, "settled: nothing to do");
     store.restyle();
-    assert(layout.width("n") == 0 && store.columns.stale, "the fitted width is forgotten");
+    assert(store.fitStart(null) is host.least && store.columns.stale, "the fonts changed: from the least widths, the columns read again");
+    host.settle(host.least);
+    store.layoutChanged(LayoutChange(LayoutChange.Kind.width, "n"));
+    assert(store.fitStart(null) is host.least, "a width set by the user");
+    host.settle(host.least);
+    store.layoutChanged(LayoutChange(LayoutChange.Kind.fit, ""));
+    assert(store.fitStart(null) is null, "a fit of the host is no change of what the widths are fit to");
 }

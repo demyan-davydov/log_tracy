@@ -106,12 +106,12 @@ final class RowCopier
 @("RowCopier: the rows of ranges, one per line, in their order, none past the end or virtual, and no more than the limit")
 unittest
 {
-    import ptable.layout : ColumnLayout;
+    import ptable.layout : ColumnLayout, placeColumns;
 
     auto model = new NumbersModel(10);
     auto columns = new ColumnSet(new ColumnLayout);
     columns.refresh(model.columns());
-    const p = columns.places(300);
+    const p = placeColumns(columns.columns, new ColumnLayout, 300);
     auto copier = new RowCopier(model, columns, tabbed);
     assert(copier.ofRows([RowRange(1, 2), RowRange(4, 4)], null, p, true) == "1\trow 1\n2\trow 2\n4\trow 4"w);
     assert(copier.ofRows([RowRange(8, 20)], null, p, true) == "8\trow 8\n9\trow 9"w, "the rows the model has");
@@ -123,7 +123,7 @@ unittest
 @("RowCopier: the text of one cell by its row and column of the model, none for a row or a column that is not there")
 unittest
 {
-    import ptable.layout : ColumnLayout;
+    import ptable.layout : ColumnLayout, placeColumns;
 
     auto model = new NumbersModel(10);
     auto copier = new RowCopier(model, new ColumnSet(new ColumnLayout), tabbed);
@@ -134,13 +134,13 @@ unittest
 @("RowCopier: a row is its selectable cells with tabs between, a range is its rows")
 unittest
 {
-    import ptable.layout : ColumnLayout;
+    import ptable.layout : ColumnLayout, placeColumns;
     import ptable.selection : Position, Selection, textRange;
 
     auto model = new NumbersModel(5);
     auto columns = new ColumnSet(new ColumnLayout);
     columns.refresh(model.columns());
-    const p = columns.places(300);
+    const p = placeColumns(columns.columns, new ColumnLayout, 300);
     auto copier = new RowCopier(model, columns, tabbed);
     assert(copier.ofRow(3, null, p, true) == "3\trow 3"w);
     assert(copier.cellsOf(99, null, p) is null, "no such item");
@@ -151,14 +151,14 @@ unittest
 @("RowCopier: a cell with a head is its body, or its full text for a whole cell when asked")
 unittest
 {
-    import ptable.layout : ColumnLayout;
+    import ptable.layout : ColumnLayout, placeColumns;
     import ptable.selection : Position, Selection, textRange;
     import ptable.testing : DatedModel;
 
     auto model = new DatedModel(10, 3);
     auto columns = new ColumnSet(new ColumnLayout);
     columns.refresh(model.columns());
-    const p = columns.places(300);
+    const p = placeColumns(columns.columns, new ColumnLayout, 300);
     auto copier = new RowCopier(model, columns, tabbed);
     assert(copier.ofRow(4, null, p, false) == "t4\trow 4"w);
     assert(copier.ofRow(4, null, p, true) == "d1 t4\trow 4"w);
@@ -169,13 +169,13 @@ unittest
 @("RowCopier: a row is read once for the copy of rows, and a single row over the limit is cut, not dropped")
 unittest
 {
-    import ptable.layout : ColumnLayout;
+    import ptable.layout : ColumnLayout, placeColumns;
     import ptable.testing : DatedModel;
 
     auto model = new DatedModel(10, 3);
     auto columns = new ColumnSet(new ColumnLayout);
     columns.refresh(model.columns());
-    const p = columns.places(300);
+    const p = placeColumns(columns.columns, new ColumnLayout, 300);
     auto copier = new RowCopier(model, columns, tabbed);
     copier.ofRows([RowRange(2, 4)], null, p, true);
     assert(model.reads[2] == 1 && model.reads[3] == 1 && model.reads[4] == 1, "one read of the model for each");

@@ -5,6 +5,7 @@ module ptable.scrolledtable;
 
 version (unittest) import ptable.testing : portsOf;
 import ptable.layout : ColumnLayout;
+import ptable.columnhost : ColumnHost;
 import ptable.ports;
 import ptable.rowpicks : Pick;
 import ptable.scrollbar : Orientation, ScrollBar;
@@ -210,7 +211,7 @@ version (unittest)
 unittest
 {
     auto model = new NumbersModel(1000);
-    auto table = new Table(model, new ColumnLayout, portsOf(new Painter));
+    auto table = new Table(model, new ColumnHost, portsOf(new Painter));
     auto scrolled = new ScrolledTable(table, new ScrollBar);
     scrolled.resize(410, 121);
     auto canvas = new RecordingCanvas;
@@ -229,7 +230,7 @@ unittest
 unittest
 {
     auto layout = new ColumnLayout;
-    auto table = new Table(new NumbersModel(1000), layout, portsOf(new Painter));
+    auto table = new Table(new NumbersModel(1000), new ColumnHost(layout), portsOf(new Painter));
     auto scrolled = new ScrolledTable(table, new ScrollBar, new ScrollBar);
     int frames;
     scrolled.events.invalidate = () { ++frames; };
@@ -258,7 +259,7 @@ unittest
 unittest
 {
     auto layout = new ColumnLayout;
-    auto table = new Table(new NumbersModel(1000), layout, portsOf(new Painter));
+    auto table = new Table(new NumbersModel(1000), new ColumnHost(layout), portsOf(new Painter));
     auto scrolled = new ScrolledTable(table, new ScrollBar, new ScrollBar);
     scrolled.resize(210, 121);
     auto canvas = new RecordingCanvas;

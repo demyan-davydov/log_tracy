@@ -8,6 +8,7 @@ module ptable.table;
 
 version (unittest) import ptable.testing : portsOf, withBoxes;
 import ptable.column : TableColumn;
+import ptable.columnhost : ColumnHost;
 import ptable.columnset;
 import ptable.endfollow : EndFollow, EndStep;
 import ptable.layout;
@@ -123,12 +124,13 @@ final class Table
     private bool _newList = true; // the rows are other ones (or not yet any): the mode is read anew at the next paint
     private bool _toldFollowing; // what the host was told of the mode last
 
+    private size_t _fitRounds; // the rounds the settling of the widths of the last layout took, 0 if it settled none (a statistic)
     private RowPicker _picker; // the rows picked and how the input picks them, the text selected, the press and the copy
     private ScrollMotion _motion; // the scrolls on the host's frames: a drag past the rows, the wheel's step, the coast
 
-    this(TableModel model, ColumnLayout layout, TablePorts ports)
+    this(TableModel model, ColumnHost host, TablePorts ports)
     {
-        _store = new RowStore(model, layout, ports);
+        _store = new RowStore(model, host, ports, &measureWindow);
         _picker = new RowPicker(new TableSelection(new RowCopier(model, _store.columns, ports.copyFormat), ports.clipboard),
             PickPorts(&isVirtualItem, &rowAtHeight, &showRow, &toldRow, &invalidate));
         _viewport = new RowViewport(&_store.heightOf);
@@ -139,7 +141,7 @@ final class Table
         _store.listen((const ModelChange change) { modelChanged(change); }, (const LayoutChange change) { layoutChanged(change); });
     }
 
-    /// Lets go of the model and the layout (a table that is dropped must be disposed first)
+    /// Lets go of the model and the host (a table that is dropped must be disposed first)
     void dispose()
     {
         _store.dispose(); // the memory goes back to the source now, not when the collector gets to the table
@@ -147,7 +149,7 @@ final class Table
 
     TableStats stats()
     {
-        return TableStats(_store.cache.fetches, _store.cache.count, _frame.frames, _viewport.slots.length, _viewport.state.first, _store.fitRounds);
+        return TableStats(_store.cache.fetches, _store.cache.count, _frame.frames, _viewport.slots.length, _viewport.state.first, _fitRounds);
     }
 
     /// The size of the table in dips
@@ -266,6 +268,8 @@ final class Table
 
     private void layoutChanged(const LayoutChange change)
     {
+        if (change.kind == LayoutChange.Kind.room)
+            _viewport.keepPlace(anchorPolicy); // the flex column is as wide as the room: the wrapped rows change their heights
         if (_store.layoutChanged(change))
             setSelection(false); // the cells the text is picked by have moved
         invalidate();
@@ -296,21 +300,27 @@ final class Table
         return _store.entry(index);
     }
 
-    // Lays out the rows on the screen: a row seen may widen a column and narrow the flex one, then the rows
-    // are laid out again
+    // Lays out the rows on the screen; when they are other rows (or other ones may stand on the screen), the host settles the widths of
+    // the columns for its tables, this one among them (`measureWindow`): the rows seen set the widths, the widths set the heights of the
+    // rows, the heights set which rows are seen (`ColumnHost.settle`)
     private void layout()
     {
         prepare();
-        // The rows on the screen set the widths of the columns, the widths set the heights of the rows, the heights set which rows are on
-        // the screen: the widths of one settling only widen after the first, so it comes to an end (`RowStore.fitToWindow`)
-        _store.fitRestart();
         _viewport.layout();
-        enum rounds = 16; // a safeguard: the widths only widen and are bounded
-        while (_store.fitRounds < rounds && _store.fitToWindow(_viewport.slots))
+        _fitRounds = 0;
+        if (auto start = _store.fitStart(_viewport.slots))
         {
-            ++_store.fitRounds;
-            _viewport.layout();
+            _store.host.settle(start);
+            _fitRounds = _store.host.rounds;
         }
+    }
+
+    // The rows on the screen laid out by the widths of the host now: what a settling of the host measures of this table
+    private const(RowSlot)[] measureWindow()
+    {
+        prepare();
+        _viewport.layout();
+        return _viewport.slots;
     }
 
     // ---- scrolling ----
@@ -1194,7 +1204,7 @@ version (unittest)
         f.layout = new ColumnLayout;
         f.clipboard = new FakeClipboard;
         f.canvas = new RecordingCanvas;
-        f.table = new Table(f.model, f.layout, portsOf(new Painter, f.clipboard));
+        f.table = new Table(f.model, new ColumnHost(f.layout), portsOf(new Painter, f.clipboard));
         f.table.resize(width, height);
         return f;
     }
@@ -1274,7 +1284,7 @@ unittest
     auto f = make(2, 400, 300);
     f.model = null;
     auto model = new ClickableModel(2);
-    auto table = new Table(model, f.layout, portsOf(new Painter, f.clipboard));
+    auto table = new Table(model, new ColumnHost(f.layout), portsOf(new Painter, f.clipboard));
     table.resize(400, 300);
     table.paint(f.canvas);
     assert(table.pointerAt(5, 21 + 3) == PointerKind.hand, "the first column: clickable");
@@ -1288,7 +1298,7 @@ unittest
 {
     auto f = make(5, 400, 200);
     auto model = new ClickableModel(5);
-    auto table = new Table(model, f.layout, portsOf(new Painter, f.clipboard));
+    auto table = new Table(model, new ColumnHost(f.layout), portsOf(new Painter, f.clipboard));
     table.resize(400, 200);
     table.paint(f.canvas);
     size_t clickedRow = size_t.max, clickedColumn = size_t.max;
@@ -1391,7 +1401,7 @@ unittest
 
     auto f = make(100, 400, 200);
     auto spy = new Spy;
-    auto table = new Table(f.model, f.layout, portsOf(spy, f.clipboard));
+    auto table = new Table(f.model, new ColumnHost(f.layout), portsOf(spy, f.clipboard));
     table.resize(400, 200);
     auto canvas = new RecordingCanvas;
     table.paint(canvas);
@@ -1506,7 +1516,7 @@ unittest
     f.table.scrollTo(990);
     f.table.paint(f.canvas);
     assert(f.layout.width("n") > before, "three digits are wider than one");
-    auto other = new Table(f.model, f.layout, portsOf(new Painter));
+    auto other = new Table(f.model, new ColumnHost(f.layout), portsOf(new Painter));
     other.resize(400, 121);
     other.paint(f.canvas);
     assert(f.layout.width("n") >= before, "the second table does not shrink what the first grew");
@@ -1564,7 +1574,7 @@ unittest
 
     auto model = new NumbersModel(1000);
     auto painter = new Padded;
-    auto table = new Table(model, new ColumnLayout, portsOf(painter));
+    auto table = new Table(model, new ColumnHost, portsOf(painter));
     table.resize(400, 200);
     table.paint(new RecordingCanvas);
     assert(painter.seen == ["above", "below", "footer"]);
@@ -1593,7 +1603,7 @@ unittest
         void unsubscribe(size_t h) {}
     }
 
-    auto table = new Table(new WithDays, new ColumnLayout, portsOf(new Painter));
+    auto table = new Table(new WithDays, new ColumnHost, portsOf(new Painter));
     table.resize(200, 200);
     table.paint(new RecordingCanvas);
     table.select(0);
@@ -1636,7 +1646,7 @@ unittest
     }
 
     auto painter = new Reading;
-    auto table = new Table(new Marked, new ColumnLayout, portsOf(painter));
+    auto table = new Table(new Marked, new ColumnHost, portsOf(painter));
     table.resize(400, 121);
     table.paint(new RecordingCanvas);
     assert(painter.rows[0] == 0xABCD00 && painter.rows[4] == 0xABCD04);
@@ -1703,7 +1713,7 @@ unittest
         void popClip() {}
     }
 
-    auto table = new Table(new Fixed, new ColumnLayout, portsOf(new Grouping));
+    auto table = new Table(new Fixed, new ColumnHost, portsOf(new Grouping));
     auto canvas = new Null;
     static void noFrame() {}
     import std.functional : toDelegate;
@@ -1762,7 +1772,7 @@ unittest
     auto f = make(1000);
     auto ports = portsOf(new Painter);
     ports.memory = allocator;
-    auto table = new Table(f.model, new ColumnLayout, ports);
+    auto table = new Table(f.model, new ColumnHost, ports);
     table.resize(400, 121);
     table.paint(f.canvas);
     assert(stats.bytesUsed > base, "the rows are kept in the host's memory");
@@ -1788,7 +1798,7 @@ unittest
 
     auto model = new Spy;
     auto layout = new ColumnLayout;
-    auto table = new Table(model, layout, portsOf(new Painter));
+    auto table = new Table(model, new ColumnHost(layout), portsOf(new Painter));
     table.resize(400, 121);
     table.paint(new RecordingCanvas);
     assert(model.lastWanted == [true, true]);
@@ -1813,7 +1823,7 @@ unittest
     }
 
     auto painter = new Counting;
-    auto table = new Table(new NumbersModel(100), new ColumnLayout, portsOf(painter));
+    auto table = new Table(new NumbersModel(100), new ColumnHost, portsOf(painter));
     int repaints;
     table.events.invalidate = () { ++repaints; };
     table.resize(400, 200);
@@ -1848,7 +1858,7 @@ unittest
     }
 
     auto model = new Fixed;
-    auto table = new Table(model, new ColumnLayout, portsOf(new Painter));
+    auto table = new Table(model, new ColumnHost, portsOf(new Painter));
     table.resize(400, 200);
     table.paint(new RecordingCanvas);
     size_t looks(size_t i) { return (cast(Counting) model.fixed[i]).looks; }
@@ -1865,7 +1875,7 @@ unittest
 unittest
 {
     auto model = new NumbersModel(1000);
-    auto table = new Table(model, new ColumnLayout, portsOf(new Painter));
+    auto table = new Table(model, new ColumnHost, portsOf(new Painter));
     table.resize(400, 200);
     table.paint(new RecordingCanvas);
     table.scrollTo(500);
@@ -1898,7 +1908,7 @@ unittest
     }
 
     auto model = new NumbersModel(1000);
-    auto table = new Table(model, new ColumnLayout, portsOf(new Auto));
+    auto table = new Table(model, new ColumnHost, portsOf(new Auto));
     table.resize(400, 200);
     table.paint(new RecordingCanvas);
     // header 14 + 2 * (1 + 2) = 20; rows of 16: 180 px hold 11 and a quarter
@@ -1914,7 +1924,7 @@ unittest
 unittest
 {
     auto model = new NumbersModel(1000);
-    auto table = new Table(model, new ColumnLayout, portsOf(new Painter));
+    auto table = new Table(model, new ColumnHost, portsOf(new Painter));
     table.anchorPolicy = (const(RowSlot)[] slots) => ScrollAnchor(true, 3, 0, 0); // a place that is not where the window is
     table.resize(400, 200);
     table.paint(new RecordingCanvas);
@@ -2152,7 +2162,7 @@ unittest
     }
 
     auto model = new DatedModel(100, 3);
-    auto table = new Table(model, new ColumnLayout, portsOf(new Grouping, null));
+    auto table = new Table(model, new ColumnHost, portsOf(new Grouping, null));
     table.resize(400, 200);
     table.paint(new RecordingCanvas);
     // header 21; row 0 (no margin: its head is in the header) 21..37; rows 1, 2 to 69; row 3: a margin 69..89, the row 89..105
@@ -2175,7 +2185,7 @@ unittest
     }
 
     auto painter = new Seen;
-    auto table = new Table(new DatedModel(0, 3), new ColumnLayout, portsOf(painter, null));
+    auto table = new Table(new DatedModel(0, 3), new ColumnHost, portsOf(painter, null));
     table.resize(400, 200);
     table.paint(new RecordingCanvas);
     assert(painter.calls == ["title", "title"], "the titles, no head");
@@ -2185,7 +2195,7 @@ unittest
 unittest
 {
     auto model = new NumbersModel(100);
-    auto table = new Table(model, new ColumnLayout, portsOf(new Painter));
+    auto table = new Table(model, new ColumnHost, portsOf(new Painter));
     table.resize(400, 200);
     table.paint(new RecordingCanvas);
     table.selectBetween(4, 21 + 5, 30, 21 + 5);
@@ -2200,7 +2210,7 @@ unittest
     import ptable.testing : DatedModel;
 
     auto clipboard = new FakeClipboard;
-    auto table = new Table(new DatedModel(100, 3), new ColumnLayout, portsOf(new Painter, clipboard));
+    auto table = new Table(new DatedModel(100, 3), new ColumnHost, portsOf(new Painter, clipboard));
     table.resize(400, 200);
     table.paint(new RecordingCanvas);
     assert(table.selectAt(5, 21 + 5 + 16 * 4, false)); // the time cell of row 4
@@ -2221,7 +2231,7 @@ unittest
         override TableGeometry geometry() { TableGeometry g; g.groupHeight = 20; return g; }
     }
 
-    auto table = new Table(new DatedModel(100, 3), new ColumnLayout, portsOf(new Grouping, null));
+    auto table = new Table(new DatedModel(100, 3), new ColumnHost, portsOf(new Grouping, null));
     table.resize(400, 200); // rows 21..200: row 0 21..37, 1, 2 to 69; row 3 a margin 69..89, the row 89..105; ...
     table.paint(new RecordingCanvas);
     table.mouseDown(5, 25); // the time of row 0
@@ -2255,7 +2265,7 @@ unittest
         override TableGeometry geometry() { TableGeometry g; g.groupHeight = 20; return g; }
     }
 
-    auto table = new Table(new DatedModel(100, 3), new ColumnLayout, portsOf(new Grouping, null));
+    auto table = new Table(new DatedModel(100, 3), new ColumnHost, portsOf(new Grouping, null));
     table.events.needFrame = () {};
     table.resize(400, 200);
     auto canvas = new RecordingCanvas;
@@ -2295,7 +2305,7 @@ unittest
         override TableGeometry geometry() { TableGeometry g; g.groupHeight = 20; return g; }
     }
 
-    auto table = new Table(new DatedModel(3000, 3), new ColumnLayout, portsOf(new Grouping, null));
+    auto table = new Table(new DatedModel(3000, 3), new ColumnHost, portsOf(new Grouping, null));
     table.events.needFrame = () {};
     table.resize(400, 300);
     auto canvas = new RecordingCanvas;
@@ -2332,7 +2342,7 @@ unittest
     }
 
     auto painter = new Margined;
-    auto table = new Table(new NumbersModel(100), new ColumnLayout, portsOf(painter));
+    auto table = new Table(new NumbersModel(100), new ColumnHost, portsOf(painter));
     table.resize(400, 121);
     table.paint(new RecordingCanvas);
     assert(painter.rowAreas[0].x == 20 && painter.rowAreas[0].w == 370, "a row spans the block between the margins");
@@ -2613,7 +2623,7 @@ unittest
     }
 
     auto marks = new Marks;
-    auto table = new Table(new NumbersModel(100), new ColumnLayout, portsOf(marks, null));
+    auto table = new Table(new NumbersModel(100), new ColumnHost, portsOf(marks, null));
     table.resize(400, 121);
     table.paint(new RecordingCanvas);
     assert(marks.focused.length == 0, "no row is current yet");
@@ -2698,7 +2708,7 @@ unittest
 
     auto model = new LongModel;
     auto layout = new ColumnLayout;
-    auto table = new Table(model, layout, portsOf(new Painter));
+    auto table = new Table(model, new ColumnHost(layout), portsOf(new Painter));
     table.resize(400, 121); // 7 rows
     auto canvas = new RecordingCanvas;
     table.paint(canvas);
@@ -2768,7 +2778,7 @@ unittest
     }
 
     auto layout = new ColumnLayout;
-    auto table = new Table(new Wrapped, layout, portsOf(new Painter));
+    auto table = new Table(new Wrapped, new ColumnHost(layout), portsOf(new Painter));
     table.resize(400, 121);
     size_t invalidations;
     table.events.invalidate = () { ++invalidations; };
@@ -2782,6 +2792,110 @@ unittest
         table.paint(canvas);
         assert(invalidations == before && table.stats.fitRounds <= 1, "a paint with nothing changed asks for no other");
     }
+}
+
+version (unittest)
+{
+    // Rows whose first column shows `level` (the level of a log: a long name in one table, a short one in another)
+    private final class Levels : NumbersModel
+    {
+        wstring level;
+        this(size_t count, wstring level)
+        {
+            super(count);
+            this.level = level;
+        }
+
+        override bool item(size_t index, ref RowData row, const(bool)[] wanted)
+        {
+            const ok = super.item(index, row, wanted);
+            if (ok)
+                row.cells[0] = CellData(level);
+            return ok;
+        }
+    }
+
+    private enum longLevel = "a level of a long name"w, shortLevel = "info"w;
+
+    // How wide the column "n" of a table alone with rows of `level` is
+    private double aloneWidth(wstring level)
+    {
+        auto host = new ColumnHost;
+        auto table = new Table(new Levels(100, level), host, portsOf(new Painter));
+        table.resize(400, 121);
+        table.paint(new RecordingCanvas);
+        return host.layout.width("n");
+    }
+}
+
+@("Table: two tables of one host settle the widths together: a column is as wide as the table that needs it most, and the paints come to rest")
+unittest
+{
+    const wide = aloneWidth(longLevel), narrow = aloneWidth(shortLevel);
+    assert(wide > narrow);
+    auto host = new ColumnHost;
+    auto main = new Table(new Levels(100, longLevel), host, portsOf(new Painter));
+    auto search = new Table(new Levels(1, shortLevel), host, portsOf(new Painter)); // the search after an anchor: one row
+    main.resize(400, 121);
+    search.resize(400, 60);
+    size_t asked;
+    main.events.invalidate = () { ++asked; };
+    search.events.invalidate = () { ++asked; };
+    auto canvas = new RecordingCanvas;
+    foreach (round; 0 .. 3)
+    {
+        main.paint(canvas);
+        search.paint(canvas);
+    }
+    assert(host.layout.width("n") == wide, "the column is as wide as the table that needs it most");
+    const before = asked;
+    main.paint(canvas);
+    search.paint(canvas);
+    assert(asked == before, "the paints came to rest: no table asks for another (the hang of an anchor set)");
+    assert(host.layout.width("n") == wide);
+}
+
+@("Table: tables of one host place the columns in the least room of theirs: a wider one shows them as the narrower does")
+unittest
+{
+    import ptable.viewport : ScrollMetrics;
+
+    auto host = new ColumnHost;
+    auto wide = new Table(new NumbersModel(10), host, portsOf(new Painter));
+    auto narrow = new Table(new NumbersModel(10), host, portsOf(new Painter));
+    ScrollMetrics wideX, narrowX;
+    wide.events.scrolledX = (ScrollMetrics m) { wideX = m; };
+    narrow.events.scrolledX = (ScrollMetrics m) { narrowX = m; };
+    wide.resize(400, 121);
+    narrow.resize(300, 121);
+    auto canvas = new RecordingCanvas;
+    foreach (round; 0 .. 2)
+    {
+        wide.paint(canvas);
+        narrow.paint(canvas);
+    }
+    assert(narrowX.visible == 300 && wideX.visible == 300, "the room of the columns is the least of the two");
+    assert(wideX.total == narrowX.total, "the columns are as wide in both");
+}
+
+@("Table: a disposed table of a host gives up what it needed: the column of the other narrows at once and it is painted again")
+unittest
+{
+    const narrow = aloneWidth(shortLevel);
+    auto host = new ColumnHost;
+    auto main = new Table(new Levels(100, shortLevel), host, portsOf(new Painter));
+    auto search = new Table(new Levels(5, longLevel), host, portsOf(new Painter));
+    main.resize(400, 121);
+    search.resize(400, 60);
+    auto canvas = new RecordingCanvas;
+    main.paint(canvas);
+    search.paint(canvas);
+    assert(host.layout.width("n") > narrow, "the search holds the column wide");
+    size_t asked;
+    main.events.invalidate = () { ++asked; };
+    search.dispose();
+    assert(host.layout.width("n") == narrow, "the column narrows to the rows of the main table");
+    assert(asked > 0, "the main table is painted again");
 }
 
 @("Table: the host says whether the table has the focus: a change repaints, the same again does not, and every hook of the painter is told")
@@ -2800,7 +2914,7 @@ unittest
 
     auto painter = new Telling;
     auto layout = new ColumnLayout;
-    auto table = new Table(new NumbersModel(20), layout, portsOf(painter));
+    auto table = new Table(new NumbersModel(20), new ColumnHost(layout), portsOf(painter));
     table.resize(400, 121);
     size_t invalidations;
     table.events.invalidate = () { ++invalidations; };

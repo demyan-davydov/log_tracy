@@ -1,6 +1,6 @@
 //! What the rows in the window need of the widths of the columns (a minimum, as in the table of the DOM): what each cell and each head
 //! of a group measures (`TableColumn.measure`, `measureGroup`), a column that wraps not at all. The columns take that width as it is now
-//! (`RowStore.fitToWindow`): it grows and narrows with the rows in sight. `growths` counts the widths changed, so a layout made before
+//! (`RowStore.measure`, settled by `ColumnHost.settle`): it grows and narrows with the rows in sight. `growths` counts the widths changed, so a layout made before
 //! one is made again. See docs/stories/painted-table.md.
 module ptable.rowgrow;
 

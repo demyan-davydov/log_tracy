@@ -203,6 +203,7 @@ version (unittest)
 {
     private immutable RowRanges none;
     import ptable.layout : ColumnLayout;
+    import ptable.columnhost : ColumnHost;
     import ptable.model : TableModel;
     import ptable.painter : Painter, TableGeometry;
     import ptable.rowview : RowEnv;
@@ -226,7 +227,7 @@ version (unittest)
     private Rig rigOf(TableModel model, Painter painter)
     {
         Rig rig;
-        rig.store = new RowStore(model, new ColumnLayout, portsOf(painter));
+        rig.store = new RowStore(model, new ColumnHost, portsOf(painter), () { rig.viewport.layout(); return rig.viewport.slots; });
         bool widthChanged;
         rig.store.resize(400, 200, widthChanged);
         rig.viewport = new RowViewport(&rig.store.heightOf);
@@ -236,10 +237,9 @@ version (unittest)
         rig.viewport.height(rig.store.space.regions.rows.h);
         rig.viewport.count(rig.store.itemCount);
         rig.viewport.restorePlace();
-        rig.store.fitRestart();
         rig.viewport.layout();
-        while (rig.store.fitToWindow(rig.viewport.slots))
-            rig.viewport.layout();
+        if (auto start = rig.store.fitStart(rig.viewport.slots))
+            rig.store.host.settle(start);
         return rig;
     }
 }

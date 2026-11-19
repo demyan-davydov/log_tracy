@@ -178,7 +178,7 @@ unittest
     cache.setFlexWidth(200);
     cache.heightOf(5);
     cache.entry(5);
-    assert(cache.growths == 0 && layout.width("time") == 0, "the rows that are read set no width: the window does (RowStore.fitToWindow)");
+    assert(cache.growths == 0 && layout.width("time") == 0, "the rows that are read set no width: the window does (RowStore.measure, ColumnHost.settle)");
 }
 
 @("RowGeometry: the ring grows at once and shrinks only when four times less would do, so a window at the edge of a size does not make it anew")

@@ -212,6 +212,7 @@ unittest
 {
     import ptable.lookchange : LookChange;
     import ptable.painter : Painter, RecordingCanvas;
+    import ptable.columnhost : ColumnHost;
     import ptable.table : Table;
     import ptable.testing : portsOf;
     import ptable_text.testing : styleOf;
@@ -229,7 +230,7 @@ unittest
     }
 
     auto model = new Switch(1000);
-    auto table = new Table(model, new ColumnLayout, portsOf(new Painter, null));
+    auto table = new Table(model, new ColumnHost, portsOf(new Painter, null));
     table.resize(70, 121); // the flex column is left with room for a few glyphs: "row 5" wraps
     auto canvas = new RecordingCanvas;
     table.paint(canvas);
