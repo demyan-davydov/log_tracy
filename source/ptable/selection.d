@@ -1,5 +1,5 @@
 //! The text selected across the cells and rows of a log table (prototype of
-//! docs/experiments/2026-11-19-painted-rows-d.md): the D port of resources/text-selection.js. Pure,
+//! docs/experiments/2026-11-19-painted-rows-d.md): the D port of the script's selection (removed). Pure,
 //! no Sciter.
 //!
 //! A selection is an anchor (where the drag began) and a focus (where the mouse is now). A

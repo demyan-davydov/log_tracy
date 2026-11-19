@@ -22,7 +22,7 @@ MainWindow (ui/main_window)                Sciter window: xcall bridge to the se
 resources/script.js, tabs.js               the window: tabs, placeholder, settings, backend callbacks
 resources/document-pane.js                 a panel per document: its parts (view-table: the two tables,
                                            filter-panel, search-bar) and status-view
-resources/virtual-dlt-view.js              virtual table built from the column schema
+resources/log-table-view.js                 the log table of a view: the element of the behavior `log-table`, its menus, gestures and clipboard
 ```
 
 ## Packages
@@ -380,13 +380,13 @@ Until the move is done the text code (wrapping, line layout, text hit tests, col
   an anchor adds or takes out the row of its message in place under the same version, while
   the view grows too. The script learns it from the answer of `setAnchor` (`rows`) or from
   `onAnchorApplied`, which the session queues before the view events of the same round
-  (`AppSession.takeScriptCalls`): the table edits that row (`followAnchor`) before it counts
+  (`AppSession.takeScriptCalls`): the table reads that row again (`anchorApplied`) before it counts
   the rows the view grew by.
 
 ## If You Need X, Start Here (backend)
 
 - Opening a file, tabs, views, search, settings as the script sees them: `ui/app_session`
-- The xcall dispatch, table rows as Sciter values: `ui/main_window`, `ui/table_rows`; the
+- The xcall dispatch: `ui/main_window`; the columns as JSON: `ui/columns_json`; the
   value of each column of a record by its kind, for any reader: `log_core/column_values`
 - Columns of the table for a document: `ui/table_columns`, `log_core/column_layout`
 - Settings model and recent files: `ui/app_settings`, `ui/recent_files`

@@ -8,8 +8,8 @@ typography) in `docs/ui-guidelines.md`.
 
 ## Red Flag: Heavy Work per Table Row
 
-Anything done per row of a log table (`getMainViewItem` / `getSearchViewItem`, `writeRow`,
-rule matching, match ranges, the script's row rendering) is hot: a fast scroll renders very
+Anything done per row of a log table (reading the row from the document, the cells of its columns,
+rule matching, match ranges, drawing) is hot: a fast scroll renders very
 many rows. Keep it cheap:
 
 - skip work entirely when nothing needs it (no matcher, no search: null, not computed);
@@ -44,5 +44,4 @@ mentioned, not applied.
 
 ## Text Selection in Tables
 
-No `selectable` in a log table: Sciter can't select over a virtual-list. The table selects text
-itself (`resources/text-selection.js`).
+No `selectable` in a log table: it is drawn by D, which selects text itself (`ptable`: `selection`, `rowhits`).

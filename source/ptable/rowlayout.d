@@ -1,5 +1,5 @@
 //! The layout of the rows a table draws itself (prototype of docs/experiments/2026-11-19-painted-rows-d.md),
-//! the D port of resources/paint-layout.js: the rows on a screen from (first, offset), scrolling by pixels, the
+//! the D port of a script prototype (removed): the rows on a screen from (first, offset), scrolling by pixels, the
 //! thumb of the scrollbar. Pure: no Sciter; the heights come in as delegates.
 module ptable.rowlayout;
 

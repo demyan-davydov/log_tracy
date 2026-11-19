@@ -7,6 +7,10 @@ Written at the end of the sessions of 2026-11-18/19 (four sessions), kept in the
 
 - Branch `row-paint-d`, worktree `.claude/worktrees/row-paint-d-7a60b4` of `/Users/demiandavidov/prj/log_tracy`; working tree clean; nothing merged or
   pushed. The main checkout is on `row-pool-squash` (another task: do not touch it, nor `row-paint-proto`, `mcp`, `mcp-squash`).
+- **State after the fifth session (the old table is gone):** the log table of D (`ui/log_table_behavior`, `LogTableView` in `resources/log-table-view.js`) is the
+  table of every panel; the DOM table (`virtual-dlt-view.js`, `virtual-select.js`, `painted-table.js` and what only they used, the row xcalls
+  `getMainViewItem` and the like, `ui/table_rows`) is deleted. The other table follows the row chosen, Go to Message works, a table at its end follows
+  it (rule 30), a new list starts at its top. Open: the anchors and the rendering remarks of the owner (docs/backlog.md), the SIGBUS of the whole run.
 - **Step 10 is done** (fifth session): the package `source/ptable_text/` (`columnstyle`, `measurer` (`TextMeasurer`, `FontMetrics`), `wrap` (`LineSpan`, `wrapLines`,
   `glyphWidth`, `firstLineWidth`), `wordpick` (`caretAt`, `charAt`, `wordAt`, `wholeText`), `texthit` (`TextSpot`, `caretInText`, `rectsInText`, `unitInText`), `textcell` (`TextCell`: the text
   column the log's `TextColumn` extends), `testing` (`FakeMeasurer`, `Sized`, `TestText`, `withText`, `styleOf`), `rowtests`); the owner's decisions: `Canvas` keeps `drawText`/`drawParagraph`/`FontId`

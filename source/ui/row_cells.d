@@ -1,5 +1,5 @@
 //! The texts of the cells of a row as the log table shows them (prototype of
-//! docs/experiments/2026-11-19-painted-rows-d.md): the D port of cell-format.js (`cellTexts`),
+//! docs/experiments/2026-11-19-painted-rows-d.md): the D port of what the DOM table showed (`cellTexts`, removed),
 //! written through log_core/column_values, free of Sciter.
 module ui.row_cells;
 

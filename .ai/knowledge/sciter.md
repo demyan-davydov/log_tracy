@@ -107,7 +107,7 @@ agent can't drive it. In scapp a plain
   (`["a", <i/>, "b"]` gives `<i></i>`); a fragment keeps both: `content(<>{pieces}</>)`.
 - Don't keep state as properties of elements (`row.view = ...`): on rows reused as slots such
   properties went missing after a while (2026-11-15; an element held by the script kept them,
-  the cause wasn't pinned down). Keep it in JS, by the element's place (`elementIndex`).
+  the cause wasn't pinned down). Keep it in JS, by the element's place (elementIndex).
 - `el.attributes["x"] = null` sets the text "null"; use `removeAttribute` / `setAttribute`.
 - Any `classList` call (`add`, `remove`, `toggle`, even `contains`) on an element taken out of
   the DOM with `remove()` segfaults (6.0.5.5, 2026-11-15; `JS_GetPropertyInternal`). An element
@@ -118,10 +118,10 @@ agent can't drive it. In scapp a plain
   `input.value`.
 - `style.variables({name: null})` doesn't remove a variable: `var(name, default)` then doesn't
   fall back; set the default value explicitly.
-- `componentUpdate()` doesn't render synchronously: it posts `render()`. Anything posted right
+- componentUpdate() doesn't render synchronously: it posts `render()`. Anything posted right
   after it runs before the render and before what `render()` posts itself (e.g. VirtualList's
   `navigate("start")`), so scroll targets are passed into render
-  (`VirtualList.navigateTarget`), not posted next to `componentUpdate`.
+  (VirtualList.navigateTarget), not posted next to componentUpdate.
 - An element needs `tabindex="0"` (not -1) to take the focus from `state.focus = true`;
   otherwise the focus lands on an ancestor.
 - `Clipboard.readText()` returns the text with a trailing NUL (`\u0000`): strip it.
@@ -200,11 +200,11 @@ agent can't drive it. In scapp a plain
 - The wheel and the trackpad on macOS (6.0.5.5, 2026-11-15):
   - A mouse wheel comes as `wheel` in pixels (deltaMode 0), accelerated by the system: 12,
     112, 461, … up to ~1000 px an event every ~15 ms while it spins, single ones of 20 000
-    px. Apply them once a frame (`requestAnimationFrame`), never one by one with a layout
+    px. Apply them once a frame (requestAnimationFrame), never one by one with a layout
     each: the queue grows and the window hangs. A native scroll moves less than the deltas.
     Frames heavy enough (20–35 ms) hold the input back, and macOS sends the wheel in lumps
     (20 000–30 000 px every ~300 ms): keep the way pending to about a screen, drop the surplus.
-  - `requestAnimationFrame` callbacks come 5–36 ms apart, not at the screen's rate: a scroll
+  - requestAnimationFrame callbacks come 5–36 ms apart, not at the screen's rate: a scroll
     stepped by the raw time between frames jerks; even the step out (a mean period, the lag
     caught up a little each frame).
   - A trackpad comes as gestures, and only to an element that asks: on `gesturestart` call
@@ -317,9 +317,9 @@ agent can't drive it. In scapp a plain
   or removed (6.0.5.5): `matches(":nth-child(even)")` gives the new answer, the applied style
   is the old one. The rows virtual-list keeps while scrolling had wrong stripes
   (`:nth-child(even)`, `table.css`) at every odd shift of its window. Any change of the
-  document restyles them: a class toggled on the `tbody` (`VirtualList.restyleRows`, posted
+  document restyles them: a class toggled on the `tbody` (VirtualList.restyleRows, posted
   from `oncontentrequired`: virtual-list removes the rows past its window after it returns),
-  an attribute set on each row (`followAnchor` sets `view-index`). So a check of this bug
+  an attribute set on each row (followAnchor sets `view-index`). So a check of this bug
   must not write into the page (a status text heals it): the repro writes to the window
   caption.
 - A block is centred in its parent by `margin: 0 *` (flex units); `margin: 0 auto` leaves it
@@ -404,6 +404,9 @@ agent can't drive it. In scapp a plain
 
 ## Virtual Lists and the Log Table
 
+> The log table is drawn by D now (`ui/log_table_behavior`, `ptable`) and the DOM table with its `virtual-list` is gone. What follows is what was
+> learned of Sciter's virtual-list while the table was one; the names of its code are of the removed script (plain, not in backquotes).
+
 - **Never hide a log table itself.** A `<table>` with a virtual-list tbody hidden by
   `display: none` before it was ever laid out keeps its cells at x=0, 1px wide, for good.
   Hidden ancestors are harmless, so is hiding a table already laid out. Show status views over
@@ -414,13 +417,13 @@ agent can't drive it. In scapp a plain
   at its last row with room left doesn't ask: append the rows (`VirtualList.grow`).
   The same for a row counted by `itemsAfter` while the rendered ones just fill the table
   (an anchor in the search list): the wheel scrolls nothing, only the scrollbar does. Render
-  such a row up to the window (`followAnchor`), not up to the height of the list. A row
+  such a row up to the window (followAnchor), not up to the height of the list. A row
   inserted by hand that makes the rendered ones overflow the list leaves the wheel dead too
-  (the scrollbar works, a resize heals it): `followAnchor` leaves that insertion to a render
+  (the scrollbar works, a resize heals it): followAnchor leaves that insertion to a render
   while the rows fit the list.
   A list scrolled somewhere that was edited by hand shows a gap under its rows (rows removed)
   or has its rows pushed (a row inserted above the first on screen): `settle` of
-  `VirtualDltTBody` puts it right: at once after the first edit of a frame (no blink: the
+  VirtualDltTBody puts it right: at once after the first edit of a frame (no blink: the
   layout is read synchronously and is current), and once more in the frame, after the rest of
   its edits (an edit each doesn't read the layout each: hundreds of anchors at open).
 - A virtual-list hidden (`display: none`, or `visibility`) and shown again keeps its rows, first
@@ -428,41 +431,41 @@ agent can't drive it. In scapp a plain
   rows. Focus stays on an element inside a hidden pane: move it on a switch.
 - `vlist.navigateTo(n)` puts row n at the top only when n is outside the sliding window or
   above the screen; below the screen but inside the window it lands at the bottom; on screen
-  it doesn't scroll. `VirtualList.navigateToTop` navigates past n first
-  (n + slidingWindowSize), then to n (`resources/list-navigation.js`).
+  it doesn't scroll. VirtualList.navigateToTop navigates past n first
+  (n + slidingWindowSize), then to n (resources/list-navigation.js).
 - A virtual-list scrolls animated with `scrollTo({ top, behavior: "smooth" })` and
-  `vlist.advanceTo(n)` (~250 ms, eased); `vlist.scrollBy` and `vlist.navigateTo` are instant
+  `vlist.advanceTo(n)` (~250 ms, eased); `vlist.scrollBy` and vlist.navigateTo are instant
   (6.0.5.5). A smooth scroll renders no rows: it stops at the last rendered one; it goes past
   the last row of the list (clamp to `scrollHeight - clientHeight`); in the frame of an
-  instant `scrollTo` it overshoots by that one. `VirtualList.smoothAnimateTo` jumps first,
-  then animates the last rows of the way (`approachStep`).
+  instant `scrollTo` it overshoots by that one. VirtualList.smoothAnimateTo jumps first,
+  then animates the last rows of the way (approachStep).
 - When rows change height (a class toggle, a smaller font) the scroll position stays in pixels
   and may be past the end. Layout isn't redone until the next frame, not even in a `post`ed
-  call; inside `requestAnimationFrame(...)` the geometry is new and `navigateTo` works.
-  `vlist.firstVisibleItem` is kept while hidden.
+  call; inside `requestAnimationFrame(...)` the geometry is new and navigateTo works.
+  vlist.firstVisibleItem is kept while hidden.
 - 6.0.5.5: a far jump (scrollbar drag) asks `where=±1` with a far `start` and drops the old
   rows itself (6.0.3.12 asks `where=0`). It first renders ~half a window of rows around the
   old place, then a whole window at the new one, and lays every new row out (styles, the
   widths of the table): about 1 ms a row of a log table, nearly all of a jump; our script
-  is ~6 %. So the window is sized to the list (`vlist.slidingWindowSize`, read-write, 160 by
-  default; `windowSize` of `resources/list-navigation.js`, `VirtualDltTBody.fitWindow`).
+  is ~6 %. So the window is sized to the list (vlist.slidingWindowSize, read-write, 160 by
+  default; windowSize of resources/list-navigation.js, VirtualDltTBody.fitWindow).
   Dragging the thumb to an end of a list of ~85M+ rows segfaults inside Sciter
   (`vlist_ctl::move_buffer_to`), reproduced with the SDK sample alone.
 - Sciter fills a list (a new view, a jump) with half its window, a couple of rows less, and
   asks for no more until it scrolls: a window grown after (a higher list, a smaller font)
-  leaves a gap under the rows. `VirtualList.fill` renders the rows itself (`fillStep`).
+  leaves a gap under the rows. `VirtualList.fill` renders the rows itself (fillStep).
   Rows prepended with `itemsBefore` lowered push the rows on screen down, the end of the
   list too: navigate to the last row again.
 - A window smaller than the rows on screen segfaults on a jump (`vlist_ctl::move_buffer_to`),
   and so does `navigateTo(n)` with `n >= vlist.itemsTotal` while rows are rendered, whatever
-  the window (`advanceTo` past it returns null). `itemsTotal` lags behind `totalItems()`
+  the window (advanceTo past it returns null). `itemsTotal` lags behind `totalItems()`
   while a view grows; an empty list navigated past it lands on its last known row. Navigate
-  through `VirtualList.navigateTo` (`navigationStep`: counts the rows first, keeps the target
-  within them), never `vlist.navigateTo` or `vlist.navigate`.
+  through VirtualList.navigateTo (navigationStep: counts the rows first, keeps the target
+  within them), never vlist.navigateTo or `vlist.navigate`.
 - `vlist.navigateTo("end")` asks for a row per pixel of the list's height (483 rows for a
-  list 483px high), whatever `slidingWindowSize`, and keeps them: ~0.5 s on a tall list.
+  list 483px high), whatever slidingWindowSize, and keeps them: ~0.5 s on a tall list.
   `navigateTo(last row)` puts the last row at the bottom just the same with a window of rows
-  (`safeTarget` does it). `navigateTo("start")` asks for a window.
+  (safeTarget does it). `navigateTo("start")` asks for a window.
 - `sizechange` reaches a virtual-list subscribed with `on("sizechange", ...)`; an
   `["on sizechange"]` method of its class is never called. A `thead` gets it when the font
   size of its table changes (its row follows the font), before the next frame.
@@ -470,7 +473,7 @@ agent can't drive it. In scapp a plain
   (6.0.5.5), a frame over another row; frame a row with `box-shadow: inset ...` instead.
 - Text selection: `behavior: virtual-list` blocks drag selection of text whatever carries
   `selectable`; only `selectable` per cell works, inside one cell. Selection over a
-  virtual-list is ours, in JS (`resources/text-selection.js`).
+  virtual-list is ours, in JS (resources/text-selection.js).
 - `element.rangeFromPoint(x, y)` (x, y in the element's inner box) works on a non-selectable
   cell too: it gives the character **under** the point (right of the text: length − 1), on the
   line under `y`; an empty cell gives a node outside it.

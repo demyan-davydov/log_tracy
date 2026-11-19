@@ -12,7 +12,6 @@ enum appResourceUrl = "this://app/";
 /// here or in `notBuiltIn`: a unittest checks it.
 private enum string[] builtIn = [
     "backend.js",
-    "cell-format.js",
     "column-settings.js",
     "document-pane.js",
     "drag-order.js",
@@ -28,7 +27,6 @@ private enum string[] builtIn = [
     "i18n/languages.js",
     "i18n/plural.js",
     "i18n/translations/ru.json",
-    "list-navigation.js",
     "main.htm",
     "match-colors.css",
     "match-colors.js",
@@ -60,23 +58,17 @@ private enum string[] builtIn = [
     "status-view.js",
     "style.css",
     "tab-content.css",
-    "paint-layout.js",
     "log-table-look.js",
     "anchor-click.js",
     "geometry.js",
     "log-table-gesture.js",
-    "painted-table.js",
     "log-table-view.js",
     "table.css",
     "tabs.js",
-    "text-selection.js",
     "theme-dark.css",
     "theme-light.css",
     "theme.js",
     "view-table.js",
-    "virtual-dlt-view.js",
-    "virtual-select.css",
-    "virtual-select.js",
     "win-frame.css",
     "window-frame.js",
     "window-state.js",
@@ -167,8 +159,7 @@ unittest
     assert(appResourceOfUrl("this://app/main.htm") == appResource("main.htm"));
     assert(appResourceOfUrl("this://app/i18n/i18n.js") == appResource("i18n/i18n.js"));
     assert(appResourceOfUrl("this://app/no-such.js") is null);
-    assert(appResourceOfUrl("this://app/virtual-select.css#virtual-select") == appResource("virtual-select.css"),
-        "a fragment names a part of the file");
+    assert(appResourceOfUrl("this://app/table.css#log-table") == appResource("table.css"), "a fragment names a part of the file");
     assert(appResourceOfUrl("this://app/main.htm?x=1") == appResource("main.htm"));
     assert(appResourceOfUrl("this://app/i18n%2Fi18n.js") == appResource("i18n/i18n.js"), "an escaped address");
     assert(appResourceOfUrl("this://app/main%2.htm") is null, "a bad escape names no file");

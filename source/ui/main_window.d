@@ -10,14 +10,9 @@ import sciter.capi.types;
 import sciter.capi.behavior;
 
 import domain.document_id : DocumentId;
-import domain.document_item : DocumentItem;
-import log_core.log_format : ColumnInfo;
-import log_core.log_message : TimeKind;
 import ui.app_menu : MenuItem, MenuPlatform;
 import ui.main_menu_loader : retitleAppMenu;
 import utils.ui_text : UiText;
-import log_core.rule_filter : RuleId;
-import log_core.search_filter : MatchBuffer, MatchRange;
 import ui.app_resources : appResourceOfUrl, appResourceUrl, builtInCatalogs;
 import ui.app_session : AppSession;
 import ui.app_settings : toJSON;
@@ -27,7 +22,7 @@ import ui.log_table.log_table_target : LogTableTarget;
 import ui.log_table.log_table : TableSource;
 import ui.log_table_behavior : LogTableBehavior, logTableBehavior, runScript, TableHooks;
 import ui.table_script : TableControl, TableRegistry;
-import ui.table_rows : columnsJson, rowLength, writeRow;
+import ui.columns_json : columnsJson;
 
 import std.algorithm : startsWith;
 import std.array : empty;
@@ -262,38 +257,13 @@ class MainWindow : SciterWindow
             return true;
 
         // ── The views ───────────────────────────────────────────────────────
-        case "getMainViewCount":
-        case "getSearchViewCount":
-            // get<Main|Search>ViewCount(docId)
-            auto doc = _session.doc(docParam());
-            auto view = method == "getMainViewCount" ? doc.mainView : doc.searchView;
-            resultView = cast(int) view.itemsCount();
-            return true;
-        case "getMainViewItem":
-        case "getSearchViewItem":
-            // get<Main|Search>ViewItem(docId, index): null if there is no such
-            // row (any more): the view changed, the file is lost
-            const docId = docParam();
-            auto doc = _session.doc(docId);
-            const bool search = method == "getSearchViewItem";
-            const int index = param!int(1);
-            DocumentItem docItem;
-            MatchBuffer fragments;
-            if (!(search ? doc.searchView : doc.mainView).fetchItem(index, docItem))
-                resultView.set(SciterValue.makeNull());
-            else
-                // the fragments the chips found, after the cells
-                resultView.set(asSciterRow(index, docItem, _session.tableColumns(doc),
-                    _session.ruleOf(docId, docItem), _session.matchesOf(docId, docItem, fragments[])));
-            return true;
         case "getMainViewNearestPosition":
         case "getMainViewPosition":
         case "getSearchViewPosition":
             // get<Main|Search>ViewPosition(docId, messageIndex) -> its row in
             // that view, null if the view doesn't show it; getMainViewNearestPosition:
             // the row Go to Message lands on (AppSession.nearestMainViewPosition),
-            // null for an empty view. The row sends message indexes as doubles
-            // (see asSciterRow)
+            // null for an empty view. The script sends message indexes as doubles
             double msgIndex = -1;
             if (params.argc > 1)
             {
@@ -318,11 +288,6 @@ class MainWindow : SciterWindow
             // test any of them), [] if there is none
             auto document = _session.doc(docParam());
             answer(columnsJson(document.columns, document.formatInfo.id));
-            return true;
-        case "getTableColumns":
-            // getTableColumns(docId): the columns the tables of the document show
-            auto document = _session.doc(docParam());
-            answer(columnsJson(_session.tableColumns(document), document.formatInfo.id));
             return true;
         case "setAnchor":
             // setAnchor(docId, messageIndex, value) -> {"refused", "max", "full", "pending", "rows"}: AppSession.setAnchor
@@ -496,55 +461,4 @@ class MainWindow : SciterWindow
             return "{}";
         }
     }
-}
-
-/// The cells of a row as Sciter values (see ui.table_rows.writeRow)
-private struct SciterCells
-{
-    SciterValue row;
-    AsArrayView cells;
-
-    this(size_t length)
-    {
-        row = SciterValue.makeArrayWithSize(length);
-        cells = AsArrayView(row);
-    }
-
-    void nothing(size_t cell)
-    {
-        SciterValue none = SciterValue.makeNull();
-        cells.opIndex(cell, none);
-    }
-
-    void boolean(size_t cell, bool value) { cells.opIndex(cell, value); }
-    void integer(size_t cell, int value) { cells.opIndex(cell, value); }
-    void number(size_t cell, double value) { cells.opIndex(cell, value); }
-    void text(size_t cell, const(wchar)[] value) { cells.opIndex(cell, value); }
-
-    void time(size_t cell, double microseconds, TimeKind kind)
-    {
-        SciterValue time = SciterValue.makeArray(microseconds, cast(int) kind);
-        cells.opIndex(cell, time);
-    }
-
-    void matches(size_t cell, const(MatchRange)[] ranges)
-    {
-        SciterValue list = SciterValue.makeArrayWithSize(ranges.length);
-        auto view = AsArrayView(list);
-        foreach (i, const ref m; ranges)
-        {
-            SciterValue fragment = SciterValue.makeArray(cast(int) m.start, cast(int) m.end, cast(int) m.chip);
-            view.opIndex(i, fragment);
-        }
-        cells.opIndex(cell, list);
-    }
-}
-
-/// A row of the log table as a Sciter array, see ui.table_rows.writeRow
-SciterValue asSciterRow(int index, ref const(DocumentItem) item, const(ColumnInfo)[] columns,
-    RuleId rule, const(MatchRange)[] matches)
-{
-    auto cells = SciterCells(rowLength(columns.length));
-    writeRow(cells, index, item.message, item.anchored, item.found, item.realIndex, columns, rule, matches);
-    return cells.row;
 }

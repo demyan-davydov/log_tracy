@@ -43,8 +43,8 @@ const compositionPaths = [/^source\/app\.d$/, /^dub\.sdl$/];
 // every record), the rows of the log tables (rendered for every row on screen while scrolling)
 const performancePaths = [
     /^source\/(domain|formats|log_core|utils)\//,
-    /^source\/ui\/(table_rows|main_window|app_session)\.d$/,
-    /^resources\/(virtual-dlt-view|cell-format|text-selection|row-selection|rule-colors|list-navigation|virtual-select)\.js$/,
+    /^source\/ui\/(main_window|app_session)\.d$/,
+    /^resources\/(log-table-view|log-table-look|log-table-gesture|row-selection|rule-colors)\.js$/,
     /^resources\/table\.css$/,
     /^scripts\/utils\/bench_/
 ];
