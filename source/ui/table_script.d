@@ -95,9 +95,6 @@ interface TableControl
     /// How many text layouts the host keeps
     void setLimits(size_t texts);
 
-    /// A wheel step in pixels is this many times the delta of the wheel
-    void setWheelScale(double scale);
-
     /// Every row one line (the Payload cut at its cell) or the Payload wrapped (the setting of the log tables)
     void singleLine(bool on);
 
@@ -168,9 +165,6 @@ bool dispatch(TableControl control, const(char)[] method, ScriptArgs args, out S
         return true;
     case "setLimits":
         control.setLimits(cast(size_t) args.number(0, 3000));
-        return true;
-    case "setWheelScale":
-        control.setWheelScale(args.number(0, 1));
         return true;
     case "singleLine":
         control.singleLine(args.number(0) != 0);
@@ -288,7 +282,6 @@ version (unittest)
         void panEnd() { calls ~= "panEnd"; }
         void setWrap(bool bySciter) { calls ~= "setWrap " ~ bySciter.to!string; }
         void setLimits(size_t texts) { calls ~= "setLimits " ~ texts.to!string; }
-        void setWheelScale(double scale) { calls ~= "setWheelScale " ~ scale.to!string; }
         void singleLine(bool on) { calls ~= "singleLine " ~ on.to!string; }
         void resetStats() { calls ~= "resetStats"; }
         void select(double x1, double y1, double x2, double y2) { calls ~= "select " ~ [x1, y1, x2, y2].to!string; }
@@ -354,14 +347,13 @@ unittest
     ScriptResult result;
     dispatch(control, "setLimits", ScriptArgs(), result);
     dispatch(control, "setLimits", ScriptArgs([100]), result);
-    dispatch(control, "setWheelScale", ScriptArgs(), result);
     dispatch(control, "selectWord", ScriptArgs([5, 6, 0]), result);
     dispatch(control, "selectWord", ScriptArgs([5, 6, 1]), result);
     dispatch(control, "setWrap", ScriptArgs([double.nan]), result);
     dispatch(control, "singleLine", ScriptArgs([1]), result);
     dispatch(control, "singleLine", ScriptArgs([0]), result);
     dispatch(control, "resetStats", ScriptArgs(), result);
-    assert(control.calls == ["setLimits 3000", "setLimits 100", "setWheelScale 1", "selectWord 5 6 true",
+    assert(control.calls == ["setLimits 3000", "setLimits 100", "selectWord 5 6 true",
         "selectWord 5 6 false", "setWrap false", "singleLine true", "singleLine false", "resetStats"]);
 }
 

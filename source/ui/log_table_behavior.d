@@ -39,6 +39,7 @@ enum logTableBehavior = "log-table";
 /// How much the rows move by the fingers' move on the trackpad: Sciter hands over the system's deltas as they are, and the
 /// rows followed them a little sluggishly (the user, 2026-11-18: about 20% more); the coast's speed follows the same pans
 enum double panScale = 1.2;
+enum double wheelScale = 1.0;
 
 /// What the window hears of a table: it can be talked to from the attach on and no longer after the detach
 struct TableHooks
@@ -82,7 +83,6 @@ final class LogTableBehavior : SciterEventHandler
     private LogLook _look;
     private TableHooks _hooks; // the window is told when the table can be talked to
     private LogTable _log; // the table of the log: made when the element is attached
-    private double _wheelScale = 1.0; // @todo: make me a constant
     private bool _mainDown; // the last press was of the main button (a double click of another one selects nothing)
 
     private Control _control; // what the script may ask of the table
@@ -266,9 +266,9 @@ final class LogTableBehavior : SciterEventHandler
         {
         case MOUSE_EVENTS.MOUSE_WHEEL:
             if (wheelIsAcross(params.alt_state))
-                _log.table.scrollXBy(wheelPixels(params.button_state, _wheelScale)); // Shift: the columns, by the pixels at once
+                _log.table.scrollXBy(wheelPixels(params.button_state, wheelScale)); // Shift: the columns, by the pixels at once
             else
-                _log.table.wheel(wheelPixels(params.button_state, _wheelScale), nowMs());
+                _log.table.wheel(wheelPixels(params.button_state, wheelScale), nowMs());
             return true;
         case MOUSE_EVENTS.MOUSE_DOWN:
             _mainDown = startsPickPress(params.button_state, params.alt_state);
@@ -392,8 +392,6 @@ final class LogTableBehavior : SciterEventHandler
         {
             _host.textLimit(texts);
         }
-
-        void setWheelScale(double scale) { _wheelScale = scale; } // @todo: remove me
 
         void singleLine(bool on)
         {
