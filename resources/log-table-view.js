@@ -116,7 +116,14 @@ export class LogTableView {
         // its table and the address it copies from: the kind (0 the text, 1 the rows, 2 a cell), the row, the column's index.
         // The event "contextmenu" has no position (x and y are 0): the press that makes it is the last "mousedown", in the element's own dip.
         let pressX = 0, pressY = 0;
-        element.on("mousedown", evt => { pressX = evt.x; pressY = evt.y; return false; });
+        // A press takes the keys: the behavior handles the press itself, and then Sciter does not give the element the focus, so Cmd/Ctrl+C,
+        // the arrows and the rest of the keys would go to what had it before
+        element.on("mousedown", evt => {
+            pressX = evt.x;
+            pressY = evt.y;
+            if (!element.state.focus) element.state.focus = true;
+            return false;
+        });
         element.on("contextmenu", evt => {
             const hit = JSON.parse(this.call("hitTest", pressX, pressY));
             if (hit.kind === "header") {
