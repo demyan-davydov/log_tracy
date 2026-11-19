@@ -12,6 +12,8 @@ module ui.painted_table;
 
 import ptable.navigation : Key;
 import ptable.ports : Rect;
+import ptable.scrollplace : ScrollPosition;
+import ui.viewport_json : viewportJson;
 import ptable.tablehit : CopyTarget, PointerKind;
 import sciter.api : sciterApi;
 import sciter.capi.api;
@@ -291,6 +293,20 @@ final class PaintedTable : SciterEventHandler
             if (now)
                 _host.updateNow();
             return usSince(started);
+        }
+
+        wstring viewport() { const v = _log.table.viewport(); return viewportJson(v).toUTF16; }
+
+        void scrollTo(double row, double offset, double x)
+        {
+            import std.math : isNaN;
+
+            ScrollPosition position;
+            if (!row.isNaN && row >= 0)
+                position = ScrollPosition.of(cast(size_t) row, offset, x);
+            else
+                position.x = x;
+            _log.table.scrollToPosition(position);
         }
 
         long scrollBy(double pixels, bool now)

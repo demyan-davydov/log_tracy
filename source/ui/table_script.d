@@ -56,6 +56,12 @@ interface TableControl
     /// The row `row` is the first on the screen; `now`: drawn at once. Answers the microseconds it took.
     long jump(size_t row, bool now);
 
+    /// Where the table stands as JSON (`Viewport.toJson`): the first row and its offset, the rows and the columns, the room, what is on the screen
+    wstring viewport();
+
+    /// The rows stand at `row` with `offset` pixels of it scrolled away and the columns `x` pixels sideways; a NaN leaves its axis where it is
+    void scrollTo(double row, double offset, double x);
+
     /// As a wheel step of `pixels`, at once; `now`: drawn at once. Answers the microseconds it took.
     long scrollBy(double pixels, bool now);
 
@@ -112,6 +118,12 @@ bool dispatch(TableControl control, const(char)[] method, ScriptArgs args, out S
     {
     case "jump":
         result = ScriptResult.ofNumber(control.jump(cast(size_t) args.number(0), args.number(1) != 0));
+        return true;
+    case "viewport":
+        result = ScriptResult.ofText(control.viewport());
+        return true;
+    case "scrollTo":
+        control.scrollTo(args.number(0, double.nan), args.number(1, 0), args.number(2, double.nan));
         return true;
     case "scrollBy":
         result = ScriptResult.ofNumber(control.scrollBy(args.number(0), args.number(1) != 0));
@@ -217,6 +229,8 @@ version (unittest)
         string[] calls;
 
         long jump(size_t row, bool now) { calls ~= "jump " ~ row.to!string ~ " " ~ now.to!string; return 11; }
+        wstring viewport() { calls ~= "viewport"; return `{"first":{}}`w; }
+        void scrollTo(double row, double offset, double x) { calls ~= "scrollTo " ~ row.to!string ~ " " ~ offset.to!string ~ " " ~ x.to!string; }
         long scrollBy(double pixels, bool now) { calls ~= "scrollBy " ~ pixels.to!string ~ " " ~ now.to!string; return 12; }
         long render() { calls ~= "render"; return 13; }
         void pan(double pixels, double across) { calls ~= "pan " ~ pixels.to!string ~ " " ~ across.to!string; }
@@ -265,6 +279,18 @@ unittest
     assert(control.calls == ["jump 500 true", "scrollBy -80 false", "render", "copyText true", "stats", "select [1, 2, 3, 4]",
         "pan -7.5 0", "pan 1 4", "panEnd", "copyText false", "showDemo true", "showDemo false",
         "copy text 0 0", "copy cell 7 3", "hitTest 5 6", "contextPick 4", "updateRow 4", "updateCell 4 2", "anchorApplied 9 true", "anchorApplied 8 false"]);
+}
+
+@("dispatch: viewport answers JSON, scrollTo leaves out the axis it is not given (NaN)")
+unittest
+{
+    auto control = new Noting;
+    ScriptResult result;
+    assert(dispatch(control, "viewport", ScriptArgs(), result) && result == ScriptResult.ofText(`{"first":{}}`w));
+    assert(dispatch(control, "scrollTo", ScriptArgs([12, 5, 40]), result) && result.kind == ScriptResult.Kind.nothing);
+    assert(dispatch(control, "scrollTo", ScriptArgs([double.nan, 0, 7]), result));
+    assert(dispatch(control, "scrollTo", ScriptArgs([3]), result));
+    assert(control.calls == ["viewport", "scrollTo 12 5 40", "scrollTo nan 0 7", "scrollTo 3 0 nan"]);
 }
 
 @("dispatch: what a call leaves out is the default, a word is 0 and a cell 1, a value that is no number is the default")

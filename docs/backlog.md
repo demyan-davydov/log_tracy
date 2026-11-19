@@ -1286,3 +1286,6 @@ Cmd+C копирует целые ячейки с датой. Остаются: 
 (`ptable`, `ui`, `utils`, ...) по отдельности всё проходит; с `--DRT-gcopt=disable:1` не падает; `GC.addRange` на блоки `Arena` не помогает; `-fsanitize=address` на `ptable` + `ptable_text`
 чисто. Место падения плавает между прогонами. Тот же класс, что «Нестабильный тест `utils.text_search`» выше: порча памяти или гонка, зависящая от объёма выделений до теста. Нужно:
 собрать весь набор под ASAN/TSAN и искать, кто пишет в чужую память; подозреваемые: обработчик SIGBUS в `utils.mapped_file` (установка/снятие), `GC.free` в `parallelScan`, `std.regex` (`Regex` на malloc).
+
+Там же (2026-11-19): в сочетании `ptable` + `ui` (`log_tracy ptable ui`) иногда падает `ui.app_session: what the chips found is shown in the rows the search found, in both views`
+(`app_session.d:1194`, `onMainViewChanged:`), отдельно (`ui.app_session`) проходит всегда; то же есть на `17429b1` (там `ptable ui utils` давал код 1). Похоже на гонку асинхронной шины событий.

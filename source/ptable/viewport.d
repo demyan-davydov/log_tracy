@@ -260,12 +260,24 @@ final class RowViewport
         return ScrollMetrics(_count, max(1UL, _slots.length - 1), _state.first + _state.offset / max(1.0, firstHeight));
     }
 
-    /// A scroll bar moved to `position` (an item and a fraction of it): the window stands at the item
-    void scrollToPosition(double position)
+    /// The window stands at the item `row` with `offset` pixels of it scrolled away (an offset a row cannot have is settled by the next layout)
+    void scrollToRow(size_t row, double offset)
     {
         _anchor = ScrollAnchor.init;
         const last = _count > 0 ? _count - 1 : 0;
-        _state = ViewState(cast(size_t) max(0.0, min(cast(double) last, position)), 0);
+        _state = ViewState(min(row, last), max(0.0, offset));
+    }
+
+    /// The window stands at `position` (an item and a fraction of it: that part of its height is scrolled away): where a scroll bar put it
+    void scrollToPosition(double position)
+    {
+        import std.math : floor;
+
+        _anchor = ScrollAnchor.init;
+        const last = _count > 0 ? _count - 1 : 0;
+        const first = cast(size_t) max(0.0, min(cast(double) last, floor(position)));
+        const fraction = position > 0 && first < last ? position - first : 0;
+        _state = ViewState(first, fraction > 0 ? min(fraction, 1.0) * _heightOf(first) : 0);
     }
 }
 
@@ -358,13 +370,28 @@ unittest
     view.layout();
     m = view.metrics();
     assert(m.position == 1.5, "an item and a half");
-    view.scrollToPosition(500.7);
+    view.scrollToPosition(500.5);
     view.layout();
-    assert(view.state == ViewState(500, 0));
+    assert(view.state == ViewState(500, 10), "the fraction is kept: half of 20");
     view.scrollToPosition(-3);
     assert(view.state.first == 0);
     view.scrollToPosition(1e9);
     assert(view.state.first == 999, "not past the last item");
+}
+
+@("RowViewport: scrollToPosition keeps the fraction of the item: that part of its height is scrolled away")
+unittest
+{
+    auto view = new RowViewport(rowsOf(20));
+    view.count = 1000;
+    view.height = 100;
+    view.layout();
+    view.scrollToPosition(500.25);
+    assert(view.state == ViewState(500, 5));
+    view.layout();
+    assert(view.metrics().position == 500.25);
+    view.scrollToPosition(1e9);
+    assert(view.state == ViewState(999, 0), "past the end: the last item, whole");
 }
 
 @("RowViewport: an empty list has no items on the screen")

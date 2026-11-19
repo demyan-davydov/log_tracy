@@ -36,6 +36,7 @@ import ptable.regions;
 import ptable.rowcache;
 import ptable.rowlayout;
 import ptable.selection;
+import ptable.scrollplace;
 import ptable.viewport;
 
 import std.algorithm.comparison : max, min;
@@ -340,11 +341,11 @@ final class Table
     void scrollXBy(double pixels)
     {
         _store.ensure();
-        scrollToX(places().scrollX + pixels);
+        setScrollX(places().scrollX + pixels);
     }
 
-    /// The columns stand `position` pixels scrolled sideways (0 .. what they need more than the room they have)
-    void scrollToX(double position)
+    // The columns stand `position` pixels scrolled sideways (0 .. what they need more than the room they have)
+    private void setScrollX(double position)
     {
         import std.algorithm.comparison : max, min;
 
@@ -386,12 +387,44 @@ final class Table
         return _viewport.metrics();
     }
 
+    /// What the table shows now on both axes: where a host or a script finds how far to scroll. As the last paint left it
+    Viewport viewport()
+    {
+        _store.ensure();
+        const p = places();
+        return Viewport(_viewport.state, _viewport.metrics(), metricsOf(p), _store.space.regions.rows, _viewport.slots, p.columns);
+    }
+
     /// A scroll bar of the host moved: the rows stand at `position` (an item and a fraction of it)
-    void scrollToPosition(double position)
+    void scrollToItem(double position)
     {
         _motion.stop();
         prepare();
         _viewport.scrollToPosition(position);
+        invalidate();
+    }
+
+    /// The content stands at `position`: the rows at an item and the pixels of it scrolled away, the columns at a column and the pixels of it
+    /// scrolled away, or that many pixels sideways (never past their ends). What is left out stays. The way a script or a helper of a row or a cell
+    /// scrolls to a place
+    void scrollToPosition(ScrollPosition position)
+    {
+        import std.math : isNaN;
+
+        _motion.stop();
+        prepare();
+        if (position.row != ScrollPosition.keepRows)
+            _viewport.scrollToRow(position.row, position.rowOffset);
+        double x = position.x;
+        if (position.column.length)
+        {
+            const p = places();
+            foreach (ref c; p.columns)
+                if (c.id == position.column && c.area == Pin.none)
+                    x = c.x - p.leftWidth + p.scrollX + position.columnOffset; // the left of the column in the scrolling content
+        }
+        if (!x.isNaN)
+            setScrollX(x);
         invalidate();
     }
 
@@ -1799,7 +1832,7 @@ unittest
     f.table.queueScroll(20);
     assert(!f.table.tick(208), "a scroll queued");
     coast(f);
-    f.table.scrollToPosition(20);
+    f.table.scrollToItem(20);
     assert(!f.table.tick(208), "the scroll bar");
 }
 
@@ -2279,11 +2312,90 @@ unittest
     f.table.scrollXBy(500);
     f.table.paint(f.canvas);
     assert(told.position == 120, "not past the end: 220 - 100");
-    f.table.scrollToX(-5);
+    f.table.scrollToPosition(ScrollPosition.ofX(-5));
     f.table.paint(f.canvas);
     assert(told.position == 0);
     f.table.paint(f.canvas);
     assert(tells == 4, "nothing changed: not told again");
+}
+
+@("Table.viewport: the first row and its offset, the rows and the columns as they stand, the rows on the screen, the places of the columns")
+unittest
+{
+    auto f = make(100, 100, 121);
+    f.layout.setWidth("n", 70);
+    f.layout.setWidth("text", 150);
+    f.table.paint(f.canvas);
+    auto v = f.table.viewport();
+    assert(v.first == ViewState(0, 0) && v.rows.total == 100 && v.rows.position == 0);
+    assert(v.columns == ScrollMetrics(220, 100, 0), "pixels: the content, the room, the scroll");
+    assert(v.area == f.table.rowsArea());
+    assert(v.slots.length == f.table.stats.rowsOnScreen && v.slots[0].index == 0 && v.slots[0].top == 0);
+    assert(v.places.length == 2 && v.places[0].id == "n" && v.places[0].x == 0 && v.places[0].width == 70);
+    f.table.scrollXBy(30);
+    f.table.queueScroll(40);
+    f.table.paint(f.canvas);
+    v = f.table.viewport();
+    assert(v.first == ViewState(2, 8), "rows of 16: 40 px is two rows and 8 px of the third");
+    assert(v.columns.position == 30 && v.rows.position == 2.5);
+    assert(v.slots[0].index == 2 && v.slots[0].top == -8, "the first row is cut at the top");
+    assert(v.places[0].x == -30 && v.places[1].x == 40, "the columns stand as scrolled");
+}
+
+@("Table.scrollToPosition: the rows by an item and the pixels of it, the columns by pixels, both at once; what is left out stays")
+unittest
+{
+    auto f = make(100, 100, 121);
+    f.layout.setWidth("n", 70);
+    f.layout.setWidth("text", 150);
+    f.table.paint(f.canvas);
+    f.table.scrollToPosition(ScrollPosition.of(10, 5, 40));
+    f.table.paint(f.canvas);
+    auto v = f.table.viewport();
+    assert(v.first == ViewState(10, 5) && v.columns.position == 40, "exactly where it was told: pixels, not a fraction");
+    f.table.scrollToPosition(ScrollPosition.ofX(5));
+    f.table.paint(f.canvas);
+    v = f.table.viewport();
+    assert(v.first == ViewState(10, 5) && v.columns.position == 5, "the rows are left where they are");
+    f.table.scrollToPosition(ScrollPosition.ofRow(3));
+    f.table.paint(f.canvas);
+    v = f.table.viewport();
+    assert(v.first == ViewState(3, 0) && v.columns.position == 5, "the columns are left where they are");
+    f.table.scrollToPosition(ScrollPosition.of(1_000_000, 0, 1e9));
+    f.table.paint(f.canvas);
+    v = f.table.viewport();
+    assert(v.columns.position == 120 && v.slots[$ - 1].index == 99, "not past the ends: the last column, the last row");
+    f.table.scrollToPosition(ScrollPosition.of(0, -3, -3));
+    f.table.paint(f.canvas);
+    v = f.table.viewport();
+    assert(v.first == ViewState(0, 0) && v.columns.position == 0);
+    f.table.scrollToPosition(ScrollPosition.ofRow(5, 100)); // more than the row has: the next ones take it
+    f.table.paint(f.canvas);
+    assert(f.table.viewport().first == ViewState(11, 4), "100 = 6 rows of 16 and 4");
+}
+
+@("Table.scrollToPosition: a column by its id and the pixels of it scrolled away; a pinned, a hidden or an unknown one leaves the columns")
+unittest
+{
+    auto f = make(100, 100, 121);
+    f.layout.setWidth("n", 70);
+    f.layout.setWidth("text", 150);
+    f.table.paint(f.canvas);
+    f.table.scrollToPosition(ScrollPosition.ofColumn("text", 10));
+    f.table.paint(f.canvas);
+    assert(f.table.viewport().columns.position == 80, "the text column begins at 70 of the content: 10 of it scrolled away");
+    f.table.scrollToPosition(ScrollPosition.ofColumn("n"));
+    f.table.paint(f.canvas);
+    assert(f.table.viewport().columns.position == 0);
+    f.table.scrollToPosition(ScrollPosition.ofX(30));
+    f.table.scrollToPosition(ScrollPosition.ofColumn("nothing"));
+    f.table.paint(f.canvas);
+    assert(f.table.viewport().columns.position == 30, "an unknown column: they stay");
+    f.layout.setPin("n", Pin.left);
+    f.table.paint(f.canvas);
+    f.table.scrollToPosition(ScrollPosition.ofColumn("n", 5));
+    f.table.paint(f.canvas);
+    assert(f.table.viewport().columns.position == 30, "a pinned column does not scroll");
 }
 
 @("Table: the scroll sideways the layout keeps follows the clamp when the columns get narrower")

@@ -18,6 +18,7 @@ public import ptable.regions;
 public import ptable.rowcache;
 public import ptable.scrollbar;
 public import ptable.table;
+public import ptable.scrollplace;
 public import ptable.viewport;
 public import ptable.rowlayout;
 public import ptable.selection;

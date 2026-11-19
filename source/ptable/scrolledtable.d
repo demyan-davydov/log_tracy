@@ -9,6 +9,7 @@ import ptable.ports;
 import ptable.rowpicks : Pick;
 import ptable.scrollbar : Orientation, ScrollBar;
 import ptable.table : Table, TableEvents, TablePorts;
+import ptable.scrollplace : ScrollPosition;
 import ptable.viewport : ScrollMetrics;
 
 import std.algorithm.comparison : max;
@@ -44,12 +45,12 @@ final class ScrolledTable
             if (events.scrolledX !is null)
                 events.scrolledX(m);
         };
-        bar.events.scrollTo = (double position) { table.scrollToPosition(position); };
+        bar.events.scrollTo = (double position) { table.scrollToItem(position); };
         bar.events.capture = (bool on) { if (events.capture !is null) events.capture(on); };
         bar.events.invalidate = () { if (events.invalidate !is null) events.invalidate(); };
         if (across !is null)
         {
-            across.events.scrollTo = (double position) { table.scrollToX(position); };
+            across.events.scrollTo = (double position) { table.scrollToPosition(ScrollPosition.ofX(position)); };
             across.events.capture = (bool on) { if (events.capture !is null) events.capture(on); };
             across.events.invalidate = () { if (events.invalidate !is null) events.invalidate(); };
         }
