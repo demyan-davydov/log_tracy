@@ -95,7 +95,7 @@ final class RowView
         ctx.column = _env.columns.column(c.defIndex);
         ctx.columnIndex = c.defIndex;
         ctx.data = _env.columns.titlePtr(c.defIndex);
-        ctx.area = cellIn(c.x, c.width, space.regions.header, space.fonts.geometry.columnBorder, 0);
+        ctx.area = cellIn(c, space.regions.header, 0);
         ctx.clip = ctx.area;
         ctx.isHeader = true; // the column places its title in the area itself
         return ctx;
@@ -104,8 +104,7 @@ final class RowView
     /// The text of the cell placed at `c` as the hit tests see it: its input, its area in the row, its column
     CellText cellText(Entry* e, ref const RowContext row, ref const Placement c)
     {
-        const g = _env.space.fonts.geometry;
-        return CellText(cellInputAt(e, row, c.defIndex), cellIn(c.x, c.width, row.area, g.columnBorder, g.rowBorder), _env.columns.column(c.defIndex));
+        return CellText(cellInputAt(e, row, c.defIndex), cellIn(c, row.area, _env.space.fonts.geometry.rowBorder), _env.columns.column(c.defIndex));
     }
 
     /// The selectable cells `cells` of the row `row` of the entry `e`, for the hit tests and the selection. The texts it
@@ -169,7 +168,7 @@ unittest
     header.area = space.regions.header;
     const placed = Placement("b", 100, 60, Placement.init.area, 1);
     const ctx = view.headerCellAt(header, placed);
-    assert(ctx.isHeader && ctx.columnIndex == 1 && ctx.data.text == "Beta" && ctx.area == Rect(100, 0, 59, 21), "the title less the line right of it");
+    assert(ctx.isHeader && ctx.columnIndex == 1 && ctx.data.text == "Beta" && ctx.area == Rect(100, 0, 60, 21), "the place of the column: the line beside it is apart");
 }
 
 @("FocusedRow: the cells of a row are asked on the spot, in a struct, by their placement")

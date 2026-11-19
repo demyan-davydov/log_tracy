@@ -64,9 +64,10 @@ struct TableGeometry
     /// Empty room above and under the plate of a group's heads: a margin is the room above, the plate (`groupHeight`
     /// high) and the room under it
     double groupPadTop = 0, groupPadBottom = 0;
-    /// The line between two columns, at the right edge of each cell: a part of the width of its column, after the paddings of the cell
-    double columnBorder = 1;
-    /// The line between two rows, at the bottom of each row: a part of the height of its row, under the paddings of its cells
+    /// The line between two columns on the screen (none left of the first, none right of the last): not a part of a column,
+    /// `placeColumns` puts it between them; 0: none
+    double columnBorder = 0;
+    /// The line under each row: a part of the height of its row, under its cells; 0: none
     double rowBorder = 0;
 }
 

@@ -78,10 +78,10 @@ unittest
     cache.configure(withText(defs, null, styles), 1, geometry);
     cache.setFlexWidth(50);
     needs[] = 0;
-    cache.needs(*cache.entry(5), needs); // "row 5": 5 glyphs of 10, the padding 3 + 3 and 1
-    assert(needs[1] == 5 * 10 + 6 + 1);
+    cache.needs(*cache.entry(5), needs); // "row 5": 5 glyphs of 10 and the padding 3 + 3 (the line between the columns is not a part of it)
+    assert(needs[1] == 5 * 10 + 6);
     cache.needs(*cache.entry(1234), needs); // "row 1234": 8 glyphs
-    assert(needs[1] == 8 * 10 + 6 + 1, "the longest text seen");
+    assert(needs[1] == 8 * 10 + 6, "the longest text seen");
     const fetched = cache.fetches;
     cache.setFlexWidth(200); // the width the flex column has changed (it grew)
     cache.entry(1234);

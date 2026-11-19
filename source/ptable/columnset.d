@@ -120,7 +120,7 @@ final class ColumnSet
         if (p.columns.length == 0)
             return 0;
         foreach (c; p.columns)
-            if (x < c.x + c.width)
+            if (x < c.x + c.width + c.lineAfter) // the line right of a cell is hit as the cell
                 return c.defIndex;
         return p.columns[$ - 1].defIndex;
     }
@@ -192,4 +192,17 @@ unittest
     assert(set.stale);
     set.refresh(sample());
     assert(!set.stale);
+}
+
+@("ColumnSet: a point on the line right of a cell hits the cell")
+unittest
+{
+    import ptable.layout : ColumnLayout, placeColumns;
+
+    auto layout = new ColumnLayout;
+    auto set = new ColumnSet(layout);
+    set.refresh(sample());
+    const p = placeColumns(set.columns, layout, 300, 0, [20, 40, 50], 2);
+    assert(set.columnAt(p, 20.5) == 0 && set.columnAt(p, 21.9) == 0, "the line right of the first cell is of the first column");
+    assert(set.columnAt(p, 22) == 1, "the next cell begins after the line");
 }

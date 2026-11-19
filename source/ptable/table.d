@@ -248,8 +248,7 @@ final class Table
         foreach (c; places().columns)
             if (c.defIndex == defIndex)
             {
-                const g = _store.space.fonts.geometry;
-                area = cellIn(c.x, c.width, row, g.columnBorder, g.rowBorder);
+                area = cellIn(c, row, _store.space.fonts.geometry.rowBorder);
                 return true;
             }
         return false;
@@ -1396,7 +1395,7 @@ unittest
     Rect area;
     assert(f.table.cellRect(3, 0, area) && area.y == 21 + 16 * 3 && area.h == 16 && area.x == 0 && area.w > 0);
     Rect second;
-    assert(f.table.cellRect(3, 1, second) && second.x == area.right + 1 && second.y == area.y, "the line between the columns lies between");
+    assert(f.table.cellRect(3, 1, second) && second.x == area.right && second.y == area.y, "no line between the columns here: side by side");
     f.table.scrollBy(32);
     f.table.paint(f.canvas);
     Rect scrolled;
@@ -1418,7 +1417,7 @@ unittest
     f.table.updateRow(3);
     assert(areas == [Rect(0, 21 + 16 * 3, 400, 16)]);
     f.table.updateCell(3, 1);
-    assert(areas.length == 2 && areas[1].y == 21 + 16 * 3 && areas[1].h == 16 && areas[1].x > 0 && areas[1].w > 0 && areas[1].right == 399, "the cell, not the line right of it");
+    assert(areas.length == 2 && areas[1].y == 21 + 16 * 3 && areas[1].h == 16 && areas[1].x > 0 && areas[1].w > 0 && areas[1].right == 400, "the cell of the last column: no line right of it");
     f.table.updateRow(5000);
     f.table.updateCell(5000, 0);
     f.table.updateCell(3, 77);
@@ -2751,7 +2750,7 @@ unittest
     table.resize(400, 121); // 7 rows
     auto canvas = new RecordingCanvas;
     table.paint(canvas);
-    assert(layout.fitWidth("n") == 41 * 10 + 6 + 1, "row 3 is on the screen: the column is as wide as its text");
+    assert(layout.fitWidth("n") == 41 * 10 + 6, "row 3 is on the screen: the column is as wide as its text and paddings");
     table.scrollToPosition(CellPosition(50, 0, 0, 0), double.nan);
     table.paint(canvas);
     assert(layout.fitWidth("n") < 40, "row 3 is out of sight: the column narrowed to the rows now on the screen");
@@ -2770,7 +2769,7 @@ unittest
     layout.setWidth("n", 200);
     table.scrollToPosition(CellPosition(0, 0, 0, 0), double.nan);
     table.paint(canvas);
-    assert(layout.explicitWidth("n") == 200 && layout.width("n") == 417, "what the user set stays, the longer text still widens it");
+    assert(layout.explicitWidth("n") == 200 && layout.width("n") == 416, "what the user set stays, the longer text still widens it");
     table.scrollToPosition(CellPosition(50, 0, 0, 0), double.nan);
     table.paint(canvas);
     assert(layout.explicitWidth("n") == 200 && layout.width("n") == 200, "and holds when the text is gone");
@@ -2980,7 +2979,7 @@ unittest
     assert(painter.rows > 0 && search.stats.first == first, "it shows its rows where they stood");
 }
 
-@("Table: the area of a cell is that of its column less the lines between the columns and the rows")
+@("Table: the area of a cell is that of its column, the row less the line under it")
 unittest
 {
     static final class Lined : Painter
@@ -3001,7 +3000,7 @@ unittest
     const column = host.places(0).columns[0];
     Rect area;
     assert(table.cellRect(2, 0, area));
-    assert(area.x == column.x && area.w == column.width - 2, "the column less the line right of it");
+    assert(area.x == column.x && area.w == column.width, "the column: the line between the columns is not a part of it");
     assert(area.h == table.rowHeight(2) - 3, "the row less the line under it");
 }
 

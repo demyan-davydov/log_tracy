@@ -189,22 +189,21 @@ final class RowStore : ColumnClient
             tallest = max(tallest, column.measureHeader().height, column.measureGroup(GroupInput.init).height);
         _space.fitHeader(tallest);
         _cache.configure(_columns.columns, _columns.flexIndex, _space.fonts.geometry);
-        // the titles are a minimum of the widths too, the flex one's as well (and the line between the columns): told to the host with what
-        // the rows need
+        // the titles are a minimum of the widths too, the flex one's as well: told to the host with what the rows need
         _titles.length = _columns.columns.length;
         auto defs = new ColumnDef[_columns.columns.length];
         auto least = new double[_columns.columns.length];
         foreach (i, column; _columns.columns)
         {
             const title = column.measureHeader();
-            _titles[i] = title.maxWidth > 0 ? title.maxWidth + _space.fonts.geometry.columnBorder : 0;
+            _titles[i] = title.maxWidth;
             defs[i] = column.def;
-            least[i] = column.leastWidth + _space.fonts.geometry.columnBorder; // the column as a whole: the line between the columns too
+            least[i] = column.leastWidth;
         }
-        host.setColumns(defs, least);
+        host.setColumns(defs, least, _space.fonts.geometry.columnBorder); // the line is between the columns, not a part of one
     }
 
-    // What the title of column `i` needs with the line between the columns; 0 for a hidden column and one with no title
+    // What the title of column `i` needs; 0 for a hidden column and one with no title
     private double titleFit(size_t i)
     {
         return layout.visible(_columns.columns[i].def.id) ? _titles[i] : 0;
@@ -422,7 +421,7 @@ unittest
     assert(store.fitStart(null) is null, "a fit of the host is no change of what the widths are fit to");
 }
 
-@("RowStore: the titles need their column with the line the geometry of the painter gives, the flex one too")
+@("RowStore: the titles need their text and paddings, the flex one too; the line between the columns is not a part of a column")
 unittest
 {
     import ptable.painter : TableGeometry;
@@ -445,11 +444,11 @@ unittest
     auto needs = new double[2];
     needs[] = 0;
     store.measure(needs);
-    assert(needs[0] == 3 + 1 * 10 + 3 + 3, "the title N, its paddings and a line of 3");
-    assert(needs[1] == 3 + 4 * 10 + 3 + 3, "the title of the flex column holds it as wide too");
+    assert(needs[0] == 3 + 1 * 10 + 3, "the title N and its paddings");
+    assert(needs[1] == 3 + 4 * 10 + 3, "the title of the flex column holds it as wide too");
 }
 
-@("RowStore: the host is told the least widths of the columns as a whole: of the column and the line the geometry of the painter gives")
+@("RowStore: the host is told the least widths of the columns as a whole and the line between them the geometry of the painter gives")
 unittest
 {
     import ptable.painter : TableGeometry;
@@ -470,5 +469,5 @@ unittest
     store.resize(400, 200, widthChanged);
     store.ensure();
     const columns = store.columns.columns;
-    assert(host.least == [columns[0].leastWidth + 3, columns[1].leastWidth + 3]);
+    assert(host.least == [columns[0].leastWidth, columns[1].leastWidth] && host.columnBorder == 3);
 }

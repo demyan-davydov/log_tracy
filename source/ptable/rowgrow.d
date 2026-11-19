@@ -29,7 +29,8 @@ final class RowGrow
         growths++;
     }
 
-    /// What the row `e` needs of each column, into `needs` (one per column, only raised): the width of its cell and its border, never
+    /// What the row `e` needs of each column, into `needs` (one per column, only raised): the width of its cell (the line between the columns
+    /// is not a part of a column: `placeColumns` puts it between them), never
     /// more than `maxFitWidth` (a line of a megabyte would make a column nobody can scroll along), and of its head (a head stands in the
     /// cell of its column, as the column measures it, and is never cut); 0 where it needs nothing (a column that wraps, one not
     /// wanted, a virtual row)
@@ -38,16 +39,15 @@ final class RowGrow
         if (e.data.kind == ItemKind.virtual_)
             return;
         auto spec = _spec;
-        const border = spec.geometry.columnBorder; // the line between the columns is a part of the width of each
         foreach (i, column; spec.columns)
         {
             if (i >= needs.length || column.wraps() || i >= e.data.cells.length || (i < spec.wanted.length && !spec.wanted[i]))
                 continue;
             const cell = CellInput(0, cast(uint) i, &e.data.cells[i]);
-            needs[i] = max(needs[i], min(column.measure(cell, 0, true).maxWidth + border, maxFitWidth));
+            needs[i] = max(needs[i], min(column.measure(cell, 0, true).maxWidth, maxFitWidth));
             const slot = e.heads.length ? spec.groups.slotOf(i) : size_t.max;
             if (slot != size_t.max && e.heads[slot].length)
-                needs[i] = max(needs[i], column.measureGroup(GroupInput(e.heads[slot])).maxWidth + border);
+                needs[i] = max(needs[i], column.measureGroup(GroupInput(e.heads[slot])).maxWidth);
         }
     }
 }
@@ -77,13 +77,13 @@ unittest
     grow.needs(a, needs);
     grow.needs(b, needs);
     grow.needs(separator, needs);
-    assert(needs[0] == 5 * 10 + 6 + 1 && needs[1] == 0, "the widest row of the column; the flex one that wraps needs nothing ");
+    assert(needs[0] == 5 * 10 + 6 && needs[1] == 0, "the widest row of the column; the flex one that wraps needs nothing ");
     (cast(BoxColumn) columns[1]).wrapping = false;
     grow.needs(a, needs);
-    assert(needs[1] == 1 * 10 + 6 + 1, "the flex column that does not wrap needs its text");
+    assert(needs[1] == 1 * 10 + 6, "the flex column that does not wrap needs its text");
 }
 
-@("RowGrow: the line between the columns is as wide as the geometry of the painter says")
+@("RowGrow: what a cell needs is its text and its paddings: the line between the columns is not a part of it")
 unittest
 {
     import ptable.layout : ColumnDef;
@@ -101,5 +101,5 @@ unittest
     auto needs = new double[2];
     needs[] = 0;
     grow.needs(a, needs);
-    assert(needs[0] == 5 * 10 + 6 + 3, "the text, its paddings and a line of 3");
+    assert(needs[0] == 5 * 10 + 6, "the text and its paddings, whatever the line");
 }

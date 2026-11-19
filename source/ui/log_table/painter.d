@@ -96,6 +96,7 @@ class LogPainter : Painter
     {
         TableGeometry g;
         g.headerHeight = 0; // the header follows its font
+        g.columnBorder = 1; // a line between two columns, as the table of the DOM had
         g.groupHeight = -1; // a date over the rows of its day is a plate as high as the header
         g.groupPadTop = _look.spacing.groupPadTop; // with room above it: the groups stand apart
         g.groupPadBottom = _look.spacing.groupPadBottom; // the line under the margin, which the plate opens through
@@ -165,12 +166,10 @@ class LogPainter : Painter
         canvas.fillRect(area, _palette.textSelected);
     }
 
-    // The line between two columns in the room the table left for it, in the rows and in the header alike; none right of the flex column (it
-    // takes the rest of the room, the edge of the table ends it)
+    // The line between two columns in the room the table left for it (only between them), in the rows and in the header alike
     override void paintColumnLine(Canvas canvas, Rect area, TableColumn column, bool header)
     {
-        if (!column.def.flex)
-            canvas.fillRect(area, _palette.border);
+        canvas.fillRect(area, _palette.border);
     }
 }
 
@@ -313,7 +312,7 @@ unittest
     assert(canvas.calls == ["fill", "clip", "text:2026/11/18", "unclip"], "over the title: the line of the title is drawn with the header");
 }
 
-@("LogPainter: the line between the columns is in the color of the borders, right of every column but the flex one; there is no line between the rows")
+@("LogPainter: the line between the columns is in the color of the borders wherever the table leaves one; there is no line between the rows")
 unittest
 {
     static final class Areas : Canvas
@@ -333,9 +332,10 @@ unittest
     painter.paintColumnLine(canvas, Rect(58, 21, 1, 16), new TextColumn(ColumnDef("time", "Time")), false);
     painter.paintColumnLine(canvas, Rect(58, 0, 1, 21), new TextColumn(ColumnDef("time", "Time")), true);
     painter.paintColumnLine(canvas, Rect(398, 21, 1, 16), new TextColumn(ColumnDef("payload", "Payload", 24, true)), false);
-    assert(canvas.areas == [Rect(58, 21, 1, 16), Rect(58, 0, 1, 21)], "in the rows and in the header, none right of the flex column");
-    assert(canvas.colors == [defaultLogLook().palette.border, defaultLogLook().palette.border]);
-    assert(painter.geometry().rowBorder == 0, "the rows are told apart by their backs");
+    assert(canvas.areas == [Rect(58, 21, 1, 16), Rect(58, 0, 1, 21), Rect(398, 21, 1, 16)], "in the rows and in the header, after the flex column too");
+    const border = defaultLogLook().palette.border;
+    assert(canvas.colors == [border, border, border]);
+    assert(painter.geometry().columnBorder == 1 && painter.geometry().rowBorder == 0, "a line between the columns; the rows are told apart by their backs");
 }
 
 @("LogPainter: the background, the header, the rows striped, selected and found, the edge of a pinned area and the text selected are its own colors")

@@ -247,6 +247,9 @@ struct Placement
     double width = 0;
     Pin area; /// the area it is in (none: the scrolling middle)
     size_t defIndex; /// the place of the column among the definitions it was placed from: no lookup by `id` per cell
+    /// The line between it and the next column on the screen, right of it (0: none, the last column has none); a column of the right pinned
+    /// area has its line left of it instead (`lineBefore`), so the line stays with the area when the middle scrolls
+    double lineAfter = 0, lineBefore = 0;
 }
 
 /// All the columns of a viewport
@@ -276,7 +279,8 @@ ref const(ColumnDef) defOf(const TableColumn column) pure nothrow @nogc @safe
 /// the edges, the others between them scrolled by the layout's scroll, a flex column filling the
 /// room that is left. A column is as wide as the layout says, never less than `least` (its least width
 /// as a whole, the column host's: its content, its paddings and the line between the columns; none: no floor).
-Placements placeColumns(C)(const(C)[] columns, const ColumnLayout layout, double viewportWidth, double originX = 0, const(double)[] least = null)
+Placements placeColumns(C)(const(C)[] columns, const ColumnLayout layout, double viewportWidth, double originX = 0, const(double)[] least = null,
+    double columnBorder = 0)
 {
     import std.algorithm.comparison : max, min;
 
@@ -285,6 +289,7 @@ Placements placeColumns(C)(const(C)[] columns, const ColumnLayout layout, double
         const(ColumnDef)* def;
         double width;
         size_t index;
+        double line = 0; // the line between it and the next column on the screen: after it, before it in the right area
     }
 
     Item[] left, middle, right;
@@ -302,11 +307,19 @@ Placements placeColumns(C)(const(C)[] columns, const ColumnLayout layout, double
         case Pin.none: middle ~= item; break;
         }
     }
+    // A line between two columns on the screen, none before the first and none after the last. The line between a pinned area and the
+    // middle is the pinned area's, so it stays when the middle scrolls: after the left ones, before the right ones
+    foreach (k, ref i; left)
+        i.line = k + 1 < left.length || middle.length || right.length ? columnBorder : 0;
+    foreach (k, ref i; middle)
+        i.line = k + 1 < middle.length ? columnBorder : 0;
+    foreach (k, ref i; right)
+        i.line = k > 0 || middle.length ? columnBorder : 0; // with no middle the line after the left ones is between
     double sum(Item[] items)
     {
         double total = 0;
         foreach (i; items)
-            total += i.width;
+            total += i.width + i.line;
         return total;
     }
 
@@ -314,11 +327,10 @@ Placements placeColumns(C)(const(C)[] columns, const ColumnLayout layout, double
     result.leftWidth = sum(left);
     result.rightWidth = sum(right);
     result.middleWidth = max(0.0, viewportWidth - result.leftWidth - result.rightWidth);
-    // the flex column takes what the others of the middle leave
+    // the flex column takes what the others of the middle and the lines between them leave
     double fixedMiddle = 0;
     foreach (i; middle)
-        if (!i.def.flex)
-            fixedMiddle += i.width;
+        fixedMiddle += (i.def.flex ? 0 : i.width) + i.line;
     foreach (ref i; middle)
         if (i.def.flex)
             i.width = max(i.width, result.middleWidth - fixedMiddle);
@@ -329,19 +341,20 @@ Placements placeColumns(C)(const(C)[] columns, const ColumnLayout layout, double
     double x = originX;
     foreach (i; left)
     {
-        result.columns ~= Placement(i.def.id, x, i.width, Pin.left, i.index);
-        x += i.width;
+        result.columns ~= Placement(i.def.id, x, i.width, Pin.left, i.index, i.line);
+        x += i.width + i.line;
     }
     x = originX + result.leftWidth - result.scrollX;
     foreach (i; middle)
     {
-        result.columns ~= Placement(i.def.id, x, i.width, Pin.none, i.index);
-        x += i.width;
+        result.columns ~= Placement(i.def.id, x, i.width, Pin.none, i.index, i.line);
+        x += i.width + i.line;
     }
     x = originX + viewportWidth - result.rightWidth;
     foreach (i; right)
     {
-        result.columns ~= Placement(i.def.id, x, i.width, Pin.right, i.index);
+        x += i.line;
+        result.columns ~= Placement(i.def.id, x, i.width, Pin.right, i.index, 0, i.line);
         x += i.width;
     }
     return result;
@@ -454,6 +467,50 @@ unittest
     assert(p.columns[1] == Placement("b", 50, 30, Pin.none, 1), "no width: the least given");
     assert(p.columns[2].x == 80 && p.columns[2].width == 24);
     assert(p.maxScrollX == 0 && p.scrollX == 0);
+}
+
+@("placeColumns: a line between two columns on the screen, none left of the first and none right of the last; a hidden last one leaves none")
+unittest
+{
+    auto layout = new ColumnLayout;
+    layout.setWidth("a", 50);
+    layout.setWidth("b", 60);
+    layout.setWidth("c", 70);
+    const columns = [ColumnDef("a", "A"), ColumnDef("b", "B"), ColumnDef("c", "C")];
+    auto p = placeColumns(columns, layout, 400, 0, null, 2);
+    assert(p.columns[0].x == 0 && p.columns[0].width == 50 && p.columns[0].lineAfter == 2);
+    assert(p.columns[1].x == 52 && p.columns[1].width == 60 && p.columns[1].lineAfter == 2, "the cell stands after the line");
+    assert(p.columns[2].x == 114 && p.columns[2].width == 70 && p.columns[2].lineAfter == 0, "the last one has none");
+    assert(p.contentWidth == 50 + 2 + 60 + 2 + 70);
+    layout.setVisible("c", false);
+    p = placeColumns(columns, layout, 400, 0, null, 2);
+    assert(p.columns.length == 2 && p.columns[1].lineAfter == 0, "the one before a hidden last is the last now");
+}
+
+@("placeColumns: the flex column takes what the others and the lines between them leave")
+unittest
+{
+    auto layout = new ColumnLayout;
+    layout.setWidth("a", 100);
+    const p = placeColumns([ColumnDef("a", "A"), ColumnDef("p", "P", 24, true)], layout, 500, 0, null, 2);
+    assert(p.columns[1].x == 102 && p.columns[1].width == 398 && p.contentWidth == 500 && p.maxScrollX == 0);
+}
+
+@("placeColumns: the line between a pinned area and the middle stays with the pinned area when the middle scrolls")
+unittest
+{
+    auto layout = new ColumnLayout;
+    layout.setWidth("l", 50);
+    layout.setWidth("m", 300);
+    layout.setWidth("r", 40);
+    layout.setPin("l", Pin.left);
+    layout.setPin("r", Pin.right);
+    layout.setScrollX(30);
+    const p = placeColumns([ColumnDef("l", "L"), ColumnDef("m", "M"), ColumnDef("r", "R")], layout, 200, 0, null, 2);
+    assert(p.leftWidth == 52 && p.columns[0].lineAfter == 2, "the line after the left pinned column is a part of its area");
+    assert(p.rightWidth == 42 && p.columns[2].lineBefore == 2 && p.columns[2].x == 160, "the line before the right pinned one is of its area");
+    assert(p.columns[1].lineAfter == 0 && p.columns[1].x == 52 - 30, "the middle between them, scrolled");
+    assert(p.middleWidth == 200 - 52 - 42 && p.contentWidth == 300);
 }
 
 @("placeColumns: the flex column fills what is left, never less than its width in the layout")

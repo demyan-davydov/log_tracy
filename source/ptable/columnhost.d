@@ -34,6 +34,7 @@ final class ColumnHost
     private ColumnDef[] _columns;
     private size_t[string] _index; // the index of a column by its id
     private double[] _least; // the least width of each column as a whole
+    private double _columnBorder = 0; // the line between two columns on the screen
     private Client[] _clients;
     private double[] _fits; // the widths `settle` fits, by the index of the column
     private double[] _needs; // what the clients told in a round of `settle`, kept to allocate once
@@ -59,14 +60,16 @@ final class ColumnHost
     /// The columns of the clients, in their order
     const(ColumnDef)[] columns() const { return _columns; }
 
-    /// The columns are `columns` now, the least width of each as a whole `least` (its content, its paddings and the line between the columns,
-    /// as the clients measure them): the clients read theirs again (another format, another font); the same ids keep the widths
-    void setColumns(const(ColumnDef)[] columns, const(double)[] least)
+    /// The columns are `columns` now, the least width of each as a whole `least` (its content and its paddings, as the clients measure them)
+    /// and the line between two of them `columnBorder` (the painter's): the clients read theirs again (another format, another font); the
+    /// same ids keep the widths
+    void setColumns(const(ColumnDef)[] columns, const(double)[] least, double columnBorder)
     {
         assert(least.length == columns.length, "a least width for each column");
-        if (least != _least)
+        if (least != _least || columnBorder != _columnBorder)
         {
             _least = least.dup;
+            _columnBorder = columnBorder;
             _placedValid = false;
         }
         if (columns == _columns)
@@ -101,6 +104,9 @@ final class ColumnHost
     {
         return _fits;
     }
+
+    /// The line between two columns on the screen (none left of the first and right of the last)
+    double columnBorder() const { return _columnBorder; }
 
     /// The rounds the last `settle` took
     size_t rounds() const { return _rounds; }
@@ -152,7 +158,7 @@ final class ColumnHost
         const room = width;
         if (!_placedValid || _placedRevision != _layout.revision || _placedWidth != room || _placedOrigin != originX)
         {
-            _placed = placeColumns(_columns, _layout, room, originX, _least);
+            _placed = placeColumns(_columns, _layout, room, originX, _least, _columnBorder);
             _placedRevision = _layout.revision;
             _placedWidth = room;
             _placedOrigin = originX;
@@ -267,7 +273,7 @@ version (unittest)
         double[] least;
         foreach (ref c; columns)
             least ~= c.minWidth;
-        host.setColumns(columns.dup, least);
+        host.setColumns(columns.dup, least, 0);
         return host;
     }
 
@@ -290,9 +296,9 @@ unittest
     auto client = needing(host, 50, 60);
     host.attach(client);
     host.settle(host.least);
-    host.setColumns([ColumnDef("a", "A", 20), ColumnDef("b", "B", 30)], [20, 30]);
+    host.setColumns([ColumnDef("a", "A", 20), ColumnDef("b", "B", 30)], [20, 30], 0);
     assert(host.fits == [50, 60], "the same columns: nothing is forgotten");
-    host.setColumns([ColumnDef("b", "B", 30), ColumnDef("c", "C", 10)], [30, 10]);
+    host.setColumns([ColumnDef("b", "B", 30), ColumnDef("c", "C", 10)], [30, 10], 0);
     assert(host.indexOf("b") == 0 && host.indexOf("c") == 1 && host.fits.length == 2);
 }
 
@@ -395,12 +401,12 @@ unittest
 unittest
 {
     auto host = new ColumnHost;
-    host.setColumns([ColumnDef("time", "Time", 60), ColumnDef("text", "T", 50, true)], [67, 57]);
-    assert(host.least == [67, 57], "the content and the paddings and the line, not the least width of the content");
+    host.setColumns([ColumnDef("time", "Time", 60), ColumnDef("text", "T", 50, true)], [67, 57], 1);
+    assert(host.least == [67, 57], "the content and the paddings, not the least width of the content");
     auto client = needing(host, 0, 0);
     host.attach(client);
     host.resize(client, 300);
     assert(host.places.columns[0].width == 67, "placed no narrower before any fit");
-    host.setColumns([ColumnDef("time", "Time", 60), ColumnDef("text", "T", 50, true)], [70, 57]);
+    host.setColumns([ColumnDef("time", "Time", 60), ColumnDef("text", "T", 50, true)], [70, 57], 1);
     assert(host.least == [70, 57], "the same columns with other least widths (a font of another size): the least widths are new");
 }
