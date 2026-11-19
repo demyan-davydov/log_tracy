@@ -111,22 +111,18 @@ class LogPainter : Painter
         canvas.fillRect(Rect(area.x, area.bottom - 1, area.w, 1), _palette.groupLine);
     }
 
-    // A head is a plate in the cell of its column, colored as the header it goes up to. In the margin it stands left of
-    // the border of its column and opens onto the rows of its group: under it the line under the margin is the room's
-    // ground. Over the header it is a title, with a title's border
+    // A head is a plate in the cell of its column (the table leaves the line right of it out), colored as the header it goes up
+    // to. In the margin it opens onto the rows of its group: under it the line under the margin is the room's ground. Over the
+    // header it covers a title, whose line stays beside it
     override void paintGroup(Canvas canvas, ref GroupContext group, bool tableHasFocus)
     {
-        const cell = group.cell;
-        const border = geometry().columnBorder;
-        const plate = group.sticky ? cell : Rect(cell.x, cell.y, cell.w - border, cell.h);
+        const plate = group.cell;
         canvas.fillRect(plate, _palette.groupPlate);
         if (!group.sticky)
             canvas.fillRect(Rect(plate.x, plate.bottom, plate.w, geometry().groupPadBottom), _palette.groupBand);
         canvas.pushClip(plate);
         group.column.drawGroup(canvas, GroupInput(group.head), plate); // the head, in the ink and on the back its style gives
         canvas.popClip();
-        if (group.sticky)
-            canvas.fillRect(Rect(cell.right - border, cell.y, border, cell.h), _palette.border);
     }
 
     override void paintBackground(Canvas canvas, Rect area)
@@ -169,17 +165,12 @@ class LogPainter : Painter
         canvas.fillRect(area, _palette.textSelected);
     }
 
-    // A cell is drawn by its column (`TableColumn.draw`, `drawHeader`); the painter adds its right border (the row's own look is `paintRow`)
-    override void paintCell(Canvas canvas, ref CellContext cell, bool tableHasFocus)
+    // The line between two columns in the room the table left for it, in the rows and in the header alike; none right of the flex column (it
+    // takes the rest of the room, the edge of the table ends it)
+    override void paintColumnLine(Canvas canvas, Rect area, TableColumn column, bool header)
     {
-        if (!cell.isHeader && cell.data is null)
-            return;
-        const area = cell.area;
-        if (!cell.column.def.flex)
-        {
-            const border = geometry().columnBorder; // the line the table left for it in the width of the column
-            canvas.fillRect(Rect(area.right - border, area.y, border, area.h), _palette.border);
-        }
+        if (!column.def.flex)
+            canvas.fillRect(area, _palette.border);
     }
 }
 
@@ -247,7 +238,7 @@ unittest
     ctx.data = &cell;
     ctx.area = Rect(0, 0, 60, 16);
     paintAll(canvas, painter, ctx);
-    assert(canvas.calls == ["fill", "text:Whatever", "fill"], "the plate of a Fatal, the text, the border of the cell");
+    assert(canvas.calls == ["fill", "text:Whatever"], "the plate of a Fatal and the text: the line right of the cell is not a part of it");
 }
 
 @("LogPainter: the color of a filter rule is a gradient in the Index cell only, the other cells have none")
@@ -274,19 +265,19 @@ unittest
     foreach (c; canvas.calls)
         if (c == "fill")
             fills++;
-    assert(fills >= 9, "the bands of the gradient and the border of the cell");
+    assert(fills >= 8, "the bands of the gradient");
     auto plain = new RecordingCanvas;
     const none = CellData("5"w);
     ctx.data = &none;
     paintAll(plain, painter, ctx);
-    assert(plain.calls == ["text:5", "fill"], "no color: the text and the border");
+    assert(plain.calls == ["text:5"], "no color: the text");
     auto aux = ColumnDef("count", "Count", 24, false, true);
     auto auxColumn = new TextColumn(aux);
     ctx.column = auxColumn;
     ctx.data = &colored;
     auto other = new RecordingCanvas;
     paintAll(other, painter, ctx);
-    assert(other.calls == ["text:5", "fill"], "only the Index cell shows the color");
+    assert(other.calls == ["text:5"], "only the Index cell shows the color");
 }
 
 @("LogPainter: a group's margin has room above its plate, a line over it under the row above and one under it over the rows of the group; the plate, as high as the header, borders a title only over the header")
@@ -314,12 +305,37 @@ unittest
     auto areas = new Areas;
     auto margin = GroupContext("2026/11/18"w, Rect(60, 46, 90, 22), false, new TextColumn(ColumnDef("time", "Time")));
     painter.paintGroup(areas, margin, true);
-    assert(areas.areas == [Rect(60, 46, 89, 22), Rect(60, 68, 89, 1)],
-        "the plate left of the border of its column; under it the line is the room's ground: the plate opens onto its rows");
+    assert(areas.areas == [Rect(60, 46, 90, 22), Rect(60, 68, 90, 1)],
+        "the plate in the cell of its column (the line right of it is not a part of it); under it the line is the room's ground: the plate opens onto its rows");
     canvas.calls = null;
     auto sticky = GroupContext("2026/11/18"w, Rect(60, 0, 90, 22), true, new TextColumn(ColumnDef("time", "Time")));
     painter.paintGroup(canvas, sticky, true);
-    assert(canvas.calls == ["fill", "clip", "text:2026/11/18", "unclip", "fill"], "over the title: the border of a title");
+    assert(canvas.calls == ["fill", "clip", "text:2026/11/18", "unclip"], "over the title: the line of the title is drawn with the header");
+}
+
+@("LogPainter: the line between the columns is in the color of the borders, right of every column but the flex one; there is no line between the rows")
+unittest
+{
+    static final class Areas : Canvas
+    {
+        Rect[] areas;
+        Color[] colors;
+        void fillRect(Rect area, Color color) { areas ~= area; colors ~= color; }
+        void drawText(FontId font, const(wchar)[] text, double x, double baseline, Color color) {}
+        void drawParagraph(FontId font, const(wchar)[] text, double x, double top, double width, Color color) {}
+        void fillCircle(double cx, double cy, double radius, Color fill, Color line) {}
+        void pushClip(Rect area) {}
+        void popClip() {}
+    }
+
+    auto painter = new LogPainter;
+    auto canvas = new Areas;
+    painter.paintColumnLine(canvas, Rect(58, 21, 1, 16), new TextColumn(ColumnDef("time", "Time")), false);
+    painter.paintColumnLine(canvas, Rect(58, 0, 1, 21), new TextColumn(ColumnDef("time", "Time")), true);
+    painter.paintColumnLine(canvas, Rect(398, 21, 1, 16), new TextColumn(ColumnDef("payload", "Payload", 24, true)), false);
+    assert(canvas.areas == [Rect(58, 21, 1, 16), Rect(58, 0, 1, 21)], "in the rows and in the header, none right of the flex column");
+    assert(canvas.colors == [defaultLogLook().palette.border, defaultLogLook().palette.border]);
+    assert(painter.geometry().rowBorder == 0, "the rows are told apart by their backs");
 }
 
 @("LogPainter: the background, the header, the rows striped, selected and found, the edge of a pinned area and the text selected are its own colors")
@@ -433,12 +449,12 @@ unittest
     ctx.area = Rect(0, 0, 40, 16);
     auto canvas = new Fills;
     paintAll(canvas, painter, ctx);
-    assert(canvas.calls == ["fill", "text:7", "fill"], "the background, the text, the border");
+    assert(canvas.calls == ["fill", "text:7"], "the background and the text");
     assert(canvas.colors[0] == Color(0xee, 0xe6, 0xd4) && canvas.colors[1] == Color(255, 0, 0));
     row.state.selected = true;
     canvas = new Fills;
     paintAll(canvas, painter, ctx);
-    assert(canvas.calls == ["text:7", "fill"] && canvas.colors[0] == Color(0, 0, 0), "no background over a selected row, its ink");
+    assert(canvas.calls == ["text:7"] && canvas.colors[0] == Color(0, 0, 0), "no background over a selected row, its ink");
 }
 
 @("LogPainter: the row the keys move from has a frame over its cells in the color of the current row")
@@ -497,28 +513,28 @@ unittest
     ctx.data = &cell;
     auto canvas = new RecordingCanvas;
     paintAll(canvas, painter, ctx);
-    assert(canvas.calls == ["circle", "text:⚓", "fill"], "the circle under the anchor, then the border of the cell");
+    assert(canvas.calls == ["circle", "text:⚓"], "the circle under the anchor");
     cell.extra = Extra(0);
     auto empty = new RecordingCanvas;
     paintAll(empty, painter, ctx);
-    assert(empty.calls == ["fill"]);
+    assert(empty.calls.length == 0, "no anchor: nothing");
     ctx.hover = true;
     auto faint = new RecordingCanvas;
     paintAll(faint, painter, ctx);
-    assert(faint.calls == ["text:⚓", "fill"], "the mouse over a cell with no anchor: a faint one, no circle");
+    assert(faint.calls == ["text:⚓"], "the mouse over a cell with no anchor: a faint one, no circle");
     full = true;
     auto refused = new RecordingCanvas;
     paintAll(refused, painter, ctx);
-    assert(refused.calls == ["text:⊘", "fill"], "no room for another: the sign of a refusal");
+    assert(refused.calls == ["text:⊘"], "no room for another: the sign of a refusal");
     ctx.pressed = true;
     auto big = new RecordingCanvas;
     paintAll(big, painter, ctx);
-    assert(big.calls == ["text:⊘", "fill"], "the button is down on it: the glyph in the big font, no circle");
+    assert(big.calls == ["text:⊘"], "the button is down on it: the glyph in the big font, no circle");
     ctx.pressed = false;
     ctx.hover = false;
     auto quiet = new RecordingCanvas;
     paintAll(quiet, painter, ctx);
-    assert(quiet.calls == ["fill"], "the mouse is elsewhere: nothing");
+    assert(quiet.calls.length == 0, "the mouse is elsewhere: nothing");
     const before = asked;
     painter.paintCell(new RecordingCanvas, ctx, true);
     assert(asked == before, "the document is not asked about a cell nobody points at");
@@ -526,9 +542,9 @@ unittest
     full = false;
     auto room = new RecordingCanvas;
     paintAll(room, painter, ctx);
-    assert(room.calls == ["text:⚓", "fill"], "room again: the faint anchor, as the document says now");
+    assert(room.calls == ["text:⚓"], "room again: the faint anchor, as the document says now");
     cell.extra = Extra(anchoredMark);
     auto anchoredFull = new RecordingCanvas;
     paintAll(anchoredFull, painter, ctx);
-    assert(anchoredFull.calls == ["circle", "text:⚓", "fill"], "an anchor that is there is shown as before");
+    assert(anchoredFull.calls == ["circle", "text:⚓"], "an anchor that is there is shown as before");
 }

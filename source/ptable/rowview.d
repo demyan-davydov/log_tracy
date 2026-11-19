@@ -16,6 +16,7 @@ version (unittest)
 import ptable.layout : Placement;
 import ptable.painter : CellContext, Painter, RowContext, RowState;
 import ptable.ports : Rect;
+import ptable.regions : cellIn;
 import ptable.rowcache : Entry, RowCache;
 import ptable.rowlayout : RowSlot;
 import ptable.tablespace : TableSpace;
@@ -94,7 +95,7 @@ final class RowView
         ctx.column = _env.columns.column(c.defIndex);
         ctx.columnIndex = c.defIndex;
         ctx.data = _env.columns.titlePtr(c.defIndex);
-        ctx.area = Rect(c.x, space.regions.header.y, c.width, space.regions.header.h);
+        ctx.area = cellIn(c.x, c.width, space.regions.header, space.fonts.geometry.columnBorder, 0);
         ctx.clip = ctx.area;
         ctx.isHeader = true; // the column places its title in the area itself
         return ctx;
@@ -103,7 +104,8 @@ final class RowView
     /// The text of the cell placed at `c` as the hit tests see it: its input, its area in the row, its column
     CellText cellText(Entry* e, ref const RowContext row, ref const Placement c)
     {
-        return CellText(cellInputAt(e, row, c.defIndex), Rect(c.x, row.area.y, c.width, row.area.h), _env.columns.column(c.defIndex));
+        const g = _env.space.fonts.geometry;
+        return CellText(cellInputAt(e, row, c.defIndex), cellIn(c.x, c.width, row.area, g.columnBorder, g.rowBorder), _env.columns.column(c.defIndex));
     }
 
     /// The selectable cells `cells` of the row `row` of the entry `e`, for the hit tests and the selection. The texts it
@@ -167,7 +169,7 @@ unittest
     header.area = space.regions.header;
     const placed = Placement("b", 100, 60, Placement.init.area, 1);
     const ctx = view.headerCellAt(header, placed);
-    assert(ctx.isHeader && ctx.columnIndex == 1 && ctx.data.text == "Beta" && ctx.area == Rect(100, 0, 60, 21));
+    assert(ctx.isHeader && ctx.columnIndex == 1 && ctx.data.text == "Beta" && ctx.area == Rect(100, 0, 59, 21), "the title less the line right of it");
 }
 
 @("FocusedRow: the cells of a row are asked on the spot, in a struct, by their placement")

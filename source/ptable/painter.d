@@ -116,8 +116,20 @@ class Painter
     {
     }
 
-    /// What the painter adds to a cell (its border) after its column drew it (`TableColumn.draw`, `drawHeader`)
+    /// What the painter adds to a cell after its column drew it (`TableColumn.draw`, `drawHeader`), in the area of the cell: the lines
+    /// between the columns and the rows are not a part of it (`paintColumnLine`, `paintRowLine`)
     void paintCell(Canvas canvas, ref CellContext cell, bool tableHasFocus)
+    {
+    }
+
+    /// The line between two columns, right of a cell of `column` (`TableGeometry.columnBorder` wide, as high as the cell), in a row or
+    /// (`header`) in the header: the table leaves its room out of the cell
+    void paintColumnLine(Canvas canvas, Rect area, TableColumn column, bool header)
+    {
+    }
+
+    /// The line under a row (`TableGeometry.rowBorder` high, across the block of the columns): the table leaves its room out of the cells
+    void paintRowLine(Canvas canvas, Rect area, ref const RowContext row)
     {
     }
 

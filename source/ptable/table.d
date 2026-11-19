@@ -248,7 +248,8 @@ final class Table
         foreach (c; places().columns)
             if (c.defIndex == defIndex)
             {
-                area = Rect(c.x, row.y, c.width, row.h);
+                const g = _store.space.fonts.geometry;
+                area = cellIn(c.x, c.width, row, g.columnBorder, g.rowBorder);
                 return true;
             }
         return false;
@@ -1395,7 +1396,7 @@ unittest
     Rect area;
     assert(f.table.cellRect(3, 0, area) && area.y == 21 + 16 * 3 && area.h == 16 && area.x == 0 && area.w > 0);
     Rect second;
-    assert(f.table.cellRect(3, 1, second) && second.x == area.right && second.y == area.y);
+    assert(f.table.cellRect(3, 1, second) && second.x == area.right + 1 && second.y == area.y, "the line between the columns lies between");
     f.table.scrollBy(32);
     f.table.paint(f.canvas);
     Rect scrolled;
@@ -1417,7 +1418,7 @@ unittest
     f.table.updateRow(3);
     assert(areas == [Rect(0, 21 + 16 * 3, 400, 16)]);
     f.table.updateCell(3, 1);
-    assert(areas.length == 2 && areas[1].y == 21 + 16 * 3 && areas[1].h == 16 && areas[1].x > 0 && areas[1].w > 0 && areas[1].right == 400);
+    assert(areas.length == 2 && areas[1].y == 21 + 16 * 3 && areas[1].h == 16 && areas[1].x > 0 && areas[1].w > 0 && areas[1].right == 399, "the cell, not the line right of it");
     f.table.updateRow(5000);
     f.table.updateCell(5000, 0);
     f.table.updateCell(3, 77);
@@ -2977,6 +2978,31 @@ unittest
     search.paint(canvas);
     assert(host.layout.width("n") == wide, "its rows set the widths again");
     assert(painter.rows > 0 && search.stats.first == first, "it shows its rows where they stood");
+}
+
+@("Table: the area of a cell is that of its column less the lines between the columns and the rows")
+unittest
+{
+    static final class Lined : Painter
+    {
+        override TableGeometry geometry()
+        {
+            auto g = super.geometry();
+            g.columnBorder = 2;
+            g.rowBorder = 3;
+            return g;
+        }
+    }
+
+    auto host = new ColumnHost;
+    auto table = new Table(new NumbersModel(10), host, portsOf(new Lined));
+    table.resize(400, 121);
+    table.paint(new RecordingCanvas);
+    const column = host.places(0).columns[0];
+    Rect area;
+    assert(table.cellRect(2, 0, area));
+    assert(area.x == column.x && area.w == column.width - 2, "the column less the line right of it");
+    assert(area.h == table.rowHeight(2) - 3, "the row less the line under it");
 }
 
 @("Table: the host says whether the table has the focus: a change repaints, the same again does not, and every hook of the painter is told")

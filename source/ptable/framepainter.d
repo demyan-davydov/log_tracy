@@ -13,6 +13,7 @@ import ptable.layout : Pin, Placement, Placements;
 import ptable.model : ItemKind;
 import ptable.painter : EmptyZone, GroupContext, Painter, RowContext;
 import ptable.ports : Canvas, Rect;
+import ptable.regions : cellIn, columnLineIn, rowLineOf;
 import ptable.rowcache : Entry;
 import ptable.rowlayout : RowSlot;
 import ptable.rowstore : RowStore;
@@ -113,7 +114,8 @@ final class FramePainter
             foreach (c; p.columns)
                 if (c.defIndex == groups[k])
                 {
-                    const left = max(c.x, rows.x), right = min(c.x + c.width, rows.x + rows.w);
+                    const cell = cellIn(c.x, c.width, header, _space.fonts.geometry.columnBorder, 0); // a head stands in the cell, not on the line
+                    const left = max(cell.x, rows.x), right = min(cell.right, rows.x + rows.w);
                     return right > left ? Rect(left, header.y, right - left, header.h) : Rect.init;
                 }
             return Rect.init;
@@ -177,11 +179,14 @@ final class FramePainter
         row.area = _space.regions.header;
         // the titles stand in the block of the columns like the cells: scrolled out of it they are not drawn over the margins
         canvas.pushClip(Rect(_space.regions.rows.x, _space.regions.header.y, _space.regions.rows.w, _space.regions.header.h));
+        const g = _space.fonts.geometry;
         foreach (c; p.columns)
         {
             auto ctx = _rows.headerCellAt(row, c);
             ctx.column.drawHeader(canvas, ctx.area, HeaderState(ctx.hover, ctx.pressed));
             _painter.paintCell(canvas, ctx, tableHasFocus);
+            if (g.columnBorder > 0)
+                _painter.paintColumnLine(canvas, columnLineIn(c.x, c.width, _space.regions.header, g.columnBorder, 0), ctx.column, true);
         }
         canvas.popClip();
     }
@@ -195,13 +200,18 @@ final class FramePainter
         _painter.paintRow(canvas, row, picked.tableHasFocus);
         if (!e.valid)
             return;
+        const rowBorder = _space.fonts.geometry.rowBorder;
         if (e.data.kind == ItemKind.virtual_)
         {
             if (_store.columns.length)
-                paintCellAt(canvas, e, row, 0, row.area, false, false, picked.tableHasFocus);
+                paintCellAt(canvas, e, row, 0, cellIn(row.area.x, row.area.w, row.area, 0, rowBorder), false, false, picked.tableHasFocus);
+            if (rowBorder > 0)
+                _painter.paintRowLine(canvas, rowLineOf(row.area, rowBorder), row);
             return;
         }
         paintRowCells(canvas, e, row, p, picked);
+        if (rowBorder > 0)
+            _painter.paintRowLine(canvas, rowLineOf(row.area, rowBorder), row);
         _painter.paintRowOver(canvas, row, picked.tableHasFocus);
     }
 
@@ -252,7 +262,8 @@ final class FramePainter
             if (c.area == area && c.defIndex < e.data.fragments.length && e.data.fragments[c.defIndex].length)
             {
                 const cell = _rows.cellInputAt(e, row, c.defIndex);
-                const place = Rect(c.x, row.area.y, c.width, row.area.h);
+                const g = _space.fonts.geometry;
+                const place = cellIn(c.x, c.width, row.area, g.columnBorder, g.rowBorder);
                 const state = DrawState(place, clipOf(place), row.state);
                 _store.columns.column(c.defIndex).drawBack(canvas, cell, state);
             }
@@ -260,8 +271,12 @@ final class FramePainter
 
     private void paintCellOf(Canvas canvas, Entry* e, ref const RowContext row, ref const Placement c, ref const Picked picked)
     {
-        paintCellAt(canvas, e, row, c.defIndex, Rect(c.x, row.area.y, c.width, row.area.h), row.state.hover && c.defIndex == picked.hoverColumn,
-            cast(long) row.index == picked.pressedRow && c.defIndex == picked.pressedColumn, picked.tableHasFocus);
+        const g = _space.fonts.geometry;
+        paintCellAt(canvas, e, row, c.defIndex, cellIn(c.x, c.width, row.area, g.columnBorder, g.rowBorder),
+            row.state.hover && c.defIndex == picked.hoverColumn, cast(long) row.index == picked.pressedRow && c.defIndex == picked.pressedColumn,
+            picked.tableHasFocus);
+        if (g.columnBorder > 0)
+            _painter.paintColumnLine(canvas, columnLineIn(c.x, c.width, row.area, g.columnBorder, g.rowBorder), _store.columns.column(c.defIndex), false);
     }
 
     // The cell `defIndex` of the row in `area`: its column draws it, the painter adds its border
@@ -514,6 +529,63 @@ version (unittest)
     }
 }
 
+@("FramePainter: a cell is drawn in its area less the lines between the columns and the rows, the lines are drawn apart in their own room")
+unittest
+{
+    import ptable.column : TableColumn;
+    import ptable.painter : TableGeometry;
+
+    static final class Lined : Painter
+    {
+        Rect[] cells, titles, columnLines, titleLines, rowLines;
+
+        override TableGeometry geometry()
+        {
+            auto g = super.geometry();
+            g.columnBorder = 2;
+            g.rowBorder = 3;
+            return g;
+        }
+
+        override void paintCell(Canvas canvas, ref CellContext cell, bool tableHasFocus)
+        {
+            if (cell.isHeader)
+                titles ~= cell.area;
+            else
+                cells ~= cell.area;
+        }
+
+        override void paintColumnLine(Canvas canvas, Rect area, TableColumn column, bool header)
+        {
+            if (header)
+                titleLines ~= area;
+            else
+                columnLines ~= area;
+        }
+
+        override void paintRowLine(Canvas canvas, Rect area, ref const RowContext row) { rowLines ~= area; }
+    }
+
+    auto painter = new Lined;
+    auto layout = new ColumnLayout;
+    auto store = new RowStore(new NumbersModel(10), new ColumnHost(layout), portsOf(painter));
+    bool widthChanged;
+    store.resize(400, 121, widthChanged);
+    layout.setWidth("n", 60);
+    store.ensure();
+    auto view = new RowView(RowEnv(store.columns, store.space));
+    auto frame = new FramePainter(painter, store, view, store.space);
+    const slots = [RowSlot(0, 0, 16)];
+    const none = Picked.init;
+    frame.paint(new ClipCanvas, slots, store.places(), none);
+    const rows = store.space.regions.rows, header = store.space.regions.header;
+    assert(painter.cells == [Rect(0, rows.y, 58, 13), Rect(60, rows.y, 338, 13)], "the cells of the row less the lines");
+    assert(painter.columnLines == [Rect(58, rows.y, 2, 13), Rect(398, rows.y, 2, 13)], "the lines right of the cells, as high as they");
+    assert(painter.rowLines == [Rect(rows.x, rows.y + 13, rows.w, 3)], "the line under the row, across the block of the columns");
+    assert(painter.titles == [Rect(0, header.y, 58, header.h), Rect(60, header.y, 338, header.h)], "the titles less the lines");
+    assert(painter.titleLines == [Rect(58, header.y, 2, header.h), Rect(398, header.y, 2, header.h)], "the lines of the header");
+}
+
 @("FramePainter: with margins and a scroll the titles are drawn in the block of the columns and the pinned strips stand at its edges")
 unittest
 {
@@ -656,10 +728,10 @@ unittest
     // rows of 16, the first of a later day (3, 6) 20 more; the header is 21 over the rows (-21 from their top)
     f.paint(0, 0);
     assert(f.painter.seen == ["band 48", "d1 48", "sticky d0 -21"], "the first row has no margin: from the start its head is over the title");
-    assert(f.painter.places[0] == Rect(rows.x, rows.y + 48, rows.w, 20) && f.painter.places[1] == Rect(time.x, rows.y + 48, time.width, 20),
-        "the band across the rows, the head in the cell of its column");
+    assert(f.painter.places[0] == Rect(rows.x, rows.y + 48, rows.w, 20) && f.painter.places[1] == Rect(time.x, rows.y + 48, time.width - 1, 20),
+        "the band across the rows, the head in the cell of its column (the line right of it is not a part of it)");
     assert(f.painter.clips[0] == rows && f.painter.clips[1] == rows, "in the rows");
-    assert(f.painter.clips[2] == Rect(time.x, header.y, time.width, header.h), "only over the column's title");
+    assert(f.painter.clips[2] == Rect(time.x, header.y, time.width - 1, header.h), "only over the column's title, not over the line right of it");
 
     f.paint(1, -5);
     assert(f.painter.seen == ["band 27", "d1 27", "band 95", "d2 95", "sticky d0 -21"]);
@@ -683,8 +755,8 @@ unittest
     f.paint(0, 0);
     assert(f.painter.seen == ["band 48", "S1 48", "band 100", "D1 100", "sticky D0 -21", "sticky S0 -21"],
         "the shift alone at row 3, the day alone at row 5; each title its own head");
-    assert(f.painter.clips[4] == Rect(f.p.columns[0].x, header.y, f.p.columns[0].width, header.h)
-        && f.painter.clips[5] == Rect(f.p.columns[1].x, header.y, f.p.columns[1].width, header.h));
+    assert(f.painter.clips[4] == Rect(f.p.columns[0].x, header.y, f.p.columns[0].width - 1, header.h)
+        && f.painter.clips[5] == Rect(f.p.columns[1].x, header.y, f.p.columns[1].width - 1, header.h));
 
     f.paint(15, 0);
     assert(f.painter.seen == ["band 0", "D3 0", "S5 0", "band 68", "S6 68", "band 120", "D4 120", "sticky D2 -21", "sticky S4 -21"],
@@ -726,7 +798,7 @@ unittest
     frame.paint(new RecordingCanvas, slots, p, none);
     const rows = store.space.regions.rows;
     assert(painter.bands == [Rect(rows.x, rows.y + 48, rows.w, 26)], "the margin of row 3: the room and the plate");
-    assert(painter.plates == [Rect(p.columns[0].x, rows.y + 48 + 6, p.columns[0].width, 20)], "the plate at its bottom");
+    assert(painter.plates == [Rect(p.columns[0].x, rows.y + 48 + 6, p.columns[0].width - 1, 20)], "the plate at its bottom, in the cell");
 }
 
 @("FramePainter: a head scrolled sideways out of the block of the columns is cut by it, over the header as its title")
@@ -746,7 +818,7 @@ unittest
     assert(time.x < rows.x, "the time column scrolled out of the block on the left");
     f.paint(1, -5);
     const sticky = f.painter.clips[$ - 1];
-    assert(sticky == Rect(rows.x, header.y, time.x + time.width - rows.x, header.h), "the head over the title is cut at the block's edge");
+    assert(sticky == Rect(rows.x, header.y, time.x + time.width - 1 - rows.x, header.h), "the head over the title is cut at the block's edge");
 }
 
 @("FramePainter: a hidden column that groups gives no margins: its cells have no text, so no heads")
