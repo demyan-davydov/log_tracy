@@ -7,6 +7,7 @@
 module ptable;
 
 public import ptable.column;
+public import ptable.columnhost;
 public import ptable.layout;
 public import ptable.listeners;
 public import ptable.lookchange;

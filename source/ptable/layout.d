@@ -42,14 +42,16 @@ struct LayoutChange
 {
     enum Kind : ubyte
     {
-        width,
+        width, /// a width set by the user (or a fit outside a settling of a host)
         visibility,
         pin,
         scroll,
+        fit, /// the widths fit to the rows of the tables changed (a settling of a host, `ColumnLayout.fitting`)
+        room, /// the room of the columns changed (`ColumnHost.resize`)
     }
 
     Kind kind;
-    string id; /// the column, empty for the scroll
+    string id; /// the column, empty for the scroll, the fit and the room
 }
 
 alias LayoutListener = void delegate(const LayoutChange change);
@@ -69,6 +71,7 @@ final class ColumnLayout
     private double _scrollX = 0;
     private Listeners!LayoutChange _listeners;
     private uint _revision;
+    private bool _fitting, _fitChanged; // inside `fitting`, and whether a width changed in it
 
     /// Counts every change: a table that painted at a revision knows it is stale
     uint revision() const pure nothrow @nogc @safe
@@ -111,7 +114,10 @@ final class ColumnLayout
     private void changed(LayoutChange.Kind kind, string id)
     {
         _revision++;
-        _listeners.tell(LayoutChange(kind, id));
+        if (_fitting && kind == LayoutChange.Kind.width)
+            _fitChanged = true; // told once, after the fitting
+        else
+            _listeners.tell(LayoutChange(kind, id));
     }
 
     /// Sets the width exactly (the user dragged a border): what the texts needed is forgotten, the next longer text
@@ -136,6 +142,20 @@ final class ColumnLayout
         s.fit = fit;
         if (width(id) != before)
             changed(LayoutChange.Kind.width, id);
+    }
+
+    /// The widths are fit inside `act` (a settling of a host): the changes of the widths are not told one by one but once after it,
+    /// as a change of kind `fit`, if a width changed; the revision counts each of them, so the places made inside are not stale
+    void fitting(scope void delegate() act)
+    {
+        assert(!_fitting, "a fitting inside a fitting");
+        _fitting = true;
+        _fitChanged = false;
+        scope (exit)
+            _fitting = false;
+        act();
+        if (_fitChanged)
+            _listeners.tell(LayoutChange(LayoutChange.Kind.fit, ""));
     }
 
     /// The texts are to be measured again (the fonts changed): what they needed is forgotten, what the user set stays
@@ -265,6 +285,9 @@ void delegate() linkLayouts(ColumnLayout a, ColumnLayout b, uint what = Linked.a
         case LayoutChange.Kind.scroll:
             if (what & Linked.scroll)
                 to.setScrollX(from.scrollX);
+            break;
+        case LayoutChange.Kind.fit:
+        case LayoutChange.Kind.room:
             break;
         }
     }
@@ -405,6 +428,24 @@ version (unittest)
         layout.unsubscribe(handle);
         return seen;
     }
+}
+
+@("ColumnLayout: the widths fit inside `fitting` are told once, as a fit, and only if one changed")
+unittest
+{
+    auto layout = new ColumnLayout;
+    const before = layout.revision;
+    uint inside;
+    auto seen = changesOf(layout, {
+        layout.fitting({
+            layout.setFit("a", 40);
+            layout.setFit("b", 50);
+            inside = layout.revision;
+        });
+    });
+    assert(seen.length == 1 && seen[0].kind == LayoutChange.Kind.fit && seen[0].id == "", "one notice for all the widths");
+    assert(inside > before, "the revision counts the changes inside: places made there are not stale");
+    assert(changesOf(layout, { layout.fitting({ layout.setFit("a", 40); }); }).length == 0, "no width changed: nothing told");
 }
 
 @("ColumnLayout: a width is exact when set and only grows when grown")
