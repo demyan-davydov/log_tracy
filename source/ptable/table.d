@@ -2678,8 +2678,6 @@ unittest
     assert(f.table.firstVisible == CellPosition(692, 0, -8, 0), "far off: row 700 jumped to 20 + 100 from the top, a screen under its place; the glide is left");
     while (f.table.tick(now += 16)) {}
     f.table.paint(f.canvas);
-    import std.stdio : writeln;
-    writeln("DEBUG ", f.table.firstVisible, " ", now);
     assert(near(f.table.firstVisible, CellPosition(698, 0, -12, 0)), "landed: row 700 is 20 from the top");
     f.table.scrollToPosition(CellPosition(3, 0, 0, 0), double.nan);
     f.table.paint(f.canvas);
