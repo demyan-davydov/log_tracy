@@ -59,6 +59,13 @@ final class FramePainter
         return _frames;
     }
 
+    /// Draws the background of the table only (a table detached from its host shows none of its rows)
+    void paintBlank(Canvas canvas)
+    {
+        ++_frames;
+        _painter.paintBackground(canvas, Rect(0, 0, _space.width, _space.height));
+    }
+
     /// Draws the table: the whole of it is (0, 0, width, height) of `canvas`
     void paint(Canvas canvas, const(RowSlot)[] slots, ref const Placements p, ref const Picked picked)
     {

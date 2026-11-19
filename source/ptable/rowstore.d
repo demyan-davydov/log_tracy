@@ -31,6 +31,7 @@ final class RowStore : ColumnClient
     private double[] _titles; // what the title of each column needs, measured when the columns are read
     private double[] _needs; // what the rows in the window need of each column (`measure`), kept to allocate once
     private size_t _fitFirst = size_t.max - 1, _fitCount; // the window the widths were fit to
+    private bool _detached; // `detachHost`: the store left its host for a while
     private bool _fitDirty = true; // something the widths are fit to changed: the rows, the columns, a width set by the user, the fonts
     private TableSpace _space; // the size, the fonts and the regions: the store makes them current, the others read them
 
@@ -84,8 +85,26 @@ final class RowStore : ColumnClient
     void dispose()
     {
         _ears.detach();
-        host.detach(this);
+        host.detach(this); // nothing if it was detached
         _cache.release();
+    }
+
+    /// The store leaves its host for a while (`Table.detach`): what its rows need and the room it has no longer count, the other
+    /// tables of the host settle without it
+    void detachHost()
+    {
+        _detached = true;
+        host.detach(this);
+    }
+
+    /// The store is back with its host: its room counts again and the widths are fit anew with its rows (at the next layout)
+    void attachHost()
+    {
+        _detached = false;
+        host.attach(this);
+        _fitDirty = true;
+        ensure();
+        host.resize(this, _space.regions.rows.w);
     }
 
     /// The look changed (the metrics): the painter's geometry, the fonts and the columns are read again, and the widths are fit
@@ -144,7 +163,7 @@ final class RowStore : ColumnClient
             refreshColumns();
             regionsMade = _space.refresh().regionsMade || regionsMade; // the header may have grown to the font of a title
         }
-        if (regionsMade)
+        if (regionsMade && !_detached)
             host.resize(this, _space.regions.rows.w); // the room of the columns is the host's: the least its tables have
         bool wantedChanged;
         const wanted = _columns.wanted(wantedChanged);

@@ -124,6 +124,7 @@ final class Table
     private bool _newList = true; // the rows are other ones (or not yet any): the mode is read anew at the next paint
     private bool _toldFollowing; // what the host was told of the mode last
 
+    private bool _detached; // `detach`: the table left its host for a while
     private size_t _fitRounds; // the rounds the settling of the widths of the last layout took, 0 if it settled none (a statistic)
     private RowPicker _picker; // the rows picked and how the input picks them, the text selected, the press and the copy
     private ScrollMotion _motion; // the scrolls on the host's frames: a drag past the rows, the wheel's step, the coast
@@ -145,6 +146,36 @@ final class Table
     void dispose()
     {
         _store.dispose(); // the memory goes back to the source now, not when the collector gets to the table
+    }
+
+    /// The table leaves its host for a while (a status covers it): its rows set no width and its room no room of the columns, it draws
+    /// its background only and touches nothing shared (the scroll of the columns); where its rows stand, the rows picked and the text
+    /// selected stay as they are. The other tables of the host settle without it at once.
+    void detach()
+    {
+        if (_detached)
+            return;
+        _detached = true;
+        _motion.stop(); // a coast or a glide would move the rows nobody sees
+        _store.detachHost();
+        invalidate();
+    }
+
+    /// The table is back with its host (`detach`): its room counts again, the widths are fit anew with its rows, and it shows them
+    /// where they stood
+    void attach()
+    {
+        if (!_detached)
+            return;
+        _detached = false;
+        _store.attachHost();
+        invalidate();
+    }
+
+    /// Whether the table is with its host (`detach`)
+    bool attached() const
+    {
+        return !_detached;
     }
 
     TableStats stats()
@@ -308,6 +339,8 @@ final class Table
         prepare();
         _viewport.layout();
         _fitRounds = 0;
+        if (_detached)
+            return; // its rows set no widths: the host settles when it is back
         if (auto start = _store.fitStart(_viewport.slots))
         {
             _store.host.settle(start);
@@ -587,6 +620,11 @@ final class Table
     /// Draws the table: the whole of it is (0, 0, width, height) of `canvas`
     void paint(Canvas canvas)
     {
+        if (_detached)
+        {
+            _frame.paintBlank(canvas); // nothing of the rows, nothing told: the place, the bars and the scroll stay as they were
+            return;
+        }
         prepare();
         _viewport.applyPending(_store.fallbackHeight);
         layout();
@@ -2896,6 +2934,49 @@ unittest
     search.dispose();
     assert(host.layout.width("n") == narrow, "the column narrows to the rows of the main table");
     assert(asked > 0, "the main table is painted again");
+}
+
+@("Table: a detached table gives its host no widths and no room, draws its background only and keeps its place; attached again, it counts")
+unittest
+{
+    static final class Rows : Painter
+    {
+        size_t rows;
+        override void paintRow(Canvas canvas, ref const RowContext row, bool tableHasFocus) { ++rows; }
+    }
+
+    const narrow = aloneWidth(shortLevel);
+    auto host = new ColumnHost;
+    auto main = new Table(new Levels(100, shortLevel), host, portsOf(new Painter));
+    auto painter = new Rows;
+    auto search = new Table(new Levels(50, longLevel), host, portsOf(painter));
+    main.resize(400, 121);
+    search.resize(400, 121);
+    auto canvas = new RecordingCanvas;
+    search.scrollTo(20);
+    main.paint(canvas);
+    search.paint(canvas);
+    const wide = host.layout.width("n");
+    const first = search.stats.first;
+    assert(wide > narrow && first > 0);
+
+    search.detach();
+    assert(host.layout.width("n") == narrow, "the main table alone sets the widths");
+    search.resize(300, 121);
+    assert(host.width == 400, "the room of a detached table does not count");
+    host.layout.setScrollX(1000);
+    painter.rows = 0;
+    search.paint(canvas);
+    assert(painter.rows == 0, "no rows are drawn");
+    assert(host.layout.scrollX == 1000, "the scroll of the columns is not touched");
+    assert(search.stats.first == first, "the place of the rows stays");
+
+    search.attach();
+    assert(host.width == 300, "its room counts again");
+    main.paint(canvas);
+    search.paint(canvas);
+    assert(host.layout.width("n") == wide, "its rows set the widths again");
+    assert(painter.rows > 0 && search.stats.first == first, "it shows its rows where they stood");
 }
 
 @("Table: the host says whether the table has the focus: a change repaints, the same again does not, and every hook of the painter is told")
