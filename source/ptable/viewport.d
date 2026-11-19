@@ -206,12 +206,20 @@ final class RowViewport
     }
 
     /// How far (pixels, down is positive) the rows are to move to show the item `index` by the least scroll: 0 if it is shown,
-    /// NaN if it is more than two screens off the window (the caller then jumps to it)
+    /// NaN if it is more than two screens off the window (the caller then jumps to it). An item taller than the window is shown when it
+    /// covers the window (there is no more of it to bring in): else the least scroll that makes it cover it, from the side it is cut at
+    /// (a second click on it does not scroll it to its other end)
     double revealDistance(size_t index)
     {
         foreach (ref slot; _slots)
             if (slot.index == index)
             {
+                if (slot.height > _height)
+                {
+                    if (slot.top <= 0 && slot.top + slot.height >= _height)
+                        return 0;
+                    return slot.top > 0 ? slot.top : slot.top + slot.height - _height;
+                }
                 if (slot.top < 0)
                     return slot.top;
                 return slot.top + slot.height > _height ? slot.top + slot.height - _height : 0;
@@ -220,6 +228,17 @@ final class RowViewport
             return double.nan;
         const limit = 2 * _height;
         const last = _slots[$ - 1], first = _slots[0];
+        if (index > last.index && _heightOf(index) > _height)
+        {
+            double top = last.top + last.height; // where the item starts, from the top of the window: it is brought up to it
+            foreach (i; last.index + 1 .. index)
+            {
+                top += _heightOf(i);
+                if (top > _height + limit)
+                    return double.nan;
+            }
+            return top;
+        }
         if (index > last.index)
         {
             double distance = max(0.0, last.top + last.height - _height); // what the last item is below the window
@@ -230,6 +249,17 @@ final class RowViewport
                     return double.nan;
             }
             return distance;
+        }
+        if (index < first.index && _heightOf(index) > _height)
+        {
+            double bottom = first.top; // where the item ends, from the top of the window: it is brought down to the bottom of it
+            foreach (i; index + 1 .. first.index)
+            {
+                bottom -= _heightOf(i);
+                if (bottom < -limit)
+                    return double.nan;
+            }
+            return bottom - _height;
         }
         if (index < first.index)
         {
@@ -500,6 +530,33 @@ unittest
     tall.scrollToEnd();
     tall.layout();
     assert(tall.state == ViewState(9, 110), "a last item taller than the window: its bottom is in view");
+}
+
+@("RowViewport.revealDistance: an item taller than the window is shown when it covers the window; else the least scroll that makes it cover it, from the side it is cut at")
+unittest
+{
+    auto view = new RowViewport((size_t i) nothrow => i == 5 ? 250.0 : 20.0); // the window is 100: item 5 is taller
+    view.count = 20;
+    view.height = 100;
+    view.scrollToRow(5, 50); // item 5 starts at 50
+    view.layout();
+    assert(view.revealDistance(5) == 50, "its top is in the window: the top goes to the top of the window");
+    view.scrollToRow(5, 0);
+    view.layout();
+    assert(view.revealDistance(5) == 0, "its top at the top of the window: it covers it");
+    view.scrollToRow(5, -60); // 60 of it are above, 190 below the bottom of the window
+    view.layout();
+    assert(view.revealDistance(5) == 0, "it covers the window: nothing to scroll (a second click does not move it)");
+    view.scrollToRow(5, -200); // its last 50 are in the window, at its top
+    view.layout();
+    assert(view.revealDistance(5) == -50, "its bottom is in the window: the bottom goes to the bottom of the window");
+    view.scrollToRow(0, 0); // items 0..4 fill the window: item 5 is right below it
+    view.layout();
+    assert(view.revealDistance(5) == 100, "from below: the top of the item comes to the top of the window");
+    view.scrollToRow(8, 0);
+    view.layout();
+    assert(view.revealDistance(5) == -140, "from above (its bottom is 40 above the window): the bottom of the item comes to the bottom of the window");
+    assert(view.revealDistance(7) == -20, "an item that is not taller: as before, its top at the top");
 }
 
 @("RowViewport.topOf: the top of an item in the window or near it, NaN when it is more than two screens away")

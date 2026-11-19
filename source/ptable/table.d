@@ -2345,6 +2345,35 @@ unittest
     assert(!f.table.isSelected(1_000_000) && f.table.selectedCount > 0, "a row that is not there is not picked");
 }
 
+@("Table: a click on a row taller than the window that covers it does not scroll it, twice or more; one cut at an edge is brought to cover it")
+unittest
+{
+    auto f = make(10, 100, 31); // the rows have 10 of the window and are 16 high
+    f.table.paint(f.canvas);
+    f.table.scrollToPosition(CellPosition(2, 0, -3, 0), double.nan); // row 2 covers the window: 3 above it, 3 below
+    f.table.paint(f.canvas);
+    const y = 21.0 + 5;
+    foreach (i; 0 .. 3)
+    {
+        f.table.mouseDown(30, y);
+        f.table.mouseUp(30, y);
+        f.table.paint(f.canvas);
+        assert(f.table.isSelected(2) && f.table.firstVisible == CellPosition(2, 0, -3, 0), "the same place after every click");
+    }
+    f.table.scrollToPosition(CellPosition(2, 0, 4, 0), double.nan); // it starts 4 under the top, ends 6 below the bottom
+    f.table.paint(f.canvas);
+    f.table.mouseDown(30, 21.0 + 6);
+    f.table.mouseUp(30, 21.0 + 6);
+    f.table.paint(f.canvas);
+    assert(f.table.firstVisible == CellPosition(2, 0, 0, 0), "cut at the bottom: its top comes to the top of the window");
+    f.table.scrollToPosition(CellPosition(2, 0, -12, 0), double.nan); // 12 of it are above: the last 4 are in the window (10 high), at the top
+    f.table.paint(f.canvas);
+    f.table.mouseDown(30, 21.0 + 2);
+    f.table.mouseUp(30, 21.0 + 2);
+    f.table.paint(f.canvas);
+    assert(f.table.firstVisible == CellPosition(2, 0, -6, 0), "cut at the top: its bottom comes to the bottom of the window (16 - 10)");
+}
+
 @("Table: a click on a row picks it alone, a click on a picked one too (lets go of nothing), one on another row picks only that")
 unittest
 {
