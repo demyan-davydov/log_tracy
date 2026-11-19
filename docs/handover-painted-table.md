@@ -19,9 +19,9 @@ Written at the end of the sessions of 2026-11-18/19 (four sessions), kept in the
 - The story (`docs/stories/painted-table.md`, "Единый хост колонок") and `docs/backlog.md` record the decisions; the owner's decisions in short: one host per list of
   columns; the room of the columns is the host's (the least of the tables), the widths start from the least widths of the columns (`ColumnDef.minWidth`); detach
   freezes the table; the column objects stay with the tables, the host checks ids.
-- **Not checked in the app**: the anchor on a 1 GB `big.dlt` must not hang now. Ask the owner before running the app.
+- **Checked in the app by the owner** after the change (2026-11-19): all good.
 
-**What is left, in order:** look at the app (the anchor, the old task 2 below); call `detach`/`attach` from the status view (backlog "Отсоединять таблицу под экраном
+**What is left, in order:** the rest of the old task 2 below if the owner wants it (ask first); call `detach`/`attach` from the status view (backlog "Отсоединять таблицу под экраном
 статуса", deferred by the owner); the user's width and the fit (backlog "Колонка с шириной, заданной вручную, и подгонка"); then tasks 3-5 below (draw by the focus, the
 rest of the backlog, the squash: ask first). Commits of this session end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 
