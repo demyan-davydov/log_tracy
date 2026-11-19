@@ -175,6 +175,26 @@ unittest
     }
 }
 
+@("TextColumn: a payload that ends with a line break is as high as one that does not: the break ends its last line")
+unittest
+{
+    import ptable.model : CellData;
+    import ptable_text.testing : FakeMeasurer;
+
+    auto column = new TextColumn(ColumnDef("t", "T", 24, true), null, new FakeMeasurer);
+    column.lookChanged();
+    Arena arena;
+    const plain = CellData("aaaabbbb cc\nd"w), ended = CellData("aaaabbbb cc\nd\n"w), twice = CellData("aaaabbbb cc\nd\n\n"w);
+    double heightOf(ref const CellData data)
+    {
+        const input = CellInput(0, 0, &data);
+        return column.layout(input, 46, arena).height;
+    }
+
+    assert(heightOf(plain) == heightOf(ended), "the same lines");
+    assert(heightOf(twice) == heightOf(plain) + 14, "a second break is an empty line");
+}
+
 @("TextColumn.draw: a line of text, the lines of a wrapped cell without the spaces at their ends and only those on the screen, a paragraph")
 unittest
 {

@@ -14,7 +14,7 @@ struct LineSpan
 
 /// The lines of `text` in a width of `width` px; `advance(glyph)` is the width of a code
 /// point. A line breaks after a space (the space may stick out of the width); a word longer
-/// than a line breaks at the width; a hard "\n" breaks too. A line has a glyph at least, so
+/// than a line breaks at the width; a hard "\n" breaks too, but one at the very end of the text ends its line and starts no empty one. A line has a glyph at least, so
 /// a width smaller than a glyph still moves on. An empty text is one empty line.
 /// `lines` is filled (its old content is dropped).
 void wrapLines(ref LineSpan[] lines, const(wchar)[] text, double width, scope double delegate(dchar) nothrow advance)
@@ -66,7 +66,8 @@ void wrapLines(ref LineSpan[] lines, const(wchar)[] text, double width, scope do
             breakWidth = lineWidth;
         }
     }
-    lines ~= LineSpan(start, text.length);
+    if (start < text.length || lines.length == 0 || text[$ - 1] != '\n') // a break at the very end starts no empty line
+        lines ~= LineSpan(start, text.length);
 }
 
 /// The width of one glyph in `font` by `measurer` (a code point beyond the BMP is two units); 6 if the measurer fails
@@ -157,7 +158,9 @@ unittest
 unittest
 {
     assert(wrapped("ab\ncd", 100) == ["ab", "cd"]);
-    assert(wrapped("ab\n", 100) == ["ab", ""]);
+    assert(wrapped("ab\n", 100) == ["ab"], "a line break at the very end ends the line, it starts no empty one (as in a browser)");
+    assert(wrapped("ab\n\n", 100) == ["ab", ""], "only the last one: another is an empty line");
+    assert(wrapped("\n", 100) == [""] && wrapped("a\n\nb", 100) == ["a", "", "b"], "in the middle every break is a line");
 }
 
 @("wrapLines: a width smaller than a glyph still takes a glyph a line")
