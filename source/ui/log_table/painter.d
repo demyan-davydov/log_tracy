@@ -243,7 +243,7 @@ unittest
     assert(canvas.calls == ["fill", "text:Whatever"], "the plate of a Fatal and the text: the line right of the cell is not a part of it");
 }
 
-@("LogPainter: the color of a filter rule is a gradient in the Index cell only, the other cells have none")
+@("LogPainter: the color of a filter rule is a gradient in the Index cell, a text column shows none (the anchor cell fills with it: AnchorColumn)")
 unittest
 {
     import log_core.rule_filter : RuleId;
@@ -287,7 +287,7 @@ unittest
     ctx.data = &colored;
     auto other = new RecordingCanvas;
     paintAll(other, painter, ctx);
-    assert(other.calls == ["text:5"], "only the Index cell shows the color");
+    assert(other.calls == ["text:5"], "a text column does not show the color");
 }
 
 @("LogPainter: a group's margin has room above its plate and lines at its top and bottom that take no room; the plate, as high as the header, reaches the bottom")
@@ -563,4 +563,56 @@ unittest
     auto anchoredFull = new RecordingCanvas;
     paintAll(anchoredFull, painter, ctx);
     assert(anchoredFull.calls == ["circle", "text:⚓"], "an anchor that is there is shown as before");
+}
+
+@("AnchorColumn: the cell of a record that matches a filter rule with a color is filled with it whole, under the anchor, on a selected row too")
+unittest
+{
+    import log_core.rule_filter : RuleId;
+    import ptable.column : CellInput, DrawState;
+    import ptable.model : CellData;
+
+    static final class Areas : Canvas
+    {
+        string[] calls;
+        Rect[] areas;
+        Color[] colors;
+        void fillRect(Rect area, Color color) { calls ~= "fill"; areas ~= area; colors ~= color; }
+        void drawText(FontId font, const(wchar)[] text, double x, double baseline, Color color) { calls ~= "text"; }
+        void drawParagraph(FontId font, const(wchar)[] text, double x, double top, double width, Color color) {}
+        void fillCircle(double cx, double cy, double radius, Color fill, Color line) { calls ~= "circle"; }
+        void pushClip(Rect area) {}
+        void popClip() {}
+    }
+
+    bool green(RuleId rule, out Color color)
+    {
+        color = Color(0, 200, 0);
+        return rule == RuleId(5);
+    }
+
+    auto column = new AnchorColumn(ColumnDef("anchor", "⚓"), defaultLogLook(), null, &green);
+    LogMarks marks;
+    marks.rule = RuleId(5);
+    marks.anchored = true;
+    const data = CellData(""w, packMarks(marks));
+    const cell = CellInput(0, 0, &data);
+    const area = Rect(0, 21, 24, 16);
+    auto canvas = new Areas;
+    const state = DrawState(area, area);
+    column.draw(canvas, cell, state);
+    assert(canvas.calls == ["fill", "circle", "text"] && canvas.areas[0] == area && canvas.colors[0] == Color(0, 200, 0),
+        "the color of the rule over the whole cell, the anchor over it");
+    RowState selected;
+    selected.selected = true;
+    canvas = new Areas;
+    const onSelected = DrawState(area, area, selected);
+    column.draw(canvas, cell, onSelected);
+    assert(canvas.colors.length && canvas.colors[$ - 1] == Color(0, 200, 0) && canvas.areas[$ - 1] == area, "a selected row keeps the color of its rule");
+    marks.rule = RuleId.init;
+    const plain = CellData(""w, packMarks(marks));
+    const none = CellInput(0, 0, &plain);
+    canvas = new Areas;
+    column.draw(canvas, none, state);
+    assert(canvas.calls == ["circle", "text"], "no rule: the anchor only");
 }

@@ -137,8 +137,9 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     rows" (off by default) makes every row one line high, Payload not wrapped and not cut: it
     runs on to the right and the table scrolls sideways (chosen over an ellipsis).
 27. **Rule colors mark, they don't paint.** A record matching a filter rule with a color is not
-    painted whole: only its Index cell shows the color, a gradient from the left edge fading
-    out at about a third of the cell; the row's own background (stripes, selection) stays.
+    painted whole: its anchor cell is filled with the color, solid, on a selected row too, and its
+    Index cell shows it as a gradient from the left edge fading out at about a third of the cell;
+    the rest of the row keeps its own background (stripes, selection).
     A row the search found, in both tables, has a background a bit darker than its stripe
     (lighter in the dark theme), slightly warm (more so in the dark theme), so the stripes still show; the text keeps its
     contrast (no layer over it), the selection stays above it, its matches are in the colors

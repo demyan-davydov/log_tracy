@@ -1,5 +1,5 @@
-//! The columns of the log table that draw more than text: the anchors (a circle with the anchor, the faint one over a cell with none,
-//! the sign of a refusal), the Index (the color of the filter rule behind the number) and the level (bold by the row's level, a badge for
+//! The columns of the log table that draw more than text: the anchors (the color of the filter rule filling the cell, a circle with the
+//! anchor, the faint one over a cell with none, the sign of a refusal), the Index (the color of the filter rule behind the number) and the level (bold by the row's level, a badge for
 //! a Fatal one, the color of the level). The log table makes them with the look; the table asks them (docs/stories/painted-table.md).
 module ui.log_table.log_columns;
 
@@ -32,8 +32,9 @@ final class AnchorColumn : TextColumn
         _ruleColor = ruleColor;
     }
 
-    // An anchor is in a grey circle (the colors of the theme) in the middle of its cell; the mouse over a cell with none shows a faint one with no
-    // circle, or the sign of a refusal when none can be set, and a big sign while the button is down on it
+    // The color of the filter rule the record matches fills the cell; an anchor is in a grey circle (the colors of the theme) in the middle of
+    // it; the mouse over a cell with none shows a faint one with no circle, or the sign of a refusal when none can be set, and a big sign while
+    // the button is down on it
     override void draw(Canvas canvas, ref const CellInput cell, ref const DrawState state)
     {
         fillBack(canvas, state);
@@ -42,7 +43,11 @@ final class AnchorColumn : TextColumn
         const area = state.area;
         const spot = spotOf(cell, area);
         auto measurer = this.measurer;
-        const anchored = marksOf(cell).anchored;
+        const marks = marksOf(cell);
+        Color rule;
+        if (marks.rule.isValid() && _ruleColor !is null && _ruleColor(marks.rule, rule))
+            canvas.fillRect(area, rule); // the color of the filter rule the record matches fills the cell, on a selected row too (ux.md 27)
+        const anchored = marks.anchored;
         const full = !anchored && (state.hover || state.pressed) && _anchorsFull !is null && _anchorsFull();
         double widthOf(FontId font, const(wchar)[] text) { return measurer !is null ? measurer.width(font, text) : 0; }
         if (full && state.pressed)
