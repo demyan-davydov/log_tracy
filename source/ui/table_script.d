@@ -1,4 +1,4 @@
-//! The calls the script makes to the painted table (`paintCall("jump", ...)`) as a list of commands over a
+//! The calls the script makes to the log table (`logTableCall("jump", ...)`) as a list of commands over a
 //! `TableControl`: which method does what with which arguments and defaults, and what it answers. Free of Sciter: the
 //! behavior converts the values of Sciter into `ScriptArgs` and the answer into a value of Sciter, and implements
 //! `TableControl` with the table it has. The checks of the experiments (docs/experiments/2026-11-19-painted-rows-d.md)
@@ -169,7 +169,7 @@ bool dispatch(TableControl control, const(char)[] method, ScriptArgs args, out S
         result = ScriptResult.ofText(control.copyText(args.number(0, 1) != 0)); // as Cmd+C unless 0
         return true;
     case "copy":
-        // paintD("copy", 0): the text or the rows as Cmd+C; 1: the rows; 2, row, column: the cell of the address
+        // logTableCall("copy", 0): the text or the rows as Cmd+C; 1: the rows; 2, row, column: the cell of the address
         const kind = args.number(0, 0), row = args.number(1, 0), column = args.number(2, 0);
         if (kind >= 0 && kind <= CopyTarget.max && row >= 0 && column >= 0) // an address that is none copies nothing
             control.copy(cast(CopyTarget) kind, cast(size_t) row, cast(size_t) column);
@@ -190,7 +190,7 @@ bool dispatch(TableControl control, const(char)[] method, ScriptArgs args, out S
         control.contextPick(cast(size_t) args.number(0));
         return true;
     case "demo":
-        control.showDemo(args.number(0, 1) != 0); // paintD("demo"), paintD("demo", 0) for the log again
+        control.showDemo(args.number(0, 1) != 0); // logTableCall("demo"), logTableCall("demo", 0) for the log again
         return true;
     case "stats":
         result = ScriptResult.ofText(control.stats());
@@ -200,7 +200,7 @@ bool dispatch(TableControl control, const(char)[] method, ScriptArgs args, out S
     }
 }
 
-/// The tables the script talks to, by the number each got when its target was set (`PaintTarget.set`): a table is there from its attach to its detach
+/// The tables the script talks to, by the number each got when its target was set (`LogTableTarget.set`): a table is there from its attach to its detach
 struct TableRegistry
 {
     private TableControl[size_t] _controls;

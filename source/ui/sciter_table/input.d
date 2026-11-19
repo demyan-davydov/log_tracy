@@ -1,4 +1,4 @@
-//! What the events of Sciter mean for the painted table: how far a wheel step goes, which key is which key of the
+//! What the events of Sciter mean for the log table: how far a wheel step goes, which key is which key of the
 //! table, which mouse button starts a press, which key combination is a copy. The numbers and the flags come from
 //! Sciter's own types; the decisions are plain functions, checked by tests with plain numbers.
 module ui.sciter_table.input;

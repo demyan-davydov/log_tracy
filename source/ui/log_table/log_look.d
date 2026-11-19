@@ -1,6 +1,6 @@
 //! The look of the log table apart from who draws it: its fonts (`LogFont`), its colors (`LogPalette`, named by a style through
 //! `LogColor`), its spacing (`LogSpacing`) and the look that joins them (`LogLook`), the ink and the font of a level. The painter
-//! and the columns of the log read it; the script fills it from the CSS of the themes (resources/paint-look.js). Free of Sciter.
+//! and the columns of the log read it; the script fills it from the CSS of the themes (resources/log-table-look.js). Free of Sciter.
 module ui.log_table.log_look;
 
 import log_core.log_level : LogLevel;
@@ -154,7 +154,7 @@ FontId levelFontOf(ulong rowBits)
     return level == LogLevel.Fatal || level == LogLevel.Error || level == LogLevel.Warn ? LogFont.bodyBold : LogFont.body;
 }
 
-/// The room of the parts of the log table, in dips (the CSS variables of `.log-table`, resources/paint-look.js): above
+/// The room of the parts of the log table, in dips (the CSS variables of `.log-table`, resources/log-table-look.js): above
 /// and under the plate of the heads of a group of rows
 struct LogSpacing
 {

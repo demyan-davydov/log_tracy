@@ -1,6 +1,6 @@
-//! The host of the painted table (ptable) in Sciter: its canvas, text measurer and clipboard over the
+//! The host of the log table (ptable) in Sciter: its canvas, text measurer and clipboard over the
 //! graphics API of Sciter (sciter/graphics). The fonts and the ink come as a `TextLook` (ui/look): this layer
-//! knows nothing of the log. The text layouts are kept in two generations (a layout of Sciter is what the memory of a painted table
+//! knows nothing of the log. The text layouts are kept in two generations (a layout of Sciter is what the memory of a log table
 //! is). See docs/experiments/2026-11-19-painted-rows-d.md.
 module ui.sciter_table.host;
 
@@ -346,7 +346,7 @@ void callScript(HELEMENT he, const(char)* name, const(wchar)[] text)
     sciterApi().SciterCall(hwnd, name, 1, arg.raw, result.raw);
 }
 
-/// The clipboard of Sciter belongs to the script: the text goes to its `paintCopy`
+/// The clipboard of Sciter belongs to the script: the text goes to its `logTableCopy`
 final class ScriptClipboard : Clipboard
 {
     private HELEMENT _he;
@@ -363,6 +363,6 @@ final class ScriptClipboard : Clipboard
 
     void writeText(const(wchar)[] text)
     {
-        callScript(_he, "paintCopy", text);
+        callScript(_he, "logTableCopy", text);
     }
 }

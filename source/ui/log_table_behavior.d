@@ -1,14 +1,14 @@
-//! The painted log table in Sciter: the thin adapter of the table of the package ptable. It is a native
-//! behavior (`behavior: paint-rows` puts it on an element) that turns the events of Sciter into the calls
+//! The log table in Sciter: the thin adapter of the table of the package ptable. It is a native
+//! behavior (`behavior: log-table` puts it on an element) that turns the events of Sciter into the calls
 //! of `Table` and gives it a canvas, a text measurer and a clipboard (ui/sciter_table/sciter_host), the rows of a view
 //! of a document (ui/log_table/document_model; or the demo of grouped rows, ui/log_table/demo_model, for
-//! `paintD("demo")`) and the look of the log table (ui/log_table/painter, ui/log_table/log_look).
+//! `logTableCall("demo")`) and the look of the log table (ui/log_table/painter, ui/log_table/log_look).
 //! docs/stories/painted-table.md, docs/experiments/2026-11-19-painted-rows-d.md.
 //!
 //! Left: anchors by a click, the matches of the search, the rule colors, the search view's own columns, the inertia
 //! of a scroll, the growth of a log being read, selection in right-to-left text. The scroll of a drag past the rows
 //! goes on the frames Sciter gives (`Table.tick`).
-module ui.painted_table;
+module ui.log_table_behavior;
 
 import ptable.navigation : Key;
 import ptable.ports : Rect;
@@ -32,8 +32,8 @@ import ui.table_script : dispatch, ScriptArgs, ScriptResult, TableControl;
 import core.time : MonoTime;
 import std.utf : toUTF16;
 
-/// The name of the behavior in CSS: `behavior: paint-rows`
-enum paintRowsBehavior = "paint-rows";
+/// The name of the behavior in CSS: `behavior: log-table`
+enum logTableBehavior = "log-table";
 
 /// How much the rows move by the fingers' move on the trackpad: Sciter hands over the system's deltas as they are, and the
 /// rows followed them a little sluggishly (the user, 2026-11-18: about 20% more); the coast's speed follows the same pans
@@ -42,7 +42,7 @@ enum double panScale = 1.2;
 /// What the window hears of a table: it can be talked to from the attach on and no longer after the detach
 struct TableHooks
 {
-    size_t id; /// the number the script talks to the table by (`PaintTarget.set`)
+    size_t id; /// the number the script talks to the table by (`LogTableTarget.set`)
     void delegate(TableControl) attached;
     void delegate(TableControl) detached;
 }
@@ -74,7 +74,7 @@ bool runScript(TableControl control, const(char)[] method, const(SCITER_VALUE)* 
 }
 
 /// A native behavior drawing the rows of a view of a document
-final class PaintedTable : SciterEventHandler
+final class LogTableBehavior : SciterEventHandler
 {
     private SciterHost _host; // the element and everything of Sciter the table needs
     private TableSource _source; // what the table shows, until it is attached and made
@@ -128,7 +128,7 @@ final class PaintedTable : SciterEventHandler
         Rect area;
         if (table.cellRect(item, column, area)) // where the cell is in the table, for what the script shows by it (a notice)
             click["rect"] = [area.x, area.y, area.w, area.h];
-        _host.callScript("paintCellClicked", click.toString.toUTF16);
+        _host.callScript("logTableCellClicked", click.toString.toUTF16);
     }
 
     override protected bool handleSubscription(HELEMENT he, UINT* event_groups)
@@ -283,7 +283,7 @@ final class PaintedTable : SciterEventHandler
         return tableKey(params.key_code, key) && _log.table.key(key, keyPickMode(params.alt_state), nowMs());
     }
 
-    // ---- the script's calls (Window.xcall("paintD", ...)) ----
+    // ---- the script's calls (Window.xcall("logTableCall", ...)) ----
 
     // What the script may ask of the table, done with the table and the cache of this behavior
     private final class Control : TableControl

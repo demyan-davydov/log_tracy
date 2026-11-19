@@ -76,14 +76,14 @@ export const switchTab = docId => xcall("switchTab", docId);
 export const closeTab = docId => xcall("closeTab", docId);
 export const reorderTab = (docId, index) => xcall("reorderTab", docId, index);
 
-// PROTOTYPE (painted-table-d.js, docs/experiments/2026-11-19-painted-rows-d.md): the table drawn by D.
-// The next element with `behavior: paint-rows` shows the view of `docId`, and the number this answers is how the script talks to that
-// table: a call to the table (ui/painted_table.d) of that number, null if there is none (not attached yet, or no more)
-export const setPaintTarget = (docId, search) => Window.this.xcall("setPaintTarget", docId, search);
-export const paintCall = (tableId, method, ...args) => Window.this.xcall("paintD", tableId, method, ...args);
+// PROTOTYPE (log-table.js, docs/experiments/2026-11-19-painted-rows-d.md): the table drawn by D.
+// The next element with `behavior: log-table` shows the view of `docId`, and the number this answers is how the script talks to that
+// table: a call to the table (ui/log_table_behavior.d) of that number, null if there is none (not attached yet, or no more)
+export const setLogTableTarget = (docId, search) => Window.this.xcall("setLogTableTarget", docId, search);
+export const logTableCall = (tableId, method, ...args) => Window.this.xcall("logTableCall", tableId, method, ...args);
 // What is the application's, not a table's: the look of every table, and whether the rows of all of them are one line high
-export const paintSetLook = json => Window.this.xcall("paintSetLook", json);
-export const paintSingleLine = on => Window.this.xcall("paintSingleLine", on);
+export const logTableSetLook = json => Window.this.xcall("logTableSetLook", json);
+export const logTableSingleLine = on => Window.this.xcall("logTableSingleLine", on);
 
 // ── The views ────────────────────────────────────────────────────────────────
 

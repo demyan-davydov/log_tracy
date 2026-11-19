@@ -23,9 +23,9 @@ import ui.app_session : AppSession;
 import ui.app_settings : toJSON;
 import ui.filter_commands : DocumentFilters;
 import ui.log_table.look_json : applyLookJson;
-import ui.log_table.paint_target : PaintTarget;
+import ui.log_table.log_table_target : LogTableTarget;
 import ui.log_table.log_table : TableSource;
-import ui.painted_table : PaintedTable, paintRowsBehavior, runScript, TableHooks;
+import ui.log_table_behavior : LogTableBehavior, logTableBehavior, runScript, TableHooks;
 import ui.table_script : TableControl, TableRegistry;
 import ui.table_rows : columnsJson, rowLength, writeRow;
 
@@ -44,7 +44,7 @@ import std.utf : toUTF8, toUTF16;
 class MainWindow : SciterWindow
 {
     private AppSession _session;
-    private PaintTarget _paint = new PaintTarget; // what the next painted table (paint-rows) shows
+    private LogTableTarget _target = new LogTableTarget; // what the next log table (log-table) shows
     private TableRegistry _tables; // the painted tables the script talks to, by their numbers
 
     /// The files of the interface are built in (`this://app/...`), for the dialogs too
@@ -56,14 +56,14 @@ class MainWindow : SciterWindow
         return data;
     }
 
-    // The native behaviors of CSS `behavior: ...`: the painted table (prototype, ui/painted_table)
+    // The native behaviors of CSS `behavior: ...`: the log table (prototype, ui/log_table_behavior)
     override protected SciterEventHandler createBehavior(string name, HELEMENT he)
     {
-        if (name != paintRowsBehavior)
+        if (name != logTableBehavior)
             return null;
-        const id = _paint.id;
-        auto source = TableSource(_session, _session.findDocument(_paint.doc), _paint.search, _paint.layoutOf(_paint.doc), false, _paint.singleLine);
-        return new PaintedTable(source, _paint.look,
+        const id = _target.id;
+        auto source = TableSource(_session, _session.findDocument(_target.doc), _target.search, _target.layoutOf(_target.doc), false, _target.singleLine);
+        return new LogTableBehavior(source, _target.look,
             TableHooks(id, (TableControl control) { _tables.attach(id, control); }, (TableControl control) { _tables.detach(control); }), he);
     }
 
@@ -80,7 +80,7 @@ class MainWindow : SciterWindow
     this(AppSession session, bool sciterDebugMode = false)
     {
         _session = session;
-        _session.documentClosed = (DocumentId docId) { _paint.forget(cast(int) docId.toInt()); };
+        _session.documentClosed = (DocumentId docId) { _target.forget(cast(int) docId.toInt()); };
         _session.useTranslations(builtInCatalogs());
 
         import sciter.capi.def;
@@ -235,8 +235,8 @@ class MainWindow : SciterWindow
             _session.reorderTab(param!int(0), param!int(1));
             return true;
 
-        case "paintD":
-            // paintD(tableId, method, args...): a call to the table drawn by D (ui/painted_table) that `setPaintTarget` gave that number; null if
+        case "logTableCall":
+            // logTableCall(tableId, method, args...): a call to the table drawn by D (ui/log_table_behavior) that `setLogTableTarget` gave that number; null if
             // there is none (not attached yet, or no more)
             {
                 auto table = params.argc >= 2 ? _tables.get(param!int(0)) : null;
@@ -246,19 +246,19 @@ class MainWindow : SciterWindow
                     runScript(table, param!string(1), params.argv + 2, params.argc - 2, &params.result);
             }
             return true;
-        case "paintSetLook":
-            // paintSetLook(json): the look of the application: every painted table has it, one that is not attached yet too
+        case "logTableSetLook":
+            // logTableSetLook(json): the look of the application: every log table has it, one that is not attached yet too
             if (params.argc >= 1)
-                applyLookJson(_paint.look, param!string(0));
+                applyLookJson(_target.look, param!string(0));
             return true;
-        case "paintSingleLine":
-            // paintSingleLine(on): the rows of the painted tables are one line high (the setting of the application): every table now, the next ones from the start
-            _paint.singleLine = param!bool(0);
-            _tables.each((TableControl table) { table.singleLine(_paint.singleLine); });
+        case "logTableSingleLine":
+            // logTableSingleLine(on): the rows of the painted tables are one line high (the setting of the application): every table now, the next ones from the start
+            _target.singleLine = param!bool(0);
+            _tables.each((TableControl table) { table.singleLine(_target.singleLine); });
             return true;
-        case "setPaintTarget":
-            // setPaintTarget(docId, search): the next element with `behavior: paint-rows` shows that view; answers the number of that table
-            resultView = cast(int) _paint.set(param!int(0), param!bool(1));
+        case "setLogTableTarget":
+            // setLogTableTarget(docId, search): the next element with `behavior: log-table` shows that view; answers the number of that table
+            resultView = cast(int) _target.set(param!int(0), param!bool(1));
             return true;
 
         // ── The views ───────────────────────────────────────────────────────

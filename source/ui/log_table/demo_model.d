@@ -1,6 +1,6 @@
 //! A table to look at the groups of rows with, not a log: its rows are grouped by two columns, a day (a date heads its
-//! rows) and a shift, which change one after the other and now and then in the same row. The painted table shows it
-//! for `paintD("demo")` in place of the log (ui/painted_table, ui/table_script). A `ColumnarModel` of numbers, free of
+//! rows) and a shift, which change one after the other and now and then in the same row. The log table shows it
+//! for `logTableCall("demo")` in place of the log (ui/log_table_behavior, ui/table_script). A `ColumnarModel` of numbers, free of
 //! Sciter. See docs/backlog.md (grouping by several columns).
 module ui.log_table.demo_model;
 

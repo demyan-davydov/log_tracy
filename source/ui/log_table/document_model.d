@@ -1,4 +1,4 @@
-//! The rows of a view of a document for the painted table (ptable): the view as a `RowSource` (`DocumentRows`,
+//! The rows of a view of a document for the log table (ptable): the view as a `RowSource` (`DocumentRows`,
 //! which tells the changes of the document), the columns as the log table shows them (`documentColumns`:
 //! ui/row_cells), the level, found and anchored marks as extra data, and the model both tables of a
 //! document are made of (`documentTableModel`, a `ColumnarModel` of ptable). Free of Sciter.
@@ -266,7 +266,7 @@ final class DocumentColumns
     }
 }
 
-/// The model of a view of a document (the main one, or the search results) for a painted table
+/// The model of a view of a document (the main one, or the search results) for a log table
 ColumnarModel!DocumentItem documentTableModel(AppSession session, DocumentId docId, bool search, LogColumnLook delegate() look = null)
 {
     DocumentRows rows;

@@ -646,7 +646,7 @@ export class DocumentPane {
     // A hidden panel does it when shown (its rows can't be measured now): it
     // rebuilds the list of such a table, the other one keeps its rows and selection
     followAnchorRows(rows) {
-        globalThis.paintAnchorRows?.(this.docId, rows); // the table drawn by D (painted-table-d.js) reads the row again
+        globalThis.logTableAnchorRows?.(this.docId, rows); // the table drawn by D (log-table.js) reads the row again
         for (const [table, changed] of [[this.main, rows.main], [this.search, rows.search]]) {
             const list = table.list;
             if (!this.visible) {

@@ -1,6 +1,6 @@
 //! The table of a log: the rows of a view of a document (its model; or the demo of the groups of rows), the table that
 //! draws them in the look of the log table, and the scroll bar beside it, made and let go of together. It has the measurer and the clipboard it is given
-//! and knows no Sciter: the behavior that shows it (ui/painted_table) joins it to an element.
+//! and knows no Sciter: the behavior that shows it (ui/log_table_behavior) joins it to an element.
 module ui.log_table.log_table;
 
 import domain.document_id : DocumentId;

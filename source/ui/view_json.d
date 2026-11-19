@@ -1,4 +1,4 @@
-//! What the painted table shows now as the script reads it (`paintCall("view")`): the numbers by their names, as JSON. The table
+//! What the log table shows now as the script reads it (`logTableCall("view")`): the numbers by their names, as JSON. The table
 //! (`ptable.table`) answers in plain data and knows no JSON.
 module ui.view_json;
 

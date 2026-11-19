@@ -1,4 +1,4 @@
-//! A scroll bar of the painted table, an optional layer above it: the thumb's geometry, a press and a drag
+//! A scroll bar of the log table, an optional layer above it: the thumb's geometry, a press and a drag
 //! of the mouse turned into a position, and the drawing through a painter of its own (`ScrollBar`), and
 //! (`ScrolledTable`, in its own module, puts the table together with it). The table and the viewport know none of it: they give
 //! `ScrollMetrics` and take `scrollToPosition`; a host may use this bar or connect its own (a native one)

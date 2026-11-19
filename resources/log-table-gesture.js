@@ -1,5 +1,5 @@
-//! The gestures of the trackpad over the painted log table, as plain functions (tests/js/paint-gesture.test.mjs): which axis
-//! a gesture moves along. Pure: nothing of Sciter here; painted-table-d.js carries the events over.
+//! The gestures of the trackpad over the log table, as plain functions (tests/js/log-table-gesture.test.mjs): which axis
+//! a gesture moves along. Pure: nothing of Sciter here; log-table.js carries the events over.
 
 // How many pixels of movement in all a gesture needs before its axis is known
 export const lockPixels = 6;

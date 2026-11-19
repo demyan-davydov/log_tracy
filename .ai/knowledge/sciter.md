@@ -71,8 +71,8 @@ agent can't drive it. In scapp a plain
   `HANDLE_DRAW`, mouse, key and focus events, but `element.xcall(name)` of the script never
   reaches its `HANDLE_SCRIPTING_METHOD_CALL`: Sciter answers "unknown name" and only asks the
   object model (`HANDLE_SOM`, cmd 0). The script calls the window instead
-  (`Window.this.xcall("paintD", method, ...)`, `ui/main_window` hands it to
-  `PaintedTable.script`). 6.0.5.5, macOS (2026-11-19).
+  (`Window.this.xcall("logTableCall", method, ...)`, `ui/main_window` hands it to
+  `LogTableBehavior.script`). 6.0.5.5, macOS (2026-11-19).
 - The graphics API (`graphicsApi()`, `sciter-x-graphics.h`) has 72 functions in the table
   `SciterGraphicsAPI` (the order is checked by a unittest), every one `nothrow`. `RGBA` packs a, b, g, r from the
   top byte. A text layout (`TextLayout`, `textCreateForElementAndStyle`) takes the font, the size
@@ -80,7 +80,7 @@ agent can't drive it. In scapp a plain
   color: #333`); `gDrawText` has no color, so a text of another color is another layout. Its
   coordinates of a `DRAW_CONTENT` are the element's own in dips (`params.area` is the content
   box on the view). A layout costs ~20 KB of memory: 5000 cached ones were +100 MB of RSS, 600 are
-  +10 MB (`ui/painted_table.d` keeps two generations). A layout wraps only by a `width: Npx` in its style: `textSetBox` alone leaves one line. Details and numbers:
+  +10 MB (`ui/log_table_behavior.d` keeps two generations). A layout wraps only by a `width: Npx` in its style: `textSetBox` alone leaves one line. Details and numbers:
   `docs/experiments/2026-11-19-painted-rows-d.md`.
 
 ## Events of the System
@@ -191,12 +191,12 @@ agent can't drive it. In scapp a plain
   `prototype:`: neither `this()` nor field initializers run either).
 - `style.variable(name)` of a length (6.0.5.5, 2026-11-18) answers an object: its text is as written (`9pt`), its
   `units` the unit, and `Number()` of it is its size in dips whatever the unit (9pt → 12, 12px → 12, 1.5em → 20 in the
-  element's font, 3mm → 11.3); a bare number answers a number. The painted table takes every size in dips, so the script
-  passes `Number()` of a length as it is (resources/paint-look.js). A variable defined by `var()` of one declared
+  element's font, 3mm → 11.3); a bare number answers a number. The log table takes every size in dips, so the script
+  passes `Number()` of a length as it is (resources/log-table-look.js). A variable defined by `var()` of one declared
   further down in the same rule answers the resolved value.
 - While the window is resized by its edge (macOS, 6.0.5.5, 2026-11-18), `sizechange` comes once the resize ends: an
   element a script places by it lags behind. An element anchored by CSS to the edges of a positioned container
-  (`position: absolute; left: 0; top: 0; right: 0; bottom: 0`) follows at once (resources/painted-table-d.js).
+  (`position: absolute; left: 0; top: 0; right: 0; bottom: 0`) follows at once (resources/log-table.js).
 - The wheel and the trackpad on macOS (6.0.5.5, 2026-11-15):
   - A mouse wheel comes as `wheel` in pixels (deltaMode 0), accelerated by the system: 12,
     112, 461, … up to ~1000 px an event every ~15 ms while it spins, single ones of 20 000
@@ -219,9 +219,9 @@ agent can't drive it. In scapp a plain
   - `SciterRequestAnimationFrameEvent(he, code, 0)` (6.0.5.5, macOS, 2026-11-18): the element gets the
     behavior event `code` at the next animation frame, and again every frame for as long as its handler
     returns true. Never ask again from that handler: each ask adds a chain of frames, they come back to back
-    inside `view::do_animation` and the window hangs (`ui/sciter_table/frame_request`, `PaintedTable`).
+    inside `view::do_animation` and the window hangs (`ui/sciter_table/frame_request`, `LogTableBehavior`).
   - A mouse wheel that spins freely (macOS, 2026-11-18) sends ~1100 px every ~16 ms for seconds; a trackpad pan's
-    `gesturepan` of 10–40 px comes between them. The painted table glides each wheel step over frames itself, does not
+    `gesturepan` of 10–40 px comes between them. The log table glides each wheel step over frames itself, does not
     count the wheel while the fingers move, and a spin begun before them does not break their coast (`ptable/scrollmotion`).
   - A touch of the trackpad without a move (a tap to stop the rows, macOS, 2026-11-18) comes as `gesturestart` and a
     `gesturepan` with zero deltas, then `gestureswipe` + `gestureend` on the release; no other event. A wheel that spins

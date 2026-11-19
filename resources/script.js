@@ -306,7 +306,7 @@ function setTheme(theme) {
     applyTheme(theme);
     currentTheme = theme;
     // the table drawn by D reads the colors of the theme once its styles are applied
-    setTimeout(() => globalThis.paintLookChanged?.(tableFontSize), 0);
+    setTimeout(() => globalThis.logTableLookChanged?.(tableFontSize), 0);
     console.log("Theme set to:", theme);
 }
 
@@ -345,9 +345,9 @@ function setLanguage(setting) {
 // auxiliary ones are as wide as their values, which stay on one line
 function setTableFontSize(percent) {
     tableFontSize = percent;
-    globalThis.paintTableFontSize = percent; // for a table drawn by D that starts later
+    globalThis.logTableFontSize = percent; // for a table drawn by D that starts later
     for (const pane of panes.values()) pane.applyFontSize(percent);
-    setTimeout(() => globalThis.paintLookChanged?.(percent), 0);
+    setTimeout(() => globalThis.logTableLookChanged?.(percent), 0);
     console.log("Table font size set to:", percent);
 }
 
@@ -356,7 +356,7 @@ function setTableFontSize(percent) {
 function setSingleLineRows(on) {
     singleLineRows = on;
     for (const pane of panes.values()) pane.applySingleLineRows(on);
-    globalThis.paintSingleLine?.(on); // the table drawn by D (painted-table-d.js)
+    globalThis.logTableSingleLine?.(on); // the table drawn by D (log-table.js)
 }
 
 

@@ -135,7 +135,7 @@ are gone, titles and heads of groups through the column, copy and double/triple 
 **Rules of this work that proved themselves** (besides those in "Working rules" below): ask the architect (`architecture-reviewer`) before a design decision; a bridge (`ColumnDef.column`, null = old path)
 keeps each commit green until the old path is removed; a test that compares the old path with the new one (same cell, same canvas calls) is how a move is proved; write replies in Russian; do not launch
 the app unasked (the owner asked to look at the end); `node scripts/utils/app.mjs start --settings build/dev-settings.json --open /Users/demiandavidov/prj/log_tracy/build/bench/days.dlt`, then
-`eval "paintProtoD()"`; before `stop` copy `build/app/settings.json` to `build/dev-settings.json`.
+`eval "showLogTable()"`; before `stop` copy `build/app/settings.json` to `build/dev-settings.json`.
 
 ## Where things are
 
@@ -151,9 +151,9 @@ the app unasked (the owner asked to look at the end); `node scripts/utils/app.mj
 ## How to look at it
 
 `node scripts/utils/app.mjs start --open /Users/demiandavidov/prj/log_tracy/build/bench/days.dlt` (also `cyr.dlt`, `1g.dlt` there: 4.4 M records), then
-`node scripts/utils/app.mjs eval "paintProtoD()"` (the painted table goes over the main table), `eval "paintSingleLine(true)"` (the single-line view,
-the horizontal bar shows), `eval "paintD('stats')"` (frame times), `eval "paintD('pan', 0, 300)"` (scroll sideways), `shot build/x.png`, `stop`. The debug
-channel cannot press a mouse button or a modifier. The painted table is **not yet the table of the application**: `paintProtoD()` only places it over the
+`node scripts/utils/app.mjs eval "showLogTable()"` (the painted table goes over the main table), `eval "logTableSingleLine(true)"` (the single-line view,
+the horizontal bar shows), `eval "logTableCall('stats')"` (frame times), `eval "logTableCall('pan', 0, 300)"` (scroll sideways), `shot build/x.png`, `stop`. The debug
+channel cannot press a mouse button or a modifier. The painted table is **not yet the table of the application**: `showLogTable()` only places it over the
 old DOM table; replacing the old one (and wiring the Settings, the context menu, the other table following the selected row) is the big open item.
 Run the app only when the user allows it; `app.mjs start` stops a running copy of the same worktree (the user's own release copy is another process: leave it).
 
@@ -180,10 +180,10 @@ lines per column), `ColumnStyle`/`CellStyle`, `Table` + `RowPicker` (row picking
 of selected rows, `Pick` modes replace/extend/toggle/extendAdd, a drag over rows, the current row marked by `RowState.focused`), `ScrollMotion` (wheel glide, trackpad
 coast, the `Scroll` state machine), horizontal scroll (`Table.scrollXBy`/`scrollToX`/`scrollMetricsX`, `ScrolledTable` with a second `ScrollBar` at the bottom, the flex
 column without wrap grows to its longest first line), grouping by the heads of columns (a date over its rows, sticky), margins, header/footer, `RowHits`
-(hit tests), `texthit`, `Subscriptions` in `RowStore`. Host/ui: `ui/painted_table` (Sciter behavior), `ui/sciter_table/*` (input decoders: `pickMode`, `keyPickMode`,
+(hit tests), `texthit`, `Subscriptions` in `RowStore`. Host/ui: `ui/log_table_behavior` (Sciter behavior), `ui/sciter_table/*` (input decoders: `pickMode`, `keyPickMode`,
 `wheelIsAcross`, `isContextPress`), `ui/log_table/*` (`LogPainter` draws by the column's style, `LogColor` palette ids, `logColumns` sets the styles by the kind of the
-column, `LogColumnLook` carries the Payload padding and the single-line switch from the look/settings), `resources/painted-table-d.js`, `paint-look.js`
-(CSS variables → palette/spacing), `paint-gesture.js` (axis lock of the trackpad). Keys: Shift/Cmd(macOS)/Ctrl with a press pick rows, Shift+arrows extend, Escape clears
+column, `LogColumnLook` carries the Payload padding and the single-line switch from the look/settings), `resources/log-table.js`, `log-table-look.js`
+(CSS variables → palette/spacing), `log-table-gesture.js` (axis lock of the trackpad). Keys: Shift/Cmd(macOS)/Ctrl with a press pick rows, Shift+arrows extend, Escape clears
 the text then the rows, Cmd/Ctrl+C copies the text or all selected rows (up to `copyLimit`).
 
 ## Open, in the order I would take them (details in `docs/backlog.md`)
@@ -191,7 +191,7 @@ the text then the rows, Cmd/Ctrl+C copies the text or all selected rows (up to `
 Done 2026-11-19 (second session): Cmd/Ctrl+A; the context menus (the table answers `hitTest`: header / footer / cell / free, the script owns the menus, `copy(CopyTarget, row, column)` copies by an address; header: Customize
 Table); anchors: `ColumnDef.clickable` (a press on such a cell picks and selects nothing, the host gets `cellClicked`), the hand cursor (`pointerAt`), the circle with the anchor (`Canvas.fillCircle`, colors of the theme),
 the faint anchor on hover and the big sign of a refusal while pressed (`LogFont.sign`) when no anchor can be set, the limit read from the document by a provider (`LogPainter.anchorsFull`), the click sets and clears the
-anchor through `backend.setAnchor`, the table hears of every anchor change by its message (`followAnchorRows` -> `paintAnchorRows` -> `LogTable.anchorApplied`), the notice "N anchors at most" right of the cell
+anchor through `backend.setAnchor`, the table hears of every anchor change by its message (`followAnchorRows` -> `logTableAnchorRows` -> `LogTable.anchorApplied`), the notice "N anchors at most" right of the cell
 (`showNoticeAt`: a popup whose owner is an empty element inside the table, the leave is a `mousemove` check); hover flags for the painter (`HoverCell`, `RowState.hover`, `CellContext.hover`, `pressed`);
 `Table.updateRow` / `updateCell` / `cellRect` / `updateHover` (only the look; the data of a row goes through the model: user's decision).
 
@@ -200,7 +200,7 @@ anchor through `backend.setAnchor`, the table hears of every anchor change by it
    to the row after a change, the notice hidden by the mouse leaving the cell is done, the circle (not the cell) as the notice's place, a click on an element inside a cell (backlog).
 2. **To get to the bottom of** (backlog, "Докопаться до причины"): why the notice needs an empty owner element inside the table (a popup owned by the table with the window's coordinates is drawn only in part).
 3. **Horizontal scroll leftovers**, **risks recorded in the backlog**, **styles** (own colors of a column, wrap in non-flex columns, grouping off), **column reorder by dragging a title**, **the integration of the painted table
-   in place of the DOM table** (`paintProtoD()` still only places it over the old one), **housekeeping** (`table.d` is ~2000 lines: the next units to take out: `ReportedScroll`, the hit and update methods; the merge of the branch).
+   in place of the DOM table** (`showLogTable()` still only places it over the old one), **housekeeping** (`table.d` is ~2000 lines: the next units to take out: `ReportedScroll`, the hit and update methods; the merge of the branch).
 4. Menus left: the header's menu by keyboard (Menu / Shift+F10), `groupHead` (not needed: the user), the menu of free space (none, as the old table).
 
 ## Direction decided 2026-11-19 (read this before taking the item 1 above)

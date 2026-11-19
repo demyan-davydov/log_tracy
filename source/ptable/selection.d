@@ -1,4 +1,4 @@
-//! The text selected across the cells and rows of a painted log table (prototype of
+//! The text selected across the cells and rows of a log table (prototype of
 //! docs/experiments/2026-11-19-painted-rows-d.md): the D port of resources/text-selection.js. Pure,
 //! no Sciter.
 //!

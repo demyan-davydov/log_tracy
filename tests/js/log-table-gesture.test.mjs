@@ -1,8 +1,8 @@
-// The axis of a gesture of the trackpad, see resources/paint-gesture.js.
+// The axis of a gesture of the trackpad, see resources/log-table-gesture.js.
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { lockAxis, lockPixels } from "../../resources/paint-gesture.js";
+import { lockAxis, lockPixels } from "../../resources/log-table-gesture.js";
 
 test("a gesture has no axis until it has gone a few pixels", () => {
     let state = { axis: null, across: 0, down: 0 };

@@ -1,4 +1,4 @@
-//! Everything a painted table needs from Sciter's element, text and graphics, as one unit: the element it is drawn in
+//! Everything a log table needs from Sciter's element, text and graphics, as one unit: the element it is drawn in
 //! (repaint, capture, a frame), the cache of text layouts, the measurer and the canvas that read it, and the clipboard.
 //! The element is kept once and handed to those that need it; a change of the fonts is one call, which drops what was
 //! measured with the old ones in the order that matters. It knows nothing of the log. Needs Sciter to run, so it is

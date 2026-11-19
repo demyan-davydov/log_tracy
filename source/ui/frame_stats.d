@@ -1,4 +1,4 @@
-//! What the painted table measures of its own frames: the time each took (the last 512 in a ring), their median, the
+//! What the log table measures of its own frames: the time each took (the last 512 in a ring), their median, the
 //! 90th percentile and the longest, and the JSON the script reads them as (with what the table and the text cache
 //! counted). Free of Sciter. docs/experiments/2026-11-19-painted-rows-d.md.
 module ui.frame_stats;

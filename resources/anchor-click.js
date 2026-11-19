@@ -1,4 +1,4 @@
-//! What a click on an anchor cell of the painted table makes of the backend's answer, as plain data (the script does the calls):
+//! What a click on an anchor cell of the log table makes of the backend's answer, as plain data (the script does the calls):
 //! tests/js/anchor-click.test.mjs. The click says which message and whether it is anchored now; the answer of `setAnchor` is
 //! { refused, pending, rows: { message, anchored, main, search } | null }.
 

@@ -1,8 +1,8 @@
-//! What the layers of the painted table share about how they look: a font as a host needs to make it
+//! What the layers of the log table share about how they look: a font as a host needs to make it
 //! (`FontSpec`), the text of a table (`TextLook`: its fonts, ink and the font the line height is read
 //! from), and the look of a table (`Look`: its text, the colors and the spacing of the layer that paints it, and who
 //! hears them change). Free of Sciter and of the log: the Sciter layer (ui/sciter_table/host) reads it, the log layer
-//! (ui/log_table/log_look) fills it, the glue (ui/painted_table) joins them.
+//! (ui/log_table/log_look) fills it, the glue (ui/log_table_behavior) joins them.
 module ui.look;
 
 import ptable.listeners : Listeners;

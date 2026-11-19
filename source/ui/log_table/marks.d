@@ -1,5 +1,5 @@
 //! What the model of the log table attaches to rows and columns for its painter (the `Extra` of the
-//! painted table, ptable): the level and the marks of a row, the role of a column. The table never
+//! log table, ptable): the level and the marks of a row, the role of a column. The table never
 //! reads them; the model writes them and the painter reads them. Free of Sciter.
 module ui.log_table.marks;
 

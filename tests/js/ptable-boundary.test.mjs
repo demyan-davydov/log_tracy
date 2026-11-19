@@ -1,4 +1,4 @@
-// The package of the painted table (source/ptable) imports only itself and the standard library: it can
+// The package of the log table (source/ptable) imports only itself and the standard library: it can
 // move to a repository of its own as it is (docs/stories/painted-table.md).
 // Run: node --test tests/js
 import { test } from "node:test";
@@ -53,7 +53,7 @@ test("ptable_text imports only ptable, itself, std and core", () => {
 });
 
 // The layers of the host of the table: the Sciter layer and the log layer do not know each other (the glue,
-// ui/painted_table and the session, joins them); both know ptable and ui/look; the log layer is free of Sciter.
+// ui/log_table_behavior and the session, joins them); both know ptable and ui/look; the log layer is free of Sciter.
 const uiDir = folder => new URL(`../../source/ui/${folder}/`, import.meta.url);
 const importsIn = folder => readdirSync(uiDir(folder)).filter(n => n.endsWith(".d"))
     .map(file => [file, importsOf(readFileSync(new URL(file, uiDir(folder)), "utf8"))]);

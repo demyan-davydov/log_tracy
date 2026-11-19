@@ -1,4 +1,4 @@
-//! A measure of the painted table with the columns of the log: the time of a jump and a frame while jumping through 200 000 rows
+//! A measure of the log table with the columns of the log: the time of a jump and a frame while jumping through 200 000 rows
 //! (the row height and the widths through the columns, the wrap of the Payload). Not a part of the build: run it as one module,
 //! node scripts/test.mjs --module scripts/utils/bench_ptable.d, and compare the "BENCH" lines before and after a change (a
 //! unittest build: only the comparison means something). See docs/handover-painted-table.md.

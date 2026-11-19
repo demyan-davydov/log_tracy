@@ -1,9 +1,9 @@
-// What the script tells D of the look of the painted table (resources/paint-look.js).
+// What the script tells D of the look of the log table (resources/log-table-look.js).
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { collectLook, paletteVariables, spacingVariables } from "../../resources/paint-look.js";
+import { collectLook, paletteVariables, spacingVariables } from "../../resources/log-table-look.js";
 import { matchColorCount } from "../../resources/match-colors.js";
 
 test("the variables that have a value are collected by the names of the palette, with the scale of the text", () => {

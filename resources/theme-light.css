@@ -58,7 +58,7 @@
     /* Log table: the rows, the header, every second row */
     --bg-table: #fff;
     --bg-table-header: bisque;
-    /* a group of rows in the painted table (a day): its margin, its lines, the plate of its head */
+    /* a group of rows in the log table (a day): its margin, its lines, the plate of its head */
     --bg-group: var(--bg-row);
     --bg-group-plate: var(--bg-table-header);
     --group-line-color: var(--border-color);

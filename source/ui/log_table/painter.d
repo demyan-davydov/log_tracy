@@ -1,5 +1,5 @@
-//! How the log table looks when the painted table (ptable) draws it: the fonts, the colors (`LogPalette`) and the
-//! spacing (`LogSpacing`) the script reads from the CSS of the themes and of the table (resources/paint-look.js), the
+//! How the log table looks when the log table (ptable) draws it: the fonts, the colors (`LogPalette`) and the
+//! spacing (`LogSpacing`) the script reads from the CSS of the themes and of the table (resources/log-table-look.js), the
 //! cells of the Index, the levels, the anchor marks, the Payload and the groups of rows (a day). The look the DOM table
 //! has in resources/table.css, written as a `Painter`. Free of Sciter. See docs/stories/painted-table.md.
 module ui.log_table.painter;
