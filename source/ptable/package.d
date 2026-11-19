@@ -1,6 +1,6 @@
 //! ptable: a table that draws its rows itself, as a package of its own (docs/stories/painted-table.md).
 //! It knows nothing of logs, documents or Sciter and imports only `std`: the data comes in through
-//! `TableModel`, the columns are shared through `ColumnLayout`, the look is a `Painter`, and the
+//! `TableModel`, the columns are shared through a `ColumnHost`, the look is a `Painter`, and the
 //! canvas and the clipboard are interfaces (`ports`) the application implements. What a column of
 //! text is (its style, its lines, its words, its measuring) is the package `ptable_text`. A test keeps the boundary (tests/js/ptable-boundary.test.mjs): the package can move
 //! to a repository of its own as it is.

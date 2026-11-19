@@ -1,19 +1,19 @@
 //! What the next log table (behavior `log-table`) is to show: a document and one of its views, and the
-//! column layout the tables of a document share, so the main table and the search table of a document keep
-//! the same widths, hidden columns and horizontal scroll. Free of Sciter.
+//! column host the tables of a document share, so the main table and the search table of a document keep
+//! the same columns, widths, hidden columns and horizontal scroll, fit to the rows of both. Free of Sciter.
 module ui.log_table.log_table_target;
 
-import ptable.layout : ColumnLayout;
+import ptable.columnhost : ColumnHost;
 import ui.log_table.log_look : defaultLogLook, LogLook;
 
-/// The view the next log table shows, and the layouts of the documents
+/// The view the next log table shows, and the column hosts of the documents
 final class LogTableTarget
 {
     private int _doc = -1;
     private bool _search;
     private size_t _id;
     private bool _singleLine;
-    private ColumnLayout[int] _layouts;
+    private ColumnHost[int] _hosts;
     private LogLook _look;
 
     /// The next log table shows the view of the document `doc`; answers the number it gets (the script talks to a table by it): a new one each time
@@ -44,22 +44,22 @@ final class LogTableTarget
         return _look;
     }
 
-    /// The layout of the columns of `doc`: one for both its tables
-    ColumnLayout layoutOf(int doc)
+    /// The column host of `doc`: one for both its tables
+    ColumnHost hostOf(int doc)
     {
-        if (auto have = doc in _layouts)
+        if (auto have = doc in _hosts)
             return *have;
-        return _layouts[doc] = new ColumnLayout;
+        return _hosts[doc] = new ColumnHost;
     }
 
-    /// The document is closed: its layout goes
+    /// The document is closed: its host goes
     void forget(int doc)
     {
-        _layouts.remove(doc);
+        _hosts.remove(doc);
     }
 }
 
-@("LogTableTarget: the tables of a document share one layout, those of another document do not")
+@("LogTableTarget: the tables of a document share one column host, those of another document do not")
 unittest
 {
     auto target = new LogTableTarget;
@@ -69,9 +69,9 @@ unittest
     assert(!target.singleLine);
     target.singleLine = true;
     assert(target.singleLine, "the next table starts so");
-    assert(target.layoutOf(3) is target.layoutOf(3));
-    assert(target.layoutOf(3) !is target.layoutOf(4));
-    auto old = target.layoutOf(3);
+    assert(target.hostOf(3) is target.hostOf(3), "both tables of a document settle their widths in one host");
+    assert(target.hostOf(3) !is target.hostOf(4));
+    auto old = target.hostOf(3);
     target.forget(3);
-    assert(target.layoutOf(3) !is old, "a closed document's layout is not kept");
+    assert(target.hostOf(3) !is old, "a closed document's host is not kept");
 }

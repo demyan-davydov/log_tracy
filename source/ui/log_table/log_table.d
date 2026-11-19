@@ -6,7 +6,6 @@ module ui.log_table.log_table;
 import domain.document_id : DocumentId;
 import domain.document_item : DocumentItem;
 import ptable.columnar : ColumnarModel;
-import ptable.layout : ColumnLayout;
 import ptable.columnhost : ColumnHost;
 import ptable.lookchange : LookChange;
 import ptable.model : TableModel;
@@ -23,14 +22,14 @@ import ui.log_table.document_model : DocumentRows, LogColumnLook, documentTableM
 import ui.log_table.log_look : LogLook;
 import ui.log_table.painter : LogPainter, LogScrollBarPainter;
 
-/// What a log table shows: a view of a document and the column layout the tables of the document share, or the demo of
-/// the groups of rows (`demo`: ui/log_table/demo_model) with a layout of its own
+/// What a log table shows: a view of a document and the column host the tables of the document share, or the demo of
+/// the groups of rows (`demo`: ui/log_table/demo_model) with a host of its own
 struct TableSource
 {
     AppSession session;
     DocumentId docId;
     bool search;
-    ColumnLayout layout;
+    ColumnHost host;
     bool demo;
     bool singleLine; /// the rows are one line high (the setting of the application) from the start
 }
@@ -69,13 +68,13 @@ final class LogTable
     {
         TableModel model;
         bool delegate() anchorsFull;
-        ColumnLayout layout = source.layout;
+        ColumnHost host = source.host;
         if (source.demo)
         {
             auto demo = demoTableModel(look, measurer);
             model = demo;
             _disposeModel = &demo.dispose;
-            layout = new ColumnLayout; // the widths of its columns are not the document's
+            host = new ColumnHost; // its columns are not the document's
         }
         else
         {
@@ -89,7 +88,7 @@ final class LogTable
         _painter.anchorsFull = anchorsFull;
         auto ports = TablePorts(_painter, clipboard);
         ports.copyFormat = logCopyFormat;
-        _table = new Table(model, new ColumnHost(layout), ports);
+        _table = new Table(model, host, ports);
         _table.revealMargin = 24; // a row that comes into view has 24 dips of room from the edge it came from
         _table.followEnd(!source.demo); // the rows of a document grow (a file being written): the table at its end follows it, as a terminal does
         _scrolled = new ScrolledTable(_table, new ScrollBar(new LogScrollBarPainter(look)), new ScrollBar(new LogScrollBarPainter(look)));
@@ -126,7 +125,7 @@ final class LogTable
     /// What the table tells its host (the table's and the bar's)
     ref TableEvents events() { return _scrolled.events; }
 
-    /// The table and the model let go of the document and the layout
+    /// The table and the model let go of the document and the column host
     void dispose()
     {
         _look.unsubscribe(_lookHandle);
@@ -150,19 +149,20 @@ unittest
     assert(order == ["restyle"], "no host hook is no failure");
 }
 
-@("LogTable: the demo shows rows grouped by a day and a shift, with a layout of its own: the document's is not touched")
+@("LogTable: the demo shows rows grouped by a day and a shift, with a column host of its own: the document's is not touched")
 unittest
 {
     import ptable_text.testing : FakeMeasurer;
     import ui.log_table.log_look : defaultLogLook;
 
-    auto shared_ = new ColumnLayout;
+    auto shared_ = new ColumnHost;
     auto log = new LogTable(TableSource(null, DocumentId.init, false, shared_, true), defaultLogLook(), new FakeMeasurer, null);
     log.table.resize(400, 300);
     import ptable.painter : RecordingCanvas;
     log.table.paint(new RecordingCanvas);
     assert(log.table.stats.rowsOnScreen > 0 && log.table.copyText(false).length == 0, "the demo's rows, nothing selected");
-    assert(shared_.width("day") == 0 && shared_.width("n") == 0, "the document's layout has none of its widths");
+    assert(shared_.layout.width("day") == 0 && shared_.layout.width("n") == 0 && shared_.width == 0,
+        "the document's host has none of its widths and none of its room");
     log.table.scrollToEnd();
     log.table.paint(new RecordingCanvas);
     assert(!log.table.isFollowingEnd, "the demo does not follow an end: its rows do not grow");

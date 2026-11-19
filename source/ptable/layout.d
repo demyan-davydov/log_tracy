@@ -1,7 +1,7 @@
 //! The columns of a table that can be shared: widths, visibility, pinning and the horizontal
 //! scroll, kept by column id in an object of its own (`ColumnLayout`), and the placement of the
 //! columns in a viewport from it (`placeColumns`). Tables that are given the same object show
-//! the same widths and scroll; two objects can be linked (`linkLayouts`) to follow each other.
+//! the same widths and scroll (a column host, `ptable.columnhost`, gives one to all its tables).
 //! Pure: no Sciter, no log. See docs/stories/painted-table.md.
 module ptable.layout;
 
@@ -239,78 +239,6 @@ final class ColumnLayout
     }
 }
 
-/// What `linkLayouts` keeps the same in two layouts (flags, or-ed)
-enum Linked : uint
-{
-    widths = 1,
-    visibility = 2,
-    pinning = 4,
-    scroll = 8,
-    all = 15,
-}
-
-/// Makes `b` follow `a` and `a` follow `b` in what `what` says, for the columns both know. Returns a
-/// function that cuts the link.
-void delegate() linkLayouts(ColumnLayout a, ColumnLayout b, uint what = Linked.all)
-{
-    bool copying; // a change made by the link is not copied back
-
-    void copyWidth(ColumnLayout from, ColumnLayout to, string id)
-    {
-        to.setWidth(id, from.explicitWidth(id));
-        to.setFit(id, from.fitWidth(id));
-    }
-
-    void copy(ColumnLayout from, ColumnLayout to, LayoutChange change)
-    {
-        if (copying)
-            return;
-        copying = true;
-        scope (exit)
-            copying = false;
-        final switch (change.kind)
-        {
-        case LayoutChange.Kind.width:
-            if (what & Linked.widths)
-                copyWidth(from, to, change.id);
-            break;
-        case LayoutChange.Kind.visibility:
-            if (what & Linked.visibility)
-                to.setVisible(change.id, from.visible(change.id));
-            break;
-        case LayoutChange.Kind.pin:
-            if (what & Linked.pinning)
-                to.setPin(change.id, from.pin(change.id));
-            break;
-        case LayoutChange.Kind.scroll:
-            if (what & Linked.scroll)
-                to.setScrollX(from.scrollX);
-            break;
-        case LayoutChange.Kind.fit:
-        case LayoutChange.Kind.room:
-            break;
-        }
-    }
-
-    // `b` starts as `a` is
-    copying = true;
-    foreach (id; a.ids())
-    {
-        if (what & Linked.widths)
-            copyWidth(a, b, id);
-        if (what & Linked.visibility)
-            b.setVisible(id, a.visible(id));
-        if (what & Linked.pinning)
-            b.setPin(id, a.pin(id));
-    }
-    if (what & Linked.scroll)
-        b.setScrollX(a.scrollX);
-    copying = false;
-    const ha = a.subscribe((const LayoutChange c) { copy(a, b, c); });
-    const hb = b.subscribe((const LayoutChange c) { copy(b, a, c); });
-    return () { a.unsubscribe(ha); b.unsubscribe(hb); };
-}
-
 /// Where a column stands in the viewport
 struct Placement
 {
@@ -480,17 +408,6 @@ unittest
     assert(layout.width("a") == 60 && layout.fitWidth("a") == 0);
 }
 
-@("linkLayouts: the widths the texts need follow too, and so does their reset")
-unittest
-{
-    auto a = new ColumnLayout, b = new ColumnLayout;
-    linkLayouts(a, b);
-    a.grow("x", 90);
-    assert(b.width("x") == 90 && b.explicitWidth("x") == 0, "the need is copied as a need");
-    b.resetFit();
-    assert(a.width("x") == 0);
-}
-
 @("ColumnLayout: visibility, pinning and the scroll, with their defaults")
 unittest
 {
@@ -522,38 +439,6 @@ unittest
     assert(layout.revision == before + 4);
     layout.setWidth("b", 1);
     assert(seen.length == 4, "an unsubscribed listener hears nothing");
-}
-
-@("linkLayouts: what is linked follows both ways, what is not stays, the link can be cut")
-unittest
-{
-    auto a = new ColumnLayout, b = new ColumnLayout;
-    auto cut = linkLayouts(a, b, Linked.widths | Linked.scroll);
-    a.setWidth("x", 40);
-    assert(b.width("x") == 40);
-    b.grow("x", 60);
-    assert(a.width("x") == 60, "the other way too");
-    a.setScrollX(7);
-    assert(b.scrollX == 7);
-    a.setVisible("x", false);
-    assert(b.visible("x"), "visibility was not linked");
-    cut();
-    a.setWidth("x", 99);
-    assert(b.width("x") == 60, "cut");
-}
-
-@("linkLayouts: linked layouts do not loop and start in agreement")
-unittest
-{
-    auto a = new ColumnLayout, b = new ColumnLayout;
-    a.setWidth("x", 33);
-    a.setScrollX(4);
-    linkLayouts(a, b);
-    assert(b.width("x") == 33 && b.scrollX == 4, "the second takes the state of the first");
-    size_t calls;
-    a.subscribe((const LayoutChange) { calls++; });
-    b.setPin("x", Pin.left);
-    assert(a.pin("x") == Pin.left && calls == 1, "one change, told once");
 }
 
 @("placeColumns: columns side by side in their order, a width at least the least one")

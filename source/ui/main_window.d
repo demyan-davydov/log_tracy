@@ -58,7 +58,7 @@ class MainWindow : SciterWindow
         if (name != logTableBehavior)
             return null;
         const id = _target.id;
-        auto source = TableSource(_session, _session.findDocument(_target.doc), _target.search, _target.layoutOf(_target.doc), false, _target.singleLine);
+        auto source = TableSource(_session, _session.findDocument(_target.doc), _target.search, _target.hostOf(_target.doc), false, _target.singleLine);
         return new LogTableBehavior(source, _target.look,
             TableHooks(id, (TableControl control) { _tables.attach(id, control); }, (TableControl control) { _tables.detach(control); }), he);
     }
