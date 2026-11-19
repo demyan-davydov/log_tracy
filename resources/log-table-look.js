@@ -45,6 +45,10 @@ export const spacingVariables = {
     groupPadTop: "group-pad-top",
     groupPadBottom: "group-pad-bottom",
     payloadPadLeft: "payload-pad-left",
+    rowsMarginTop: "rows-margin-top",
+    rowsMarginBottom: "rows-margin-bottom",
+    rowsMarginLeft: "rows-margin-left",
+    rowsMarginRight: "rows-margin-right",
 };
 
 // The size in dips of a length `read` gave, NaN if it is none (a text that is no number, below 0)

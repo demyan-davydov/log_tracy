@@ -14,6 +14,12 @@
     --group-pad-bottom: 0; /* the plate reaches the bottom of the margin and covers the line there (the outline of a group) */
     /* the room left of the text of the Payload column and of its title */
     --payload-pad-left: 4pt; /* 5.33dip */
+    /* the room around the rows, always there (none for now: set one to have it); left and right the same for the tables of a
+       document (their column host's) */
+    --rows-margin-top: 0;
+    --rows-margin-bottom: 0;
+    --rows-margin-left: 0;
+    --rows-margin-right: 0;
     /* The least widths of the columns, of their content as min-width in CSS: the paddings of the cells and the line between the columns
        come on top. --column-min-width for a column no variable names, one for the columns every table has (-anchor, -index, -payload)
        and one for each column of a format by its ids (--column-min-width-dlt-time; the formats and their columns are in source/formats,

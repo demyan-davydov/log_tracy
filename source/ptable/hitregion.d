@@ -27,15 +27,14 @@ Area areaAt(ref const Regions r, double x, double y) pure nothrow @nogc @safe
 unittest
 {
     import ptable.painter : TableGeometry;
-    import ptable.regions : regionsOf;
+    import ptable.regions : SideMargins, regionsOf;
 
     TableGeometry g;
     g.footerHeight = 20;
-    g.padTop = 4;
-    g.marginLeft = 10;
-    const r = regionsOf(400, 200, g);
+    g.marginTop = 4;
+    const r = regionsOf(400, 200, g, SideMargins(10, 0));
     assert(areaAt(r, 50, 5) == Area.header && areaAt(r, 50, -3) == Area.header);
-    assert(areaAt(r, 50, 21 + 2) == Area.around, "the padding above the rows");
+    assert(areaAt(r, 50, 21 + 2) == Area.around, "the margin above the rows");
     assert(areaAt(r, 5, 100) == Area.around, "the margin at the left");
     assert(areaAt(r, 50, 100) == Area.rows);
     assert(areaAt(r, 50, 190) == Area.footer);

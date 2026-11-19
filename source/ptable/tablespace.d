@@ -1,11 +1,11 @@
 //! The room a table has and how it is divided: its size, the fonts it draws in and the regions (the header, the rows,
-//! the footer, the padding) that follow from both. They change together (a resize, a new look) and are made again
-//! only when one of them did, so the table asks this unit instead of keeping the three and their staleness itself.
+//! the footer, the margins) that follow from both and from the margins left and right of the column host. They change together (a resize,
+//! a new look, other margins) and are made again only when one of them did, so the table asks this unit instead of keeping the three and their staleness itself.
 //! Pure. See docs/stories/painted-table.md.
 module ptable.tablespace;
 
 import ptable.painter : Painter;
-import ptable.regions : Regions, regionsOf;
+import ptable.regions : Regions, SideMargins, regionsOf;
 import ptable.tablefonts : TableFonts;
 
 /// What `TableSpace.refresh` made again
@@ -20,6 +20,7 @@ struct TableSpace
     private TableFonts _fonts;
     private double _width = 0, _height = 0;
     private Regions _regions;
+    private SideMargins _sides; // the margins left and right the regions were made with
     private bool _stale = true;
 
     /// The fonts and the geometry the painter asked for (read only: `restyle` and `refresh` change them)
@@ -28,7 +29,7 @@ struct TableSpace
     double width() const nothrow { return _width; }
     double height() const nothrow { return _height; }
 
-    /// The parts of the table's area: the header, the rows, the footer, the padding
+    /// The parts of the table's area: the header, the rows, the footer, the margins
     ref const(Regions) regions() const return nothrow { return _regions; }
 
     /// The size of the table; false if it is the same. `widthChanged` says the width differs (the wrapped rows change their heights)
@@ -60,8 +61,9 @@ struct TableSpace
         return true;
     }
 
-    /// Makes the geometry if it was not, and the regions if the size or the geometry changed
-    SpaceRefresh refresh()
+    /// Makes the geometry if it was not, and the regions if the size, the geometry or the margins left and right `sides` (the column
+    /// host's) changed
+    SpaceRefresh refresh(SideMargins sides = SideMargins.init)
     {
         SpaceRefresh result;
         if (!_fonts.loaded)
@@ -69,10 +71,11 @@ struct TableSpace
             _fonts.load();
             result.fontsLoaded = true;
         }
-        if (_stale)
+        if (_stale || sides != _sides)
         {
             _stale = false;
-            _regions = regionsOf(_width, _height, _fonts.geometry);
+            _sides = sides;
+            _regions = regionsOf(_width, _height, _fonts.geometry, sides);
             result.regionsMade = true;
         }
         return result;
@@ -98,4 +101,18 @@ unittest
     space.restyle(new Painter);
     const afterRestyle = space.refresh();
     assert(afterRestyle.fontsLoaded && afterRestyle.regionsMade);
+}
+
+@("TableSpace: other margins left and right make the regions again, the same ones do not")
+unittest
+{
+    TableSpace space;
+    space.restyle(new Painter);
+    bool widthChanged;
+    space.resize(400, 200, widthChanged);
+    space.refresh();
+    const sides = SideMargins(20, 10);
+    assert(space.refresh(sides).regionsMade && space.regions.rows.x == 20 && space.regions.rows.w == 370);
+    assert(!space.refresh(sides).regionsMade, "the same margins");
+    assert(space.refresh().regionsMade && space.regions.rows.w == 400, "none again");
 }

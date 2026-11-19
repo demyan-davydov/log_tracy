@@ -56,8 +56,9 @@ struct TableGeometry
 {
     double headerHeight = 21; /// 0 or less: as high as the tallest title of the columns (`TableColumn.measureHeader`), so a font change moves it
     double footerHeight = 0; /// 0: no footer
-    double padTop = 0, padBottom = 0; /// room above the first row and under the last one, painted by `paintEmpty`
-    double marginLeft = 0, marginRight = 0; /// room left and right of the block of rows: the columns, and the titles over them, stand between
+    /// Room above the first row and under the last one, always there (not scrolled), painted by `paintEmpty`; the margins left and right
+    /// are the column host's (`ColumnHost.setMargins`), the same for its tables
+    double marginTop = 0, marginBottom = 0;
     /// The plate of the heads above the first row of a group (rows grouped by the heads of a column, `CellPartsExtractor`),
     /// stuck over the titles for the rows on top; 0: none, the rows are not grouped; less than 0: as high as the header
     double groupHeight = 0;
@@ -77,10 +78,10 @@ struct TableGeometry
 /// A part of the table with no rows in it
 enum EmptyZone : ubyte
 {
-    above, /// the table's padding above the first row
-    below, /// the room under the last row (the padding, or all of it if the rows do not fill the table)
+    marginTop, /// the table's margin above the rows (`TableGeometry.marginTop`), all of the width
+    marginBottom, /// the margin under the rows
     beside, /// right of the last column when they do not fill the width
-    marginLeft, /// the table's margin left of the rows (`TableGeometry.marginLeft`), as high as the body
+    marginLeft, /// the margin left of the rows (`ColumnHost.margins`), as high as the body
     marginRight, /// the margin right of the rows
 }
 
@@ -163,7 +164,7 @@ class Painter
     {
     }
 
-    /// The table's own padding and any room with no rows: the painter fills it as it wants
+    /// The margins around the rows: the painter fills them as it wants (the background is under them)
     void paintEmpty(Canvas canvas, Rect area, EmptyZone zone)
     {
     }
@@ -223,7 +224,7 @@ unittest
     auto canvas = new RecordingCanvas;
     Painter painter = new Mine;
     painter.paintBackground(canvas, Rect(0, 0, 100, 100));
-    painter.paintEmpty(canvas, Rect(0, 90, 100, 10), EmptyZone.below);
+    painter.paintEmpty(canvas, Rect(0, 90, 100, 10), EmptyZone.marginBottom);
     const data = CellData("hi"w);
     CellContext cell;
     cell.data = &data;
