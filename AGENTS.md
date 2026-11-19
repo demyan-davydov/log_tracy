@@ -89,6 +89,7 @@ A package imports only the packages to its left (unittests may import more):
 ```
 utils  ←  log_core  ←  formats  ←  domain  ←  ui  ←  app.d
 utils  ←  sciter  ←  ui
+ptable  ←  ptable_text  ←  ui     (ptable imports only std: a package of its own; ptable_text, the text columns, only ptable and std)
 ```
 
 The script reaches the backend only through `resources/backend.js` (one function per xcall,

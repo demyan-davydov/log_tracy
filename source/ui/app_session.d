@@ -27,6 +27,7 @@ import ui.document_tabs : DocumentTabs;
 import ui.document_ui : DocumentUi;
 import ui.filter_commands : DocumentFilters;
 import ui.table_columns : TableColumns;
+import ui.log_table.view_events : versionOf, ViewListener, ViewVersion;
 import ui.translations : Catalog, CatalogFile, parseCatalog, Translation, findTranslations,
     catalogLanguagesJson = languagesJson, catalogTranslationJson = translationJson;
 import ui.main_view_fsm : toJson;
@@ -73,6 +74,16 @@ final class AppSession
     private SettingsWriter _write;
     private FileShower _showInFolder;
     private ScriptCall[] _scriptCalls; // queued for the idle loop
+    /// Called when the tab of a document goes (its tables' layouts are no longer wanted); null: nobody listens
+    void delegate(DocumentId) documentClosed;
+    private struct ViewHearer
+    {
+        DocumentId doc;
+        ViewListener listener;
+    }
+
+    private ViewHearer[size_t] _viewListeners; // the painted tables, by handle
+    private size_t _nextViewListener;
     private DocumentId[] _reopen; // to be opened anew after the dispatch (ReopenWanted)
     // When each document began to open, until its load completes: the console tells
     // how long the whole load took (a load that never completes tells nothing)
@@ -157,12 +168,14 @@ final class AppSession
             if (ui.mainViewChanged)
             {
                 ui.mainViewChanged = false;
+                tellViewShown(docId, false, versionOf(ui.mainViewShown));
                 _scriptCalls ~= ScriptCall("onMainViewChanged", idOf(docId),
                     toJson(ui.mainViewShown, &textForUser).toString());
             }
             if (ui.searchViewChanged)
             {
                 ui.searchViewChanged = false;
+                tellViewShown(docId, true, versionOf(ui.searchViewShown));
                 _scriptCalls ~= ScriptCall("onSearchViewChanged", idOf(docId),
                     toJson(ui.searchViewShown, &textForUser).toString());
             }
@@ -180,6 +193,35 @@ final class AppSession
         auto calls = _scriptCalls;
         _scriptCalls = null;
         return calls;
+    }
+
+    /// The tables drawn by D hear the views of `docId` at the moment the script is told of them (and not
+    /// through the script), and a change of the columns of any document. Returns the handle for `unsubscribeViews`.
+    size_t subscribeViews(DocumentId docId, ViewListener listener)
+    {
+        _viewListeners[_nextViewListener] = ViewHearer(docId, listener);
+        return _nextViewListener++;
+    }
+
+    /// ditto
+    void unsubscribeViews(size_t handle)
+    {
+        _viewListeners.remove(handle);
+    }
+
+    private void tellViewShown(DocumentId docId, bool search, ViewVersion shown)
+    {
+        // a listener may unsubscribe another while it hears: those gone are not called
+        foreach (handle, hearer; _viewListeners.dup)
+            if (handle in _viewListeners && hearer.doc == docId && hearer.listener.viewShown !is null)
+                hearer.listener.viewShown(search, shown);
+    }
+
+    private void tellColumnsChanged()
+    {
+        foreach (handle, hearer; _viewListeners.dup)
+            if (handle in _viewListeners && hearer.listener.columnsChanged !is null)
+                hearer.listener.columnsChanged();
     }
 
     /// Returns: true if the settings changed and are to be written now
@@ -260,7 +302,14 @@ final class AppSession
         {
             _tabs.remove(docId);
             releaseTabHold(docId);
+            tellDocumentClosed(docId);
         }
+    }
+
+    private void tellDocumentClosed(DocumentId docId)
+    {
+        if (documentClosed !is null)
+            documentClosed(docId);
     }
 
     // ── The documents ────────────────────────────────────────────────────────
@@ -479,6 +528,13 @@ final class AppSession
     {
         auto ui = _documentUis.get(docId, null);
         return ui is null ? RuleId.init : ui.ruleOf(item.message);
+    }
+
+    /// The color "#rrggbb" of the filter rule `rule` of the document, empty if it has none
+    string ruleColor(DocumentId docId, RuleId rule)
+    {
+        auto ui = _documentUis.get(docId, null);
+        return ui is null ? "" : ui.ruleColorOf(rule);
     }
 
     /// The row of view (the search view if `searchView`, else the main one) of
@@ -917,6 +973,7 @@ final class AppSession
     {
         _settings.columnLayouts = withColumnLayouts(_settings.columnLayouts, json);
         _tableColumns.reset(); // arranged again
+        tellColumnsChanged();
         settingsChanged();
     }
 
@@ -1048,6 +1105,7 @@ final class AppSession
         _loadStarted.remove(docId);
         if (_tabs.remove(docId))
             releaseTabHold(docId);
+        tellDocumentClosed(docId);
         if (path.length)
         {
             _settings.recentFiles = withFilesUsed(_settings.recentFiles, [path], nowMs());
@@ -1304,6 +1362,26 @@ unittest
     assert(f.session.takeScriptCalls().length == 0, "taken once");
 }
 
+@("AppSession: the listeners of the views hear the views of their document and the columns, until they unsubscribe")
+unittest
+{
+    auto f = Fixture.make();
+    const id = f.session.openFile(testPath("/logs/a.log")).docId;
+    const other = f.session.openFile(testPath("/logs/b.log")).docId;
+    bool[] heard; // search?
+    int columns;
+    const handle = f.session.subscribeViews(id, ViewListener((bool search, ViewVersion v) { heard ~= search; }, () { ++columns; }));
+    f.session.dispatchEvents();
+    f.session.takeScriptCalls();
+    assert(heard.length >= 2 && heard.canFind(false) && heard.canFind(true), "both views of the document");
+    const n = heard.length;
+    f.session.setColumnLayouts("{}");
+    assert(columns == 1);
+    f.session.unsubscribeViews(handle);
+    f.session.setColumnLayouts("{}");
+    assert(columns == 1 && heard.length == n);
+}
+
 @("AppSession: a file that can't be opened is listed with the reason, the script is told nothing")
 unittest
 {
@@ -1411,6 +1489,20 @@ unittest
 
     f.store.release(agent);
     assert(!f.store.isOpen(id), "closed by its last holder");
+}
+
+@("AppSession: the tab of a document going is told, by closing it and by closing all")
+unittest
+{
+    auto f = Fixture.make();
+    DocumentId[] gone;
+    f.session.documentClosed = (DocumentId docId) { gone ~= docId; };
+    const a = f.session.openFile(testPath("/logs/a.log")).docId;
+    const b = f.session.openFile(testPath("/logs/b.log")).docId;
+    f.session.closeTab(cast(int) a.toInt());
+    assert(gone == [a]);
+    f.session.closeAll();
+    assert(gone == [a, b]);
 }
 
 @("AppSession: another holder releasing its hold twice leaves the tab its document")

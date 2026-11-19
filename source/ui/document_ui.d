@@ -66,6 +66,12 @@ final class DocumentUi : MainViewSink, MainViewCommands, SearchViewSink, SearchV
         return _filters is null ? RuleId.init : _filters.ruleOf(message);
     }
 
+    /// The color "#rrggbb" of a rule, empty if it has none
+    string ruleColorOf(RuleId id) const
+    {
+        return _filters is null ? "" : _filters.colorOf(id);
+    }
+
     /// Returns: true if a running filter was asked to stop
     bool pressMainCancel()
     {

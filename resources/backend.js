@@ -76,6 +76,12 @@ export const switchTab = docId => xcall("switchTab", docId);
 export const closeTab = docId => xcall("closeTab", docId);
 export const reorderTab = (docId, index) => xcall("reorderTab", docId, index);
 
+// PROTOTYPE (painted-table-d.js, docs/experiments/2026-11-19-painted-rows-d.md): the table drawn by D.
+// The next element with `behavior: paint-rows` shows the view of `docId`; a call to the table
+// drawn now (ui/painted_table.d), null if none
+export const setPaintTarget = (docId, search) => Window.this.xcall("setPaintTarget", docId, search);
+export const paintCall = (method, ...args) => Window.this.xcall("paintD", method, ...args);
+
 // ── The views ────────────────────────────────────────────────────────────────
 
 // A row of a view (see rowLayout in cell-format.js), null if there is no such

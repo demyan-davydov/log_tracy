@@ -56,6 +56,11 @@
     /* Log table: the rows, the header, every second row */
     --bg-table: #222222;
     --bg-table-header: #3e372d;
+    /* a group of rows in the painted table (a day): its margin, its lines, the plate of its head */
+    --bg-group: var(--bg-row);
+    --bg-group-plate: var(--bg-table-header);
+    --group-line-color: var(--border-color);
+    --text-group-plate: var(--text-main);
     --bg-row: #1d1d1d;
     --bg-row-stripe: #282828;
     /* The rows the search found, in both tables: the row and the stripe a bit

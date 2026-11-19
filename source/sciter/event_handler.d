@@ -11,6 +11,22 @@ import utils.foreign_callback : guardCallback;
 
 class SciterEventHandler
 {
+    /// Keeps a handler Sciter holds by a bare pointer (a behavior) alive for the GC, until
+    /// `unhold`
+    static void hold(SciterEventHandler handler)
+    {
+        import core.memory : GC;
+
+        GC.addRoot(cast(void*) handler);
+    }
+
+    static void unhold(SciterEventHandler handler)
+    {
+        import core.memory : GC;
+
+        GC.removeRoot(cast(void*) handler);
+    }
+
     static auto _api() @nogc nothrow @property
     {
         return sciterApi();
@@ -45,6 +61,12 @@ class SciterEventHandler
             writeln("can not detach event handler, res: ", res);
 
         writeln("Window event handler detached (Direct), result: ", res);
+    }
+
+    /// The procedure to hand to Sciter with a handler as its tag (SC_ATTACH_BEHAVIOR)
+    static ElementEventProc procForSciter() @nogc nothrow
+    {
+        return &elementProc;
     }
 
     // Every event of the window and every xcall of its script: what a handler throws is logged

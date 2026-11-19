@@ -1,6 +1,11 @@
 /* Table Styles */
 
 .log-table {
+    /* a group of rows in the painted table (a day): room above and under the plate of its head (resources/paint-look.js) */
+    --group-pad-top: 4.5pt; /* 6dip */
+    --group-pad-bottom: 1dip;
+    /* the room left of the text of the Payload column and of its title in the painted table; the DOM table has it below */
+    --payload-pad-left: 4pt; /* 5.33dip */
     display: block;
     width: *;
     height: *;

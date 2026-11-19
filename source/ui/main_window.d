@@ -3,6 +3,7 @@
 //! the log tables as Sciter values.
 module ui.main_window;
 
+import sciter.event_handler : SciterEventHandler;
 import sciter.window;
 import sciter.value;
 import sciter.capi.types;
@@ -21,6 +22,11 @@ import ui.app_resources : appResourceOfUrl, appResourceUrl, builtInCatalogs;
 import ui.app_session : AppSession;
 import ui.app_settings : toJSON;
 import ui.filter_commands : DocumentFilters;
+import ui.log_table.look_json : applyLookJson;
+import ui.log_table.paint_target : PaintTarget;
+import ui.log_table.log_table : TableSource;
+import ui.painted_table : PaintedTable, paintRowsBehavior, runScript, TableHooks;
+import ui.table_script : CurrentControl;
 import ui.table_rows : columnsJson, rowLength, writeRow;
 
 import std.algorithm : startsWith;
@@ -38,6 +44,8 @@ import std.utf : toUTF8, toUTF16;
 class MainWindow : SciterWindow
 {
     private AppSession _session;
+    private PaintTarget _paint = new PaintTarget; // what the next painted table (paint-rows) shows
+    private CurrentControl _paintControl; // the painted table the script talks to
 
     /// The files of the interface are built in (`this://app/...`), for the dialogs too
     override protected immutable(ubyte)[] onLoadData(string uri)
@@ -46,6 +54,15 @@ class MainWindow : SciterWindow
         if (data is null && uri.startsWith(appResourceUrl))
             writeln("No file of the interface is built in at ", uri);
         return data;
+    }
+
+    // The native behaviors of CSS `behavior: ...`: the painted table (prototype, ui/painted_table)
+    override protected SciterEventHandler createBehavior(string name, HELEMENT he)
+    {
+        if (name != paintRowsBehavior)
+            return null;
+        return new PaintedTable(TableSource(_session, _session.findDocument(_paint.doc), _paint.search, _paint.layoutOf(_paint.doc)), _paint.look,
+            TableHooks(&_paintControl.attach, &_paintControl.detach), he);
     }
 
     /// The menu bar of the window on `platform`, in the language of the interface
@@ -61,6 +78,7 @@ class MainWindow : SciterWindow
     this(AppSession session, bool sciterDebugMode = false)
     {
         _session = session;
+        _session.documentClosed = (DocumentId docId) { _paint.forget(cast(int) docId.toInt()); };
         _session.useTranslations(builtInCatalogs());
 
         import sciter.capi.def;
@@ -213,6 +231,25 @@ class MainWindow : SciterWindow
             return true;
         case "reorderTab":
             _session.reorderTab(param!int(0), param!int(1));
+            return true;
+
+        case "paintD":
+            // paintD(method, args...): a call to the table drawn by D (ui/painted_table), null if none
+            // setLook(json) is the application's look, not a table's: it applies with no table attached too
+            if (params.argc >= 1 && param!string(0) == "setLook")
+            {
+                if (params.argc >= 2)
+                    applyLookJson(_paint.look, param!string(1));
+                return true;
+            }
+            if (_paintControl.get is null || params.argc < 1)
+                resultView.set(SciterValue.makeNull());
+            else
+                runScript(_paintControl.get, param!string(0), params.argv + 1, params.argc - 1, &params.result);
+            return true;
+        case "setPaintTarget":
+            // setPaintTarget(docId, search): the next element with `behavior: paint-rows` shows that view
+            _paint.set(param!int(0), param!bool(1));
             return true;
 
         // ── The views ───────────────────────────────────────────────────────

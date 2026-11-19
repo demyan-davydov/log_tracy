@@ -1,0 +1,344 @@
+//! The column of text: its cells are lines of a font in a style (`ColumnStyle`), broken by the advances of the glyphs or wrapped by the
+//! host's text engine (a paragraph). It lays its cell out, measures it, draws its text, answers where a point is in it, which rectangles
+//! a part of it takes and what a double click selects; its title and the heads of its groups are measured here, drawn by a column that
+//! knows colors (a log's `TextColumn`). The table keeps no line of it: the column breaks the text again where it draws and hit-tests.
+//! The look of the colors is not here: `inkOf` and the title and group drawing are for the subclass. See docs/stories/painted-table.md.
+module ptable_text.textcell;
+
+import ptable.column : CellInput, CellLayout, DrawState, GroupInput, Measured, TableColumn, Unit;
+import ptable.layout : ColumnDef;
+import ptable.memory : Arena;
+import ptable.ports : Canvas, Color, FontId, Rect;
+import ptable_text.columnstyle : ColumnStyle, Halign, alignOffset, alignedX, noFont;
+import ptable_text.measurer : FontMetrics, TextMeasurer;
+import ptable_text.texthit : TextSpot, caretInText, rectsInText, unitInText;
+import ptable_text.wrap : LineSpan, firstLineWidth, glyphWidth, wrapLines;
+
+import std.algorithm.comparison : max;
+import std.conv : to;
+import std.math : ceil, round;
+
+/// A column of text. `measurer` null: a column that measures nothing (its widths are 0, its metrics too)
+class TextCell : TableColumn
+{
+    /// The room left and right of a text, above and under the line of a cell, above and under a title, where the style leaves it
+    enum double sidePad = 3, linePad = 1, titlePad = 3;
+
+    ColumnStyle style; /// how its cells, its title and the heads of its groups look
+    private TextMeasurer _measurer;
+    private Metrics _metrics; // of its fonts, measured at `lookChanged`
+    private wstring _title;
+    private double[256] _lowAdvances = -1; // the widths of the first 256 glyphs in the font of the cells, -1 not measured yet: most of a log
+    private double[dchar] _advances; // of the others (metrics of the font, not content: both kept until the look changes)
+    private LineSpan[] _lines; // the lines of the last text wrapped: the scratch of the wrap and its answer
+    private LineSpan[1] _one; // the one line of a cell that is not wrapped
+    private wchar[] _wrapped; // that text, the width it was wrapped in and whether `_lines` are its lines: a cell is drawn, hit and drawn again
+    private double _wrappedIn = -1; // in a row, and the same text would be wrapped again by each (a copy: the memory of the pass is reused)
+    private bool _paragraph; // the host wraps the cells (what its measurer said when the last cell was laid out)
+
+    private struct Metrics
+    {
+        FontMetrics cell, header, group;
+    }
+
+    this(ColumnDef def, TextMeasurer measurer = null)
+    {
+        super(def);
+        _measurer = measurer;
+        _title = def.title.to!wstring;
+    }
+
+    /// The fonts of the cells, of the title, of the heads of groups where the style names none
+    protected FontId defaultCellFont() const nothrow { return 0; }
+
+    /// ditto
+    protected FontId defaultHeaderFont() const nothrow { return 0; }
+
+    /// ditto
+    protected FontId defaultGroupFont() const nothrow { return 0; }
+
+    /// The font of its cells, of its title, of the heads of its groups: the style's, else the default one
+    final FontId cellFont() const nothrow
+    {
+        return style.cell.font != noFont ? style.cell.font : defaultCellFont;
+    }
+
+    /// ditto
+    final FontId headerFont() const nothrow
+    {
+        return style.header.font != noFont ? style.header.font : defaultHeaderFont;
+    }
+
+    /// ditto
+    final FontId groupFont() const nothrow
+    {
+        return style.group.font != noFont ? style.group.font : defaultGroupFont;
+    }
+
+    /// The fonts may have changed: their metrics are read again
+    override void lookChanged()
+    {
+        _advances = null;
+        _lowAdvances[] = -1;
+        _wrappedIn = -1;
+        if (_measurer is null)
+            return;
+        _metrics = Metrics(_measurer.metrics(cellFont), _measurer.metrics(headerFont), _measurer.metrics(groupFont));
+    }
+
+    /// What its cells are measured by (null: nothing)
+    protected final TextMeasurer measurer() { return _measurer; }
+
+    /// The metrics of the fonts of the cells, of the title, of the heads of groups, as they were at the last `lookChanged`
+    protected final FontMetrics cellMetrics() const { return _metrics.cell; }
+
+    /// ditto
+    protected final FontMetrics headerMetrics() const { return _metrics.header; }
+
+    /// ditto
+    protected final FontMetrics groupMetrics() const { return _metrics.group; }
+
+    /// The title of the column as text
+    protected final wstring title() const { return _title; }
+
+    /// What a pixel of the design is in the font now: the line of the font of the cells over the 14 px it was drawn for
+    protected final double unit() const
+    {
+        return _metrics.cell.lineHeight > 0 ? ceil(_metrics.cell.lineHeight) / 14.0 : 1.0;
+    }
+
+    /// One line of the text of the cell in its font with the room around it the style gives, at least the least height of the column; the
+    /// widths if asked: of the whole text, or of the first line for the flex column that does not wrap (the flex column that wraps is laid out
+    /// by `layout`)
+    override Measured measure(ref const CellInput cell, double width, bool widths)
+    {
+        Measured m;
+        m.height = heightOf(1);
+        if (widths && cell.data !is null && _measurer !is null)
+        {
+            const style = this.style.cell;
+            const font = fontOf(cell);
+            const text = cell.data.text;
+            const textWidth = def.flex ? firstLineWidth(text, (const(wchar)[] t) => _measurer.width(font, t)) : _measurer.width(font, text);
+            m.maxWidth = m.minWidth = style.left(sidePad) + textWidth + style.right(sidePad);
+        }
+        return m;
+    }
+
+    /// The flex column breaks its cells into lines unless its style says it does not (the single-line view)
+    override bool wraps() const
+    {
+        return def.flex && style.wrap;
+    }
+
+    // A cell of `lines` lines and the room the style gives above and under them, at least the least height of the column
+    private double heightOf(size_t lines) const
+    {
+        const style = this.style.cell;
+        return max(this.style.minHeight, lines * ceil(_metrics.cell.lineHeight) + style.top(linePad) + style.bottom(linePad));
+    }
+
+    /// The title: one line in the header font of the style, with the room of the header around it
+    override Measured measureHeader()
+    {
+        const style = this.style.header;
+        const textWidth = _measurer !is null ? _measurer.width(headerFont, _title) : 0;
+        Measured m;
+        m.maxWidth = m.minWidth = style.left(sidePad) + textWidth + style.right(sidePad);
+        m.height = ceil(_metrics.header.lineHeight) + style.top(titlePad) + style.bottom(titlePad);
+        return m;
+    }
+
+    /// The head of a group: one line in the group font of the style, with the room of a title around it
+    override Measured measureGroup(in GroupInput group)
+    {
+        const style = this.style.group;
+        const textWidth = _measurer !is null ? _measurer.width(groupFont, group.head) : 0;
+        Measured m;
+        m.maxWidth = m.minWidth = style.left(sidePad) + textWidth + style.right(sidePad);
+        m.height = ceil(_metrics.group.lineHeight) + style.top(titlePad) + style.bottom(titlePad);
+        return m;
+    }
+
+    /// Where the text of a cell stands in its area: the font, where its lines start, the top and the baseline of the first, the height of a line
+    protected struct Spot
+    {
+        FontId font;
+        double x = 0, top = 0, baseline = 0, line = 0;
+    }
+
+    /// The font the text of the cell is set in: the column's (a level is bold by the data of its cell)
+    protected FontId fontOf(ref const CellInput cell) const
+    {
+        return cellFont;
+    }
+
+    /// The text of the cell in `area` with `lines` lines: aligned by the style between its paddings, its lines in the middle of the room above and
+    /// under them unless the style puts them at the top or the bottom
+    protected final Spot spotOf(ref const CellInput cell, Rect area, size_t lines = 1)
+    {
+        const style = this.style.cell;
+        Spot spot;
+        spot.font = fontOf(cell);
+        spot.line = ceil(_metrics.cell.lineHeight);
+        const text = cell.data !is null ? cell.data.text : ""w;
+        const width = style.halign == Halign.left || style.halign == Halign.inherit || _measurer is null ? 0.0 : _measurer.width(spot.font, text);
+        spot.x = alignedX(style.halign, area.x, area.w, width, style.left(sidePad), style.right(sidePad));
+        const above = style.top(linePad), under = style.bottom(linePad);
+        spot.top = area.y + above + alignOffset(style.valign, area.h - above - under, max(1, lines) * spot.line);
+        spot.baseline = spot.top + round(_metrics.cell.ascent);
+        return spot;
+    }
+
+    /// Whether the host wraps the cells (a paragraph, drawn by `Canvas.drawParagraph`): its lines are not the column's to know
+    protected final bool paragraph() const { return _paragraph; }
+
+    /// The lines of the text of the cell in a cell `cellWidth` wide: the column's own wrap for the flex column that wraps, one line cut at a hard
+    /// break for the one that does not, none for another column (all of its text is one line); none for a paragraph (the host wraps it). They
+    /// are in a scratch of the column, valid until its next call
+    protected final const(LineSpan)[] linesOf(ref const CellInput cell, double cellWidth)
+    {
+        if (!def.flex || _measurer is null || cell.data is null || _paragraph)
+            return null;
+        const text = cell.data.text;
+        if (!style.wrap)
+        {
+            size_t end = 0;
+            while (end < text.length && text[end] != '\n')
+                ++end;
+            _one[0] = LineSpan(0, end);
+            return _one[];
+        }
+        wrap(text, style.cell.inner(cellWidth, sidePad));
+        return _lines;
+    }
+
+    // `text` in `width` into `_lines`, unless they are those of the text wrapped last
+    private void wrap(const(wchar)[] text, double width)
+    {
+        if (_wrappedIn == width && _wrapped == text)
+            return;
+        wrapLines(_lines, text, width, &advanceOf);
+        _wrapped.length = 0;
+        assumeSafeAppend(_wrapped);
+        _wrapped ~= text;
+        _wrappedIn = width;
+    }
+
+    /// The text of the cell in `ink`, in a paragraph drawn in `paragraphInk`: a paragraph the host wraps, or each line of it where the column broke
+    /// it; a line that is not on the screen is not drawn (a record of hundreds of lines draws only those it shows)
+    protected final void drawText(Canvas canvas, ref const CellInput cell, ref const DrawState state, Color ink, Color paragraphInk)
+    {
+        const text = cell.data !is null ? cell.data.text : ""w;
+        if (text.length == 0)
+            return;
+        const lines = linesOf(cell, state.area.w);
+        const spot = spotOf(cell, state.area, lines.length);
+        if (_paragraph)
+        {
+            canvas.drawParagraph(spot.font, text, spot.x, spot.top, style.cell.inner(state.area.w, sidePad), paragraphInk);
+            return;
+        }
+        if (lines.length == 0)
+        {
+            canvas.drawText(spot.font, text, spot.x, spot.baseline, ink);
+            return;
+        }
+        foreach (j, line; lines)
+        {
+            const lineTop = spot.top + j * spot.line;
+            if (lineTop + spot.line < state.clip.y)
+                continue;
+            if (lineTop > state.clip.bottom)
+                break;
+            size_t end = line.end;
+            while (end > line.start && text[end - 1] == ' ')
+                end--;
+            canvas.drawText(spot.font, text[line.start .. end], spot.x, spot.baseline + j * spot.line, ink);
+        }
+    }
+
+    /// The text of the cell in black (a column that knows colors draws it in its own ink)
+    override void draw(Canvas canvas, ref const CellInput cell, ref const DrawState state)
+    {
+        drawText(canvas, cell, state, Color(0, 0, 0), Color(0, 0, 0));
+    }
+
+    /// Where the text of the cell lies in `area`, for the hit tests and the selection
+    private TextSpot textSpotOf(ref const CellInput cell, Rect area)
+    {
+        const lines = linesOf(cell, area.w);
+        const spot = spotOf(cell, area, lines.length);
+        return TextSpot(spot.font, spot.x, spot.top, spot.line, lines);
+    }
+
+    /// The caret nearest to the point in the text of the cell: in the line the height says, between the two characters nearest to it
+    override size_t hitTest(ref const CellInput cell, Rect area, double x, double y)
+    {
+        const text = cell.data !is null ? cell.data.text : ""w;
+        if (_measurer is null)
+            return 0;
+        const spot = textSpotOf(cell, area);
+        return caretInText(text, spot, _measurer, x, y);
+    }
+
+    /// The rectangles of a part of the text: one for a cell of one line, one for each line a part of a wrapped cell touches
+    override void rects(ref const CellInput cell, Rect area, size_t from, size_t to, scope void delegate(Rect) emit)
+    {
+        if (_measurer is null || cell.data is null)
+            return;
+        const spot = textSpotOf(cell, area);
+        rectsInText(cell.data.text, spot, _measurer, from, to, emit);
+    }
+
+    /// What a double click (the word at the caret) or a triple click (the whole text) selects
+    override size_t[2] expand(ref const CellInput cell, size_t at, Unit unit)
+    {
+        return unitInText(cell.data !is null ? cell.data.text : ""w, at, unit);
+    }
+
+    /// The height of the cell in `width`: one line cut where the cell ends (and at a hard break: the rest is no part of the row) for a
+    /// column that does not wrap, else its lines in `width`, or as many as the measurer says it wraps itself (a paragraph)
+    override CellLayout layout(ref const CellInput cell, double width, ref Arena arena)
+    {
+        CellLayout done;
+        _paragraph = false;
+        if (!style.wrap || _measurer is null)
+        {
+            done.height = heightOf(1);
+            return done;
+        }
+        const text = cell.data.text;
+        const inner = style.cell.inner(width, sidePad);
+        const own = _measurer.wrappedLines(cellFont, text, inner);
+        if (own >= 0)
+        {
+            _paragraph = true;
+            done.height = heightOf(max(1, own));
+            return done;
+        }
+        wrap(text, inner);
+        done.height = heightOf(_lines.length);
+        return done;
+    }
+
+    // The width of a glyph in the font of the cells, measured once until the look changes
+    private double advanceOf(dchar glyph) nothrow
+    {
+        if (glyph < _lowAdvances.length)
+        {
+            if (_lowAdvances[glyph] < 0)
+                _lowAdvances[glyph] = glyphWidth(_measurer, cellFont, glyph);
+            return _lowAdvances[glyph];
+        }
+        if (auto known = glyph in _advances)
+            return *known;
+        const width = glyphWidth(_measurer, cellFont, glyph);
+        try
+            _advances[glyph] = width;
+        catch (Exception)
+        {
+        }
+        return width;
+    }
+}

@@ -247,6 +247,14 @@ class SciterWindow : SciterEventHandler
             setWindowIcon(_hwnd);
     }
 
+    /// The native behavior of a CSS `behavior: name` on the element `he`, null if the window
+    /// has none of that name. The handler is held (kept from the GC) until its
+    /// `handleDetached` calls `SciterEventHandler.unhold`.
+    protected SciterEventHandler createBehavior(string name, HELEMENT he)
+    {
+        return null;
+    }
+
     /// The data at `uri` the window gives Sciter itself (the files of its dialogs too), null to
     /// leave the loading to Sciter
     protected immutable(ubyte)[] onLoadData(string uri)
@@ -261,6 +269,21 @@ class SciterWindow : SciterEventHandler
         {
             runPostedTask(cast(SCN_POSTED_NOTIFICATION*) pns);
             return 0;
+        }
+        if (pns.code == SC_ATTACH_BEHAVIOR)
+        {
+            import std.string : fromStringz;
+
+            auto attach = cast(SCN_ATTACH_BEHAVIOR*) pns;
+            return guardCallback("an attach of a behavior", 0u, () {
+                auto handler = (cast(SciterWindow) param).createBehavior(attach.behaviorName.fromStringz.idup, attach.element);
+                if (handler is null)
+                    return 0u; // not ours
+                SciterEventHandler.hold(handler);
+                attach.elementProc = SciterEventHandler.procForSciter();
+                attach.elementTag = cast(void*) handler;
+                return 1u;
+            });
         }
         if (pns.code != SC_LOAD_DATA)
             return 0;
