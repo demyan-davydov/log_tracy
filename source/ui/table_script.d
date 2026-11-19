@@ -56,11 +56,15 @@ interface TableControl
     /// The row `row` is the first on the screen; `now`: drawn at once. Answers the microseconds it took.
     long jump(size_t row, bool now);
 
-    /// Where the table stands as JSON (`Viewport.toJson`): the first row and its offset, the rows and the columns, the room, what is on the screen
-    wstring viewport();
+    /// What the table shows as JSON (`viewJson`): the size of the room of the rows, the rows in sight, the first and the last cell in sight
+    wstring view();
 
-    /// The rows stand at `row` with `offset` pixels of it scrolled away and the columns `x` pixels sideways; a NaN leaves its axis where it is
-    void scrollTo(double row, double offset, double x);
+    /// The height of the row `index`, as text
+    wstring rowHeight(size_t index);
+
+    /// The top of the row `row` stands `dy` and the left of the column `column` `dx` from the corner of the room of the rows (`CellPosition`); `smooth`:
+    /// the rows glide to it on the frames, else they are moved at once
+    void scrollTo(size_t row, size_t column, double dy, double dx, bool smooth);
 
     /// As a wheel step of `pixels`, at once; `now`: drawn at once. Answers the microseconds it took.
     long scrollBy(double pixels, bool now);
@@ -119,11 +123,14 @@ bool dispatch(TableControl control, const(char)[] method, ScriptArgs args, out S
     case "jump":
         result = ScriptResult.ofNumber(control.jump(cast(size_t) args.number(0), args.number(1) != 0));
         return true;
-    case "viewport":
-        result = ScriptResult.ofText(control.viewport());
+    case "view":
+        result = ScriptResult.ofText(control.view());
+        return true;
+    case "rowHeight":
+        result = ScriptResult.ofText(control.rowHeight(cast(size_t) args.number(0)));
         return true;
     case "scrollTo":
-        control.scrollTo(args.number(0, double.nan), args.number(1, 0), args.number(2, double.nan));
+        control.scrollTo(cast(size_t) args.number(0), cast(size_t) args.number(1), args.number(2), args.number(3), args.number(4) != 0);
         return true;
     case "scrollBy":
         result = ScriptResult.ofNumber(control.scrollBy(args.number(0), args.number(1) != 0));
@@ -229,8 +236,12 @@ version (unittest)
         string[] calls;
 
         long jump(size_t row, bool now) { calls ~= "jump " ~ row.to!string ~ " " ~ now.to!string; return 11; }
-        wstring viewport() { calls ~= "viewport"; return `{"first":{}}`w; }
-        void scrollTo(double row, double offset, double x) { calls ~= "scrollTo " ~ row.to!string ~ " " ~ offset.to!string ~ " " ~ x.to!string; }
+        wstring view() { calls ~= "view"; return `{"first":{}}`w; }
+        wstring rowHeight(size_t index) { calls ~= "rowHeight " ~ index.to!string; return "16"w; }
+        void scrollTo(size_t row, size_t column, double dy, double dx, bool smooth)
+        {
+            calls ~= "scrollTo " ~ row.to!string ~ " " ~ column.to!string ~ " " ~ dy.to!string ~ " " ~ dx.to!string ~ " " ~ smooth.to!string;
+        }
         long scrollBy(double pixels, bool now) { calls ~= "scrollBy " ~ pixels.to!string ~ " " ~ now.to!string; return 12; }
         long render() { calls ~= "render"; return 13; }
         void pan(double pixels, double across) { calls ~= "pan " ~ pixels.to!string ~ " " ~ across.to!string; }
@@ -281,16 +292,16 @@ unittest
         "copy text 0 0", "copy cell 7 3", "hitTest 5 6", "contextPick 4", "updateRow 4", "updateCell 4 2", "anchorApplied 9 true", "anchorApplied 8 false"]);
 }
 
-@("dispatch: viewport answers JSON, scrollTo leaves out the axis it is not given (NaN)")
+@("dispatch: view answers JSON, rowHeight text, scrollTo takes the cell and the offsets, smooth is off unless asked")
 unittest
 {
     auto control = new Noting;
     ScriptResult result;
-    assert(dispatch(control, "viewport", ScriptArgs(), result) && result == ScriptResult.ofText(`{"first":{}}`w));
-    assert(dispatch(control, "scrollTo", ScriptArgs([12, 5, 40]), result) && result.kind == ScriptResult.Kind.nothing);
-    assert(dispatch(control, "scrollTo", ScriptArgs([double.nan, 0, 7]), result));
-    assert(dispatch(control, "scrollTo", ScriptArgs([3]), result));
-    assert(control.calls == ["viewport", "scrollTo 12 5 40", "scrollTo nan 0 7", "scrollTo 3 0 nan"]);
+    assert(dispatch(control, "view", ScriptArgs(), result) && result == ScriptResult.ofText(`{"first":{}}`w));
+    assert(dispatch(control, "rowHeight", ScriptArgs([5]), result) && result == ScriptResult.ofText("16"w));
+    assert(dispatch(control, "scrollTo", ScriptArgs([12, 1, -5, 40, 1]), result) && result.kind == ScriptResult.Kind.nothing);
+    assert(dispatch(control, "scrollTo", ScriptArgs([3, 0, 0, 0]), result));
+    assert(control.calls == ["view", "rowHeight 5", "scrollTo 12 1 -5 40 true", "scrollTo 3 0 0 0 false"]);
 }
 
 @("dispatch: what a call leaves out is the default, a word is 0 and a cell 1, a value that is no number is the default")

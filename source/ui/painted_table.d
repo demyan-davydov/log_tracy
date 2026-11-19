@@ -12,8 +12,8 @@ module ui.painted_table;
 
 import ptable.navigation : Key;
 import ptable.ports : Rect;
-import ptable.scrollplace : ScrollPosition;
-import ui.viewport_json : viewportJson;
+import ptable.scrollplace : CellPosition;
+import ui.view_json : viewJson;
 import ptable.tablehit : CopyTarget, PointerKind;
 import sciter.api : sciterApi;
 import sciter.capi.api;
@@ -295,18 +295,17 @@ final class PaintedTable : SciterEventHandler
             return usSince(started);
         }
 
-        wstring viewport() { const v = _log.table.viewport(); return viewportJson(v).toUTF16; }
-
-        void scrollTo(double row, double offset, double x)
+        wstring view()
         {
-            import std.math : isNaN;
+            auto table = _log.table;
+            return viewJson(table.size, table.partlyVisibleRows, table.firstVisible, table.lastVisible).toUTF16;
+        }
 
-            ScrollPosition position;
-            if (!row.isNaN && row >= 0)
-                position = ScrollPosition.of(cast(size_t) row, offset, x);
-            else
-                position.x = x;
-            _log.table.scrollToPosition(position);
+        wstring rowHeight(size_t index) { import std.conv : to; return _log.table.rowHeight(index).to!wstring; }
+
+        void scrollTo(size_t row, size_t column, double dy, double dx, bool smooth)
+        {
+            _log.table.scrollToPosition(CellPosition(row, column, dy, dx), smooth ? nowMs() : double.nan);
         }
 
         long scrollBy(double pixels, bool now)

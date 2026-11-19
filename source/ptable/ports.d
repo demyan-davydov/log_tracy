@@ -17,6 +17,12 @@ struct Rect
     }
 }
 
+/// A width and a height in dips
+struct Size
+{
+    double w = 0, h = 0;
+}
+
 /// A color: red, green, blue, alpha (0..255)
 struct Color
 {

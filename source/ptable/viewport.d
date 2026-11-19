@@ -3,7 +3,7 @@
 //! stands (the first item and the part of it scrolled away); it says which items are on the screen and
 //! where, and what a scroll bar needs (`ScrollMetrics`). It knows nothing of columns, cells, text or
 //! colors, and nothing of a scroll bar's looks: any bar, the host's own or a painted one, is driven through
-//! `metrics` and `scrollToPosition`. Pure. See docs/stories/painted-table.md.
+//! `metrics`, `scrollToRow` and `topOf`. Pure. See docs/stories/painted-table.md.
 module ptable.viewport;
 
 import ptable.rowlayout;
@@ -260,24 +260,62 @@ final class RowViewport
         return ScrollMetrics(_count, max(1UL, _slots.length - 1), _state.first + _state.offset / max(1.0, firstHeight));
     }
 
-    /// The window stands at the item `row` with `offset` pixels of it scrolled away (an offset a row cannot have is settled by the next layout)
-    void scrollToRow(size_t row, double offset)
+    /// The top of the item `row` from the top of the window (negative: above it), NaN if it is more than two screens off the window: the heights
+    /// of the items far off are not known (the caller then jumps to it)
+    double topOf(size_t row)
     {
-        _anchor = ScrollAnchor.init;
-        const last = _count > 0 ? _count - 1 : 0;
-        _state = ViewState(min(row, last), max(0.0, offset));
+        foreach (ref slot; _slots)
+            if (slot.index == row)
+                return slot.top;
+        if (_slots.length == 0)
+            return double.nan;
+        const limit = 2 * _height;
+        const first = _slots[0], last = _slots[$ - 1];
+        double top = first.top;
+        if (row < first.index)
+        {
+            foreach_reverse (i; row .. first.index)
+            {
+                top -= _heightOf(i);
+                if (top < -limit)
+                    return double.nan;
+            }
+            return top;
+        }
+        top = last.top + last.height;
+        foreach (i; last.index + 1 .. row)
+        {
+            top += _heightOf(i);
+            if (top > _height + limit)
+                return double.nan;
+        }
+        return top;
     }
 
-    /// The window stands at `position` (an item and a fraction of it: that part of its height is scrolled away): where a scroll bar put it
-    void scrollToPosition(double position)
+    /// The window stands so that the top of the item `row` is `dy` pixels from the top of the window: a `dy` below the top shows the items above
+    /// it (a table that starts sooner stays at its start), one above it scrolls the item away
+    void scrollToRow(size_t row, double dy)
     {
-        import std.math : floor;
-
         _anchor = ScrollAnchor.init;
         const last = _count > 0 ? _count - 1 : 0;
-        const first = cast(size_t) max(0.0, min(cast(double) last, floor(position)));
-        const fraction = position > 0 && first < last ? position - first : 0;
-        _state = ViewState(first, fraction > 0 ? min(fraction, 1.0) * _heightOf(first) : 0);
+        auto first = min(row, last);
+        if (dy <= 0)
+        {
+            _state = ViewState(first, -dy);
+            return;
+        }
+        double need = dy;
+        while (need > 0 && first > 0)
+        {
+            const height = _heightOf(--first);
+            if (height >= need)
+            {
+                _state = ViewState(first, height - need);
+                return;
+            }
+            need -= height;
+        }
+        _state = ViewState(first, 0);
     }
 }
 
@@ -370,28 +408,44 @@ unittest
     view.layout();
     m = view.metrics();
     assert(m.position == 1.5, "an item and a half");
-    view.scrollToPosition(500.5);
+    view.scrollToRow(500, -10);
     view.layout();
-    assert(view.state == ViewState(500, 10), "the fraction is kept: half of 20");
-    view.scrollToPosition(-3);
-    assert(view.state.first == 0);
-    view.scrollToPosition(1e9);
-    assert(view.state.first == 999, "not past the last item");
+    assert(view.state == ViewState(500, 10));
 }
 
-@("RowViewport: scrollToPosition keeps the fraction of the item: that part of its height is scrolled away")
+@("RowViewport.scrollToRow: the top of the item at dy from the top of the window: above it scrolls the item away, below it shows the items before")
 unittest
 {
     auto view = new RowViewport(rowsOf(20));
     view.count = 1000;
     view.height = 100;
     view.layout();
-    view.scrollToPosition(500.25);
-    assert(view.state == ViewState(500, 5));
+    view.scrollToRow(500, 0);
+    assert(view.state == ViewState(500, 0));
+    view.scrollToRow(500, -5);
+    assert(view.state == ViewState(500, 5), "5 px of it are above the window");
+    view.scrollToRow(500, 30);
+    assert(view.state == ViewState(498, 10), "30 below the top: the item before whole (20) and 10 of the one before it");
+    view.scrollToRow(500, 20);
+    assert(view.state == ViewState(499, 0), "exactly the item before");
+    view.scrollToRow(1, 100);
+    assert(view.state == ViewState(0, 0), "the list starts sooner: it stays at its start");
+    view.scrollToRow(1_000_000, 0);
+    assert(view.state == ViewState(999, 0), "past the end: the last item");
+}
+
+@("RowViewport.topOf: the top of an item in the window or near it, NaN when it is more than two screens away")
+unittest
+{
+    auto view = new RowViewport(rowsOf(20));
+    view.count = 1000;
+    view.height = 100;
+    view.scrollToRow(50, -5);
     view.layout();
-    assert(view.metrics().position == 500.25);
-    view.scrollToPosition(1e9);
-    assert(view.state == ViewState(999, 0), "past the end: the last item, whole");
+    assert(view.topOf(50) == -5 && view.topOf(52) == 35, "in the window");
+    assert(view.topOf(49) == -25 && view.topOf(45) == -105, "above it");
+    assert(view.topOf(54) == 75 && view.topOf(56) == 115 && view.topOf(60) == 195, "below it: the first item past the window starts where the last ends");
+    assert(view.topOf(0) != view.topOf(0) && view.topOf(900) != view.topOf(900), "far off: NaN");
 }
 
 @("RowViewport: an empty list has no items on the screen")
@@ -401,7 +455,7 @@ unittest
     view.height = 100;
     view.layout();
     assert(view.slots.length == 0 && view.metrics().total == 0);
-    view.scrollToPosition(5);
+    view.scrollToRow(5, 0);
     assert(view.state.first == 0);
 }
 
