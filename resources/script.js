@@ -665,7 +665,6 @@ globalThis.getAppState = function () {
         tableFontSize,
         singleLineRows,
         language: currentLanguage,
-        ...sizes,
-        scrollPosition: 0 // phase two of the log table of D: the first row in sight (`view`)
+        ...sizes
     });
 }

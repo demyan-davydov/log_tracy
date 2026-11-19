@@ -41,7 +41,6 @@ struct WindowRect
 struct FileState
 {
     string path;
-    int scrollPosition;
 }
 
 /// The layouts of the columns chosen by the user, by FormatInfo.id: one
@@ -354,9 +353,7 @@ static JSONValue toJSON(in AppSettings settings)
     JSONValue[] fileArray;
     foreach (f; settings.files)
     {
-        JSONValue fv = ["path": f.path];
-        fv.object["scrollPosition"] = JSONValue(f.scrollPosition);
-        fileArray ~= fv;
+        fileArray ~= JSONValue(["path": f.path]);
     }
     j.object["files"] = JSONValue(fileArray);
     j.object["activeFile"] = JSONValue(settings.activeFile);
@@ -395,11 +392,7 @@ static AppSettings loadSettings(string path = defaultSettingsPath())
         {
             foreach (val; j["files"].array)
             {
-                FileState fs;
-                fs.path = val["path"].str;
-                if ("scrollPosition" in val)
-                    fs.scrollPosition = val["scrollPosition"].integer.to!int;
-                settings.files ~= fs;
+                settings.files ~= FileState(val["path"].str); // a "scrollPosition" of an older version is let go
             }
         }
         else if ("openFiles" in j)
@@ -407,7 +400,7 @@ static AppSettings loadSettings(string path = defaultSettingsPath())
             // Migration from old format
             foreach (val; j["openFiles"].array)
             {
-                settings.files ~= FileState(val.str, 0);
+                settings.files ~= FileState(val.str);
             }
         }
 
@@ -441,8 +434,8 @@ static AppSettings loadSettings(string path = defaultSettingsPath())
 }
 
 /// The settings with the state the script reports on closing put in: the
-/// JSON of its getAppState() (window rect, theme, font size of the tables,
-/// scroll position of the active file). Keys it doesn't have keep their values;
+/// JSON of its getAppState() (window rect, theme, font size of the tables, the
+/// sizes of the panels). Keys it doesn't have keep their values;
 /// a malformed JSON changes nothing more after the first bad key.
 AppSettings mergeAppStateFromScript(const AppSettings base, const(char)[] appStateJson)
 {
@@ -451,14 +444,6 @@ AppSettings mergeAppStateFromScript(const AppSettings base, const(char)[] appSta
     {
         const j = parseJSON(appStateJson);
         readPreferences(j, settings);
-        const scroll = "scrollPosition" in j;
-        if (scroll !is null && settings.activeFile.length > 0)
-            foreach (ref f; settings.files)
-                if (f.path == settings.activeFile)
-                {
-                    f.scrollPosition = scroll.integer.to!int;
-                    break;
-                }
     }
     catch (Exception e)
     {
@@ -796,18 +781,6 @@ unittest
     assert(mergeAppStateFromScript(base, "not json") == base, "a malformed JSON changes nothing");
 }
 
-@("mergeAppStateFromScript: the scroll position goes to the active file")
-unittest
-{
-    AppSettings base;
-    base.files = [FileState(testPath("/a.dlt"), 1), FileState(testPath("/b.dlt"), 2)];
-    base.activeFile = testPath("/b.dlt");
-
-    const merged = mergeAppStateFromScript(base, `{"scrollPosition": 42}`);
-    assert(merged.files == [FileState(testPath("/a.dlt"), 1), FileState(testPath("/b.dlt"), 42)]);
-    assert(base.files[1].scrollPosition == 2, "the files of the settings given are not changed");
-}
-
 @("loadSettings: a bad theme or font size doesn't lose the files and the recent list")
 unittest
 {
@@ -818,7 +791,7 @@ unittest
 
     const settings = loadSettings(path);
     assert(settings.activeFile == "/b.dlt", "as written: only the recent list makes a path absolute");
-    assert(settings.files == [FileState("/b.dlt", 3)]);
+    assert(settings.files == [FileState("/b.dlt")], "a scroll position of an older version is let go");
     assert(settings.recentFiles.pathsOf == [testPath("/a.dlt")]);
 }
 
@@ -865,16 +838,6 @@ unittest
 
     const merged = mergeAppStateFromScript(base, `{"windowRect": {"left": 10, "top": 20}}`);
     assert(merged.windowRect == WindowRect(1, 2, 3, 4));
-}
-
-@("mergeAppStateFromScript: without an active file no file gets the scroll position")
-unittest
-{
-    AppSettings base;
-    base.files = [FileState("", 1)];
-
-    const merged = mergeAppStateFromScript(base, `{"scrollPosition": 42}`);
-    assert(merged.files == [FileState("", 1)]);
 }
 
 @("language: the system one by default, saved and loaded")

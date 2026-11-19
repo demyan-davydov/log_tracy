@@ -23,7 +23,8 @@ Written at the end of the sessions of 2026-11-18/19 (four sessions), kept in the
 
 **What is left, in order:** the rest of the old task 2 below if the owner wants it (ask first); call `detach`/`attach` from the status view (backlog "Отсоединять таблицу под экраном
 статуса", deferred by the owner); the user's width and the fit (backlog "Колонка с шириной, заданной вручную, и подгонка"); then tasks 3-5 below (draw by the focus, the
-rest of the backlog, the squash: ask first). Commits of this session end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+rest of the backlog, the squash: ask first). Done of task 4 after that: the hidden mode of a table closed as not needed (backlog), the dead field
+`scrollPosition` of the settings removed. Commits of this session end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 
 ## START HERE (end of the sixth session, 2026-11-19): the task list to carry to another account
 
