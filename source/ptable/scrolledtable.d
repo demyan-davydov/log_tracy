@@ -33,7 +33,7 @@ final class ScrolledTable
             across.orientation = Orientation.horizontal;
         table.events.invalidate = () { if (events.invalidate !is null) events.invalidate(); };
         table.events.invalidateArea = (Rect area) { if (events.invalidateArea !is null) events.invalidateArea(area); else if (events.invalidate !is null) events.invalidate(); };
-        table.events.rowSelected = (size_t item, ulong id) { if (events.rowSelected !is null) events.rowSelected(item, id); };
+        table.events.rowSelected = (size_t item, ulong id, bool delayed) { if (events.rowSelected !is null) events.rowSelected(item, id, delayed); };
         table.events.cellClicked = (size_t item, size_t column) { if (events.cellClicked !is null) events.cellClicked(item, column); };
         table.events.capture = (bool on) { if (events.capture !is null) events.capture(on); };
         table.events.needFrame = () { if (events.needFrame !is null) events.needFrame(); };

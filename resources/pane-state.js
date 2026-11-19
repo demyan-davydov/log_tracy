@@ -161,3 +161,16 @@ export function jumpStep(shown, vm, positionOf, { visibleRange, visibleRows }) {
     const onScreen = visibleRange && position >= visibleRange[0] && position <= visibleRange[1];
     return { position, top: onScreen ? null : scrollTarget(position, visibleRows) };
 }
+
+// The rows of a table wholly in view and how many it has room for, from what the table says of itself (`view` of D: `first` and `last`, the first
+// and the last row in sight with where their tops are, `rows` [first, past the last), `size`): `visibleRange` [first, last] of the rows not cut
+// by an edge, null if none; `visibleRows` the rows in sight, the ones cut included. What `jumpStep` is given.
+// @param heightOf - (row) => the height of the row, asked for the last row only
+export function wholeRows(view, heightOf) {
+    const [firstRow, past] = view.rows;
+    if (past <= firstRow) return { visibleRange: null, visibleRows: 0 };
+    const first = view.first.dy >= 0 ? firstRow : firstRow + 1;
+    const last = view.last.dy + heightOf(view.last.row) <= view.size.h + 1e-6 ? past - 1 : past - 2;
+    return { visibleRange: first <= last ? [first, last] : null, visibleRows: past - firstRow };
+}
+

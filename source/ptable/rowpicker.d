@@ -17,7 +17,7 @@ struct PickPorts
     bool delegate(size_t item) isVirtual; /// the item is a separator: it is not picked
     bool delegate(double y, out size_t row) rowAt; /// the row at the height `y` of the table (clamped to the rows in sight)
     void delegate(size_t item, double timestampMs) show; /// the row is shown (laid out and revealed, by a glide if the time is a number)
-    void delegate(size_t item) told; /// the host is told that the row `item` is the current one
+    void delegate(size_t item, bool delayed) told; /// the host is told that the row `item` is the current one; `delayed`: a drag or a key moved it, it may move on (the host waits for it to rest)
     void delegate() invalidate; /// the table is to be painted again
 }
 
@@ -104,7 +104,7 @@ final class RowPicker
         if (index >= 0)
             _ports.show(cast(size_t) index, timestampMs);
         if (changed || always)
-            told();
+            told(!always); // a selection asked for is told at once, a step of the keys may be followed by another
         _ports.invalidate();
     }
 
@@ -119,7 +119,7 @@ final class RowPicker
     {
         if (_picks.all(count))
         {
-            told();
+            told(true);
             _ports.invalidate();
         }
     }
@@ -131,7 +131,7 @@ final class RowPicker
             return;
         if (_picks.keepContext(row))
         {
-            told();
+            told(false);
             _ports.invalidate();
         }
     }
@@ -163,7 +163,7 @@ final class RowPicker
         _picks.pick(row, mode);
         _picks.beginDrag(mode == Pick.toggle || mode == Pick.extendAdd);
         _rowDragging = true;
-        told();
+        told(false); // a press with a mode picks at once, as a click does
         _ports.invalidate();
     }
 
@@ -179,7 +179,7 @@ final class RowPicker
         size_t row;
         if (_ports.rowAt(y, row) && !_ports.isVirtual(row) && _picks.dragTo(row))
         {
-            told();
+            told(true); // the mouse is still moving
             _ports.invalidate();
         }
     }
@@ -192,7 +192,7 @@ final class RowPicker
         const changed = _picks.click(index, false); // a click on a picked row picks only it: letting go of all of them is for later
         _ports.show(index, double.nan);
         if (changed)
-            told();
+            told(false);
         _ports.invalidate();
     }
 
@@ -203,11 +203,11 @@ final class RowPicker
     }
 
     // The host is told the current row, if it is picked
-    private void told()
+    private void told(bool delayed)
     {
         const row = _picks.followed;
         if (row >= 0)
-            _ports.told(cast(size_t) row);
+            _ports.told(cast(size_t) row, delayed);
     }
 }
 
@@ -235,7 +235,7 @@ version (unittest)
             return true;
         }
         void show(size_t item, double ts) { calls ~= "show"; }
-        void told(size_t item) { calls ~= "told"; }
+        void told(size_t item, bool delayed) { calls ~= delayed ? "told, delayed" : "told"; }
         void invalidate() { calls ~= "invalidate"; }
     }
 }
@@ -247,13 +247,13 @@ unittest
     fake.virtual_[7] = true;
     auto picker = new RowPicker(new TableSelection(null, null), fake.ports);
     picker.selectRow(3, Pick.replace);
-    assert(picker.isSelected(3) && picker.selected == 3 && fake.calls == ["show", "told", "invalidate"], "in this order");
+    assert(picker.isSelected(3) && picker.selected == 3 && fake.calls == ["show", "told, delayed", "invalidate"], "in this order; a step of the keys is delayed");
     fake.calls = null;
     picker.selectRow(3, Pick.replace);
     assert(fake.calls == ["show", "invalidate"], "the same row: not told");
     fake.calls = null;
     picker.select(3);
-    assert(fake.calls == ["show", "told", "invalidate"], "select tells always");
+    assert(fake.calls == ["show", "told", "invalidate"], "select tells always, at once");
     fake.calls = null;
     picker.selectRow(7, Pick.replace);
     assert(picker.selected == 3 && fake.calls.length == 0, "a virtual item is not picked, nothing is called");
@@ -273,10 +273,10 @@ unittest
     picker.select(1);
     fake.calls = null;
     picker.press(16 * 4 + 3, Pick.toggle);
-    assert(picker.isSelected(4) && picker.isSelected(1) && picker.rowDrag && fake.calls == ["told", "invalidate"], "picked, told, not shown");
+    assert(picker.isSelected(4) && picker.isSelected(1) && picker.rowDrag && fake.calls == ["told", "invalidate"], "picked, told at once as a click is, not shown");
     fake.calls = null;
     picker.dragTo(16 * 6 + 3);
-    assert(picker.ranges == [RowRange(1, 1), RowRange(4, 6)] && fake.calls == ["told", "invalidate"]);
+    assert(picker.ranges == [RowRange(1, 1), RowRange(4, 6)] && fake.calls == ["told, delayed", "invalidate"], "a drag is delayed");
     fake.calls = null;
     picker.dragTo(16 * 6 + 5);
     assert(fake.calls.length == 0, "the same row under the mouse: no news");
@@ -333,7 +333,7 @@ unittest
     picker.selectAll(0);
     assert(picker.count == 0 && fake.calls.length == 0);
     picker.selectAll(20);
-    assert(picker.count == 20 && fake.calls == ["told", "invalidate"], "not shown");
+    assert(picker.count == 20 && fake.calls == ["told, delayed", "invalidate"], "not shown");
     fake.calls = null;
     picker.selectAll(20);
     assert(fake.calls.length == 0);

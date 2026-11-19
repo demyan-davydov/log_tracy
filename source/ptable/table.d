@@ -64,8 +64,9 @@ struct TableEvents
     /// Only this area of the table (its own coordinates) is to be painted again: a row or a cell changed how it looks (a hover, a press,
     /// a step of an animation). Null: the host does not tell areas, `invalidate` is called instead.
     void delegate(Rect area) invalidateArea;
-    /// A row was selected (a click, the keys): the item and its id
-    void delegate(size_t item, ulong rowId) rowSelected;
+    /// A row was selected (a click, the keys, a drag over rows): the item and its id. `delayed`: a drag or a step of the keys moved it and it may
+    /// move on, whoever follows it waits for it to rest (a click and a selection asked for are not)
+    void delegate(size_t item, ulong rowId, bool delayed) rowSelected;
     /// A click (a press and a release without a drag) in a cell: the item and the column of the model. What it
     /// means (an anchor, a link) is the application's
     void delegate(size_t item, size_t column) cellClicked;
@@ -850,6 +851,23 @@ final class Table
         _picker.select(index);
     }
 
+    /// The item `index` is picked alone, quietly: nobody is told, nothing is scrolled or shown (a script that follows a row of another table, or goes to
+    /// a message, scrolls by itself). A virtual item and one the model has not are not picked
+    void pickRow(size_t index)
+    {
+        if (index >= _store.itemCount || isVirtualItem(index))
+            return;
+        _picker.pick(index, Pick.replace);
+        invalidate();
+    }
+
+    /// The current row, the one the other table follows: false if it is not picked (none, or taken out of the picked ones)
+    bool currentRow(out long row) const
+    {
+        row = _picker.selected;
+        return row >= 0;
+    }
+
     /// Picks the item `index` by `mode` and shows it (`replace`: alone; `extend`: the rows from the anchor to it; `toggle`: it
     /// in or out; `extendAdd`: the rows from the anchor to it join the others). A virtual item is not picked. The host is told
     /// the current row when it changed, or always if `always`.
@@ -901,12 +919,12 @@ final class Table
         revealRow(index, timestampMs);
     }
 
-    private void toldRow(size_t index)
+    private void toldRow(size_t index, bool delayed)
     {
         if (events.rowSelected is null)
             return;
         auto e = entry(index);
-        events.rowSelected(index, e.valid ? e.data.id : 0);
+        events.rowSelected(index, e.valid ? e.data.id : 0, delayed);
     }
 
     // Shows the row `index`: the rows glide to it on the frames of the host if it gave the time (`timestampMs`, the clock of
@@ -1176,7 +1194,7 @@ unittest
     auto f = make(1000);
     f.table.paint(f.canvas);
     ulong told = ulong.max;
-    f.table.events.rowSelected = (size_t item, ulong id) { told = id; };
+    f.table.events.rowSelected = (size_t item, ulong id, bool delayed) { told = id; };
     assert(f.table.mouseDown(30, 21 + 16 * 2 + 3)); // the third row
     assert(f.table.mouseUp(30, 21 + 16 * 2 + 3));
     assert(f.table.selected == 2 && told == 2);
@@ -2281,13 +2299,59 @@ unittest
     assert(table.hasTextSelected());
 }
 
+@("Table: the host is told the current row: at once for a click and a selection asked for, delayed for a drag over rows and for the keys")
+unittest
+{
+    auto f = make(100, 400, 301);
+    struct Told { size_t item; bool delayed; }
+    Told[] told;
+    f.table.events.rowSelected = (size_t item, ulong id, bool delayed) { told ~= Told(item, delayed); };
+    f.table.paint(f.canvas);
+    const y = (size_t row) => 21.0 + 16 * row + 3;
+    f.table.mouseDown(30, y(2));
+    f.table.mouseUp(30, y(2));
+    assert(told == [Told(2, false)], "a click follows at once");
+    told = null;
+    f.table.key(Key.down);
+    assert(told == [Told(3, true)], "a step of the keys: the host waits for the row to rest");
+    told = null;
+    f.table.select(9);
+    assert(told == [Told(9, false)], "a selection asked for");
+    told = null;
+    f.table.mouseDown(30, y(4), Pick.toggle);
+    f.table.mouseMove(30, y(6));
+    assert(told == [Told(4, false), Told(6, true)], "a press with a mode picks at once, the drag from it is delayed");
+}
+
+@("Table.pickRow: picks the row alone, tells nobody and scrolls nothing; the row the other table follows is the current one")
+unittest
+{
+    auto f = make(100, 400, 121);
+    size_t told;
+    f.table.events.rowSelected = (size_t item, ulong id, bool delayed) { ++told; };
+    f.table.paint(f.canvas);
+    long row;
+    assert(!f.table.currentRow(row), "nothing picked: no current row");
+    f.table.pickRow(50);
+    f.table.paint(f.canvas);
+    assert(told == 0 && f.table.isSelected(50) && f.table.selectedCount == 1, "picked quietly");
+    assert(f.table.firstVisible.row == 0, "and not shown: the place is where it was");
+    assert(f.table.currentRow(row) && row == 50);
+    f.table.pickRow(51);
+    assert(!f.table.isSelected(50) && f.table.isSelected(51) && told == 0, "alone: the other is let go");
+    f.table.mouseDown(30, 21 + 3, Pick.toggle); // Cmd+click takes the current row out of the picked ones
+    f.table.mouseUp(30, 21 + 3);
+    f.table.pickRow(1_000_000);
+    assert(!f.table.isSelected(1_000_000) && f.table.selectedCount > 0, "a row that is not there is not picked");
+}
+
 @("Table: a click on a row picks it alone, a click on a picked one too (lets go of nothing), one on another row picks only that")
 unittest
 {
     auto f = make(1000, 400, 300);
     f.table.paint(f.canvas);
     ulong[] told;
-    f.table.events.rowSelected = (size_t item, ulong id) { told ~= id; };
+    f.table.events.rowSelected = (size_t item, ulong id, bool delayed) { told ~= id; };
     const y = (size_t row) => 21.0 + 16 * row + 3;
     f.table.mouseDown(30, y(2));
     f.table.mouseUp(30, y(2));
@@ -2359,7 +2423,7 @@ unittest
     auto f = make(10);
     f.table.paint(f.canvas);
     size_t told;
-    f.table.events.rowSelected = (size_t item, ulong id) { ++told; };
+    f.table.events.rowSelected = (size_t item, ulong id, bool delayed) { ++told; };
     f.table.select(3);
     assert(told == 1);
     f.table.key(Key.down, Pick.extend);

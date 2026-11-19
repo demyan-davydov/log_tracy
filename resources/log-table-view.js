@@ -9,6 +9,7 @@ import { anchorClickPlan, rowMoved } from "anchor-click.js";
 import { anchorRefusalText } from "pane-commands.js";
 import { showNoticeAt } from "notice.js";
 import { tr } from "i18n/i18n.js";
+import { wholeRows } from "pane-state.js";
 
 // The tables there are, by the number D gave each: what D tells the script (a click on an anchor, an item of a menu) names its table
 const views = new Map();
@@ -65,9 +66,25 @@ export class LogTableView {
 
     // ---- what the table gives to the rest of the panel ----
 
-    // The message index of the row selected, null if none. The other table follows it (phase two: D tells the script, `rowSelected`)
+    // The message index of the current row, the one the other table follows; null if none is picked (taken out of the picked ones, or cleared)
     followedMessage() {
-        return null;
+        const row = JSON.parse(this.call("currentRow"));
+        return row === null ? null : row.id;
+    }
+
+    // The rows wholly in view and how many it has room for, as `jumpStep` takes them (see wholeRows, pane-state.js)
+    visibleRows() {
+        return wholeRows(JSON.parse(this.call("view")), row => Number(this.call("rowHeight", row)));
+    }
+
+    // Shows the row of a step of `jumpStep` (pane-state.js): the row picked alone, quietly (the other table is not told, the keyboard stays where it
+    // is), and scrolled to when it is not in view: the row `step.top` first, the columns where they are, by a glide (D jumps over the far part)
+    showRow(step) {
+        if (step.top !== null) {
+            const { first } = JSON.parse(this.call("view"));
+            this.call("scrollTo", step.top, first.column, 0, first.dx, 1);
+        }
+        this.call("pickRow", step.position);
     }
 
     // ---- the input Sciter leaves to the script ----
@@ -121,6 +138,12 @@ export class LogTableView {
         });
     }
 }
+
+// A table tells the row the user selected (JSON: table, row, id of the message, delayed); the panel follows it in the other table
+globalThis.logTableRowChosen = json => {
+    const chosen = JSON.parse(json);
+    views.get(chosen.table)?.rowChosen?.(chosen.id, chosen.delayed === true);
+};
 
 // The clipboard is the script's: a table hands the text selected over (Cmd/Ctrl+C)
 globalThis.logTableCopy = text => Clipboard.writeText(text);

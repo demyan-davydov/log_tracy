@@ -13,6 +13,7 @@ import * as backend from "backend.js";
 import * as platform from "platform.js";
 import { allFiles, fileFilter } from "file-types.js";
 import { anchorRefusalText } from "pane-commands.js";
+import { SelectionFollower } from "row-selection.js";
 import { searchViewKey } from "pane-state.js";
 import { tr, trc } from "i18n/i18n.js";
 import { translateTree } from "i18n/dom.js";
@@ -170,6 +171,9 @@ export class DocumentPane {
             cancelled: () => this.filterPanel.showResult("") });
         this.search = new SearchViewTable(docId, { table: $(".log-table-slot.search-view"), status: $(".search-status"),
             progress: $(".search-progress") });
+        // A row the user selects in one table is shown in the other (followSelection): D tells the row chosen (`logTableRowChosen`)
+        this.follower = new SelectionFollower(table => this.followSelection(table));
+        for (const table of this.tables) table.logTable.rowChosen = (id, delayed) => this.rowChosen(table, delayed);
 
         this.filterPanel = new FilterPanel(this.root.$(".filter-page"), docId, {
             theme: () => host.theme(),
@@ -298,6 +302,7 @@ export class DocumentPane {
         if (isInside(focused, this.root)) this.lastFocus = focused;
         const splitters = { ...this.splitterSizes(), ...this.panelSizes(), bottomPage: this.bottomPage };
         this.visible = false;
+        this.follower.cancel(); // not into a hidden panel
         this.root.style.display = "none";
         return splitters;
     }
@@ -305,6 +310,7 @@ export class DocumentPane {
     // The document is closed
     destroy() {
         this.destroyed = true;
+        this.follower.cancel();
         for (const table of this.tables) table.logTable.destroy();
         this.searchBar.destroy();
         this.root.remove();
@@ -467,7 +473,25 @@ export class DocumentPane {
 
     // Go to Message, see MainViewTable.goToMessage()
     goToMessage(index) {
-        if (this.main.goToMessage(index)) this.jumps = rememberJump(this.jumps, index);
+        if (!this.main.goToMessage(index)) return;
+        this.jumps = rememberJump(this.jumps, index);
+        this.follower.changed(this.main, false); // the search table follows it as a click
+    }
+
+    // A row the user selected in `table` (a ViewTable): the other table follows it at once (a click) or when it rests (a drag, the keys).
+    // Posted by D: it may come after hide() cancelled the follower, not into a hidden panel
+    rowChosen(table, delayed) {
+        if (this.visible && !this.destroyed) this.follower.changed(table, delayed);
+    }
+
+    // Shows the row selected in `from` in the other table, if that one has its message, also while a load, a filter or a search fills either
+    // of them. The keyboard stays in `from`.
+    followSelection(from) {
+        const to = from === this.main ? this.search : this.main;
+        // its rows are being replaced; a load, a filter or a search filling them is followed
+        if (!from.showsRowsOfView()) return;
+        const index = from.followedMessage();
+        if (index !== null) to.showMessage(index);
     }
 
     // ---- the rows: rule colors and anchors ----

@@ -62,6 +62,12 @@ interface TableControl
     /// The height of the row `index`, as text
     wstring rowHeight(size_t index);
 
+    /// The row `row` is picked alone, quietly: nobody is told and nothing scrolls (the script scrolls by itself)
+    void pickRow(size_t row);
+
+    /// The current row, the one the other table follows, as JSON `{"row": item, "id": message}`; `null` if no row is picked
+    wstring currentRow();
+
     /// The top of the row `row` stands `dy` and the left of the column `column` `dx` from the corner of the room of the rows (`CellPosition`); `smooth`:
     /// the rows glide to it on the frames, else they are moved at once
     void scrollTo(size_t row, size_t column, double dy, double dx, bool smooth);
@@ -125,6 +131,12 @@ bool dispatch(TableControl control, const(char)[] method, ScriptArgs args, out S
         return true;
     case "view":
         result = ScriptResult.ofText(control.view());
+        return true;
+    case "pickRow":
+        control.pickRow(cast(size_t) args.number(0));
+        return true;
+    case "currentRow":
+        result = ScriptResult.ofText(control.currentRow());
         return true;
     case "rowHeight":
         result = ScriptResult.ofText(control.rowHeight(cast(size_t) args.number(0)));
@@ -256,6 +268,8 @@ version (unittest)
         long jump(size_t row, bool now) { calls ~= "jump " ~ row.to!string ~ " " ~ now.to!string; return 11; }
         wstring view() { calls ~= "view"; return `{"first":{}}`w; }
         wstring rowHeight(size_t index) { calls ~= "rowHeight " ~ index.to!string; return "16"w; }
+        void pickRow(size_t row) { calls ~= "pickRow " ~ row.to!string; }
+        wstring currentRow() { calls ~= "currentRow"; return `{"row":3,"id":30}`w; }
         void scrollTo(size_t row, size_t column, double dy, double dx, bool smooth)
         {
             calls ~= "scrollTo " ~ row.to!string ~ " " ~ column.to!string ~ " " ~ dy.to!string ~ " " ~ dx.to!string ~ " " ~ smooth.to!string;
@@ -319,7 +333,9 @@ unittest
     assert(dispatch(control, "rowHeight", ScriptArgs([5]), result) && result == ScriptResult.ofText("16"w));
     assert(dispatch(control, "scrollTo", ScriptArgs([12, 1, -5, 40, 1]), result) && result.kind == ScriptResult.Kind.nothing);
     assert(dispatch(control, "scrollTo", ScriptArgs([3, 0, 0, 0]), result));
-    assert(control.calls == ["view", "rowHeight 5", "scrollTo 12 1 -5 40 true", "scrollTo 3 0 0 0 false"]);
+    assert(dispatch(control, "pickRow", ScriptArgs([7]), result) && result.kind == ScriptResult.Kind.nothing);
+    assert(dispatch(control, "currentRow", ScriptArgs(), result) && result == ScriptResult.ofText(`{"row":3,"id":30}`w));
+    assert(control.calls == ["view", "rowHeight 5", "scrollTo 12 1 -5 40 true", "scrollTo 3 0 0 0 false", "pickRow 7", "currentRow"]);
 }
 
 @("dispatch: what a call leaves out is the default, a word is 0 and a cell 1, a value that is no number is the default")

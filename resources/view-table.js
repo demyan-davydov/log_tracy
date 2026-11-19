@@ -11,7 +11,7 @@
 
 import * as backend from "backend.js";
 import { LogTableView } from "log-table-view.js";
-import { noTable, tableStep } from "pane-state.js";
+import { noTable, tableStep, jumpStep, showsRowsOf } from "pane-state.js";
 import { mainViewStatus, searchViewStatus, showProgress, showStatus } from "status-view.js";
 
 // True if `element` is `root` or inside it (and still in the document)
@@ -143,15 +143,23 @@ export class ViewTable {
         if (this.covers.some(view => isInside(focused, view)) || (taken && !focused)) list.state.focus = true;
     }
 
-    // The message index of the row of the table the other one follows, null if none. Phase two of the log table of D: it
-    // tells the script the row chosen (`rowSelected`), the other table follows it
+    // True if the rows on screen are of the content of the view (showsRowsOf): not covered by a status, not the rows of a content being replaced
+    showsRowsOfView() {
+        return showsRowsOf(this.shown, this.view);
+    }
+
+    // The message index of the row of the table the other one follows, null if none
     followedMessage() {
         return this.logTable.followedMessage();
     }
 
-    // Shows the row of message `index` if the view has it: selected, near the top unless it is on screen (jumpStep). Phase two of
-    // the log table of D: it scrolls and selects by the call `scrollTo`, `view` and a pick of a row; nothing yet
-    showMessage(index) {}
+    // Shows the row of message `index` if the view has it: selected, near the top unless it is on screen (jumpStep). The keyboard stays where it is.
+    // Also while a load, a filter or a search fills it: the rows found so far. By the view of the machine, not currentView(): a search view before
+    // any search has no rows to look the message up in.
+    showMessage(index) {
+        const step = jumpStep(this.shown, this.view, () => this.positionOf(index), this.logTable.visibleRows());
+        if (step) this.logTable.showRow(step);
+    }
 }
 
 // The main view: the log as the filters show it. Its file may be lost: the
@@ -199,11 +207,15 @@ export class MainViewTable extends ViewTable {
         this.cancelled(); // the filter boxes changed
     }
 
-    // Go to Message: nothing yet (phase two of the log table of D: the row of message `index`, or of the first one after it the
-    // table shows, selected, the keyboard in the table, near the top unless it is on screen (jumpStep); the search table follows
-    // it as a click). @returns true if it went
+    // Go to Message: the row of message `index`, or of the first one after it the table shows (hidden by the filters), else its last row: selected,
+    // the keyboard in the table, near the top unless it is on screen (jumpStep); the search table follows it as a click (the panel's).
+    // Nothing while the table shows no rows (a status view covers it). @returns true if it went
     goToMessage(index) {
-        return false;
+        const step = jumpStep(this.shown, this.currentView(), () => backend.mainViewNearestPosition(this.docId, index), this.logTable.visibleRows());
+        if (!step) return false;
+        this.logTable.showRow(step);
+        this.logTable.element.state.focus = true;
+        return true;
     }
 }
 

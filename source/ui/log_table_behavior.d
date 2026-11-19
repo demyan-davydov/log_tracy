@@ -112,6 +112,7 @@ final class LogTableBehavior : SciterEventHandler
         _log.events.capture = &_host.capture;
         _log.events.needFrame = &requestFrame;
         _log.events.cellClicked = &cellClicked;
+        _log.events.rowSelected = &rowChosen;
     }
 
     // A click on a cell of a clickable column (the table picks nothing): the script knows what it is for
@@ -129,6 +130,15 @@ final class LogTableBehavior : SciterEventHandler
         if (table.cellRect(item, column, area)) // where the cell is in the table, for what the script shows by it (a notice)
             click["rect"] = [area.x, area.y, area.w, area.h];
         _host.callScript("logTableCellClicked", click.toString.toUTF16);
+    }
+
+    // A row was selected by the user (the script follows it in the other table): which table, the item, the message, and whether it may move on
+    private void rowChosen(size_t item, ulong id, bool delayed)
+    {
+        import std.json : JSONValue;
+
+        JSONValue chosen = ["table": JSONValue(_hooks.id), "row": JSONValue(item), "id": JSONValue(id), "delayed": JSONValue(delayed)];
+        _host.callScript("logTableRowChosen", chosen.toString.toUTF16);
     }
 
     override protected bool handleSubscription(HELEMENT he, UINT* event_groups)
@@ -301,6 +311,20 @@ final class LogTableBehavior : SciterEventHandler
         {
             auto table = _log.table;
             return viewJson(table.size, table.partlyVisibleRows, table.firstVisible, table.lastVisible).toUTF16;
+        }
+
+        void pickRow(size_t row) { _log.table.pickRow(row); }
+
+        wstring currentRow()
+        {
+            import std.json : JSONValue;
+
+            long row;
+            ulong id;
+            auto table = _log.table;
+            if (!table.currentRow(row) || !table.rowId(cast(size_t) row, id))
+                return "null"w;
+            return JSONValue(["row": JSONValue(row), "id": JSONValue(id)]).toString.toUTF16;
         }
 
         wstring rowHeight(size_t index) { import std.conv : to; return _log.table.rowHeight(index).to!wstring; }

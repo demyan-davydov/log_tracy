@@ -3,7 +3,7 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { noTable, tableStep, paneChanges, anchorEdit, rowLookStep, keptRowStep, searchViewKey, jumpStep, showsRowsOf } from "../../resources/pane-state.js";
+import { noTable, tableStep, paneChanges, anchorEdit, rowLookStep, keptRowStep, searchViewKey, jumpStep, showsRowsOf, wholeRows } from "../../resources/pane-state.js";
 
 const ready = (dataVersion) => ({ status: "ready", dataVersion });
 
@@ -251,5 +251,22 @@ test("showsRowsOf: the rows on screen are of the content of the view", () => {
     assert.equal(showsRowsOf({ loaded: true, dataVersion: null }, { status: "filterFailed" }), false, "a status shown");
     assert.equal(showsRowsOf(noTable, ready(1)), false, "nothing shown yet");
     assert.equal(showsRowsOf(table(1), null), false, "no view");
+});
+
+// What the table says of itself (`view` of D: the first and the last row in sight with their offsets, the rows in sight as [first, past the last),
+// the room): the rows wholly in view and how many it has room for
+const viewOf = (first, last, h) => ({ first: { row: first[0], dy: first[1] }, last: { row: last[0], dy: last[1] },
+    rows: [first[0], last[0] + 1], size: { w: 900, h } });
+
+test("the rows wholly in view: the first one cut at the top and the last one cut at the bottom are out", () => {
+    const sixteen = () => 16;
+    assert.deepEqual(wholeRows(viewOf([10, -5], [16, 96], 100), sixteen), { visibleRange: [11, 15], visibleRows: 7 }, "96 + 16 > 100: cut");
+    assert.deepEqual(wholeRows(viewOf([10, 0], [15, 80], 100), sixteen), { visibleRange: [10, 15], visibleRows: 6 }, "the last one ends at 96: whole");
+});
+
+test("the rows wholly in view: none when one row fills or overflows the window, or the table is empty", () => {
+    assert.deepEqual(wholeRows(viewOf([4, -20], [4, -20], 100), () => 300), { visibleRange: null, visibleRows: 1 }, "a row taller than the window");
+    assert.deepEqual(wholeRows({ first: { row: 0, dy: 0 }, last: { row: 0, dy: 0 }, rows: [0, 0], size: { w: 900, h: 100 } }, () => 16),
+        { visibleRange: null, visibleRows: 0 }, "no rows");
 });
 
