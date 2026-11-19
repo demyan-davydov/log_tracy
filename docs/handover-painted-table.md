@@ -3,9 +3,31 @@
 Written at the end of the sessions of 2026-11-18/19 (four sessions), kept in the repository so it travels with the branch. Everything a new session
 (on any account) needs is here or in the files named here; the user wants replies **in Russian**.
 
+## START HERE (end of the seventh session, 2026-11-19): the column host is done
+
+**This section supersedes the ones below where they differ.** Replies to the owner in **Russian**.
+
+**State.** Branch `row-paint-d`, worktree `.claude/worktrees/row-paint-d-7a60b4`; all committed, tests green (`node scripts/test.mjs --brief`); nothing merged or pushed;
+37 commits since the squash `cb1288d` (this hand-over the last). The main checkout is on `row-pool-squash`: do not touch it.
+
+**Done in this session: task 1 of the list below (the hang when an anchor is set), as the owner and the session designed it.**
+- `1d9ab99` `ptable/columnhost.d`: `ColumnHost` (definitions, `ColumnLayout`, the room of the columns = the least its attached clients have, `places`, `settle(start)`),
+  `ColumnClient.measure`, `ColumnLayout.fitting`, `LayoutChange.Kind.fit` and `room`.
+- `12c3f90` `RowStore` is the client (`measure`, `fitStart`), `Table.layout` settles through the host only for a cause of its own; `ColumnSet` keeps no placements.
+- `60fa8bd` one host per document (`LogTableTarget.hostOf`), the demo has its own; `linkLayouts` deleted.
+- `f8b78fd` `Table.detach`/`attach`: out of the host for a while, background only, the place kept.
+- The story (`docs/stories/painted-table.md`, "Единый хост колонок") and `docs/backlog.md` record the decisions; the owner's decisions in short: one host per list of
+  columns; the room of the columns is the host's (the least of the tables), the widths start from the least widths of the columns (`ColumnDef.minWidth`); detach
+  freezes the table; the column objects stay with the tables, the host checks ids.
+- **Not checked in the app**: the anchor on a 1 GB `big.dlt` must not hang now. Ask the owner before running the app.
+
+**What is left, in order:** look at the app (the anchor, the old task 2 below); call `detach`/`attach` from the status view (backlog "Отсоединять таблицу под экраном
+статуса", deferred by the owner); the user's width and the fit (backlog "Колонка с шириной, заданной вручную, и подгонка"); then tasks 3-5 below (draw by the focus, the
+rest of the backlog, the squash: ask first). Commits of this session end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+
 ## START HERE (end of the sixth session, 2026-11-19): the task list to carry to another account
 
-**This section supersedes the "START HERE" below where they differ.** Replies to the owner in **Russian**. The older sections are history and rules; the tasks are here.
+**This section is history now where the seventh session's says otherwise.** Replies to the owner in **Russian**. The older sections are history and rules; the tasks are here.
 
 **State.** Branch `row-paint-d`, worktree `.claude/worktrees/row-paint-d-7a60b4` of `/Users/demiandavidov/prj/log_tracy`; working tree clean (all committed, last commit
 `cbb56fe`); nothing merged or pushed; 30 commits since the squash `cb1288d`. The main checkout is on `row-pool-squash`: do not touch it, nor `row-paint-proto`,
