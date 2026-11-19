@@ -260,6 +260,24 @@ final class RowViewport
         return ScrollMetrics(_count, max(1UL, _slots.length - 1), _state.first + _state.offset / max(1.0, firstHeight));
     }
 
+    /// Whether the end of the list is in view: the last item is shown whole at the end of the window (none, or all of them in it: also)
+    bool endInView() const
+    {
+        enum hair = 1e-6;
+        if (_count == 0)
+            return true;
+        return _slots.length > 0 && _slots[$ - 1].index == _count - 1 && _slots[$ - 1].top + _slots[$ - 1].height <= _height + hair;
+    }
+
+    /// The window stands so that the bottom of the last item is the bottom of the window (a list shorter than the window at its top)
+    void scrollToEnd()
+    {
+        if (_count == 0)
+            return;
+        const last = _count - 1;
+        scrollToRow(last, _height - _heightOf(last));
+    }
+
     /// The top of the item `row` from the top of the window (negative: above it), NaN if it is more than two screens off the window: the heights
     /// of the items far off are not known (the caller then jumps to it)
     double topOf(size_t row)
@@ -432,6 +450,50 @@ unittest
     assert(view.state == ViewState(0, 0), "the list starts sooner: it stays at its start");
     view.scrollToRow(1_000_000, 0);
     assert(view.state == ViewState(999, 0), "past the end: the last item");
+}
+
+@("RowViewport.endInView: the last item is in the window whole; an empty list and one shorter than the window have their end in view")
+unittest
+{
+    auto view = new RowViewport(rowsOf(20));
+    view.height = 100;
+    view.layout();
+    assert(view.endInView(), "no items: nothing is out of view");
+    view.count = 3;
+    view.layout();
+    assert(view.endInView(), "shorter than the window");
+    view.count = 1000;
+    view.layout();
+    assert(!view.endInView(), "at the top of a long list");
+    view.scrollToRow(995, 0);
+    view.layout();
+    assert(view.endInView() && view.slots[$ - 1].index == 999, "the last five items fill the window");
+    view.scrollToRow(994, -5);
+    view.layout();
+    assert(!view.endInView(), "the last item is cut at the bottom");
+}
+
+@("RowViewport.scrollToEnd: the bottom of the last item is the bottom of the window; a short list stays at its top, a last item taller than the window shows its bottom")
+unittest
+{
+    auto view = new RowViewport(rowsOf(20));
+    view.count = 1000;
+    view.height = 90; // four and a half items
+    view.layout();
+    view.scrollToEnd();
+    view.layout();
+    assert(view.state == ViewState(995, 10) && view.endInView(), "the last item ends at 90: the item before ends at 70, at 50, 30, 10");
+    view.count = 3;
+    view.scrollToEnd();
+    view.layout();
+    assert(view.state == ViewState(0, 0), "a short list is at its top");
+    auto tall = new RowViewport((size_t i) nothrow => i == 9 ? 200.0 : 20.0);
+    tall.count = 10;
+    tall.height = 90;
+    tall.layout();
+    tall.scrollToEnd();
+    tall.layout();
+    assert(tall.state == ViewState(9, 110), "a last item taller than the window: its bottom is in view");
 }
 
 @("RowViewport.topOf: the top of an item in the window or near it, NaN when it is more than two screens away")

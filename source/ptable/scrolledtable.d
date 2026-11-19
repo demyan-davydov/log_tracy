@@ -37,6 +37,7 @@ final class ScrolledTable
         table.events.cellClicked = (size_t item, size_t column) { if (events.cellClicked !is null) events.cellClicked(item, column); };
         table.events.capture = (bool on) { if (events.capture !is null) events.capture(on); };
         table.events.needFrame = () { if (events.needFrame !is null) events.needFrame(); };
+        table.events.followingEnd = (bool on) { if (events.followingEnd !is null) events.followingEnd(on); };
         table.events.scrolled = (ScrollMetrics m) { bar.update(m); if (events.scrolled !is null) events.scrolled(m); };
         table.events.scrolledX = (ScrollMetrics m) {
             if (across !is null)

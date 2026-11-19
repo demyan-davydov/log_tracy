@@ -54,23 +54,6 @@ export function tableStep(shown, vm) {
     return { ...step, grow: true };
 }
 
-// Whether a table follows the end of its view as it grows, as `tail -f` does: the view is
-// ready (its rows come from a file being written, not from an operation filling it), its
-// last row was wholly on screen before, and there was no current row or the current one
-// was the last. Else the rows on screen stay where they are. null: it doesn't follow;
-// { moveCurrent: the current row goes on being the last, the only one selected }: only when
-// it was the only one selected, so rows chosen up to the last are kept
-// @param before - the table before it grew (VirtualDltTBody.endState), null if it can't
-//   tell (not shown): { total: its rows, lastWhole: the last row wholly on screen (null:
-//   none), current: the current row (null: none), selected: the rows selected }
-export function followEndStep(vm, before) {
-    if (vm.status !== "ready" || !before) return null;
-    const last = before.total - 1;
-    if (before.total > 0 && before.lastWhole !== last) return null;
-    if (before.current !== null && before.current !== last) return null;
-    return { moveCurrent: before.current !== null && before.selected === 1 };
-}
-
 // The panels to create and remove for the documents open now
 // @param paneIds - the documents that have a panel
 // @param docIds - the documents open now

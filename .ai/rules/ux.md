@@ -160,16 +160,14 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     the row context menu offers "Copy" while text is selected, "Copy Cell" and "Copy Row" (a
     right click on a row not picked picks it, on one picked keeps the rows; the text stays).
     Selected text is painted over the match colors (`--bg-text-selected`).
-30. **A file being written grows, the table at its end follows it.** Every open file is
-    followed (no switch): the lines written to it come into the table by themselves. A table
-    whose last row is wholly on screen, with no current row or the last one current, follows
-    the end as `tail -f` does, the current row staying the last (rows chosen up to the last
-    stay chosen: only a single current row moves with the end); a table scrolled up, or with
-    a row above the last chosen, stays where it is. The other table doesn't follow these
-    moves. Only rows of a file being written are
-    followed: a table a load, a filter or a search fills stays at its top. A line cut by the
-    end of the file is shown once the file is quiet for a second; a file emptied by a
-    rotation is opened anew in its tab.
+30. **A table at its end follows it, as a terminal does.** The lines a file being written adds come
+    into the table by themselves. A table scrolled to its end (the last row wholly in view) follows
+    the end from then on: whatever comes, its last row stays in view; scrolling up (the wheel, the
+    bar, the keys, a jump) lets it go, scrolling back to the end brings it back. The selection has
+    nothing to do with it. A table that fills the window follows at once (a short file that grows);
+    a new list or a view that a load, a filter or a search fills is not at its end unless the user went
+    there. The other table doesn't follow these moves. A line cut by the end of the file is shown once the
+    file is quiet for a second; a file emptied by a rotation is opened anew in its tab.
 
 ## Search
 

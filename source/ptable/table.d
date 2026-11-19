@@ -9,6 +9,7 @@ module ptable.table;
 version (unittest) import ptable.testing : portsOf, withBoxes;
 import ptable.column : TableColumn;
 import ptable.columnset;
+import ptable.endfollow : EndFollow, EndStep;
 import ptable.layout;
 import ptable.lookchange : LookChange;
 import ptable.navigation;
@@ -79,6 +80,9 @@ struct TableEvents
     /// frame and again for as long as `tick` says it wants one. Null: the host gives no frames, and a drag past the
     /// rows does not scroll them.
     void delegate() needFrame;
+    /// The table follows the end of its rows now (`on`) or no more: it reached the end, or it was moved away from it. Told once for each change,
+    /// after a paint
+    void delegate(bool on) followingEnd;
 }
 
 // What the host was last told of the scrolls, to tell it again only when it changes
@@ -106,6 +110,12 @@ final class Table
 
     private RowViewport _viewport; // the window on the rows: what is on the screen and the scroll
     private ReportedScroll _reported; // what the host was told of the scrolls last
+
+    private bool _followEndAble; // `followEnd`: the table may follow the end of its rows
+    private EndFollow _follow; // whether it does now
+    private ViewState _placed = ViewState(size_t.max, 0); // where the rows stood when the table last put them (invalid: not yet): another place is a move of another's
+    private bool _newList = true; // the rows are other ones (or not yet any): the mode is read anew at the next paint
+    private bool _toldFollowing; // what the host was told of the mode last
 
     private RowPicker _picker; // the rows picked and how the input picks them, the text selected, the press and the copy
     private ScrollMotion _motion; // the scrolls on the host's frames: a drag past the rows, the wheel's step, the coast
@@ -238,7 +248,10 @@ final class Table
         if (_store.modelChanged(change))
             setSelection(false);
         if (change.kind == ModelChange.Kind.everything)
+        {
             _viewport.forgetPlace(); // the rows are other ones: the place kept would be a row of the old list
+            _newList = true;
+        }
         invalidate();
     }
 
@@ -387,6 +400,41 @@ final class Table
         return _viewport.metrics();
     }
 
+    /// The table may follow the end of its rows (as `tail -f`, or a terminal, does): it does while the user has scrolled to the end, until they scroll up;
+    /// a new list starts over (not following, unless all of it is in view). Off by default
+    void followEnd(bool able)
+    {
+        _followEndAble = able;
+        if (!able)
+        {
+            _follow = EndFollow.init;
+            _toldFollowing = false;
+        }
+        _newList = true;
+        invalidate();
+    }
+
+    /// Whether the table follows the end of its rows now. As the last paint left it
+    bool isFollowingEnd() const
+    {
+        return _followEndAble && _follow.following;
+    }
+
+    /// The last row is the one at the bottom (the way "End" does): the table follows the end from then. With the time of the host the rows glide, as
+    /// `scrollToPosition` does
+    void scrollToEnd(double timestampMs = double.nan)
+    {
+        _motion.stop();
+        prepare();
+        const count = _store.itemCount;
+        if (count == 0)
+            return;
+        auto at = firstVisible;
+        at.row = count - 1;
+        at.dy = _store.space.regions.rows.h - _store.heightOf(count - 1);
+        scrollToPosition(at, timestampMs);
+    }
+
     /// The width and the height of the room the rows lie in (the table less the header and what is around the rows)
     Size size()
     {
@@ -514,6 +562,7 @@ final class Table
         prepare();
         _viewport.applyPending(_store.fallbackHeight);
         layout();
+        followStep();
         refreshHover(); // the rows may have moved under a mouse that did not
         const p = places();
         const picked = Picked(_picker.rows, _picker.currentRow, _picker.text.hasText, _picker.text.range, _picker.hover.row, _picker.hover.column,
@@ -534,6 +583,32 @@ final class Table
             _reported.columns = across;
             if (events.scrolledX !is null)
                 events.scrolledX(across);
+        }
+    }
+
+    // The table follows the end of its rows as a terminal does (`EndFollow`): where the rows stand now, if the table did not put them there, is a move
+    // of another's; while following, the end is put in view again at every paint (a growth, a larger window, a row that came out taller)
+    private void followStep()
+    {
+        if (!_followEndAble)
+            return;
+        const foreign = _viewport.state != _placed;
+        const step = _follow.step(foreign, _viewport.endInView(), _newList);
+        _newList = false;
+        if (step == EndStep.stick)
+            foreach (i; 0 .. 4) // a row that comes into view may be taller than it was guessed: laid out again until the end is in view
+            {
+                _viewport.scrollToEnd();
+                layout();
+                if (_viewport.endInView())
+                    break;
+            }
+        _placed = _viewport.state;
+        if (_toldFollowing != _follow.following)
+        {
+            _toldFollowing = _follow.following;
+            if (events.followingEnd !is null)
+                events.followingEnd(_toldFollowing);
         }
     }
 
@@ -2496,6 +2571,149 @@ unittest
     f.table.scrollToPosition(CellPosition(3, 0, 0, 0), double.nan);
     f.table.paint(f.canvas);
     assert(f.table.firstVisible.row == 3, "no time: at once");
+}
+
+@("Table: following the end: a table that is at its end keeps its last row in view as the rows grow")
+unittest
+{
+    auto f = make(30, 100, 121); // rows of 16 in a window of 100
+    f.table.followEnd(true);
+    f.table.paint(f.canvas);
+    assert(!f.table.isFollowingEnd, "at the top of a long list");
+    f.table.scrollToEnd();
+    f.table.paint(f.canvas);
+    assert(f.table.isFollowingEnd && f.table.partlyVisibleRows[1] == 30);
+    f.model.append(10);
+    f.table.paint(f.canvas);
+    const last = f.table.lastVisible;
+    assert(f.table.isFollowingEnd && last.row == 39 && last.dy + 16 <= 100 + 1e-6, "the new last row is in view, whole");
+    f.model.append(1000);
+    f.table.paint(f.canvas);
+    assert(f.table.lastVisible.row == 1039, "a large growth: the end all the same");
+}
+
+@("Table: following the end: a table scrolled up stays where it is when the rows grow")
+unittest
+{
+    auto f = make(30, 100, 121);
+    f.table.followEnd(true);
+    f.table.paint(f.canvas);
+    f.table.scrollToPosition(CellPosition(5, 0, 0, 0));
+    f.table.paint(f.canvas);
+    f.model.append(10);
+    f.table.paint(f.canvas);
+    assert(!f.table.isFollowingEnd && f.table.firstVisible.row == 5 && f.table.firstVisible.dy == 0);
+}
+
+@("Table: following the end: a move up on the frame of a growth wins over the following")
+unittest
+{
+    auto f = make(30, 100, 121);
+    f.table.followEnd(true);
+    f.table.paint(f.canvas);
+    f.table.scrollToEnd();
+    f.table.paint(f.canvas);
+    f.model.append(5);
+    f.table.queueScroll(-48); // three rows up, at the same paint
+    f.table.paint(f.canvas);
+    assert(!f.table.isFollowingEnd && f.table.lastVisible.row < 34, "the user went up: it does not snap back");
+    f.model.append(5);
+    f.table.paint(f.canvas);
+    assert(!f.table.isFollowingEnd && f.table.lastVisible.row < 39);
+}
+
+@("Table: following the end: a jump or a bar that brings the end into view turns it on, one that leaves it turns it off")
+unittest
+{
+    auto f = make(30, 100, 121);
+    f.table.followEnd(true);
+    f.table.paint(f.canvas);
+    f.table.scrollToPosition(CellPosition(24, 0, 0, 0)); // the last six rows fit under 100
+    f.table.paint(f.canvas);
+    assert(f.table.isFollowingEnd);
+    f.table.scrollToPosition(CellPosition(10, 0, 0, 0));
+    f.table.paint(f.canvas);
+    assert(!f.table.isFollowingEnd);
+    foreach (i; 0 .. 6) // a step is cut to a window
+    {
+        f.table.wheel(100_000, 0);
+        f.table.paint(f.canvas);
+    }
+    assert(f.table.isFollowingEnd && f.table.lastVisible.row == 29, "the wheel down to the end");
+}
+
+@("Table: following the end: a new list is read again where the rows stand, a short one follows at once")
+unittest
+{
+    auto f = make(1000, 100, 121);
+    f.table.followEnd(true);
+    f.table.paint(f.canvas);
+    f.table.scrollToEnd();
+    f.table.paint(f.canvas);
+    assert(f.table.isFollowingEnd);
+    f.model.tell(ModelChange(ModelChange.Kind.everything));
+    f.table.paint(f.canvas);
+    assert(f.table.isFollowingEnd && f.table.lastVisible.row == 999, "the window stays where it is: at the end, so following");
+    f.table.scrollToPosition(CellPosition(0, 0, 0, 0));
+    f.table.paint(f.canvas);
+    f.model.tell(ModelChange(ModelChange.Kind.everything));
+    f.table.paint(f.canvas);
+    assert(!f.table.isFollowingEnd && f.table.firstVisible.row == 0, "a new list at the top of a long one: not following");
+    f.model.count = 3;
+    f.model.tell(ModelChange(ModelChange.Kind.everything));
+    f.table.paint(f.canvas);
+    assert(f.table.isFollowingEnd, "three rows fit in the window: their end is in view");
+    f.model.append(1000);
+    f.table.paint(f.canvas);
+    assert(f.table.lastVisible.row == 1002, "and the table follows the file that fills it");
+}
+
+@("Table: following the end: a resize and rows that turn out taller keep the end while following, and leave a table that is not")
+unittest
+{
+    auto f = make(30, 100, 121);
+    f.table.followEnd(true);
+    f.table.paint(f.canvas);
+    f.table.scrollToEnd();
+    f.table.paint(f.canvas);
+    f.table.resize(100, 221); // the window is 200 high now
+    f.table.paint(f.canvas);
+    assert(f.table.isFollowingEnd && f.table.lastVisible.row == 29 && f.table.firstVisible.row == 29 - 12, "it stays at the end of the bigger window");
+    f.model.line = 28;
+    f.table.restyle(LookChange.metrics);
+    f.table.paint(f.canvas);
+    assert(f.table.isFollowingEnd && f.table.lastVisible.row == 29, "taller rows do not drop the mode");
+    f.table.scrollToPosition(CellPosition(2, 0, 0, 0));
+    f.table.paint(f.canvas);
+    f.table.resize(100, 121);
+    f.table.paint(f.canvas);
+    assert(!f.table.isFollowingEnd && f.table.firstVisible.row == 2, "not following: the resize leaves the place");
+}
+
+@("Table: following the end is off unless asked for; the host is told of a change once")
+unittest
+{
+    auto f = make(30, 100, 121);
+    f.table.paint(f.canvas);
+    f.table.scrollToEnd();
+    f.table.paint(f.canvas);
+    f.model.append(10);
+    f.table.paint(f.canvas);
+    assert(!f.table.isFollowingEnd && f.table.lastVisible.row == 29, "nothing follows by default");
+    auto told = new bool[0];
+    f.table.events.followingEnd = (bool on) { told ~= on; };
+    f.table.followEnd(true);
+    f.table.paint(f.canvas);
+    f.table.paint(f.canvas);
+    f.table.scrollToEnd();
+    f.table.paint(f.canvas);
+    f.table.paint(f.canvas);
+    f.model.append(3);
+    f.table.paint(f.canvas);
+    f.table.scrollToPosition(CellPosition(0, 0, 0, 0));
+    f.table.paint(f.canvas);
+    f.table.paint(f.canvas);
+    assert(told == [true, false], "on at the end, off up: once each, not at every paint");
 }
 
 @("Table: the scroll sideways the layout keeps follows the clamp when the columns get narrower")

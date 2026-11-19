@@ -89,6 +89,7 @@ final class LogTable
         auto ports = TablePorts(_painter, clipboard);
         ports.copyFormat = logCopyFormat;
         _table = new Table(model, layout, ports);
+        _table.followEnd(!source.demo); // the rows of a document grow (a file being written): the table at its end follows it, as a terminal does
         _scrolled = new ScrolledTable(_table, new ScrollBar(new LogScrollBarPainter(look)), new ScrollBar(new LogScrollBarPainter(look)));
         _look = look;
         _lookHandle = look.subscribe((const LookChange change) {
@@ -160,5 +161,8 @@ unittest
     log.table.paint(new RecordingCanvas);
     assert(log.table.stats.rowsOnScreen > 0 && log.table.copyText(false).length == 0, "the demo's rows, nothing selected");
     assert(shared_.width("day") == 0 && shared_.width("n") == 0, "the document's layout has none of its widths");
+    log.table.scrollToEnd();
+    log.table.paint(new RecordingCanvas);
+    assert(!log.table.isFollowingEnd, "the demo does not follow an end: its rows do not grow");
     log.dispose();
 }
