@@ -12,6 +12,14 @@ test("the variables that have a value are collected by the names of the palette,
     assert.deepEqual(look, { row: "#ffffff", stripe: "#f4f4f4", header: "bisque", scale: 1.25 });
 });
 
+test("the least widths of the columns are read by the names the caller gives, by their keys, in dips", () => {
+    const values = { "column-min-width": 24, "column-min-width-anchor": 30.5, "column-min-width-dlt-time": 80, "column-min-width-index": "nonsense" };
+    const names = ["column-min-width", "column-min-width-anchor", "column-min-width-index", "column-min-width-dlt-time", "column-min-width-logcat-tag", "bg-row"];
+    const look = collectLook(name => values[name], 100, names);
+    assert.deepEqual(look.minWidths, { default: 24, anchor: 30.5, "dlt-time": 80 }, "no number or no value: no key; a name of no width is not read");
+    assert.equal(collectLook(() => 5, 100).minWidths, undefined, "no names, no widths");
+});
+
 test("an empty value, a missing one and a failing read leave the color out", () => {
     const look = collectLook(name => {
         if (name === "bg-row") return "";

@@ -80,7 +80,7 @@ final class LogTable
         {
             anchorsFull = () => source.session.doc(source.docId).anchorsFull; // the document says whether there is room
             auto document = documentTableModel(source.session, source.docId, source.search, _rows,
-                () => LogColumnLook(look.spacing.payloadPadLeft, !_singleLine, look, anchorsFull, measurer));
+                () => LogColumnLook(look.spacing.payloadPadLeft, !_singleLine, look, anchorsFull, measurer, null, look.spacing.minWidths.dup));
             model = document;
             _disposeModel = &document.dispose;
         }

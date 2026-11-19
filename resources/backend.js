@@ -83,6 +83,7 @@ export const setLogTableTarget = (docId, search) => Window.this.xcall("setLogTab
 export const logTableCall = (tableId, method, ...args) => Window.this.xcall("logTableCall", tableId, method, ...args);
 // What is the application's, not a table's: the look of every table, and whether the rows of all of them are one line high
 export const logTableSetLook = json => Window.this.xcall("logTableSetLook", json);
+export const logTableMinWidthNames = () => parsed(Window.this.xcall("logTableMinWidthNames"), []);
 export const logTableSingleLine = on => Window.this.xcall("logTableSingleLine", on);
 
 // ── The views ────────────────────────────────────────────────────────────────

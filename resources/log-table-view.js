@@ -2,7 +2,7 @@
 //! the rows and handles the input; this script gives it the target (`setLogTableTarget`: which document and which view it shows, and
 //! the number the script talks to it by), carries what Sciter does not give it (the gestures of the trackpad, the menus, the clipboard,
 //! the notices) and tells it the look of the application. A view of a panel (view-table.js) holds one `LogTableView`.
-import { setAnchor, setLogTableTarget, logTableCall, logTableSetLook } from "backend.js";
+import { setAnchor, setLogTableTarget, logTableCall, logTableSetLook, logTableMinWidthNames } from "backend.js";
 import { collectLook } from "log-table-look.js";
 import { lockAxis } from "log-table-gesture.js";
 import { anchorClickPlan, rowMoved } from "anchor-click.js";
@@ -13,6 +13,9 @@ import { tr } from "i18n/i18n.js";
 // The tables there are, by the number D gave each: what D tells the script (a click on an anchor, an item of a menu) names its table
 const views = new Map();
 
+// The names of the CSS variables of the least widths of the columns, asked of D once
+let minWidthNames = null;
+
 // Tells D the colors of the theme and the scale of the text, which are the application's: every table has them (the CSS variables are
 // read from a table of the log, hidden or not: `style.variable("bg-row")`, no `--`, gives every color as `#rrggbb`, a `morph()` or a named
 // one too; what does not read stays as it is in D). Called when the first table starts and by script.js when the theme or the font
@@ -21,7 +24,8 @@ export function logTableLookChanged(percent = globalThis.logTableFontSize ?? 100
     const view = views.values().next().value;
     if (!view) return;
     const style = view.element.style;
-    logTableSetLook(JSON.stringify(collectLook(name => style.variable(name), percent)));
+    minWidthNames ??= logTableMinWidthNames(); // the variables of the least widths of the columns, which D names by its formats
+    logTableSetLook(JSON.stringify(collectLook(name => style.variable(name), percent, minWidthNames)));
 }
 globalThis.logTableLookChanged = logTableLookChanged;
 

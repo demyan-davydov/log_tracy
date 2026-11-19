@@ -25,6 +25,7 @@ import ui.log_table.marks;
 import ptable.cellparts : HeadedCellPartsExtractor, firstSpace;
 import ptable_text.columnstyle : Halign;
 import ui.log_table.log_columns : AnchorColumn, IndexColumn, LevelColumn;
+import ui.log_table.column_widths : anchorMinWidth, columnMinWidth, columnMinWidthKey, indexMinWidth, minWidthOf, payloadMinWidth;
 import ui.log_table.log_look : LogFont, LogLook, defaultLogLook;
 import ui.row_cells : putColumnText, putNumber;
 import ui.log_table.view_events : ViewChangeTracker, ViewListener, ViewVersion;
@@ -45,6 +46,8 @@ struct LogColumnLook
     LogLook look; /// the colors the columns that draw by themselves read; null: the default look
     bool delegate() anchorsFull; /// whether no room is left for another anchor: null, there is always room
     TextMeasurer measurer; /// what the columns measure their texts and fonts by; null: nothing (a test)
+    string formatId; /// the format of the document: its columns have the least widths the CSS names by it (`dlt-time`)
+    double[string] minWidths; /// the least widths of the columns in dips by their keys (`ui.log_table.column_widths`); none: those of the code
 }
 
 /// The columns of a table of the log: a column of the anchor marks, the Index, the columns of the
@@ -53,19 +56,20 @@ struct LogColumnLook
 TableColumn[] logColumns(const(ColumnInfo)[] columns, LogColumnLook look = LogColumnLook.init)
 {
     auto palette = look.look !is null ? look.look : defaultLogLook();
-    auto anchorDef = ColumnDef("anchor", "⚓", 24);
+    auto anchorDef = ColumnDef("anchor", "⚓", minWidthOf(look.minWidths, "anchor", anchorMinWidth));
     anchorDef.selectable = false;
     anchorDef.clickable = true; // a click sets or clears the anchor
     auto anchor = new AnchorColumn(anchorDef, palette, look.anchorsFull, look.measurer);
     anchor.style.cell.halign = Halign.center; // the mark stands in the middle of its cell
-    auto index = new IndexColumn(ColumnDef("index", "Index"), palette, look.measurer);
+    auto index = new IndexColumn(ColumnDef("index", "Index", minWidthOf(look.minWidths, "index", indexMinWidth)), palette, look.measurer);
     index.style.cell.halign = Halign.right;
     anchor.style.header.halign = index.style.header.halign = Halign.center;
     anchor.style.cell.font = index.style.cell.font = LogFont.aux;
     TableColumn[] made = [anchor, index];
     foreach (i, ref c; columns)
     {
-        const def = i + 1 == columns.length ? ColumnDef(c.id, c.title, 200, true) : ColumnDef(c.id, c.title);
+        const def = i + 1 == columns.length ? ColumnDef(c.id, c.title, minWidthOf(look.minWidths, "payload", payloadMinWidth), true)
+            : ColumnDef(c.id, c.title, minWidthOf(look.minWidths, columnMinWidthKey(look.formatId, c.id), columnMinWidth));
         TextColumn column = c.kind == ColumnKind.Level ? new LevelColumn(def, palette, look.measurer) : new TextColumn(def, palette, look.measurer);
         // the numbers and texts of the columns stand at their right side, a level in the middle, the Payload at its left;
         // the titles are in the middle but the Payload's (as in the old table)
@@ -248,6 +252,7 @@ final class DocumentColumns
     {
         const now = _session.tableColumns(_session.doc(_docId));
         auto look = _look !is null ? _look() : LogColumnLook.init;
+        look.formatId = _session.doc(_docId).formatInfo.id;
         if (_columns.length == 0 || now.ptr !is _infos.ptr || now.length != _infos.length || look != _made)
         {
             _infos = now;
@@ -323,7 +328,7 @@ unittest
     assert(styleOf(defs[2]).group.halign == Halign.center, "the head of a group, the date, stands in the middle of its plate");
     assert(defs[2].cellParts.head("12.345678"w).length == 0, "a time since boot has no date");
     assert(!defs[1].cellParts.hasHead && !defs[3].cellParts.hasHead && !defs[4].cellParts.hasHead);
-    assert(defs[4].def.id == "payload" && defs[4].def.flex && defs[4].def.minWidth == 200);
+    assert(defs[4].def.id == "payload" && defs[4].def.flex && defs[4].def.minWidth == 58);
 }
 
 @("documentColumns: the anchor mark has no text, the Index and the columns of the format write their cell")
@@ -399,6 +404,23 @@ unittest
     assert(timeParts.head(written(TimeKind.LocalNoYear)) == "11/18" && timeParts.body(written(TimeKind.LocalNoYear)) == "15:50:16.873000");
     foreach (kind; [TimeKind.SinceBoot, TimeKind.None])
         assert(timeParts.head(written(kind)).length == 0 && timeParts.body(written(kind)) == written(kind), "no date");
+}
+
+@("logColumns: the least widths come from the look: its own for a column, else the default one, else those of the code")
+unittest
+{
+    const ColumnInfo[] infos = [ColumnInfo("time", "Time", ColumnKind.Time), ColumnInfo("level", "Level", ColumnKind.Level),
+        ColumnInfo("payload", "Payload", ColumnKind.Payload)];
+    LogColumnLook look;
+    look.formatId = "dlt";
+    look.minWidths = ["default": 30.0, "anchor": 20.0, "dlt-time": 77.0, "payload": 60.0];
+    auto defs = logColumns(infos, look);
+    assert(defs[0].def.minWidth == 20 && defs[1].def.minWidth == 30 && defs[2].def.minWidth == 77 && defs[3].def.minWidth == 30 && defs[4].def.minWidth == 60,
+        "the anchor, the Index (the default one), the time of the DLT, the level (the default one), the Payload");
+    look.formatId = "logcat";
+    assert(logColumns(infos, look)[2].def.minWidth == 30, "the width of the time of another format is not the DLT's");
+    auto plain = logColumns(infos, LogColumnLook.init);
+    assert(plain[0].def.minWidth == 24 && plain[1].def.minWidth == 24 && plain[2].def.minWidth == 24 && plain[4].def.minWidth == 58, "none given");
 }
 
 @("logColumns: the Payload text starts where the style says, the other columns leave it to the geometry")

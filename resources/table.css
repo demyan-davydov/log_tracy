@@ -14,6 +14,15 @@
     --group-pad-bottom: 1dip;
     /* the room left of the text of the Payload column and of its title */
     --payload-pad-left: 4pt; /* 5.33dip */
+    /* The least widths of the columns: --column-min-width for a column no variable names, one for the columns every table has (-anchor, -index,
+       -payload) and one for each column of a format by its ids (--column-min-width-dlt-time; the formats and their columns are in
+       source/formats). The em is the table's own text at 100%: the script tells D the dips, D multiplies them by the size of the text
+       the user chose (source/ui/log_table/column_widths.d) */
+    font-size: 12.5pt;
+    --column-min-width: 1.5em; /* 24dip */
+    --column-min-width-anchor: 1.5em;
+    --column-min-width-index: 1.5em;
+    --column-min-width-payload: 3.5em; /* 58dip: it takes the rest of the room, a few characters are enough */
     display: block;
     width: *;
     height: *;

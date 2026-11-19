@@ -17,6 +17,7 @@ import ui.app_resources : appResourceOfUrl, appResourceUrl, builtInCatalogs;
 import ui.app_session : AppSession;
 import ui.app_settings : toJSON;
 import ui.filter_commands : DocumentFilters;
+import ui.log_table.column_widths : minWidthVariables;
 import ui.log_table.look_json : applyLookJson;
 import ui.log_table.log_table_target : LogTableTarget;
 import ui.log_table.log_table : TableSource;
@@ -245,6 +246,10 @@ class MainWindow : SciterWindow
             // logTableSetLook(json): the look of the application: every log table has it, one that is not attached yet too
             if (params.argc >= 1)
                 applyLookJson(_target.look, param!string(0));
+            return true;
+        case "logTableMinWidthNames":
+            // logTableMinWidthNames() -> the names of the CSS variables of the least widths of the columns, as a JSON array (ui/log_table/column_widths)
+            answer(JSONValue(minWidthVariables()).toString());
             return true;
         case "logTableSingleLine":
             // logTableSingleLine(on): the rows of the painted tables are one line high (the setting of the application): every table now, the next ones from the start

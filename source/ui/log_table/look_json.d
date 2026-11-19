@@ -4,7 +4,7 @@
 module ui.log_table.look_json;
 
 import ptable.ports : Color;
-import ui.log_table.log_look : LogLook, LogPalette, LogSpacing, logFonts, matchColorCount, textInk, LogFont;
+import ui.log_table.log_look : LogLook, LogPalette, LogSpacing, logFonts, matchColorCount, textInk, LogFont, defaultLogLook;
 import ui.look : FontSpec, Look, TextLook;
 
 import std.conv : to;
@@ -135,23 +135,47 @@ LogPalette paletteFromJson(LogPalette base, string json, out double scale)
 /// The most room a part of the table takes by the styles (dips): a value past it is a mistake of a style
 enum double maxSpacing = 40;
 
+// Whether two spacings are the same: the sizes and the least widths
+private bool sameSpacing(const LogSpacing a, const LogSpacing b)
+{
+    static foreach (name; FieldNameTuple!LogSpacing)
+        if (__traits(getMember, a, name) != __traits(getMember, b, name))
+            return false;
+    return true;
+}
+
+// A copy of a spacing that shares nothing with it (the table of the least widths is its own)
+private LogSpacing copyOf(const LogSpacing base)
+{
+    LogSpacing result;
+    static foreach (name; FieldNameTuple!LogSpacing)
+    {
+        static if (is(typeof(__traits(getMember, LogSpacing.init, name)) == double))
+            __traits(getMember, result, name) = __traits(getMember, base, name);
+        else
+            __traits(getMember, result, name) = __traits(getMember, base, name).dup;
+    }
+    return result;
+}
+
 /// `base` with the sizes the JSON object's "spacing" names (a field of `LogSpacing` by name, in dips), each held from 0 to
 /// `maxSpacing`; what is not a number stays as it was
-LogSpacing spacingFromJson(LogSpacing base, string json)
+LogSpacing spacingFromJson(const LogSpacing base, string json)
 {
     JSONValue root;
     try
         root = parseJSON(json);
     catch (Exception)
-        return base;
+        return copyOf(base);
     if (root.type != JSONType.object)
-        return base;
+        return copyOf(base);
     const spacing = "spacing" in root.object;
     if (spacing is null || spacing.type != JSONType.object)
-        return base;
-    auto result = base;
+        return copyOf(base);
+    auto result = copyOf(base);
     static foreach (name; FieldNameTuple!LogSpacing)
     {
+        static if (is(typeof(__traits(getMember, LogSpacing.init, name)) == double))
         if (auto value = name in spacing.object)
         {
             double size = double.nan;
@@ -161,6 +185,44 @@ LogSpacing spacingFromJson(LogSpacing base, string json)
                 size = value.integer;
             if (size == size) // a number
                 __traits(getMember, result, name) = size < 0 ? 0 : size > maxSpacing ? maxSpacing : size;
+        }
+    }
+    return result;
+}
+
+/// The most a least width of a column may be
+enum double maxMinWidth = 600;
+
+/// `base` with the least widths the JSON object's "minWidths" names (by the keys of `column_widths`, in dips of the CSS), each times the
+/// "scale" of the text the object says (none: 1) and held from 0 to `maxMinWidth`; what is not a number is left out, what the object does
+/// not name stays as it was
+double[string] minWidthsFromJson(const double[string] base, string json)
+{
+    JSONValue root;
+    try
+        root = parseJSON(json);
+    catch (Exception)
+        return base.dup;
+    if (root.type != JSONType.object)
+        return base.dup;
+    auto result = base.dup;
+    const widths = "minWidths" in root.object;
+    if (widths is null || widths.type != JSONType.object)
+        return result;
+    double scale = 1;
+    if (auto value = "scale" in root.object)
+        scale = clampScale(value.type == JSONType.float_ ? value.floating : value.type == JSONType.integer ? cast(double) value.integer : 1);
+    foreach (key, value; widths.object)
+    {
+        double size = double.nan;
+        if (value.type == JSONType.float_)
+            size = value.floating;
+        else if (value.type == JSONType.integer)
+            size = value.integer;
+        if (size == size && size >= 0)
+        {
+            const scaled = size * scale;
+            result[key] = scaled > maxMinWidth ? maxMinWidth : scaled;
         }
     }
     return result;
@@ -191,8 +253,9 @@ private double clampScale(double scale)
 /// none).
 void applyLookJson(LogLook look, string json)
 {
-    const spacing = spacingFromJson(look.spacing, json);
-    if (spacing != look.spacing)
+    auto spacing = spacingFromJson(look.spacing, json);
+    spacing.minWidths = minWidthsFromJson(look.spacing.minWidths, json);
+    if (!sameSpacing(spacing, look.spacing))
         look.setSpacing(spacing);
     double scale;
     const palette = paletteFromJson(look.palette, json, scale);
@@ -295,6 +358,8 @@ unittest
 {
     import ui.log_table.log_look : defaultLogLook;
 
+    import ui.log_table.log_look : defaultLogLook;
+
     auto look = defaultLogLook();
     applyLookJson(look, `{"scale": 100000}`);
     assert(look.text.fonts[LogFont.body].sizePt == 10 * maxScale);
@@ -319,4 +384,24 @@ unittest
     assert(look.spacing.groupPadTop == 40 && look.spacing.groupPadBottom == 0, "held to the limits");
     applyLookJson(look, `{"spacing": {"groupPadTop": "a lot"}}`);
     assert(look.spacing.groupPadTop == 40, "no number: as it was");
+}
+
+@("minWidthsFromJson: the least widths by their keys, times the scale; a wrong one is left out, the ones not named stay")
+unittest
+{
+    double[string] base = ["anchor": 24.0, "dlt-ecu": 50.0];
+    const changed = minWidthsFromJson(base, `{"scale": 1.5, "minWidths": {"anchor": 30, "dlt-time": 40.5, "bad": "x", "negative": -1}}`);
+    assert(changed["anchor"] == 45 && changed["dlt-time"] == 60.75, "in dips, times the scale of the text");
+    assert("bad" !in changed && "negative" !in changed, "no number, or below 0");
+    assert(changed["dlt-ecu"] == 50, "not named: it stays");
+    assert(minWidthsFromJson(base, `{"minWidths": {"anchor": 30}}`)["anchor"] == 30, "no scale: as it is");
+    assert(minWidthsFromJson(base, "not json") == base && minWidthsFromJson(base, `{"minWidths": 5}`) == base);
+}
+
+@("applyLookJson: the least widths of the columns come into the spacing of the look")
+unittest
+{
+    auto look = defaultLogLook();
+    applyLookJson(look, `{"scale": 2, "minWidths": {"default": 10, "payload": 20}}`);
+    assert(look.spacing.minWidths["default"] == 20 && look.spacing.minWidths["payload"] == 40);
 }

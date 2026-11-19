@@ -27,6 +27,12 @@ test("a call is the xcall of its name, the document first", () => {
     assert.deepEqual(callOf(() => backend.showInFolder("/a.log"), ""), { call: ["showInFolder", "/a.log"], value: "" });
 });
 
+test("the names of the variables of the least widths come parsed, none when the backend gives none", () => {
+    assert.deepEqual(callOf(() => backend.logTableMinWidthNames(), `["column-min-width"]`),
+        { call: ["logTableMinWidthNames"], value: ["column-min-width"] });
+    assert.deepEqual(callOf(() => backend.logTableMinWidthNames()).value, []);
+});
+
 test("JSON results come parsed", () => {
     assert.deepEqual(callOf(() => backend.recentFiles(), `[{"path": "/a.log"}]`).value, [{ path: "/a.log" }]);
     assert.deepEqual(callOf(() => backend.filters(3), `{"sets": []}`).value, { sets: [] });

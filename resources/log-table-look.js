@@ -61,9 +61,17 @@ const textOf = value => {
     return text === "undefined" || text === "null" ? "" : text.trim();
 };
 
+// The key of the least width a variable gives (D names the variables, resources/../ui/log_table/column_widths.d): `column-min-width-dlt-time`
+// is `dlt-time`, the plain `column-min-width` is `default`; "" for a name of another kind
+export const minWidthKey = name => {
+    const prefix = "column-min-width";
+    if (name === prefix) return "default";
+    return name.startsWith(prefix + "-") && name.length > prefix.length + 1 ? name.slice(prefix.length + 1) : "";
+};
+
 // What `setLook` is told: { name: "css color", ..., spacing: { name: dips }, scale } for the variables that have a
 // value; `percent` is the font size of the tables in % of the normal one (Settings)
-export function collectLook(read, percent = 100) {
+export function collectLook(read, percent = 100, minWidthNames = []) {
     const look = {};
     for (const [name, variable] of Object.entries(paletteVariables)) {
         let value = "";
@@ -96,6 +104,20 @@ export function collectLook(read, percent = 100) {
         match.push(value);
     }
     if (match.some(Boolean)) look.match = match;
+    // the least widths of the columns in dips, by the keys D knows (the name without `column-min-width-`, `default` for the plain one)
+    const minWidths = {};
+    for (const name of minWidthNames) {
+        const key = minWidthKey(name);
+        if (!key) continue;
+        let dips = NaN;
+        try {
+            dips = dipsOf(read(name));
+        } catch (e) {
+            dips = NaN;
+        }
+        if (!Number.isNaN(dips)) minWidths[key] = dips;
+    }
+    if (Object.keys(minWidths).length) look.minWidths = minWidths;
     if (Object.keys(spacing).length) look.spacing = spacing;
     if (percent > 0) look.scale = percent / 100;
     return look;
