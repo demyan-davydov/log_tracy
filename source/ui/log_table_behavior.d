@@ -82,9 +82,8 @@ final class LogTableBehavior : SciterEventHandler
     private LogLook _look;
     private TableHooks _hooks; // the window is told when the table can be talked to
     private LogTable _log; // the table of the log: made when the element is attached
-    private double _wheelScale = 1.0;
+    private double _wheelScale = 1.0; // @todo: make me a constant
     private bool _mainDown; // the last press was of the main button (a double click of another one selects nothing)
-    private bool _singleLine; // the setting of the log tables, told before the table is made too
 
     private Control _control; // what the script may ask of the table
     private FrameStats _frames; // the times of the frames drawn
@@ -95,7 +94,6 @@ final class LogTableBehavior : SciterEventHandler
         _host = new SciterHost(he, look.text);
         _look = look;
         _source = source;
-        _singleLine = source.singleLine;
         _hooks = hooks;
         _control = new Control; // once: the window holds it through the hooks
     }
@@ -106,7 +104,7 @@ final class LogTableBehavior : SciterEventHandler
     {
         _host.setLook(_look.text); // the fonts may have changed since the behavior was made
         _log = new LogTable(_source, _look, _host.measurer, _host.clipboard);
-        _log.singleLine(_singleLine);
+        _log.singleLine(_source.singleLine);
         _log.beforeMetrics = () { _host.setLook(_look.text); };
         _log.events.invalidate = &_host.repaint;
         _log.events.invalidateArea = &_host.repaintArea;
@@ -395,11 +393,11 @@ final class LogTableBehavior : SciterEventHandler
             _host.textLimit(texts);
         }
 
-        void setWheelScale(double scale) { _wheelScale = scale; }
+        void setWheelScale(double scale) { _wheelScale = scale; } // @todo: remove me
 
         void singleLine(bool on)
         {
-            _singleLine = on;
+            _source.singleLine = on;
             if (_log !is null)
             {
                 _log.singleLine(on);
