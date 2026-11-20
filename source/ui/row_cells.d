@@ -134,7 +134,7 @@ wstring levelName(LogLevel level) pure nothrow @nogc @safe
     case LogLevel.Warn: return "Warn";
     case LogLevel.Info: return "Info";
     case LogLevel.Debug: return "Debug";
-    case LogLevel.Verbose: return "Verbose";
+    case LogLevel.Verbose: return "Verb";
     }
 }
 
