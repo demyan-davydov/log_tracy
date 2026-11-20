@@ -9,7 +9,7 @@
 import * as backend from "backend.js";
 import * as platform from "platform.js";
 import { editRule, filterFilesToLoad, filterExportDialog } from "pane-commands.js";
-import { ruleColors, contrastText } from "rule-colors.js";
+import { contrastText } from "rule-colors.js";
 import { currentCatalog, tr } from "i18n/i18n.js";
 import { fileFilter } from "file-types.js";
 
@@ -98,8 +98,6 @@ export class FilterPanel {
     // @param docId - the id of the document in the backend
     // @param host - what the panel asks of the document panel:
     //   theme() -> "light" | "dark" (of the rule editor),
-    //   setRuleColors(colors) - the colors of the rules by rule id, for the tables,
-    //     given whenever the panel is rendered (the rules may have changed),
     //   refreshRows() - the rows on screen refer to the rules again,
     //   setActive(active) - whether any rule works on the log (the backend's
     //     active: filters the view or colors the rows), given whenever the
@@ -151,7 +149,6 @@ export class FilterPanel {
         this.filters = info;
         this.rendered = true;
         const sets = info.sets ?? [];
-        this.host.setRuleColors(ruleColors(sets)); // the rows refer to the rules by id
         this.host.setActive(Boolean(info.active));
         const panel = this.root.$(".filter-sets");
         const focused = this.focusedSwitch();

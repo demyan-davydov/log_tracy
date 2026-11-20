@@ -72,13 +72,12 @@ final class RowWindow
 @("RowWindow: a row is read once for the pass, the pass lets go of it, the room of the row is the geometry's")
 unittest
 {
-    import ptable.layout : ColumnLayout;
     import ptable.painter : Painter, TableGeometry;
     import ptable.rowcache : RowCache;
     import ptable.testing : DatedModel;
 
     auto model = new DatedModel(100, 10);
-    auto cache = new RowCache(model, new ColumnLayout);
+    auto cache = new RowCache(model);
     TableGeometry geometry;
     geometry.groupHeight = 20;
     cache.configure(model.columns(), 1, geometry);

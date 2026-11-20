@@ -27,7 +27,7 @@ import ui.log_table.text_column : TextColumn;
 import ui.log_table.marks;
 import ptable.cellparts : HeadedCellPartsExtractor, firstSpace;
 import ptable_text.columnstyle : Halign;
-import ui.log_table.log_columns : AnchorColumn, IndexColumn, LevelColumn, LevelInkColumn;
+import ui.log_table.log_columns : anchorColumnId, AnchorColumn, indexColumnId, IndexColumn, LevelColumn, LevelInkColumn;
 import ui.log_table.column_widths : anchorMinWidth, columnMinWidth, columnMinWidthKey, indexMinWidth, minWidthOf, payloadMinWidth;
 import ui.log_table.log_look : LogFont, LogLook, defaultLogLook;
 import ui.row_cells : putColumnText, putNumber;
@@ -74,12 +74,12 @@ LogMarks logMarksOf(ref const DocumentItem item, RuleId rule)
 TableColumn[] logColumns(const(ColumnInfo)[] columns, LogColumnLook look = LogColumnLook.init)
 {
     auto palette = look.look !is null ? look.look : defaultLogLook();
-    auto anchorDef = ColumnDef("anchor", "⚓", minWidthOf(look.minWidths, "anchor", anchorMinWidth));
+    auto anchorDef = ColumnDef(anchorColumnId, "⚓", minWidthOf(look.minWidths, anchorColumnId, anchorMinWidth));
     anchorDef.selectable = false;
     anchorDef.clickable = true; // a click sets or clears the anchor
     auto anchor = new AnchorColumn(anchorDef, palette, look.anchorsFull, look.ruleColor, look.measurer);
     anchor.style.cell.halign = Halign.center; // the mark stands in the middle of its cell
-    auto index = new IndexColumn(ColumnDef("index", "Index", minWidthOf(look.minWidths, "index", indexMinWidth)), palette, look.ruleColor,
+    auto index = new IndexColumn(ColumnDef(indexColumnId, "Index", minWidthOf(look.minWidths, indexColumnId, indexMinWidth)), palette, look.ruleColor,
         look.measurer);
     index.style.cell.halign = Halign.right;
     anchor.style.header.halign = index.style.header.halign = Halign.center;

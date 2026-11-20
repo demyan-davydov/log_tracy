@@ -82,7 +82,6 @@ final class LogTable
         });
         _disposeModel = &model.dispose;
         _painter = new LogPainter(look);
-        _painter.anchorsFull = anchorsFull;
         auto ports = TablePorts(_painter, clipboard);
         ports.copyFormat = logCopyFormat;
         host.setMargins(sidesOf(look)); // the same for the tables of a document: each gives the look's, the host keeps one

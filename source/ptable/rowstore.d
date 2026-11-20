@@ -45,7 +45,7 @@ final class RowStore : ColumnClient
         _painter = ports.painter;
         _space.restyle(_painter);
         _columns = new ColumnSet(layout);
-        _cache = new RowCache(model, layout, ports.memory.isNull ? mallocAllocator() : ports.memory);
+        _cache = new RowCache(model, ports.memory.isNull ? mallocAllocator() : ports.memory);
         host.attach(this);
     }
 

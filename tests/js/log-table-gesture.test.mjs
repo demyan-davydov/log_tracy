@@ -2,7 +2,7 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { lockAxis, lockPixels } from "../../resources/log-table-gesture.js";
+import { lockAxis, panAxis, lockPixels } from "../../resources/log-table-gesture.js";
 
 test("a gesture has no axis until it has gone a few pixels", () => {
     let state = { axis: null, across: 0, down: 0 };
@@ -24,4 +24,12 @@ test("the sums are of absolute pixels: moving up and down both count", () => {
     state = lockAxis(state.across, state.down, 0, 4);
     assert.equal(state.axis, "y");
     assert.equal(state.down, 8);
+});
+
+test("panAxis: a locked gesture keeps its axis, one not locked yet goes along the larger move of this event", () => {
+    assert.equal(panAxis("x", 0, 10), "x");
+    assert.equal(panAxis("y", 10, 0), "y");
+    assert.equal(panAxis(null, -5, 2), "x");
+    assert.equal(panAxis(null, 1, -3), "y");
+    assert.equal(panAxis(null, 2, 2), "y", "a tie scrolls the rows");
 });

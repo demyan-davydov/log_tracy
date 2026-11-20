@@ -382,22 +382,21 @@ final class SciterCanvas : Canvas
     }
 }
 
-/// What tells the script: `name(text)`, queued by the window and sent from its idle loop (ui/script_queue), never
-/// from inside the event of the table
-alias ScriptTeller = void delegate(string name, const(wchar)[] text);
+/// Where a copy goes: the clipboard of Sciter belongs to the script, the one who makes the host says how the text reaches it
+alias CopyTaker = void delegate(const(wchar)[] text);
 
-/// The clipboard of Sciter belongs to the script: the text goes to its `logTableCopy`
+/// The clipboard of a table: the text goes to whom the host was told (`CopyTaker`)
 final class ScriptClipboard : Clipboard
 {
-    private ScriptTeller _tell;
+    private CopyTaker _take;
 
-    this(ScriptTeller tell)
+    this(CopyTaker take)
     {
-        _tell = tell;
+        _take = take;
     }
 
     void writeText(const(wchar)[] text)
     {
-        _tell("logTableCopy", text);
+        _take(text);
     }
 }

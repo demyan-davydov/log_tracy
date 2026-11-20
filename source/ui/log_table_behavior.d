@@ -26,8 +26,9 @@ import ui.log_table.marks : marksOf;
 import ui.log_table.log_look : LogLook;
 import ui.sciter_table.frame_request : FrameRequest;
 import ui.sciter_table.input : wheelIsAcross, cursorOf, isCopy, isOurEvent, isSelectAll, keyPickMode, pickMode, startsPickPress, tableKey, wheelPixels;
-import ui.sciter_table.host : ScriptTeller;
+
 import ui.sciter_table.sciter_host : SciterHost;
+import ui.table_messages : cellClickedJson, copyCutJson, currentRowJson, rowChosenJson;
 import ui.table_script : dispatch, ScriptArgs, ScriptResult, TableControl;
 
 import core.time : MonoTime;
@@ -47,7 +48,7 @@ struct TableHooks
     size_t id; /// the number the script talks to the table by (`LogTableTarget.set`)
     void delegate(TableControl) attached;
     void delegate(TableControl) detached;
-    ScriptTeller tell; /// what the table has to tell the script, queued by the window: never called from inside an event
+    void delegate(string name, const(wchar)[] text) tell; /// what the table has to tell the script, queued by the window: never called from inside an event
 }
 
 /// A call of the script to `control`, handed over by the main window: Sciter doesn't deliver `element.xcall` to a
@@ -92,7 +93,7 @@ final class LogTableBehavior : SciterEventHandler
 
     this(TableSource source, LogLook look, TableHooks hooks, HELEMENT he)
     {
-        _host = new SciterHost(he, look.text, hooks.tell);
+        _host = new SciterHost(he, look.text, (const(wchar)[] text) { hooks.tell("logTableCopy", text); }); // the clipboard is the script's
         _look = look;
         _source = source;
         _hooks = hooks;
@@ -119,36 +120,26 @@ final class LogTableBehavior : SciterEventHandler
     // A copy of rows was cut by the limit of the copy: the script tells the user how many rows went to the clipboard
     private void copyCut(size_t copied, size_t total)
     {
-        import std.json : JSONValue;
-
-        JSONValue cut = ["table": JSONValue(_hooks.id), "copied": JSONValue(copied), "total": JSONValue(total)];
-        _hooks.tell("logTableCopyCut", cut.toString.toUTF16);
+        _hooks.tell("logTableCopyCut", copyCutJson(_hooks.id, copied, total).toUTF16);
     }
 
     // A click on a cell of a clickable column (the table picks nothing): the script knows what it is for
     private void cellClicked(size_t item, size_t column)
     {
-        import std.json : JSONValue;
-
         auto table = _log.table;
         ulong id;
         if (!table.isClickable(column) || !table.rowId(item, id))
             return; // a click on text is no business of the script, and a row that is gone since the press is nobody's click
-        JSONValue click = ["table": JSONValue(_hooks.id), "item": JSONValue(item), "id": JSONValue(id), "column": JSONValue(table.columnId(column)),
-            "anchored": JSONValue(marksOf(Extra(table.rowExtra(item))).anchored)];
         Rect area;
-        if (table.cellRect(item, column, area)) // where the cell is in the table, for what the script shows by it (a notice)
-            click["rect"] = [area.x, area.y, area.w, area.h];
-        _hooks.tell("logTableCellClicked", click.toString.toUTF16);
+        const placed = table.cellRect(item, column, area); // where the cell is in the table, for what the script shows by it (a notice)
+        const anchored = marksOf(Extra(table.rowExtra(item))).anchored;
+        _hooks.tell("logTableCellClicked", cellClickedJson(_hooks.id, item, id, table.columnId(column), anchored, placed ? &area : null).toUTF16);
     }
 
     // A row was selected by the user (the script follows it in the other table): which table, the item, the message, and whether it may move on
     private void rowChosen(size_t item, ulong id, bool delayed)
     {
-        import std.json : JSONValue;
-
-        JSONValue chosen = ["table": JSONValue(_hooks.id), "row": JSONValue(item), "id": JSONValue(id), "delayed": JSONValue(delayed)];
-        _hooks.tell("logTableRowChosen", chosen.toString.toUTF16);
+        _hooks.tell("logTableRowChosen", rowChosenJson(_hooks.id, item, id, delayed).toUTF16);
     }
 
     override protected bool handleSubscription(HELEMENT he, UINT* event_groups)
@@ -348,14 +339,11 @@ final class LogTableBehavior : SciterEventHandler
 
         wstring currentRow()
         {
-            import std.json : JSONValue;
-
             long row;
             ulong id;
             auto table = _log.table;
-            if (!table.currentRow(row) || !table.rowId(cast(size_t) row, id))
-                return "null"w;
-            return JSONValue(["row": JSONValue(row), "id": JSONValue(id)]).toString.toUTF16;
+            const has = table.currentRow(row) && table.rowId(cast(size_t) row, id);
+            return currentRowJson(has, row, id).toUTF16;
         }
 
         wstring rowHeight(size_t index) { import std.conv : to; return _log.table.rowHeight(index).to!wstring; }
@@ -376,11 +364,8 @@ final class LogTableBehavior : SciterEventHandler
 
         void pan(double pixels, double across)
         {
-            // a move of the fingers is along the axis it goes farther on: a trackpad's small sideways jitter during a scroll down
-            // does not drift the columns, and the other way round
-            import std.math : abs;
-
-            if (abs(across) > abs(pixels))
+            // the script gives a move along one axis (resources/log-table-gesture.js `panAxis`): the other is 0
+            if (across != 0)
                 _log.table.scrollXBy(across * panScale);
             else
                 _log.table.pan(pixels * panScale, nowMs());

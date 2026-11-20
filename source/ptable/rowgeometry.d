@@ -154,7 +154,6 @@ final class RowGeometry
 
 version (unittest)
 {
-    import ptable.layout : ColumnLayout;
     import ptable.painter : Painter, TableGeometry;
     import ptable.rowcache : RowCache;
     import ptable.testing : DatedModel;
@@ -164,7 +163,7 @@ version (unittest)
 unittest
 {
     auto model = new DatedModel(1000, 10);
-    auto cache = new RowCache(model, new ColumnLayout);
+    auto cache = new RowCache(model);
     TableGeometry geometry;
     cache.configure(model.columns(), 1, geometry);
     cache.setFlexWidth(200);
@@ -181,7 +180,7 @@ unittest
 unittest
 {
     auto model = new DatedModel(100_000, 10);
-    auto cache = new RowCache(model, new ColumnLayout);
+    auto cache = new RowCache(model);
     TableGeometry geometry;
     cache.configure(model.columns(), 1, geometry);
     cache.setFlexWidth(200);
@@ -201,22 +200,21 @@ unittest
 @("RowGeometry: a row measured sets no width of a column")
 unittest
 {
-    auto layout = new ColumnLayout;
     auto model = new DatedModel(100, 10);
-    auto cache = new RowCache(model, layout);
+    auto cache = new RowCache(model);
     TableGeometry geometry;
     cache.configure(model.columns(), 1, geometry);
     cache.setFlexWidth(200);
     cache.heightOf(5);
     cache.entry(5);
-    assert(cache.growths == 0 && layout.width("time") == 0, "the rows that are read set no width: the window does (RowStore.measure, ColumnHost.settle)");
+    assert(cache.growths == 0, "the rows that are read set no width: the window does (RowStore.measure, ColumnHost.settle)");
 }
 
 @("RowGeometry: the ring grows at once and shrinks only when four times less would do, so a window at the edge of a size does not make it anew")
 unittest
 {
     auto model = new DatedModel(1000, 10);
-    auto cache = new RowCache(model, new ColumnLayout);
+    auto cache = new RowCache(model);
     TableGeometry geometry;
     cache.configure(model.columns(), 1, geometry);
     cache.setFlexWidth(200);
@@ -259,7 +257,7 @@ unittest
 
     auto model = new DatedModel(100, 10);
     model.columns()[0] = new Shrinking;
-    auto cache = new RowCache(model, new ColumnLayout);
+    auto cache = new RowCache(model);
     TableGeometry geometry;
     cache.configure(model.columns(), 1, geometry);
     cache.setFlexWidth(200);
@@ -271,7 +269,7 @@ unittest
 unittest
 {
     auto model = new DatedModel(100, 10);
-    auto cache = new RowCache(model, new ColumnLayout);
+    auto cache = new RowCache(model);
     TableGeometry geometry;
     cache.configure(model.columns(), 1, geometry);
     cache.setFlexWidth(200);

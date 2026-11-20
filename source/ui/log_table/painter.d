@@ -123,10 +123,6 @@ final class LogScrollBarPainter : ScrollBarPainter
 /// The painter of the log table
 class LogPainter : Painter
 {
-    /// Whether no room is left for another anchor, asked of the document each time it matters (a cell with none under the mouse or pressed),
-    /// so what it answers is always the truth. Null: there is always room
-    bool delegate() anchorsFull;
-
     private LogLook _look;
 
     this(LogLook look)

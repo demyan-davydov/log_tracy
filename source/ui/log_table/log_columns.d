@@ -18,6 +18,10 @@ import ui.log_table.text_column : TextColumn;
 import std.algorithm.comparison : max;
 import std.math : round;
 
+/// The ids of the columns every log table has before those of the format (`logColumns`), also the keys of their least widths
+/// (ui/log_table/column_widths); the script knows the anchor's by the same text (resources/log-table-view.js)
+enum string anchorColumnId = "anchor", indexColumnId = "index";
+
 /// The column of the anchor marks: it has no text, a click on it sets or clears the anchor of the message
 final class AnchorColumn : TextColumn
 {

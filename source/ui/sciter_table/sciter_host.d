@@ -11,7 +11,7 @@ import sciter.api : sciterApi;
 import sciter.capi.api;
 import sciter.graphics : GfxCanvas = Canvas;
 import ui.look : TextLook;
-import ui.sciter_table.host : SciterCanvas, SciterMeasurer, SciterTextCache, ScriptClipboard, ScriptTeller;
+import ui.sciter_table.host : CopyTaker, SciterCanvas, SciterMeasurer, SciterTextCache, ScriptClipboard;
 
 final class SciterHost
 {
@@ -21,14 +21,14 @@ final class SciterHost
     private SciterCanvas _canvas;
     private ScriptClipboard _clipboard;
 
-    /// `tell` passes the text of a copy on to the script (`logTableCopy`)
-    this(HELEMENT he, TextLook look, ScriptTeller tell)
+    /// `copied` takes the text of a copy to the clipboard
+    this(HELEMENT he, TextLook look, CopyTaker copied)
     {
         _he = he;
         _cache = new SciterTextCache(he, look);
         _measurer = new SciterMeasurer(_cache);
         _canvas = new SciterCanvas(_cache);
-        _clipboard = new ScriptClipboard(tell);
+        _clipboard = new ScriptClipboard(copied);
     }
 
     /// The behavior is attached to `he`: every service that holds the element gets it

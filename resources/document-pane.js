@@ -177,13 +177,10 @@ export class DocumentPane {
 
         this.filterPanel = new FilterPanel(this.root.$(".filter-page"), docId, {
             theme: () => host.theme(),
-            setRuleColors: colors => {}, // D reads the colors of the rules from the document
             refreshRows: () => this.refreshRuleColors(),
             setActive: active => this.markFiltersTab(active),
         });
-        this.searchBar = new SearchBar(this.root.$(".search-bar"), docId, {
-            setMatchColors: colors => {}, // D has the colors of the chips of its look
-        });
+        this.searchBar = new SearchBar(this.root.$(".search-bar"), docId);
         this.bind();
     }
 

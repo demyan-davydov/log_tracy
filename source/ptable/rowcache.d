@@ -6,7 +6,7 @@ module ptable.rowcache;
 
 version (unittest) import ptable.testing : withBoxes;
 import ptable.column : TableColumn;
-import ptable.layout : ColumnDef, ColumnLayout;
+import ptable.layout : ColumnDef;
 import ptable.memory : mallocAllocator;
 import ptable.model : TableModel;
 import ptable.painter : Painter, TableGeometry;
@@ -40,7 +40,7 @@ final class RowCache
     private RowWindow _window;
     private double _fallback; // the height of an empty row, made at the first ask after the columns or the wanted ones changed
 
-    this(TableModel model, ColumnLayout layout, RCIAllocator source = mallocAllocator())
+    this(TableModel model, RCIAllocator source = mallocAllocator())
     {
         _wrap = new RowWrap(&_spec);
         _grow = new RowGrow(&_spec);
@@ -214,7 +214,7 @@ unittest
 
     auto model = new DatedModel(100, 10);
     model.marked = 23;
-    auto cache = new RowCache(model, new ColumnLayout);
+    auto cache = new RowCache(model);
     TableGeometry geometry;
     cache.configure(model.columns(), 1, geometry);
     auto e = cache.entry(23);
@@ -230,7 +230,7 @@ unittest
     import ptable.testing : DatedModel;
 
     auto model = new DatedModel(100, 10);
-    auto cache = new RowCache(model, new ColumnLayout);
+    auto cache = new RowCache(model);
     TableGeometry geometry;
     geometry.groupHeight = 20;
     cache.configure(model.columns(), 1, geometry);
@@ -255,7 +255,7 @@ unittest
     import ptable.testing : DatedModel;
 
     auto model = new DatedModel(100, 10);
-    auto cache = new RowCache(model, new ColumnLayout);
+    auto cache = new RowCache(model);
     TableGeometry geometry;
     geometry.groupHeight = 20;
     cache.configure(model.columns(), 1, geometry);
@@ -277,7 +277,7 @@ unittest
     import ptable.testing : DatedModel;
 
     auto model = new DatedModel(100, 3);
-    auto cache = new RowCache(model, new ColumnLayout);
+    auto cache = new RowCache(model);
     TableGeometry geometry;
     geometry.groupHeight = 20;
     cache.configure(model.columns(), 1, geometry);
@@ -294,8 +294,7 @@ unittest
 
     auto model = new DatedModel(100, 3);
     model.dayPrefix = "a long day "; // the head "a long day 0" is wider than the body "t5"
-    auto layout = new ColumnLayout;
-    auto cache = new RowCache(model, layout);
+    auto cache = new RowCache(model);
     TableGeometry geometry;
     geometry.groupHeight = 20;
     cache.configure(model.columns(), 1, geometry);
@@ -311,8 +310,7 @@ unittest
     import ptable.testing : TwoHeadsModel;
 
     auto model = new TwoHeadsModel(100);
-    auto layout = new ColumnLayout;
-    auto cache = new RowCache(model, layout);
+    auto cache = new RowCache(model);
     TableGeometry geometry;
     geometry.groupHeight = 20;
     cache.configure(model.columns(), 2, geometry);
@@ -334,7 +332,7 @@ unittest
     import ptable.testing : DatedModel;
 
     auto model = new DatedModel(100, 3);
-    auto cache = new RowCache(model, new ColumnLayout);
+    auto cache = new RowCache(model);
     TableGeometry geometry;
     geometry.groupHeight = 20;
     geometry.groupPadTop = 6;

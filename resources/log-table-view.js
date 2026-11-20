@@ -4,7 +4,7 @@
 //! the notices) and tells it the look of the application. A view of a panel (view-table.js) holds one `LogTableView`.
 import { setAnchor, setLogTableTarget, logTableCall, logTableSetLook, logTableMinWidthNames } from "backend.js";
 import { collectLook } from "log-table-look.js";
-import { lockAxis } from "log-table-gesture.js";
+import { lockAxis, panAxis } from "log-table-gesture.js";
 import { anchorClickPlan, rowMoved } from "anchor-click.js";
 import { anchorRefusalText } from "pane-commands.js";
 import { showNotice, showNoticeAt } from "notice.js";
@@ -103,7 +103,8 @@ export class LogTableView {
             if (axis === null) {
                 ({ axis, across, down } = lockAxis(across, down, evt.deltaX, evt.deltaY));
             }
-            this.call("pan", axis === "x" ? 0 : -evt.deltaY, axis === "y" ? 0 : -evt.deltaX);
+            const along = panAxis(axis, evt.deltaX, evt.deltaY);
+            this.call("pan", along === "x" ? 0 : -evt.deltaY, along === "y" ? 0 : -evt.deltaX);
             return true;
         });
         element.on("gestureend", () => { this.call("panEnd"); return true; });
@@ -170,10 +171,12 @@ document.on("click", "menu.context > li.log-table-copy", (evt, item) => {
 // A table tells a click on a cell of a clickable column (the anchor column; JSON: table, item, id of the message, column id, whether the
 // row is anchored). The anchor is set or cleared by the backend; `onAnchorApplied` (script.js) tells every table of the document. A
 // refusal says why in a notice right of the cell.
+const anchorColumnId = "anchor"; // the id of the anchor column, as D names it (ui/log_table/log_columns.d anchorColumnId)
+
 globalThis.logTableCellClicked = json => {
     const click = JSON.parse(json);
     const view = views.get(click.table);
-    if (click.column !== "anchor" || !view) return;
+    if (click.column !== anchorColumnId || !view) return;
     const answer = setAnchor(view.docId, click.id, !click.anchored);
     const { rows, notice } = anchorClickPlan(click, answer, anchorRefusalText);
     if (rows) globalThis.onAnchorApplied?.(view.docId, JSON.stringify(rows));
