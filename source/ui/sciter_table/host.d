@@ -30,7 +30,6 @@ private struct Generation
 {
     Arena arena;
     HashMap!(TextKey, TextLayout) layouts;
-    size_t bytes; // of the texts of the keys
 
     this(RCIAllocator allocator)
     {
@@ -44,14 +43,12 @@ private struct Generation
             layout.release();
         layouts.clear();
         arena.reset();
-        bytes = 0;
     }
 
     // Keeps `layout` by `key`, its text copied into the arena
     void keep(TextKey key, TextLayout layout)
     {
         key.text = arena.copy(key.text);
-        bytes += key.text.length * wchar.sizeof;
         layouts.set(key, layout);
     }
 }
@@ -65,7 +62,6 @@ final class SciterTextCache
     private size_t _current;
     private immutable(wchar)[][ulong] _styles; // by font, color, kind and width (`styleKey`): made once, the misses after it allocate nothing for it
     size_t limit = 3000; /// layouts a generation keeps
-    size_t byteLimit = 8 * 1024 * 1024; /// bytes of the texts of the keys a generation keeps: a log's lines may be 64 KB each
     size_t made; /// layouts made so far
     private TextLook _look;
     private double[] _ascent, _advance;
@@ -155,7 +151,7 @@ final class SciterTextCache
             now.keep(key, layout);
             return layout;
         }
-        if (now.layouts.length >= limit || now.bytes >= byteLimit)
+        if (now.layouts.length >= limit)
         {
             before.releaseLayouts(); // the older generation goes, the current becomes the older
             _current = 1 - _current;
