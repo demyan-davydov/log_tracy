@@ -74,8 +74,7 @@ final class AppSession
     private SettingsWriter _write;
     private FileShower _showInFolder;
     private ScriptCall[] _scriptCalls; // queued for the idle loop
-    /// Called when the tab of a document goes (its tables' layouts are no longer wanted); null: nobody listens
-    void delegate(DocumentId) documentClosed;
+    private void delegate(DocumentId)[] _documentClosed; // told when the tab of a document goes
     private struct ViewHearer
     {
         DocumentId doc;
@@ -306,10 +305,16 @@ final class AppSession
         }
     }
 
+    /// `listener` is told when the tab of a document goes (what was kept for it, such as its tables' columns, is no longer wanted)
+    void subscribeDocumentClosed(void delegate(DocumentId) listener)
+    {
+        _documentClosed ~= listener;
+    }
+
     private void tellDocumentClosed(DocumentId docId)
     {
-        if (documentClosed !is null)
-            documentClosed(docId);
+        foreach (listener; _documentClosed)
+            listener(docId);
     }
 
     // ── The documents ────────────────────────────────────────────────────────
@@ -1491,18 +1496,19 @@ unittest
     assert(!f.store.isOpen(id), "closed by its last holder");
 }
 
-@("AppSession: the tab of a document going is told, by closing it and by closing all")
+@("AppSession: the tab of a document going is told to everyone who subscribed, by closing it and by closing all")
 unittest
 {
     auto f = Fixture.make();
-    DocumentId[] gone;
-    f.session.documentClosed = (DocumentId docId) { gone ~= docId; };
+    DocumentId[] gone, alsoGone;
+    f.session.subscribeDocumentClosed((DocumentId docId) { gone ~= docId; });
+    f.session.subscribeDocumentClosed((DocumentId docId) { alsoGone ~= docId; });
     const a = f.session.openFile(testPath("/logs/a.log")).docId;
     const b = f.session.openFile(testPath("/logs/b.log")).docId;
     f.session.closeTab(cast(int) a.toInt());
-    assert(gone == [a]);
+    assert(gone == [a] && alsoGone == [a]);
     f.session.closeAll();
-    assert(gone == [a, b]);
+    assert(gone == [a, b] && alsoGone == [a, b]);
 }
 
 @("AppSession: another holder releasing its hold twice leaves the tab its document")

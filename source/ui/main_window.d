@@ -17,20 +17,17 @@ import ui.app_resources : appResourceOfUrl, appResourceUrl, builtInCatalogs;
 import ui.app_session : AppSession;
 import ui.app_settings : toJSON;
 import ui.filter_commands : DocumentFilters;
-import ui.log_table.column_widths : minWidthVariables;
-import ui.log_table.look_json : applyLookJson;
-import ui.log_table.log_table_target : LogTableTarget, TableAttributes, tableAttributesOf;
+import ui.log_table.log_tables : LogTables, TableAttributes, tableAttributesOf;
 import sciter.element : attributeOf;
 import ui.log_table.log_table : TableSource;
 import ui.script_queue : ScriptQueue;
 import ui.log_table_behavior : LogTableBehavior, logTableBehavior, runScript, TableHooks;
-import ui.table_script : TableControl, TableRegistry;
+import ui.table_script : TableControl;
 import ui.columns_json : columnsJson;
 
 import std.algorithm : startsWith;
 import std.array : empty;
 import std.conv : to;
-import std.json : JSONValue;
 import std.stdio : writeln;
 import std.string : fromStringz;
 import std.utf : toUTF8, toUTF16;
@@ -45,8 +42,7 @@ private enum maxScriptRounds = 4;
 class MainWindow : SciterWindow
 {
     private AppSession _session;
-    private LogTableTarget _target = new LogTableTarget; // the column hosts of the documents, the look and the settings of the log tables
-    private TableRegistry _tables; // the painted tables the script talks to, by their numbers
+    private LogTables _tables; // the log tables: what the script asks of them is done there, the window converts the values
     private ScriptQueue _tableCalls; // what the tables tell the script, sent by onIdle()
 
     /// The files of the interface are built in (`this://app/...`), for the dialogs too
@@ -71,10 +67,9 @@ class MainWindow : SciterWindow
             return null;
         }
         const id = shown.id;
-        auto source = TableSource(_session, _session.findDocument(shown.doc), shown.search, _target.hostOf(shown.doc), _target.singleLine);
-        return new LogTableBehavior(source, _target.look,
-            TableHooks(id, (TableControl control) { _tables.attach(id, control); }, (TableControl control) { _tables.detach(control); },
-                &_tableCalls.put), he);
+        auto source = TableSource(_session, _session.findDocument(shown.doc), shown.search, _tables.hostOf(shown.doc), _tables.singleLine);
+        return new LogTableBehavior(source, _tables.look,
+            TableHooks(id, (TableControl control) { _tables.attached(id, control); }, &_tables.detached, &_tableCalls.put), he);
     }
 
     /// The menu bar of the window on `platform`, in the language of the interface
@@ -91,7 +86,8 @@ class MainWindow : SciterWindow
     {
         _session = session;
         _tableCalls = new ScriptQueue;
-        _session.documentClosed = (DocumentId docId) { _target.forget(cast(int) docId.toInt()); };
+        _tables = new LogTables;
+        _session.subscribeDocumentClosed((DocumentId docId) { _tables.documentClosed(cast(int) docId.toInt()); });
         _session.useTranslations(builtInCatalogs());
 
         import sciter.capi.def;
@@ -250,7 +246,7 @@ class MainWindow : SciterWindow
             // logTableCall(tableId, method, args...): a call to the table drawn by D (ui/log_table_behavior) of that number (the attribute `table` of its element); null if
             // there is none (not attached yet, or no more)
             {
-                auto table = params.argc >= 2 ? _tables.get(param!int(0)) : null;
+                auto table = params.argc >= 2 ? _tables.table(param!int(0)) : null;
                 if (table is null)
                     resultView.set(SciterValue.makeNull());
                 else
@@ -260,16 +256,15 @@ class MainWindow : SciterWindow
         case "logTableSetLook":
             // logTableSetLook(json): the look of the application: every log table has it, one that is not attached yet too
             if (params.argc >= 1)
-                applyLookJson(_target.look, param!string(0));
+                _tables.setLook(param!string(0));
             return true;
         case "logTableMinWidthNames":
             // logTableMinWidthNames() -> the names of the CSS variables of the least widths of the columns, as a JSON array (ui/log_table/column_widths)
-            answer(JSONValue(minWidthVariables()).toString());
+            answer(_tables.minWidthNames());
             return true;
         case "logTableSingleLine":
             // logTableSingleLine(on): the rows of the painted tables are one line high (the setting of the application): every table now, the next ones from the start
-            _target.singleLine = param!bool(0);
-            _tables.each((TableControl table) { table.singleLine(_target.singleLine); });
+            _tables.singleLine(param!bool(0));
             return true;
 
         // ── The views ───────────────────────────────────────────────────────
