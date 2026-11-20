@@ -237,6 +237,47 @@ unittest
     assert(canvas.calls == ["fill", "text:Whatever"], "the plate of a Fatal and the text: the line right of the cell is not a part of it");
 }
 
+@("LevelColumn: a selected row keeps the color of its level and the rounded plate of a Fatal")
+unittest
+{
+    import ptable.model : CellData;
+
+    // a canvas that keeps what it draws and in which color
+    static final class Inks : Canvas
+    {
+        string[] calls;
+        Color[] colors;
+        void fillRect(Rect area, Color color) { calls ~= "rect"; colors ~= color; }
+        void drawText(FontId font, const(wchar)[] text, double x, double baseline, Color color) { calls ~= "text"; colors ~= color; }
+        void drawParagraph(FontId font, const(wchar)[] text, double x, double top, double width, Color color) {}
+        void fillRoundRect(Rect area, double radius, Color color) { calls ~= "round"; colors ~= color; }
+        void fillCircle(double cx, double cy, double radius, Color fill, Color line) {}
+        void pushClip(Rect area) {}
+        void popClip() {}
+    }
+
+    auto look = defaultLogLook();
+    auto column = new LevelColumn(ColumnDef("level", "Level"), look, new Ruler);
+    RowState selected;
+    selected.selected = true;
+    const area = Rect(0, 0, 60, 16);
+    const state = DrawState(area, area, selected);
+    const palette = look.palette;
+
+    auto canvas = new Inks;
+    const error = CellData("Error"w, packMarks(LogMarks(LogLevel.Error)));
+    CellInput cell;
+    cell.data = &error;
+    column.draw(canvas, cell, state);
+    assert(canvas.calls == ["text"] && canvas.colors == [palette.error], "the red of an Error, not the ink of the selection");
+
+    canvas = new Inks;
+    const fatal = CellData("Fatal"w, packMarks(LogMarks(LogLevel.Fatal)));
+    cell.data = &fatal;
+    column.draw(canvas, cell, state);
+    assert(canvas.calls == ["round", "text"] && canvas.colors == [palette.fatalBg, palette.fatalText], "the rounded plate of a Fatal, on a selected row too");
+}
+
 @("LogPainter: the color of a filter rule is a gradient in the Index cell, a text column shows none (the anchor cell fills with it: AnchorColumn)")
 unittest
 {

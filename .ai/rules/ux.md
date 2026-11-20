@@ -144,6 +144,8 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     (lighter in the dark theme), slightly warm (more so in the dark theme), so the stripes still show; the text keeps its
     contrast (no layer over it), the selection stays above it, its matches are in the colors
     of their chips.
+    The level cell keeps the color of its level on a selected row too, and a Fatal one its
+    badge (a rounded plate behind the text).
 28. **The other table follows the selected row.** A row selected in the main or the search
     table is shown in the other one if it has that message: selected there, scrolled only if
     not already wholly on screen: a row from below comes in with about 24 dips of room under it,

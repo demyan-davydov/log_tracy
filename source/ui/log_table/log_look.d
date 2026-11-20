@@ -129,11 +129,9 @@ Color pick(ref const LogPalette palette, ColorId id, Color fallback)
     }
 }
 
-/// The ink of a level: the row's selected one, or the color of the level
-Color levelInkOf(ref const LogPalette palette, LogLevel level, bool selected)
+/// The ink of a level: the color of the level, on a selected row too
+Color levelInkOf(ref const LogPalette palette, LogLevel level)
 {
-    if (selected)
-        return palette.selectedInk;
     final switch (level)
     {
     case LogLevel.Fatal: return palette.fatalText;

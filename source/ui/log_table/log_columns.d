@@ -1,6 +1,6 @@
 //! The columns of the log table that draw more than text: the anchors (the color of the filter rule filling the cell, a circle with the
-//! anchor, the faint one over a cell with none, the sign of a refusal), the Index (the color of the filter rule behind the number) and the level (bold by the row's level, a badge for
-//! a Fatal one, the color of the level). The log table makes them with the look; the table asks them (docs/stories/painted-table.md).
+//! anchor, the faint one over a cell with none, the sign of a refusal), the Index (the color of the filter rule behind the number) and the level (bold by the row's level, a rounded badge for
+//! a Fatal one, the color of the level, a selected row too). The log table makes them with the look; the table asks them (docs/stories/painted-table.md).
 module ui.log_table.log_columns;
 
 import ptable.column : CellInput, DrawState, TableColumn;
@@ -107,7 +107,8 @@ final class IndexColumn : TextColumn
     }
 }
 
-/// The level column: the louder levels are bold and in the color of the level, a Fatal one is a badge
+/// The level column: the louder levels are bold and in the color of the level, a Fatal one is a rounded badge; a selected row keeps
+/// both (ux.md 27)
 final class LevelColumn : TextColumn
 {
     this(ColumnDef def, LogLook look, TextMeasurer measurer = null)
@@ -127,16 +128,16 @@ final class LevelColumn : TextColumn
         if (cell.data is null || cell.data.text.length == 0)
             return;
         const palette = look.palette;
-        const selected = state.row.selected;
         const level = marksOf(cell).level;
-        if (level == LogLevel.Fatal && !selected)
+        if (level == LogLevel.Fatal)
         {
-            // the badge grows with the font: its paddings are fractions of the line
+            // the badge grows with the font: its paddings and its corners are fractions of the line
             const spot = spotOf(cell, state.area, state.clip);
             const side = round(4 * unit), inset = max(1.0, round(unit));
             const width = measurer !is null ? measurer.width(spot.font, cell.data.text) : 0;
-            canvas.fillRect(Rect(spot.x - side, spot.top + inset, round(width) + 2 * side, spot.line - 2 * inset), palette.fatalBg);
+            const plate = Rect(spot.x - side, spot.top + inset, round(width) + 2 * side, spot.line - 2 * inset);
+            canvas.fillRoundRect(plate, plate.h / 4, palette.fatalBg);
         }
-        drawText(canvas, cell, state, levelInkOf(palette, level, selected));
+        drawText(canvas, cell, state, levelInkOf(palette, level));
     }
 }
