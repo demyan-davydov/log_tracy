@@ -186,8 +186,8 @@ struct Buffer(T)
         return _data is null ? null : _data[0 .. _length];
     }
 
-    /// Appends; false if the source has no memory (nothing is added)
-    bool put(const T item) nothrow
+    /// Appends; false if the source has no memory (nothing is added). By value, not const: a `T` with pointers (a handle) is kept too
+    bool put(T item) nothrow
     {
         if (!reserve(_length + 1))
             return false;

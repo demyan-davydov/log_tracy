@@ -1,13 +1,19 @@
 //! A cache of two generations, Sciter-free: what was made for a key (a text layout, a width) is kept in the current generation; a
 //! hit in the older one moves it to the current; a new key that finds the current at half of `limit`, or both at `limit`, lets the
-//! older go whole (its values released) and the current becomes the older. Keys used frame after frame (more than half the limit,
-//! up to what else passes through between two uses) are made once, and no more than `limit` are kept. The keys and the maps are in memory of the allocator given (the texts of the keys in an arena of
-//! their generation), the garbage collector is not asked for a lookup. Used by `SciterTextCache` and `SciterMeasurer`
+//! older go whole (its values released `releasedPerKeep` at each `keep` after it) and the current becomes the older. Keys used
+//! frame after frame (more than half the limit, up to what else passes through between two uses) are made once, and no more than
+//! `limit` are kept. The keys and the maps are in memory of the allocator given (the texts of the keys in an arena of their
+//! generation), the garbage collector is not asked for a lookup. Used by `SciterTextCache` and `SciterMeasurer`
 //! (ui/sciter_table/host).
 module ui.sciter_table.generations;
 
-import ptable.memory : Arena, HashMap, mallocAllocator;
+import ptable.memory : Arena, Buffer, HashMap, mallocAllocator;
 import std.experimental.allocator : RCIAllocator;
+
+/// How many values of a generation that went are released at a `keep`: releasing thousands of Sciter layouts at once takes a frame
+/// (a frame keeps tens of new ones). Two a keep release a generation (half the limit) in a quarter of the limit, before the next
+/// rotation (half the limit of keeps later): what waits doesn't grow.
+enum size_t releasedPerKeep = 2;
 
 /// `K` is a struct with a `text` member (`const(wchar)[]`): the text is copied into the memory of the generation that keeps it
 final class Generations(K, V)
@@ -29,6 +35,7 @@ final class Generations(K, V)
     private Generation[2] _generations;
     private size_t _current;
     private Release _release;
+    private Buffer!V _going; // the values of the generations that went, not released yet: a portion at each keep
     private V _loose; // the value `keep` had no memory for: the caller uses it until the next `keep`, which releases it
     private bool _hasLoose;
     size_t limit; /// keys both generations keep together
@@ -40,6 +47,7 @@ final class Generations(K, V)
         _release = release;
         _generations[0] = Generation(allocator);
         _generations[1] = Generation(allocator);
+        _going = Buffer!V(allocator);
     }
 
     /// The value kept for `key`, null if none: valid until the next `find` or `keep`
@@ -71,6 +79,7 @@ final class Generations(K, V)
             rotate();
         if (length >= limit)
             rotate();
+        releaseGoing(releasedPerKeep);
         if (put(_generations[_current], key, value))
             return true;
         _loose = value;
@@ -88,8 +97,19 @@ final class Generations(K, V)
     void clear()
     {
         releaseLoose();
+        releaseGoing(size_t.max);
         drop(_generations[0]);
         drop(_generations[1]);
+    }
+
+    // Releases up to `count` of the values of the generations that went, the last ones first
+    private void releaseGoing(size_t count)
+    {
+        const n = _going.length < count ? _going.length : count;
+        if (_release !is null)
+            foreach_reverse (ref value; _going[][$ - n .. $])
+                _release(value);
+        _going.truncate(_going.length - n);
     }
 
     private void releaseLoose()
@@ -100,10 +120,16 @@ final class Generations(K, V)
         _hasLoose = false;
     }
 
-    // The older generation goes, the current becomes the older
+    // The older generation goes, its values waiting to be released (at once if there is no room to wait), the current becomes the older
     private void rotate()
     {
-        drop(_generations[1 - _current]);
+        auto older = &_generations[1 - _current];
+        if (_release !is null)
+            foreach (ref const K key, ref V value; older.map)
+                if (!_going.put(value))
+                    _release(value);
+        older.map.clear();
+        older.arena.reset();
         _current = 1 - _current;
     }
 
@@ -234,6 +260,35 @@ unittest
     assert(released.length + cache.length == 35, "every value that went is released");
     cache.clear();
     assert(cache.length == 0 && released.length == 35);
+}
+
+@("Generations: the values of a generation that goes are released a portion at each keep after it, clear releases the rest")
+unittest
+{
+    enum half = 2 * releasedPerKeep + 1; // a generation that takes three portions, the last one short
+    int[] released;
+    auto cache = new Cache(2 * half, (ref int v) nothrow { released ~= v; });
+    foreach (i; 0 .. 2 * half)
+        cache.keep(key(i), cast(int) i); // the first half goes to the older generation, the second fills the current
+    assert(released.length == 0);
+    cache.keep(key(2 * half), 0); // the older goes
+    assert(released.length == releasedPerKeep, "not a portion at the keep that let the generation go");
+    cache.keep(key(2 * half + 1), 0);
+    assert(released.length == 2 * releasedPerKeep, "not a portion at the next keep");
+    cache.keep(key(2 * half + 2), 0);
+    assert(released.length == half, "the last portion is what is left");
+    import std.algorithm : sort;
+    import std.range : iota;
+    import std.array : array;
+
+    assert(released.dup.sort.array == iota(half).array, "each value of the generation that went, once");
+    released = null;
+    foreach (i; 0 .. half - 3)
+        cache.keep(key(2 * half + 3 + i), 0); // the current is full again
+    cache.keep(key(10 * half), 0); // the older goes: a portion released
+    assert(released.length == releasedPerKeep);
+    cache.clear();
+    assert(released.length == 2 * half + 1, "clear releases what was waiting and what was kept, each once");
 }
 
 @("Generations: a hit in the older generation that can't be moved for want of memory stays there, kept and not released")
