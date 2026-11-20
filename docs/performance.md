@@ -103,3 +103,24 @@ node scripts/build.mjs bench <log> --bench index --against master
 
 The filter and the search don't change (within the noise). On a log of 1 GB the load takes
 about 80 ms more.
+
+## Frames of the painted table: `row-paint-d` before and after one pass a frame (2026-11-20)
+
+`scripts/utils/bench_ptable.d` (`node scripts/test.mjs --module scripts/utils/bench_ptable.d`): a table of
+1200×900 over a synthetic log of 200 000 rows, the log's columns, a measurer that walks the text
+(no Sciter: the drawing of the text is not in it), 30 rows on the screen. A unittest build, not
+optimized: only the comparison means something. The third round of 400 frames.
+
+- **Machine:** Apple M1 Pro, macOS; LDC 1.43.0.
+
+| Frame | before | after |
+|---|---|---|
+| a jump and a frame | 347 us | 347 us |
+| the wheel's glide (`wheel`, `tick`, `paint`) | 240 us, 51 rows read | 229 us, 30 rows read |
+| a scroll by pixels (`queueScroll`, `paint`) | 254 us, 31 rows read | 253 us, 31 rows read |
+| the same rows drawn again (`repaint`, `paint`: a hover) | — | 155 us |
+| two tables of one column host, A scrolled: a frame of A | 382 us, B reads 30 rows | 268 us, B reads none |
+
+Before, every `prepare` of a frame began a pass, so a tick and the paint after it read the rows
+twice, and the table that stood read and measured its rows on every frame of the other. A pass is
+a frame now, and a table whose window did not move gives the column host what it measured last.

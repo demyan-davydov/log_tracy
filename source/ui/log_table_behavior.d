@@ -395,7 +395,7 @@ final class LogTableBehavior : SciterEventHandler
             return usSince(started);
         }
 
-        void refresh() { _host.repaint(); } // the rows are read again at every frame: a frame is all it takes
+        void refresh() { _log.table.repaint(); } // the next frame reads the rows again
 
         void setWrap(bool bySciter)
         {

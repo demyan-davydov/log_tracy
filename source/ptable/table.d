@@ -135,6 +135,7 @@ final class Table
     private size_t _fitRounds; // the rounds the settling of the widths of the last layout took, 0 if it settled none (a statistic)
     private RowPicker _picker; // the rows picked and how the input picks them, the text selected, the press and the copy
     private ScrollMotion _motion; // the scrolls on the host's frames: a drag past the rows, the wheel's step, the coast
+    private bool _passOfTick; // the tick of this frame began the pass and read its rows: the paint that follows draws them
 
     this(TableModel model, ColumnHost host, TablePorts ports)
     {
@@ -215,9 +216,11 @@ final class Table
         invalidate();
     }
 
-    /// The table is to be painted again, nothing else changed (a flag of the host's painter)
+    /// The table is to be painted again, its rows read again (a flag of the host's painter, a color the model gives a row by the world
+    /// outside it): the next paint begins a pass of its own
     void repaint()
     {
+        _passOfTick = false;
         invalidate();
     }
 
@@ -316,10 +319,17 @@ final class Table
 
     // ---- what the table is made of ----
 
-    // Everything a row or a hit needs, brought up to date: what the store keeps, then the window on the rows
+    // A frame begins: the rows of the last pass are let go, the model is asked again for what this one needs. A pass is a frame: it
+    // begins at the paint, or at the tick of the frame that moves the rows (the paint then draws the rows the tick read); the hits
+    // between two frames read into the pass of the last one. A row the model changes in between comes with a change, which lets it go.
+    private void beginPass()
+    {
+        _store.cache.beginPass();
+    }
+
+    // Everything a row or a hit needs, brought up to date: what the store keeps, then the window on the rows. The rows read stay for the pass
     private void prepare()
     {
-        _store.cache.beginPass(); // the rows of the last pass are let go: the model is asked again for what this one needs
         _store.ensure();
         _viewport.height(_store.space.regions.rows.h);
         _viewport.count(_store.itemCount);
@@ -695,6 +705,9 @@ final class Table
             _frame.paintBlank(canvas); // nothing of the rows, nothing told: the place, the bars and the scroll stay as they were
             return;
         }
+        if (!_passOfTick)
+            beginPass();
+        _passOfTick = false;
         prepare();
         _viewport.applyPending(_store.fallbackHeight);
         layout();
@@ -1195,7 +1208,9 @@ final class Table
         if (step.pixels != 0)
         {
             // the rows move now, by all of it (not through the wheel's queue, cut to a screen): the mouse is over the new
-            // ones, a coast lands where it was aimed
+            // ones, a coast lands where it was aimed. The frame's pass begins here, the paint draws what it read
+            beginPass();
+            _passOfTick = true;
             prepare();
             _viewport.scrollBy(step.pixels, _store.fallbackHeight);
             layout();
@@ -1366,6 +1381,35 @@ unittest
     assert(stats.rowsOnScreen == 7, "100 / 16 rounded up");
     assert(stats.cachedRows == 7, "the pass has read the rows of the window");
     assert(stats.fetches >= 7, "the model was asked for them");
+}
+
+@("Table: a frame reads each row on the screen once, whether it scrolls on the frame of the host, by pixels or not at all")
+unittest
+{
+    auto f = make(1000);
+    f.table.events.needFrame = () {};
+    f.table.scrollTo(400); // numbers of three digits around: the widths stay, no row is laid out again for another width
+    f.table.paint(f.canvas);
+    // the rows read by a frame: those on the screen after it, and at most the one the move passed over to get there
+    void frame(scope void delegate() run, string what)
+    {
+        const before = f.table.stats.fetches;
+        run();
+        const stats = f.table.stats;
+        assert(stats.fetches - before <= stats.rowsOnScreen + 1, what);
+    }
+    double t = 0;
+    foreach (i; 0 .. 20)
+    {
+        if (i % 4 == 0)
+            f.table.wheel(i % 8 ? -40 : 40, t);
+        frame({ f.table.tick(t += 16); f.table.paint(f.canvas); }, "the wheel's glide: the tick read the rows of the frame, the paint draws them");
+    }
+    foreach (i; 0 .. 20)
+        frame({ f.table.queueScroll(i % 2 ? 7 : -5); f.table.paint(f.canvas); }, "a scroll by pixels");
+    const before = f.table.stats.fetches;
+    f.table.paint(f.canvas);
+    assert(f.table.stats.fetches - before == f.table.stats.rowsOnScreen, "a paint alone");
 }
 
 @("Table: the wheel moves the rows by the pixels at the next paint, up to a screen")

@@ -12,6 +12,7 @@ import sciter.api : sciterApi;
 import sciter.capi.api;
 import sciter.graphics : GfxCanvas = Canvas, TextLayout, rgba;
 import ui.look : FontSpec, TextLook;
+import ui.sciter_table.width_cache : WidthCache;
 
 import std.algorithm.comparison : max;
 import std.math : ceil, round;
@@ -29,6 +30,7 @@ private struct Generation
 {
     Arena arena;
     HashMap!(TextKey, TextLayout) layouts;
+    size_t bytes; // of the texts of the keys
 
     this(RCIAllocator allocator)
     {
@@ -42,6 +44,15 @@ private struct Generation
             layout.release();
         layouts.clear();
         arena.reset();
+        bytes = 0;
+    }
+
+    // Keeps `layout` by `key`, its text copied into the arena
+    void keep(TextKey key, TextLayout layout)
+    {
+        key.text = arena.copy(key.text);
+        bytes += key.text.length * wchar.sizeof;
+        layouts.set(key, layout);
     }
 }
 
@@ -52,8 +63,9 @@ final class SciterTextCache
     private HELEMENT _he;
     private Generation[2] _generations;
     private size_t _current;
-    private immutable(wchar)[][ulong] _styles; // by font, color and kind: made on a miss only
+    private immutable(wchar)[][ulong] _styles; // by font, color, kind and width (`styleKey`): made once, the misses after it allocate nothing for it
     size_t limit = 3000; /// layouts a generation keeps
+    size_t byteLimit = 8 * 1024 * 1024; /// bytes of the texts of the keys a generation keeps: a log's lines may be 64 KB each
     size_t made; /// layouts made so far
     private TextLook _look;
     private double[] _ascent, _advance;
@@ -87,8 +99,19 @@ final class SciterTextCache
         return _generations[0].layouts.length + _generations[1].layouts.length;
     }
 
-    // `white-space: nowrap` drops the trailing spaces of a text from its width: a piece to measure is `pre`
+    // The style of a layout, made once for its font, color, kind and width
     private immutable(wchar)[] styleOf(uint font, Color color, bool paragraph, bool measure, int width)
+    {
+        const key = styleKey(font, color, paragraph ? 2 : measure ? 1 : 0, width);
+        if (auto found = key in _styles)
+            return *found;
+        auto style = makeStyle(font, color, paragraph, measure, width);
+        _styles[key] = style;
+        return style;
+    }
+
+    // `white-space: nowrap` drops the trailing spaces of a text from its width: a piece to measure is `pre`
+    private immutable(wchar)[] makeStyle(uint font, Color color, bool paragraph, bool measure, int width)
     {
         import std.format : format;
 
@@ -129,11 +152,10 @@ final class SciterTextCache
         {
             auto layout = *old;
             before.layouts.remove(key);
-            key.text = now.arena.copy(key.text);
-            now.layouts.set(key, layout);
+            now.keep(key, layout);
             return layout;
         }
-        if (now.layouts.length >= limit)
+        if (now.layouts.length >= limit || now.bytes >= byteLimit)
         {
             before.releaseLayouts(); // the older generation goes, the current becomes the older
             _current = 1 - _current;
@@ -141,8 +163,7 @@ final class SciterTextCache
         }
         made++;
         auto layout = TextLayout.create(_he, key.text, styleOf(key.font, color, paragraph, false, width));
-        key.text = now.arena.copy(key.text);
-        now.layouts.set(key, layout);
+        now.keep(key, layout);
         return layout;
     }
 
@@ -213,8 +234,29 @@ final class SciterTextCache
         _advance = new double[look.fonts.length];
         _lineHeights = new double[look.fonts.length];
         _read = false;
+        _styles = null;
         release();
     }
+}
+
+/// The key of a style of `SciterTextCache`: the font, the color (its alpha is not in a style), the kind (0 a line, 1 a piece to measure,
+/// 2 a paragraph) and the width of a paragraph, one number
+ulong styleKey(uint font, Color color, uint kind, int width) pure nothrow @nogc @safe
+{
+    const rgb = (cast(ulong) color.r << 16) | (cast(ulong) color.g << 8) | color.b;
+    return (cast(ulong) (font & 0xFF) << 56) | (cast(ulong) (kind & 3) << 54) | (rgb << 22) | (cast(ulong) width & 0x3F_FFFF);
+}
+
+@("styleKey: another font, color, kind or width is another key, the alpha of the color is not in it")
+unittest
+{
+    const base = styleKey(1, Color(10, 20, 30, 255), 2, 640);
+    assert(styleKey(1, Color(10, 20, 30, 128), 2, 640) == base);
+    assert(styleKey(2, Color(10, 20, 30, 255), 2, 640) != base);
+    assert(styleKey(1, Color(10, 20, 31, 255), 2, 640) != base);
+    assert(styleKey(1, Color(10, 20, 30, 255), 0, 640) != base);
+    assert(styleKey(1, Color(10, 20, 30, 255), 2, 641) != base);
+    assert(styleKey(255, Color(255, 255, 255, 255), 3, 0x3F_FFFF) != styleKey(255, Color(255, 255, 255, 255), 3, 0x3F_FFFE));
 }
 
 // Printable ASCII: one unit, one glyph of the same width in a monospace font. Other text (a surrogate pair, a
@@ -231,14 +273,14 @@ private bool isPlain(const(wchar)[] text) pure nothrow @nogc @safe
 final class SciterMeasurer : TextMeasurer
 {
     private SciterTextCache _cache;
-    private double[wstring][] _widths;
+    private WidthCache _widths;
     /// Wrap the Payload by the text engine of Sciter (it knows scripts our wrap does not), not by the glyphs
     bool sciterWrap;
 
     this(SciterTextCache cache)
     {
         _cache = cache;
-        _widths = new double[wstring][cache.look.fonts.length];
+        _widths = new WidthCache(cache.look.fonts.length);
     }
 
     FontMetrics metrics(FontId font)
@@ -253,13 +295,11 @@ final class SciterMeasurer : TextMeasurer
             return 0;
         if (_cache.look.fonts[font].monospace && isPlain(text))
             return text.length * _cache.advance(font);
-        auto key = cast(wstring) text;
-        if (auto found = key in _widths[font])
-            return *found;
-        if (_widths[font].length > 20_000)
-            _widths[font] = null;
+        double known;
+        if (_widths.find(font, text, known))
+            return known;
         const result = _cache.measure(font, text);
-        _widths[font][text.idup] = result;
+        _widths.keep(font, text, result);
         return result;
     }
 
@@ -273,7 +313,7 @@ final class SciterMeasurer : TextMeasurer
     /// What was measured is dropped (the fonts changed)
     void forget()
     {
-        _widths = new double[wstring][_cache.look.fonts.length];
+        _widths.forget(_cache.look.fonts.length);
     }
 }
 
