@@ -98,6 +98,21 @@ class ScrollBarPainter
             canvas.fillRect(orientation == Orientation.vertical ? Rect(thumb.x + 2, thumb.y, thumb.w - 4, thumb.h)
                 : Rect(thumb.x, thumb.y + 2, thumb.w, thumb.h - 4), color);
     }
+
+    /// Draws the badge that turns following the end on and off (`ScrolledTable` places it under the bar): `on` while the table follows its
+    /// end, `wide` as in `paint`
+    void paintBadge(Canvas canvas, Rect area, bool on, double wide)
+    {
+        canvas.fillRect(area, on ? Color(60, 60, 60, 204) : Color(60, 60, 60, cast(ubyte)(77 + 64 * wide)));
+    }
+
+    /// Draws a vertical bar pinned to the end of a table that follows it together with its badge `badge` under it, so that a painter may join
+    /// them into one thumb; by default they are drawn apart, as `paint` and `paintBadge` (on) would
+    void paintPinned(Canvas canvas, Rect strip, Rect track, Rect thumb, Rect badge, double wide)
+    {
+        paint(canvas, strip, track, thumb, wide, Orientation.vertical);
+        paintBadge(canvas, badge, true, wide);
+    }
 }
 
 /// A scroll bar: a strip at one edge of a table, which the host places and feeds with the mouse
@@ -115,12 +130,30 @@ final class ScrollBar
     Events events;
     double width = 10; /// of the strip (its thickness: the width of a vertical bar, the height of a horizontal one)
     Orientation orientation; /// along the rows (default) or along the columns
+    /// The table follows its end (the host says so): a press on the thumb holds it where it is until the mouse goes `snapOff` up from the press,
+    /// so that a drag that only touches it does not turn the following off; pinned under a drag, the thumb is held from where the mouse is
+    bool pinned() const
+    {
+        return _pinned;
+    }
+
+    void pinned(bool on)
+    {
+        _pinned = on;
+        _heldAt = on && _thumb.dragging ? _lastAt : double.nan;
+        widen(); // a pinned bar stays wide: its thumb and the badge under it are one
+    }
+    /// How far up from the press a pinned thumb is pulled before it comes off, in dips. A trial value, to be tuned by eye
+    double snapOff = 24;
 
     private ScrollBarPainter _painter;
     private ScrollThumb _thumb;
     private ScrollMetrics _metrics;
     private bool _hover;
     private bool _enabled = true;
+    private bool _pinned;
+    private double _lastAt = 0; // where the mouse was on the track at the last press or move of a drag
+    private double _heldAt = double.nan; // a pinned thumb was pressed here, on the track: it stays until the mouse goes `snapOff` up from it
     private Transition _wide = Transition(wideningMs); // 1: wide under the mouse or held, 0: thin
 
     this(ScrollBarPainter painter = new ScrollBarPainter)
@@ -161,6 +194,7 @@ final class ScrollBar
             if (events.capture !is null)
                 events.capture(false);
         }
+        _heldAt = double.nan;
         _hover = false;
         _wide.set(0);
     }
@@ -179,10 +213,10 @@ final class ScrollBar
         widen();
     }
 
-    // Wide while the mouse is over it or its thumb is held: on the way there at the next frames
+    // Wide while the mouse is over it, its thumb is held or it is pinned: on the way there at the next frames
     private void widen()
     {
-        if (_wide.to(_hover || _thumb.dragging ? 1 : 0) && events.needFrame !is null)
+        if (_wide.to(_hover || _thumb.dragging || _pinned ? 1 : 0) && events.needFrame !is null)
             events.needFrame();
     }
 
@@ -223,7 +257,13 @@ final class ScrollBar
     /// does: true if it took it (the bar always does)
     bool mouseDown(double along, Rect track)
     {
-        scrollTo(_thumb.press(_metrics, length(track), onTrack(along, track)));
+        const at = onTrack(along, track), bar = _thumb.thumb(_metrics, length(track));
+        const fraction = _thumb.press(_metrics, length(track), at);
+        _lastAt = at;
+        if (_pinned && bar.visible && at >= bar.top && at <= bar.top + bar.size)
+            _heldAt = at; // the thumb is taken where it stands: no scroll yet
+        else
+            scrollTo(fraction);
         if (_thumb.dragging && events.capture !is null)
             events.capture(true);
         widen();
@@ -235,7 +275,15 @@ final class ScrollBar
     {
         if (!_thumb.dragging)
             return false;
-        scrollTo(_thumb.drag(_metrics, length(track), onTrack(along, track)));
+        const at = onTrack(along, track);
+        _lastAt = at;
+        if (!isNaN(_heldAt))
+        {
+            if (_heldAt - at <= snapOff)
+                return true; // held: not pulled far enough up
+            _heldAt = double.nan; // it comes off and follows the mouse from here
+        }
+        scrollTo(_thumb.drag(_metrics, length(track), at));
         return true;
     }
 
@@ -244,6 +292,7 @@ final class ScrollBar
         if (!_thumb.dragging)
             return false;
         _thumb.release();
+        _heldAt = double.nan;
         if (events.capture !is null)
             events.capture(false);
         widen();
@@ -251,8 +300,9 @@ final class ScrollBar
         return true;
     }
 
-    /// Draws the bar in `strip`, its track being `track`
-    void paint(Canvas canvas, Rect strip, Rect track)
+    /// Draws the bar in `strip`, its track being `track`, and the badge of following the end in `badge` (empty: none), on while the thumb is
+    /// pinned (the painter may join them then)
+    void paint(Canvas canvas, Rect strip, Rect track, Rect badge = Rect.init)
     {
         if (!shown)
             return;
@@ -261,7 +311,12 @@ final class ScrollBar
         if (thumb.visible)
             rect = orientation == Orientation.vertical ? Rect(strip.x, track.y + thumb.top, strip.w, thumb.size)
                 : Rect(track.x + thumb.top, strip.y, thumb.size, strip.h);
+        const hasBadge = badge.w > 0 && badge.h > 0;
+        if (hasBadge && _pinned && orientation == Orientation.vertical)
+            return _painter.paintPinned(canvas, strip, track, rect, badge, _wide.value);
         _painter.paint(canvas, strip, track, rect, _wide.value, orientation);
+        if (hasBadge)
+            _painter.paintBadge(canvas, badge, false, _wide.value);
     }
 }
 
@@ -392,4 +447,91 @@ unittest
     bar.enabled = true;
     bar.paint(null, strip, strip);
     assert(look.wide == 0, "turned off and on: thin");
+}
+
+@("ScrollBar: a pinned thumb stays under a drag until the mouse has gone `snapOff` up from the press, then follows it; down it stays")
+unittest
+{
+    auto bar = new ScrollBar;
+    double[] scrolled;
+    bar.events.scrollTo = (double fraction) { scrolled ~= fraction; };
+    bar.update(ScrollMetrics(1, 0.1)); // at the end: the thumb of 24 stands at 176 .. 200
+    bar.pinned = true;
+    const strip = Rect(0, 0, 12, 200);
+    assert(bar.mouseDown(190, strip) && bar.dragging && scrolled.length == 0, "the press on the thumb holds it: no scroll");
+    bar.mouseMove(250, strip);
+    bar.mouseMove(190 - bar.snapOff + 1, strip);
+    assert(scrolled.length == 0, "down, or up less than snapOff: it stays");
+    bar.mouseMove(190 - bar.snapOff - 1, strip);
+    assert(scrolled.length == 1 && scrolled[0] < 1, "past snapOff: it comes off, under the mouse");
+    bar.mouseMove(150, strip);
+    assert(scrolled.length == 2, "and follows the mouse from then");
+    bar.mouseUp();
+}
+
+@("ScrollBar: a pinned bar pressed beside its thumb scrolls there as any bar does")
+unittest
+{
+    auto bar = new ScrollBar;
+    double[] scrolled;
+    bar.events.scrollTo = (double fraction) { scrolled ~= fraction; };
+    bar.update(ScrollMetrics(1, 0.1));
+    bar.pinned = true;
+    const strip = Rect(0, 0, 12, 200);
+    bar.mouseDown(50, strip);
+    assert(scrolled.length == 1 && scrolled[0] < 0.5);
+}
+
+@("ScrollBar: a bar pinned under a drag holds its thumb from where the mouse is then")
+unittest
+{
+    auto bar = new ScrollBar;
+    double[] scrolled;
+    bar.events.scrollTo = (double fraction) { scrolled ~= fraction; };
+    bar.update(ScrollMetrics(1, 0.1));
+    const strip = Rect(0, 0, 12, 200);
+    bar.mouseDown(190, strip);
+    bar.mouseMove(230, strip); // below the track: the end
+    const before = scrolled.length;
+    bar.pinned = true; // the table began to follow its end under the drag
+    bar.mouseMove(230 - bar.snapOff + 1, strip);
+    assert(scrolled.length == before, "held from 230");
+    bar.mouseMove(230 - bar.snapOff - 1, strip);
+    assert(scrolled.length == before + 1, "pulled off");
+    bar.mouseUp();
+}
+
+@("ScrollBar: a pinned bar stays wide away from the mouse and narrows once it is not pinned")
+unittest
+{
+    static class Wide : ScrollBarPainter
+    {
+        double wide = -1;
+        override void paint(Canvas canvas, Rect strip, Rect track, Rect thumb, double wide, Orientation orientation = Orientation.vertical)
+        {
+            this.wide = wide;
+        }
+    }
+
+    auto look = new Wide;
+    auto bar = new ScrollBar(look);
+    bar.events.needFrame = () {};
+    bar.update(ScrollMetrics(1, 0.1));
+    const strip = Rect(0, 0, 12, 200);
+    bar.pinned = true;
+    foreach (now; [0.0, 100, 200, 300])
+        bar.tick(now);
+    bar.paint(null, strip, strip);
+    assert(look.wide == 1, "pinned: wide without the mouse");
+    bar.hover(true);
+    bar.hover(false);
+    foreach (now; [400.0, 500, 600, 700])
+        bar.tick(now);
+    bar.paint(null, strip, strip);
+    assert(look.wide == 1, "the mouse came and went: still wide");
+    bar.pinned = false;
+    foreach (now; [800.0, 900, 1000, 1100])
+        bar.tick(now);
+    bar.paint(null, strip, strip);
+    assert(look.wide == 0, "not pinned: thin");
 }

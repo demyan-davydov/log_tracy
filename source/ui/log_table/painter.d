@@ -50,18 +50,74 @@ final class LogScrollBarPainter : ScrollBarPainter
         return Color(ink.r, ink.g, ink.b, alpha);
     }
 
+    // The ink of the thumb `wide` of the way from at rest to wide
+    private Color thumbInk(double wide) const
+    {
+        return ink(cast(ubyte)(thumbAlpha + (strongAlpha - thumbAlpha) * wide));
+    }
+
+    // How thick the thumb is, `wide` of the way from thin to all of the strip
+    private static double thickness(double across, double wide)
+    {
+        return thin + (across - 2 * inset - thin) * wide;
+    }
+
+    // The thumb drawn: thin at the outer edge of the strip, widening inwards
+    private static Rect thumbRect(Rect strip, Rect thumb, double wide, bool vertical)
+    {
+        const across = vertical ? strip.w : strip.h; // the thickness of the strip
+        const thick = thickness(across, wide);
+        const at = across - inset - thick; // from the strip's start: the thin thumb keeps to the outer edge, it widens inwards
+        return vertical ? Rect(strip.x + at, thumb.y, thick, thumb.h) : Rect(thumb.x, strip.y + at, thumb.w, thick);
+    }
+
     override void paint(Canvas canvas, Rect strip, Rect track, Rect thumb, double wide, Orientation orientation)
     {
         if (thumb.w <= 0 || thumb.h <= 0)
             return;
         if (wide > 0)
             canvas.fillRect(track, ink(cast(ubyte)(trackAlpha * wide)));
-        const vertical = orientation == Orientation.vertical;
-        const across = vertical ? strip.w : strip.h; // the thickness of the strip
-        const thick = thin + (across - 2 * inset - thin) * wide;
-        const at = across - inset - thick; // from the strip's start: the thin thumb keeps to the outer edge, it widens inwards
-        const rect = vertical ? Rect(strip.x + at, thumb.y, thick, thumb.h) : Rect(thumb.x, strip.y + at, thumb.w, thick);
-        canvas.fillRoundRect(rect, thick / 2, ink(cast(ubyte)(thumbAlpha + (strongAlpha - thumbAlpha) * wide)));
+        const rect = thumbRect(strip, thumb, wide, orientation == Orientation.vertical);
+        canvas.fillRoundRect(rect, rect.w < rect.h ? rect.w / 2 : rect.h / 2, thumbInk(wide));
+    }
+
+    // The badge of following the end: the letter A in the ink of the thumb, lit with the bar; on, white on a plate of the frame of the current
+    // row as wide as the wide thumb. Trial values to be tuned by eye: the plate's radius, where the letter of the 8pt Courier New (about
+    // 10.7 dips, a glyph 0.6 em wide) stands
+    override void paintBadge(Canvas canvas, Rect area, bool on, double wide)
+    {
+        if (on)
+            canvas.fillRoundRect(plateOf(area), 3, _look.palette.currentRow);
+        letter(canvas, area, on ? _look.palette.row : thumbInk(wide));
+    }
+
+    // While the table follows its end the thumb is of the color of the plate and runs down into it: one thumb with the A at its bottom; thin at
+    // rest it widens into the plate, wide it is the plate's width
+    override void paintPinned(Canvas canvas, Rect strip, Rect track, Rect thumb, Rect badge, double wide)
+    {
+        const blue = _look.palette.currentRow;
+        if (thumb.w > 0 && thumb.h > 0)
+        {
+            if (wide > 0)
+                canvas.fillRect(track, ink(cast(ubyte)(trackAlpha * wide)));
+            const rect = thumbRect(strip, thumb, wide, true);
+            const joined = Rect(rect.x, rect.y, rect.w, badge.y + badge.h / 2 - rect.y); // down to the middle of the plate: no gap between them
+            canvas.fillRoundRect(joined, rect.w / 2, blue);
+        }
+        canvas.fillRoundRect(plateOf(badge), 3, blue);
+        letter(canvas, badge, _look.palette.row);
+    }
+
+    // The plate of the badge: as wide as the wide thumb, a dip off the ends of the square
+    private static Rect plateOf(Rect area)
+    {
+        return Rect(area.x + inset, area.y + 1, area.w - 2 * inset, area.h - 2);
+    }
+
+    private static void letter(Canvas canvas, Rect area, Color color)
+    {
+        enum double glyph = 6.4, below = 2.5;
+        canvas.drawText(LogFont.aux, "A"w, area.x + (area.w - glyph) / 2, area.y + area.h - below, color);
     }
 }
 

@@ -1,5 +1,6 @@
 //! A table with its scroll bars: one over the right edge of its body for the rows and, when the columns need more room than
-//! the table has, one over the bottom of its body for them. The bars take no room from the table: it draws them after it
+//! the table has, one over the bottom of its body for them, and under the bar at the right, where the bars meet, the badge that turns
+//! following the end on and off (only for a table that may follow it). The bars take no room from the table: it draws them after it
 //! and sends the mouse to the one it is over. The host talks to this as it would to a `Table`. See docs/stories/painted-table.md.
 module ptable.scrolledtable;
 
@@ -21,10 +22,15 @@ final class ScrolledTable
     ScrollBar across; /// at the bottom, only while the columns do not fit; null: the columns have no bar of their own
     /// What the host listens to: the events of the table and of the bars come out here
     TableEvents events;
+    /// How long the thumb dragged onto the badge stays there before the table follows its end, in milliseconds. A trial value, to be tuned by eye
+    double dwellMs = 500;
 
     private double _width = 0, _height = 0;
     private bool _acrossShown; // the columns did not fit at the last paint: the bar at the bottom is shown
     private bool _tablePressed; // a press of the table's own is on (a selection dragged): the bars do not widen under it
+    private bool _footPressed; // a press on the badge or in the corner is on: its release is nobody's
+    private bool _dwelling; // the thumb is dragged with the mouse on the badge: following is turned on after `dwellMs`
+    private double _dwellSince = double.nan; // the frame the dwell began at (the host's clock), NaN until the first frame after the mouse came
 
     this(Table table, ScrollBar bar, ScrollBar across = null)
     {
@@ -39,7 +45,11 @@ final class ScrolledTable
         table.events.cellClicked = (size_t item, size_t column) { if (events.cellClicked !is null) events.cellClicked(item, column); };
         table.events.capture = (bool on) { if (events.capture !is null) events.capture(on); };
         table.events.needFrame = () { if (events.needFrame !is null) events.needFrame(); };
-        table.events.followingEnd = (bool on) { if (events.followingEnd !is null) events.followingEnd(on); };
+        table.events.followingEnd = (bool on) {
+            bar.pinned = on; // told at the paint, before the bar is drawn: the badge and the thumb show it at once
+            if (events.followingEnd !is null)
+                events.followingEnd(on);
+        };
         table.events.scrolled = (ScrollMetrics m) { bar.update(m); if (events.scrolled !is null) events.scrolled(m); };
         table.events.scrolledX = (ScrollMetrics m) {
             if (across !is null)
@@ -95,7 +105,26 @@ final class ScrolledTable
 
     private Rect stripOf(Rect body) const
     {
-        return Rect(_width - bar.width, body.y, bar.width, max(0.0, body.h - belowHeight));
+        return Rect(_width - bar.width, body.y, bar.width, max(0.0, body.h - footHeight));
+    }
+
+    // Whether the badge of following the end is there: the table may follow and the bar at the right is there
+    private bool badgeShown() const
+    {
+        return table.mayFollowEnd && bar.shown;
+    }
+
+    // How much of the bottom of the right edge is not the bar's: the corner where the bars meet, or the badge (a square) under the bar
+    private double footHeight() const
+    {
+        return _acrossShown ? belowHeight : badgeShown ? bar.width : 0;
+    }
+
+    // The badge of following the end: under the bar at the right, the corner when the bar at the bottom is there
+    private Rect badgeOf(Rect body) const
+    {
+        const side = footHeight;
+        return Rect(_width - bar.width, body.y + body.h - side, bar.width, side);
     }
 
     // The strip of the bar at the bottom, over the bottom of the body, ending where the bar at the right begins; its track is all of it
@@ -133,20 +162,61 @@ final class ScrolledTable
     /// them wants the next frame
     bool tick(double timestampMs)
     {
-        bool more = table.tick(timestampMs);
+        bool more = dwellTick(timestampMs);
+        more = table.tick(timestampMs) || more;
         more = bar.tick(timestampMs) || more;
         if (across !is null)
             more = across.tick(timestampMs) || more;
         return more;
     }
 
+    // The thumb dragged with the mouse on the badge: the time is counted on the host's frames (there is no clock of its own); true while counting
+    private bool dwellTick(double timestampMs)
+    {
+        import std.math : isNaN;
+
+        if (!_dwelling)
+            return false;
+        if (!bar.dragging) // the bar ended the drag itself (it went: the rows fit): no mouseUp came
+        {
+            stopDwell();
+            return false;
+        }
+        if (isNaN(_dwellSince))
+            _dwellSince = timestampMs;
+        if (timestampMs - _dwellSince < dwellMs)
+            return true;
+        stopDwell();
+        table.setFollowingEnd(true);
+        return false;
+    }
+
+    // The mouse is (`on`) or is not on the badge while the thumb is dragged
+    private void dwell(bool on)
+    {
+        on = on && !table.isFollowingEnd;
+        if (on == _dwelling)
+            return;
+        stopDwell();
+        _dwelling = on;
+        if (on && events.needFrame !is null)
+            events.needFrame();
+    }
+
+    private void stopDwell()
+    {
+        _dwelling = false;
+        _dwellSince = double.nan;
+    }
+
     void paint(Canvas canvas)
     {
         table.paint(canvas);
         fitBelow(); // after the table: a column that grew to a text at this paint has the bar at once
-        bar.paint(canvas, strip, strip);
+        const body = table.bodyArea;
+        bar.paint(canvas, stripOf(body), stripOf(body), badgeShown ? badgeOf(body) : Rect.init);
         if (_acrossShown)
-            across.paint(canvas, belowStrip, belowStrip);
+            across.paint(canvas, belowOf(body), belowOf(body));
     }
 
     /// Whether the point is on a bar or in the corner where they meet
@@ -159,13 +229,13 @@ final class ScrolledTable
     private Places placesNow()
     {
         const body = table.bodyArea;
-        return Places(stripOf(body), belowOf(body), cornerOf(body), bar.shown, _acrossShown);
+        return Places(stripOf(body), belowOf(body), cornerOf(body), badgeOf(body), bar.shown, _acrossShown, badgeShown);
     }
 
     private static struct Places
     {
-        Rect strip, below, corner;
-        bool right, bottom; // the bar at the right, the one at the bottom are there
+        Rect strip, below, corner, badge;
+        bool right, bottom, hasBadge; // the bar at the right, the one at the bottom, the badge are there
 
         private static bool inside(Rect r, double x, double y)
         {
@@ -175,7 +245,8 @@ final class ScrolledTable
         bool onVertical(double x, double y) const { return right && inside(strip, x, y); }
         bool onBelow(double x, double y) const { return bottom && inside(below, x, y); }
         bool onCorner(double x, double y) const { return right && bottom && inside(corner, x, y); }
-        bool onBar(double x, double y) const { return onVertical(x, y) || onBelow(x, y) || onCorner(x, y); }
+        bool onBadge(double x, double y) const { return hasBadge && inside(badge, x, y); }
+        bool onBar(double x, double y) const { return onVertical(x, y) || onBelow(x, y) || onCorner(x, y) || onBadge(x, y); }
     }
 
     bool mouseDown(double x, double y, Pick mode = Pick.replace)
@@ -185,8 +256,17 @@ final class ScrolledTable
             return bar.mouseDown(y, at.strip);
         if (at.onBelow(x, y))
             return across.mouseDown(x, at.below);
+        if (at.onBadge(x, y))
+        {
+            _footPressed = true;
+            table.setFollowingEnd(!table.isFollowingEnd);
+            return true;
+        }
         if (at.onCorner(x, y))
+        {
+            _footPressed = true;
             return true; // the corner is nobody's: the press is taken, nothing happens
+        }
         _tablePressed = true; // until the release the mouse is the table's: no bar widens under it
         return table.mouseDown(x, y, mode);
     }
@@ -194,7 +274,10 @@ final class ScrolledTable
     bool mouseMove(double x, double y)
     {
         if (bar.dragging)
+        {
+            dwell(placesNow.onBadge(x, y));
             return bar.mouseMove(y, strip);
+        }
         if (across !is null && across.dragging)
             return across.mouseMove(x, belowStrip);
         return table.mouseMove(x, y);
@@ -202,10 +285,16 @@ final class ScrolledTable
 
     bool mouseUp(double x, double y)
     {
+        stopDwell();
         if (bar.dragging)
             return bar.mouseUp();
         if (across !is null && across.dragging)
             return across.mouseUp();
+        if (_footPressed)
+        {
+            _footPressed = false;
+            return true;
+        }
         _tablePressed = false;
         return table.mouseUp(x, y);
     }
@@ -214,6 +303,8 @@ final class ScrolledTable
     void cancelPress()
     {
         _tablePressed = false;
+        _footPressed = false;
+        stopDwell();
         table.cancelPress();
     }
 
@@ -222,7 +313,7 @@ final class ScrolledTable
     {
         const at = placesNow;
         table.hoverAt(at.onBar(x, y) ? double.nan : x, y);
-        bar.hover(!_tablePressed && at.onVertical(x, y));
+        bar.hover(!_tablePressed && (at.onVertical(x, y) || at.onBadge(x, y))); // the badge is lit with the bar
         if (across !is null)
             across.hover(!_tablePressed && at.onBelow(x, y));
     }
@@ -230,7 +321,7 @@ final class ScrolledTable
 
 version (unittest)
 {
-    import ptable.model : NumbersModel;
+    import ptable.model : ModelChange, NumbersModel;
     import ptable.painter : Painter, RecordingCanvas;
 }
 
@@ -493,4 +584,158 @@ unittest
     scrolled.paint(canvas);
     assert(!scrolled.bar.dragging && !captured, "the drag is over");
     assert(scrolled.mouseDown(405, 21 + 5) && scrolled.mouseUp(405, 21 + 5) && table.selected >= 0, "the edge is the rows' again");
+}
+
+@("ScrolledTable: a table that may follow its end has a badge under the bar: a press on it turns following on and off, the thumb is pinned meanwhile")
+unittest
+{
+    import ptable.scrollbar : ScrollBarPainter;
+
+    static class Look : ScrollBarPainter
+    {
+        Rect track, badge;
+        bool on;
+        override void paint(Canvas canvas, Rect strip, Rect track, Rect thumb, double wide, Orientation orientation = Orientation.vertical)
+        {
+            this.track = track;
+        }
+
+        override void paintBadge(Canvas canvas, Rect area, bool on, double wide)
+        {
+            badge = area;
+            this.on = on;
+        }
+    }
+
+    auto look = new Look;
+    auto table = new Table(new NumbersModel(1000), new ColumnHost, portsOf(new Painter));
+    table.followEnd(true);
+    auto scrolled = new ScrolledTable(table, new ScrollBar(look));
+    scrolled.resize(410, 121);
+    auto canvas = new RecordingCanvas;
+    scrolled.paint(canvas);
+    assert(look.badge == Rect(400, 111, 10, 10) && look.track == Rect(400, 21, 10, 90), "a square at the bottom of the strip, the track above it");
+    assert(!look.on && !table.isFollowingEnd && scrolled.onBar(405, 115));
+    table.select(3);
+    assert(scrolled.mouseDown(405, 115) && scrolled.mouseUp(405, 115) && table.selected == 3, "the press is the badge's, not the rows'");
+    scrolled.paint(canvas);
+    assert(table.isFollowingEnd && table.lastVisible.row == 999 && scrolled.bar.pinned && look.on, "on: at the end, the thumb pinned");
+    scrolled.mouseDown(405, 115);
+    scrolled.mouseUp(405, 115);
+    scrolled.paint(canvas);
+    assert(!table.isFollowingEnd && !scrolled.bar.pinned && !look.on, "off again");
+}
+
+@("ScrolledTable: no badge while there is nothing to scroll or the table may not follow")
+unittest
+{
+    auto canvas = new RecordingCanvas;
+    auto few = new Table(new NumbersModel(3), new ColumnHost, portsOf(new Painter));
+    few.followEnd(true);
+    auto fit = new ScrolledTable(few, new ScrollBar);
+    fit.resize(410, 121);
+    fit.paint(canvas);
+    assert(!fit.onBar(405, 115), "all the rows fit: no bar, no badge");
+    auto many = new ScrolledTable(new Table(new NumbersModel(1000), new ColumnHost, portsOf(new Painter)), new ScrollBar);
+    many.resize(410, 121);
+    many.paint(canvas);
+    assert(many.mouseDown(405, 115) && many.bar.dragging, "a table that may not follow: the bottom of the strip is the bar's");
+}
+
+@("ScrolledTable: with the bar at the bottom the badge is the corner where the bars meet")
+unittest
+{
+    auto layout = new ColumnLayout;
+    auto table = new Table(new NumbersModel(1000), new ColumnHost(layout), portsOf(new Painter));
+    table.followEnd(true);
+    auto scrolled = new ScrolledTable(table, new ScrollBar, new ScrollBar);
+    scrolled.resize(210, 121);
+    layout.setWidth("text", 400); // the columns do not fit
+    auto canvas = new RecordingCanvas;
+    scrolled.paint(canvas);
+    scrolled.mouseDown(205, 118);
+    scrolled.mouseUp(205, 118);
+    scrolled.paint(canvas);
+    assert(table.isFollowingEnd, "a press in the corner turns it on");
+}
+
+@("ScrolledTable: the thumb dragged onto the badge and held there for `dwellMs` turns following on; it stays held under the mouse")
+unittest
+{
+    auto table = new Table(new NumbersModel(1000), new ColumnHost, portsOf(new Painter));
+    table.followEnd(true);
+    auto scrolled = new ScrolledTable(table, new ScrollBar);
+    int frames;
+    scrolled.events.needFrame = () { ++frames; };
+    scrolled.resize(410, 121);
+    auto canvas = new RecordingCanvas;
+    scrolled.paint(canvas);
+    assert(scrolled.mouseDown(405, 21 + 5) && scrolled.bar.dragging, "the thumb is taken");
+    frames = 0;
+    scrolled.mouseMove(405, 115); // onto the badge
+    assert(frames > 0, "frames are asked for to count the time");
+    assert(scrolled.tick(0) && scrolled.tick(scrolled.dwellMs - 100));
+    scrolled.paint(canvas);
+    assert(!table.isFollowingEnd, "not yet");
+    scrolled.tick(scrolled.dwellMs + 10);
+    scrolled.paint(canvas);
+    assert(table.isFollowingEnd && scrolled.bar.pinned, "held long enough: on");
+    scrolled.mouseMove(405, 115 - 10);
+    scrolled.paint(canvas);
+    assert(table.isFollowingEnd, "a little up from there: still held");
+    scrolled.mouseUp(405, 105);
+    scrolled.paint(canvas);
+    assert(table.isFollowingEnd, "let go: it stays on");
+}
+
+@("ScrolledTable: the thumb that leaves the badge or is let go of before `dwellMs` does not turn following on")
+unittest
+{
+    auto table = new Table(new NumbersModel(1000), new ColumnHost, portsOf(new Painter));
+    table.followEnd(true);
+    auto scrolled = new ScrolledTable(table, new ScrollBar);
+    scrolled.events.needFrame = () {};
+    scrolled.resize(410, 121);
+    auto canvas = new RecordingCanvas;
+    scrolled.paint(canvas);
+    scrolled.mouseDown(405, 21 + 5);
+    scrolled.mouseMove(405, 115);
+    scrolled.tick(0);
+    scrolled.tick(scrolled.dwellMs - 100);
+    scrolled.mouseMove(405, 60); // away
+    scrolled.tick(scrolled.dwellMs + 100);
+    scrolled.paint(canvas);
+    assert(!table.isFollowingEnd, "it left the badge");
+    scrolled.mouseMove(405, 115); // back: the time starts over
+    scrolled.tick(1000);
+    scrolled.tick(1000 + scrolled.dwellMs - 100);
+    scrolled.paint(canvas);
+    assert(!table.isFollowingEnd, "counted from its return");
+    scrolled.mouseUp(405, 115);
+    scrolled.tick(3000);
+    scrolled.paint(canvas);
+    assert(!table.isFollowingEnd, "let go of before the time");
+}
+
+@("ScrolledTable: a dwell on the badge ends with the drag the bar ended itself (the rows fit now): following is not turned on")
+unittest
+{
+    auto model = new NumbersModel(1000);
+    auto table = new Table(model, new ColumnHost, portsOf(new Painter));
+    table.followEnd(true);
+    auto scrolled = new ScrolledTable(table, new ScrollBar);
+    scrolled.events.needFrame = () {};
+    scrolled.resize(410, 121);
+    auto canvas = new RecordingCanvas;
+    scrolled.paint(canvas);
+    scrolled.mouseDown(405, 21 + 5);
+    scrolled.mouseMove(405, 115);
+    scrolled.tick(0);
+    model.count = 3; // a new list that fits the window: the bar goes, its drag is over
+    model.tell(ModelChange(ModelChange.Kind.everything));
+    scrolled.paint(canvas);
+    assert(!scrolled.bar.dragging);
+    scrolled.tick(scrolled.dwellMs + 100);
+    scrolled.paint(canvas);
+    assert(!table.isFollowingEnd);
 }
