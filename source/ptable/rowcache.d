@@ -46,6 +46,7 @@ final class RowCache
         _grow = new RowGrow(&_spec);
         _reader = new RowReader(model, &_spec, _wrap);
         _geometry = new RowGeometry(_reader, &_spec, source);
+        _geometry.floor = &fallbackHeight;
         _window = new RowWindow(_reader, _geometry, source);
     }
 
@@ -94,8 +95,10 @@ final class RowCache
         // has any): what is known of the rows stays
         const keeps = _spec.flexDef < _spec.columns.length && !_spec.columns[_spec.flexDef].wraps() && (width > 0) == (_spec.flexWidth > 0);
         _spec.flexWidth = width;
-        if (!keeps)
-            clear();
+        if (keeps)
+            return;
+        _geometry.markStale(); // the heights known are estimates now: a sum over all the rows does not measure them again
+        _window.clear();
     }
 
     /// Gives all the memory back to the source (the rows are none after it and may be asked for again)
@@ -180,6 +183,12 @@ final class RowCache
     }
 
     /// The height of the item `index`, as it is known without its content: from the room the rows near the window take
+    /// The height of the row `index` as known, though measured at another width of the flex column (`RowGeometry.estimate`)
+    double estimateOf(size_t index)
+    {
+        return _geometry.estimate(index).height;
+    }
+
     double heightOf(size_t index)
     {
         return _geometry.of(index).height;

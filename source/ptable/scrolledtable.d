@@ -46,20 +46,12 @@ final class ScrolledTable
             if (events.scrolledX !is null)
                 events.scrolledX(m);
         };
-        bar.events.scrollTo = (double position) {
-            // the bar speaks in items and a part of one: the part is that much of the height of that item
-            import std.math : floor;
-
-            auto at = table.firstVisible;
-            at.row = cast(size_t) floor(position);
-            at.dy = -(position - at.row) * table.rowHeight(at.row);
-            table.scrollToPosition(at);
-        };
+        bar.events.scrollTo = (double fraction) { table.scrollToFraction(fraction); };
         bar.events.capture = (bool on) { if (events.capture !is null) events.capture(on); };
         bar.events.invalidate = () { if (events.invalidate !is null) events.invalidate(); };
         if (across !is null)
         {
-            across.events.scrollTo = (double position) { table.scrollXBy(position - table.scrollMetricsX().position); };
+            across.events.scrollTo = (double fraction) { table.scrollToFractionX(fraction); };
             across.events.capture = (bool on) { if (events.capture !is null) events.capture(on); };
             across.events.invalidate = () { if (events.invalidate !is null) events.invalidate(); };
         }
@@ -111,8 +103,7 @@ final class ScrolledTable
     {
         if (across is null)
             return false;
-        const m = table.scrollMetricsX();
-        const need = m.total > m.visible;
+        const need = table.scrollMetricsX().shown < 1;
         if (need == _acrossShown)
             return false;
         _acrossShown = need;
@@ -165,7 +156,12 @@ final class ScrolledTable
     bool mouseDown(double x, double y, Pick mode = Pick.replace)
     {
         if (onVertical(x, y))
-            return bar.mouseDown(y, track);
+        {
+            const took = bar.mouseDown(y, track);
+            if (bar.dragging)
+                table.holdScale(true); // the scale of the bar does not change under the drag
+            return took;
+        }
         if (onBelow(x, y))
             return across.mouseDown(x, belowStrip);
         if (onCorner(x, y))
@@ -185,7 +181,10 @@ final class ScrolledTable
     bool mouseUp(double x, double y)
     {
         if (bar.dragging)
+        {
+            table.holdScale(false);
             return bar.mouseUp();
+        }
         if (across !is null && across.dragging)
             return across.mouseUp();
         return table.mouseUp(x, y);
@@ -216,7 +215,7 @@ unittest
     scrolled.resize(410, 121);
     auto canvas = new RecordingCanvas;
     scrolled.paint(canvas); // the table paints, tells its metrics, the bar paints the thumb
-    assert(table.scrollMetrics.total == 1000);
+    assert(table.scrollMetrics.shown > 0 && table.scrollMetrics.shown < 0.01, "a few rows of 1000 in view");
     // the strip is x 400..410; a press at the middle of the track jumps the thumb there
     assert(scrolled.mouseDown(405, 21 + 50));
     assert(scrolled.bar.dragging && table.position.first > 300, "the table scrolled to about the middle");
@@ -288,10 +287,10 @@ unittest
     assert(table.rowsArea.h == 100 - 10 && scrolled.onBar(100, 118) && !scrolled.onBar(100, 50), "the bar takes its height from the table");
     assert(scrolled.across.dragging == false);
     // a press at the middle of the strip jumps the columns about to the middle
-    assert(scrolled.mouseDown(100, 118) && scrolled.across.dragging && table.scrollMetricsX().position > 50);
+    assert(scrolled.mouseDown(100, 118) && scrolled.across.dragging && layout.scrollX > 50);
     scrolled.mouseMove(150, 118);
     scrolled.mouseUp(150, 118);
-    assert(!scrolled.across.dragging && table.scrollMetricsX().position > 100, "dragged on");
+    assert(!scrolled.across.dragging && layout.scrollX > 100, "dragged on");
     layout.setWidth("text", 100); // fit again
     scrolled.paint(canvas);
     scrolled.paint(canvas);

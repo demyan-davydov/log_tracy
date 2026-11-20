@@ -1,23 +1,31 @@
 //! A scroll bar of the log table, an optional layer above it: the thumb's geometry, a press and a drag
-//! of the mouse turned into a position, and the drawing through a painter of its own (`ScrollBar`), and
+//! of the mouse turned into a fraction, and the drawing through a painter of its own (`ScrollBar`), and
 //! (`ScrolledTable`, in its own module, puts the table together with it). The table and the viewport know none of it: they give
-//! `ScrollMetrics` and take `scrollToPosition`; a host may use this bar or connect its own (a native one)
+//! `ScrollMetrics` and take `scrollToFraction`; a host may use this bar or connect its own (a native one)
 //! to the same two. Pure. See docs/stories/painted-table.md.
 module ptable.scrollbar;
 
 import ptable.ports;
 import ptable.rowpicks : Pick;
-import ptable.rowlayout : Thumb, rowAtThumb, thumbOf;
 import ptable.viewport : ScrollMetrics;
 
 import std.algorithm.comparison : max, min;
 import std.math : isNaN;
 
-/// The thumb of a bar on a track: where it stands and what a press or a drag of the mouse scrolls to
+/// The thumb of a bar on a track
+struct Thumb
+{
+    bool visible;
+    double top = 0, size = 0;
+}
+
+/// The thumb of a bar on a track: where it stands and what a press or a drag of the mouse scrolls to. From a press to
+/// the release the thumb keeps the size it had: the rows change under a drag (taller, more of them), the thumb stays under
+/// the mouse
 struct ScrollThumb
 {
     double minSize = 24; /// the least size of the thumb
-    private double _grab = 0;
+    private double _grab = 0, _size = 0;
     private bool _dragging;
 
     /// Whether a drag is on
@@ -26,34 +34,37 @@ struct ScrollThumb
         return _dragging;
     }
 
-    /// Where the thumb stands on a track `track` long for the metrics: not visible if all the items are on the screen
+    /// Where the thumb stands on a track `track` long for the metrics: not visible if there is nothing to scroll
     Thumb thumb(ScrollMetrics metrics, double track) const pure nothrow @nogc @safe
     {
-        const first = cast(size_t) metrics.position;
-        return thumbOf(first, metrics.position - first, 1, metrics.total, track, metrics.visible, minSize);
+        if (!(metrics.shown < 1) || !(track > 0))
+            return Thumb.init;
+        const size = _dragging ? _size : min(track, max(minSize, track * metrics.shown));
+        return Thumb(true, (track - size) * max(0.0, min(1.0, metrics.fraction)), size);
     }
 
     /// A press at `y` of the track: a press on the thumb grabs it where it was pressed, a press beside it
-    /// takes the middle of the thumb there. Returns the position (an item and a fraction) to scroll to, NaN
-    /// if there is nothing to scroll.
+    /// takes the middle of the thumb there. Returns the fraction to scroll to, NaN if there is nothing to scroll.
     double press(ScrollMetrics metrics, double track, double y) pure nothrow @nogc @safe
     {
         const bar = thumb(metrics, track);
         if (!bar.visible)
             return double.nan;
         _grab = y < bar.top || y > bar.top + bar.size ? bar.size / 2 : y - bar.top;
+        _size = bar.size;
         _dragging = true;
         return drag(metrics, track, y);
     }
 
-    /// The mouse is at `y` of the track while the thumb is dragged: the position to scroll to, NaN if not dragging
+    /// The mouse is at `y` of the track while the thumb is dragged: the fraction to scroll to, NaN if not dragging
     double drag(ScrollMetrics metrics, double track, double y) const pure nothrow @nogc @safe
     {
-        const bar = thumb(metrics, track);
-        if (!_dragging || !bar.visible)
+        if (!_dragging || !(metrics.shown < 1))
             return double.nan;
-        const top = max(0.0, min(track - bar.size, y - _grab));
-        return rowAtThumb(top, track, bar.size, metrics.total, metrics.visible);
+        const room = track - _size;
+        if (!(room > 0))
+            return 0;
+        return max(0.0, min(1.0, (y - _grab) / room));
     }
 
     void release() pure nothrow @nogc @safe
@@ -96,7 +107,7 @@ final class ScrollBar
     /// What the bar tells: the position to scroll to, the mouse to capture, a paint again
     struct Events
     {
-        void delegate(double position) scrollTo;
+        void delegate(double fraction) scrollTo; /// 0 .. 1
         void delegate(bool on) capture;
         void delegate() invalidate;
     }
@@ -140,10 +151,10 @@ final class ScrollBar
             events.invalidate();
     }
 
-    private void scrollTo(double position)
+    private void scrollTo(double fraction)
     {
-        if (!isNaN(position) && events.scrollTo !is null)
-            events.scrollTo(position);
+        if (!isNaN(fraction) && events.scrollTo !is null)
+            events.scrollTo(fraction);
     }
 
     // Where `along` (y of a vertical bar, x of a horizontal one) is on the track, and how long the track is
@@ -205,36 +216,48 @@ final class ScrollBar
     }
 }
 
-@("ScrollThumb: the thumb is as long as the part on the screen, at least the least, and stands by the position")
+@("ScrollThumb: the thumb is as long as the part in view, at least the least, and stands by the fraction")
 unittest
 {
     ScrollThumb bar;
-    const top = bar.thumb(ScrollMetrics(1000, 10, 0), 200);
-    assert(top.visible && top.top == 0 && top.size == 24, "10 of 1000 of 200 is 2: the least");
-    const end = bar.thumb(ScrollMetrics(1000, 10, 990), 200);
-    assert(end.top == 200 - 24, "the last screen: at the bottom");
-    assert(!bar.thumb(ScrollMetrics(5, 10, 0), 200).visible, "all on the screen: no thumb");
+    const top = bar.thumb(ScrollMetrics(0, 0.01), 200);
+    assert(top.visible && top.top == 0 && top.size == 24, "1% of 200 is 2: the least");
+    assert(bar.thumb(ScrollMetrics(1, 0.01), 200).top == 200 - 24, "the end: at the bottom");
+    assert(bar.thumb(ScrollMetrics(0.5, 0.25), 200) == Thumb(true, 75, 50));
+    assert(bar.thumb(ScrollMetrics(0.5, 0.2501), 200).size - 50 < 0.1, "a part in view a little larger: a thumb a little longer, no step");
+    assert(!bar.thumb(ScrollMetrics(0, 1), 200).visible, "all in view: no thumb");
 }
 
-@("ScrollThumb: a press on the thumb grabs it, a press beside takes its middle, a drag moves the position")
+@("ScrollThumb: a press on the thumb grabs it, a press beside takes its middle, a drag moves the fraction; the end of the track is 1")
 unittest
 {
     ScrollThumb bar;
-    const metrics = ScrollMetrics(1000, 10, 0);
+    const metrics = ScrollMetrics(0, 0.01);
     const track = 200.0;
     assert(bar.press(metrics, track, 10) == 0 && bar.dragging);
-    const pos = bar.drag(metrics, track, 110);
-    assert(pos > 540 && pos < 580, "about 57% of 990");
+    assert(bar.drag(metrics, track, 98) == 0.5, "88 of 176");
+    assert(bar.drag(metrics, track, 500) == 1 && bar.drag(metrics, track, -50) == 0, "past the track: the ends");
     bar.release();
     assert(!bar.dragging && isNaN(bar.drag(metrics, track, 110)), "NaN after release");
-    const jump = bar.press(metrics, track, 100);
-    assert(jump > 480 && jump < 510, "the thumb's top at 88 of 176: about 50%");
+    assert(bar.press(metrics, track, 100) == 0.5, "the thumb's middle at 100: its top at 88 of 176");
 }
 
-@("ScrollThumb: nothing to scroll gives no position and starts no drag")
+@("ScrollThumb: the thumb keeps its size from the press to the release while what is in view changes")
 unittest
 {
     ScrollThumb bar;
-    assert(isNaN(bar.press(ScrollMetrics(3, 10, 0), 200, 5)) && !bar.dragging);
-    assert(isNaN(bar.drag(ScrollMetrics(1000, 10, 0), 200, 5)), "not dragging");
+    const track = 200.0;
+    bar.press(ScrollMetrics(0, 0.25), track, 10); // a thumb of 50: 150 to run
+    assert(bar.drag(ScrollMetrics(0.2, 0.5), track, 85) == 0.5, "by the size at the press: 75 of 150");
+    assert(bar.thumb(ScrollMetrics(0.5, 0.5), track) == Thumb(true, 75, 50), "drawn at the mouse, as long as at the press");
+    bar.release();
+    assert(bar.thumb(ScrollMetrics(0.5, 0.5), track).size == 100, "released: by what is in view");
+}
+
+@("ScrollThumb: nothing to scroll gives no fraction and starts no drag")
+unittest
+{
+    ScrollThumb bar;
+    assert(isNaN(bar.press(ScrollMetrics(0, 1), 200, 5)) && !bar.dragging);
+    assert(isNaN(bar.drag(ScrollMetrics(0, 0.01), 200, 5)), "not dragging");
 }

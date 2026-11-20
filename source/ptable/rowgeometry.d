@@ -22,6 +22,7 @@ struct RowGeom
     double height = 0; /// with the margin
     double margin = 0; /// above the row, part of `height`
     ulong changed; /// which heads differ from the row's above (`RowGroups.changes`)
+    bool stale; /// measured at another width of the flex column: an estimate (`RowGeometry.estimate`), measured again when asked
 }
 
 final class RowGeometry
@@ -30,6 +31,10 @@ final class RowGeometry
     private const(RowSpec)* _spec;
     private RowGeom[] _ring; // [item & (length - 1)]: the length is a power of two
     private Arena _probe, _above; // where a row and the row above it are read to be measured
+
+    /// The least height of a row (an empty one, as the wanted columns make it): no row is lower, whatever a column measures, so a
+    /// scroll bar may count on it (`ptable.scrollscale`). Null: no least
+    double delegate() floor;
 
     private enum size_t minCapacity = 64; // the least the ring has: rows
 
@@ -44,7 +49,7 @@ final class RowGeometry
     /// The window shows `rowsInSight` rows: the ring is four times that (the window and a reserve of a window above and a
     /// window below), at least `minCapacity`, a power of two. It grows at once, and shrinks only when four times less would
     /// do: a window of a size at the edge of a power of two (one row more or less with the scroll) does not make it anew
-    /// every frame. A ring made anew is empty.
+    /// every frame. A ring made anew keeps the rows known (a list growing row by row is not measured again at each size).
     void fit(size_t rowsInSight)
     {
         size_t capacity = 1;
@@ -53,7 +58,11 @@ final class RowGeometry
             capacity *= 2;
         if (capacity == _ring.length || (capacity < _ring.length && capacity * 4 > _ring.length))
             return;
-        _ring = new RowGeom[capacity];
+        auto ring = new RowGeom[capacity];
+        foreach (ref geom; _ring)
+            if (geom.tag != size_t.max)
+                ring[geom.tag & (capacity - 1)] = geom; // of two rows at one place in a smaller ring, one stays
+        _ring = ring;
     }
 
     /// The room of the item `index`, measured if it is not known
@@ -62,11 +71,33 @@ final class RowGeometry
         if (_ring.length == 0)
             fit(0);
         auto at = index & (_ring.length - 1);
-        if (_ring[at].tag == index)
+        if (_ring[at].tag == index && !_ring[at].stale)
             return _ring[at];
         const geom = measure(index);
         _ring[at] = geom;
         return geom;
+    }
+
+    /// The room of the item `index` as known, though measured at another width (`markStale`): what a sum over many rows
+    /// can do with; measured if it is not known at all
+    RowGeom estimate(size_t index)
+    {
+        if (_ring.length > 0)
+        {
+            const at = index & (_ring.length - 1);
+            if (_ring[at].tag == index)
+                return _ring[at];
+        }
+        return of(index);
+    }
+
+    /// The rows known were measured at another width: they are estimates now, measured again when their room is asked
+    /// (`of`), not when their estimate is
+    void markStale()
+    {
+        foreach (ref geom; _ring)
+            if (geom.tag != size_t.max)
+                geom.stale = true;
     }
 
     /// Forgets every row
@@ -103,7 +134,7 @@ final class RowGeometry
         geom.tag = index;
         geom.valid = e.valid;
         geom.kind = e.data.kind;
-        geom.height = e.height;
+        geom.height = floor !is null ? max(e.height, floor()) : e.height;
         if (!e.valid)
             return geom;
         if (_spec.groups.grouping(_spec.geometry.groupHeight) && index > 0)
@@ -143,7 +174,7 @@ unittest
     cache.fit(10);
     assert(cache.heightOf(5) == 16 && model.reads.get(5, 0) == 1, "the same window: the ring stays");
     cache.fit(100);
-    assert(cache.heightOf(5) == 16 && model.reads.get(5, 0) == 2, "another size of the window: made again, empty");
+    assert(cache.heightOf(5) == 16 && model.reads.get(5, 0) == 1, "another size of the window: the rows known move into the new ring");
 }
 
 @("RowGeometry: the ring has no fixed limit: four windows of rows, at least the least; a far row takes the place of its neighbor")
@@ -203,5 +234,55 @@ unittest
     assert(model.reads.get(5, 0) == 1);
     cache.fit(1000); // grows at once
     cache.heightOf(5);
-    assert(model.reads.get(5, 0) == 2, "a ring made anew is empty");
+    assert(model.reads.get(5, 0) == 1, "a ring made anew keeps the rows known");
+}
+
+@("RowGeometry: no row is lower than an empty one, though a column measures a filled cell lower: the scroll bar counts on it")
+unittest
+{
+    import ptable.column : CellInput, Measured, TableColumn;
+    import ptable.layout : ColumnDef;
+
+    // empty: 40 high; filled: 5
+    static final class Shrinking : TableColumn
+    {
+        this()
+        {
+            super(ColumnDef("time", "Time"));
+        }
+
+        override Measured measure(ref const CellInput cell, double width, bool widths)
+        {
+            return Measured(10, 10, cell.data is null ? 40 : 5);
+        }
+    }
+
+    auto model = new DatedModel(100, 10);
+    model.columns()[0] = new Shrinking;
+    auto cache = new RowCache(model, new ColumnLayout);
+    TableGeometry geometry;
+    cache.configure(model.columns(), 1, geometry);
+    cache.setFlexWidth(200);
+    assert(cache.fallbackHeight == 40);
+    assert(cache.heightOf(5) == 40, "as high as an empty row, not 16");
+}
+
+@("RowGeometry: a new width of the flex column keeps the heights known as estimates: a row is measured again when its height is asked, not its estimate")
+unittest
+{
+    auto model = new DatedModel(100, 10);
+    auto cache = new RowCache(model, new ColumnLayout);
+    TableGeometry geometry;
+    cache.configure(model.columns(), 1, geometry);
+    cache.setFlexWidth(200);
+    const wide = cache.heightOf(5);
+    import ptable.testing : BoxColumn;
+
+    cache.setFlexWidth(20);
+    (cast(BoxColumn) model.columns()[1]).line = 30; // the text wraps to more lines at that width
+    assert(cache.estimateOf(5) == wide && model.reads.get(5, 0) == 1, "the estimate is the height it had: nothing read");
+    const narrow = cache.heightOf(5);
+    assert(narrow > wide && model.reads.get(5, 0) == 2, "its height is measured again");
+    assert(cache.estimateOf(5) == narrow, "measured: the estimate is the height");
+    assert(cache.estimateOf(7) > wide && model.reads.get(7, 0) == 1, "a row not known is measured for its estimate");
 }

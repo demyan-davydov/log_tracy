@@ -1,6 +1,6 @@
 //! The layout of the rows a table draws itself (prototype of docs/experiments/2026-11-19-painted-rows-d.md),
-//! the D port of a script prototype (removed): the rows on a screen from (first, offset), scrolling by pixels, the
-//! thumb of the scrollbar. Pure: no Sciter; the heights come in as delegates.
+//! the D port of a script prototype (removed): the rows on a screen from (first, offset), scrolling by pixels. Pure: no
+//! Sciter; the heights come in as delegates.
 module ptable.rowlayout;
 
 /// The height of a row of `lines` lines: `line` px a line, `pad` above and below
@@ -109,39 +109,6 @@ ViewState scrollBy(ViewState state, double pixels, double viewHeight, size_t tot
         state.offset += pixels;
     settle(state, viewHeight, total, heightOf);
     return state;
-}
-
-/// The thumb of a scrollbar of a `track` px long
-struct Thumb
-{
-    bool visible;
-    double top = 0, size = 0;
-}
-
-/// The thumb for `visible` rows of `total`, by the first row and the part of it scrolled
-/// away; at the bottom of the track when the last row is the first to leave the screen.
-/// `min` is the least size. Not visible when all the rows are on the screen.
-Thumb thumbOf(size_t first, double offset, double firstHeight, size_t total, double track, size_t visible, double min_)
-    pure nothrow @nogc @safe
-{
-    import std.algorithm.comparison : max, min;
-
-    if (!(total > visible) || !(track > 0))
-        return Thumb.init;
-    const size = min(track, max(min_, track * visible / total));
-    const position = max(0.0, min(1.0, (first + offset / max(1.0, firstHeight)) / (total - visible)));
-    return Thumb(true, (track - size) * position, size);
-}
-
-/// The row (a number with a fraction) at the top when the thumb stands at `top`
-double rowAtThumb(double top, double track, double size, size_t total, size_t visible) pure nothrow @nogc @safe
-{
-    import std.algorithm.comparison : max, min;
-
-    const room = track - size;
-    if (!(room > 0))
-        return 0;
-    return max(0.0, min(1.0, top / room)) * (total - visible);
 }
 
 version (unittest)
@@ -253,32 +220,4 @@ unittest
 {
     const state = scrollBy(ViewState(50, 40), -100_000, 100, 1000, heights(20), 20);
     assert(state == ViewState(0, 0), "the offset the row had is not kept when the first row was clamped");
-}
-
-@("thumbOf: nothing to scroll has no thumb")
-unittest
-{
-    assert(!thumbOf(0, 0, 20, 10, 200, 10, 24).visible);
-    assert(!thumbOf(0, 0, 20, 50, 0, 10, 24).visible, "no track");
-}
-
-@("thumbOf: the size by the visible part, the place by the first row")
-unittest
-{
-    const top = thumbOf(0, 0, 20, 100, 200, 10, 24);
-    assert(top.visible && top.top == 0);
-    assert(top.size == 24, "10 of 100 of 200 px is 20, the least is 24");
-    const end = thumbOf(90, 0, 20, 100, 200, 10, 24);
-    assert(end.top == 200 - 24, "the last screen: the thumb is at the bottom");
-    const middle = thumbOf(45, 10, 20, 100, 200, 10, 24);
-    assert(middle.top > 0 && middle.top < end.top);
-}
-
-@("rowAtThumb: the thumb at the ends is the first row and the last screen")
-unittest
-{
-    assert(rowAtThumb(0, 200, 24, 100, 10) == 0);
-    assert(rowAtThumb(176, 200, 24, 100, 10) == 90);
-    assert(rowAtThumb(500, 200, 24, 100, 10) == 90, "past the track: the end");
-    assert(rowAtThumb(10, 24, 24, 100, 10) == 0, "no room to move");
 }

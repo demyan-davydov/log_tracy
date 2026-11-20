@@ -76,8 +76,8 @@ struct TableEvents
     void delegate(bool on) capture;
     /// What a scroll bar shows changed (a scroll, another count): the host's bar is told it after a paint
     void delegate(ScrollMetrics metrics) scrolled;
-    /// What a horizontal scroll bar shows changed (the columns' widths, a scroll sideways), in pixels: `total` is what the scrolling
-    /// columns need, `visible` the room they have, `position` how far they are scrolled. After a paint, like `scrolled`.
+    /// What a horizontal scroll bar shows changed (the columns' widths, a scroll sideways): `shown` is the room the scrolling columns have
+    /// of what they need, `fraction` how far they are scrolled of how far they can be. After a paint, like `scrolled`.
     void delegate(ScrollMetrics metrics) scrolledX;
     /// The table wants a frame to go on (a drag scrolls the rows): the host calls `tick` with the time of the next
     /// frame and again for as long as `tick` says it wants one. Null: the host gives no frames, and a drag past the
@@ -134,7 +134,7 @@ final class Table
         _store = new RowStore(model, host, ports, &measureWindow);
         _picker = new RowPicker(new TableSelection(new RowCopier(model, _store.columns, ports.copyFormat), ports.clipboard),
             PickPorts(&isVirtualItem, &rowAtHeight, &showRow, &toldRow, &invalidate));
-        _viewport = new RowViewport(&_store.heightOf);
+        _viewport = new RowViewport(&_store.heightOf, &_store.estimateOf);
         _motion = new ScrollMotion;
         auto rows = new RowView(RowEnv(_store.columns, _store.space));
         _frame = new FramePainter(ports.painter, _store, rows, _store.space);
@@ -315,8 +315,10 @@ final class Table
         _store.ensure();
         _viewport.height(_store.space.regions.rows.h);
         _viewport.count(_store.itemCount);
+        _viewport.minHeight(_store.fallbackHeight); // no row is lower than an empty one
         _viewport.restorePlace(); // the heights are known now
-        _store.cache.fit(_viewport.slots.length); // the room of the rows near the window is kept for that many rows and a reserve
+        // the room of the rows near the window is kept for that many rows and a reserve; a list scrolled by pixels, for all of its rows
+        _store.cache.fit(_viewport.exact ? max(_viewport.slots.length, _store.itemCount) : _viewport.slots.length);
     }
 
     private ref const(Placements) places()
@@ -427,11 +429,33 @@ final class Table
         _store.layout.setScrollX(max(0.0, min(position, places().maxScrollX)));
     }
 
-    /// What a horizontal scroll bar of the host shows, in pixels (see `TableEvents.scrolledX`)
+    /// What a horizontal scroll bar of the host shows (see `TableEvents.scrolledX`)
     ScrollMetrics scrollMetricsX()
     {
         _store.ensure();
         return metricsOf(places());
+    }
+
+    /// The columns stand where a horizontal bar at `fraction` (0 .. 1) says: that much of how far they can be scrolled
+    void scrollToFractionX(double fraction)
+    {
+        _store.ensure();
+        setScrollX(fraction * places().maxScrollX);
+    }
+
+    /// A thumb of the rows is pressed (`on`) or released: the scale of the bar stays as it was at the press (`RowViewport.holdScale`)
+    void holdScale(bool on)
+    {
+        _viewport.holdScale(on);
+    }
+
+    /// The rows stand where a bar at `fraction` (0 .. 1) says (`RowViewport.scrollToFraction`): 0 the start, 1 the end
+    void scrollToFraction(double fraction)
+    {
+        _motion.stop();
+        prepare();
+        _viewport.scrollToFraction(fraction);
+        invalidate();
     }
 
     /// The item `index` is the first row
@@ -462,8 +486,8 @@ final class Table
         return _store.space.regions.body;
     }
 
-    /// What a scroll bar of the host shows (in items); `events.scrolled` tells when it changes
-    ScrollMetrics scrollMetrics() const
+    /// What a scroll bar of the host shows; `events.scrolled` tells when it changes
+    ScrollMetrics scrollMetrics()
     {
         return _viewport.metrics();
     }
@@ -689,7 +713,11 @@ final class Table
     {
         import std.math : ceil, floor;
 
-        return ScrollMetrics(cast(size_t) ceil(p.contentWidth), cast(size_t) floor(p.middleWidth), p.scrollX);
+        // whole pixels: a fraction of one does not bring a bar and take it away
+        const content = ceil(p.contentWidth), room = floor(p.middleWidth);
+        if (!(content > room) || !(p.maxScrollX > 0))
+            return ScrollMetrics.init;
+        return ScrollMetrics(p.scrollX / p.maxScrollX, room / content);
     }
 
     // The text position under the point (x, y) of the table; false with no rows
@@ -2476,7 +2504,7 @@ unittest
     assert(table.rowsArea() == Rect(0, 25, 400, 86));
     Rect cell;
     assert(table.cellRect(0, 0, cell) && cell.y == 25, "the first row under the top margin");
-    assert(table.scrollMetrics.visible == 5, "the rows in 86 px, not in 100");
+    assert(table.scrollMetrics.shown == 86.0 / 16 / 100, "the rows in 86 px, not in 100");
     table.scrollToEnd();
     table.paint(canvas);
     assert(table.cellRect(99, 0, cell) && cell.bottom == 111, "the last row ends where the bottom margin begins");
@@ -2801,18 +2829,21 @@ unittest
     size_t tells;
     f.table.events.scrolledX = (ScrollMetrics m) { told = m; ++tells; };
     f.table.paint(f.canvas);
-    assert(told.total == 220 && told.visible == 100 && told.position == 0 && tells == 1);
+    assert(told == ScrollMetrics(0, 100.0 / 220) && tells == 1, "100 of 220 in view");
     f.table.scrollXBy(30);
     f.table.paint(f.canvas);
-    assert(told.position == 30 && tells == 2);
+    assert(told.fraction == 30.0 / 120 && tells == 2, "30 of the 120 they can scroll");
     f.table.scrollXBy(500);
     f.table.paint(f.canvas);
-    assert(told.position == 120, "not past the end: 220 - 100");
+    assert(told.fraction == 1, "not past the end: 220 - 100");
+    f.table.scrollToFractionX(0.5);
+    f.table.paint(f.canvas);
+    assert(f.layout.scrollX == 60 && told.fraction == 0.5, "a bar at the middle");
     f.table.scrollXBy(-1000);
     f.table.paint(f.canvas);
-    assert(told.position == 0);
+    assert(told.fraction == 0);
     f.table.paint(f.canvas);
-    assert(tells == 4, "nothing changed: not told again");
+    assert(tells == 5, "nothing changed: not told again");
 }
 
 version (unittest)
@@ -3010,8 +3041,10 @@ unittest
         wide.paint(canvas);
         narrow.paint(canvas);
     }
-    assert(narrowX.visible == 300 && wideX.visible == 300, "the room of the columns is the least of the two");
-    assert(wideX.total == narrowX.total, "the columns are as wide in both");
+    Rect inWide, inNarrow;
+    assert(wide.cellRect(0, 1, inWide) && narrow.cellRect(0, 1, inNarrow));
+    assert(inWide.w == inNarrow.w && inNarrow.right <= 300, "the room of the columns is the least of the two, the columns as wide in both");
+    assert(narrowX == wideX, "the bars below show the same");
 }
 
 @("Table: a disposed table of a host gives up what it needed: the column of the other narrows at once and it is painted again")
@@ -3373,7 +3406,7 @@ unittest
     f.table.scrollXBy(500); // to the end: 120
     f.layout.setWidth("text", 100); // 170 wide: the end is 70
     f.table.paint(f.canvas);
-    assert(f.layout.scrollX == 70 && f.table.scrollMetricsX().position == 70, "the layout does not keep what the columns cannot show");
+    assert(f.layout.scrollX == 70 && f.table.scrollMetricsX().fraction == 1, "the layout does not keep what the columns cannot show");
 }
 
 @("Table: asking where the rows lie does not begin a new pass: the rows of the pass stay")

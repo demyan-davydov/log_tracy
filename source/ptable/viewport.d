@@ -1,22 +1,23 @@
 //! The lowest level of the table: a window on a long list of rows of different heights. It knows only how
 //! many items there are, the height of each (a function), the height of the window and where the window
 //! stands (the first item and the part of it scrolled away); it says which items are on the screen and
-//! where, and what a scroll bar needs (`ScrollMetrics`). It knows nothing of columns, cells, text or
-//! colors, and nothing of a scroll bar's looks: any bar, the host's own or a painted one, is driven through
-//! `metrics`, `scrollToRow` and `topOf`. Pure. See docs/stories/painted-table.md.
+//! where, and what a scroll bar needs (`ScrollMetrics`, by `ptable.scrollscale`). It knows nothing of columns, cells,
+//! text or colors, and nothing of a scroll bar's looks: any bar, the host's own or a painted one, is driven through
+//! `metrics` and `scrollToFraction`. Pure. See docs/stories/painted-table.md.
 module ptable.viewport;
 
 import ptable.rowlayout;
+import ptable.scrollscale : anchorFraction, anchorPlace, exactPixels, exactRows, pixelFraction, pixelSpan, pixelState, rowsShown;
 
 import std.algorithm.comparison : max, min;
 
-/// What an outside scroll bar needs, in items (rows): the list is long and its rows differ in height, so a
-/// bar by pixels would be wrong
+/// What an outside scroll bar needs, in no unit: where the thumb stands and how much of the track it takes. The owner of
+/// the scroll (the viewport for the rows, the table for the columns) turns its place into these and a fraction back
+/// into a place; a bar knows neither rows nor pixels.
 struct ScrollMetrics
 {
-    size_t total; /// the items in the list
-    size_t visible; /// how many items are on the screen (the last one may be cut)
-    double position; /// the first item plus the part of it scrolled away, 0 .. total
+    double fraction = 0; /// where the thumb stands: 0 at the start, 1 at the end
+    double shown = 1; /// how much of all is in view, 0 .. 1: the length of the thumb of the track; 1, nothing to scroll
 }
 
 /// How an item is to be shown (`RowViewport.revealPlan`)
@@ -52,19 +53,31 @@ ScrollAnchor topAnchor(const(RowSlot)[] slots)
 /// A window on a list of items of different heights
 final class RowViewport
 {
-    private HeightOf _heightOf;
+    private HeightOf _heightOf, _estimate;
     private size_t _count;
     private double _height = 0;
     private ViewState _state;
     private RowSlot[] _slots;
     private double _pending = 0;
     private ScrollAnchor _anchor;
+    private double _minHeight = 0;
+    private Held _held;
+
+    private enum Held : ubyte
+    {
+        none,
+        pixels,
+        anchor,
+    }
 
     /// `heightOf(index)` is the height of an item (it may be costly: what it says is asked for the items
     /// near the window and, on a far scroll, never for the ones passed)
-    this(HeightOf heightOf)
+    /// `estimate(index)`: what a sum over all the rows of a list scrolled by pixels takes, the height as known (measured at
+    /// another width: no new measure); null, `heightOf`
+    this(HeightOf heightOf, HeightOf estimate = null)
     {
         _heightOf = heightOf;
+        _estimate = estimate !is null ? estimate : heightOf;
     }
 
     /// The items in the list
@@ -249,11 +262,67 @@ final class RowViewport
         return true;
     }
 
-    /// What a scroll bar shows
-    ScrollMetrics metrics() const
+    /// No row is lower than `value` (0: not known): with it a short list is scrolled by pixels (`ptable.scrollscale`)
+    void minHeight(double value)
     {
-        const firstHeight = _slots.length ? _slots[0].height : 19;
-        return ScrollMetrics(_count, max(1UL, _slots.length - 1), _state.first + _state.offset / max(1.0, firstHeight));
+        _minHeight = value;
+    }
+
+    /// Whether the list is scrolled by pixels, every row of it measured (`exactPixels`), or as `holdScale` keeps it: by
+    /// pixels until the list grows far past the threshold (the sum of all its rows would cost too much), by the anchor unless
+    /// it would move the rows back
+    bool exact() const
+    {
+        final switch (_held)
+        {
+        case Held.none:
+            return exactPixels(_count, _minHeight, _height);
+        case Held.pixels:
+            return _count <= 2 * exactRows || exactPixels(_count, _minHeight, _height);
+        case Held.anchor:
+            return _minHeight > 0 && _count * _minHeight < _height;
+        }
+    }
+
+    /// A thumb is pressed (`on`) or released: while it is dragged the scale stays the one it had at the press (by pixels or by
+    /// the anchor), so a list growing past `exactRows` under the drag does not move the rows under a mouse that stood still
+    void holdScale(bool on)
+    {
+        _held = on ? (exact ? Held.pixels : Held.anchor) : Held.none;
+    }
+
+    /// What a scroll bar shows, as `layout` last put the rows: exactly 0 at the start and 1 with the end in view
+    ScrollMetrics metrics()
+    {
+        if (_count == 0 || _slots.length == 0)
+            return ScrollMetrics.init;
+        const atStart = _state.first == 0 && _state.offset == 0, atEnd = endInView();
+        if (atStart && atEnd)
+            return ScrollMetrics.init; // all of it in the window
+        if (exact)
+        {
+            const span = pixelSpan(_state, _count, _estimate);
+            const fraction = atStart ? 0 : atEnd ? 1 : pixelFraction(span, _height);
+            return ScrollMetrics(fraction, span.total > 0 ? min(1.0, _height / span.total) : 1);
+        }
+        const fraction = atStart ? 0 : atEnd ? 1 : anchorFraction(_slots, _count, _height);
+        return ScrollMetrics(fraction, rowsShown(_slots, _count, _height));
+    }
+
+    /// The window stands where a bar at `fraction` (0 .. 1) says: the point of the list at that fraction at that fraction
+    /// of the window, or for a short list (`exact`) that fraction of the pixels it can scroll
+    void scrollToFraction(double fraction)
+    {
+        if (_count == 0)
+            return;
+        if (exact)
+        {
+            _anchor = ScrollAnchor.init;
+            _state = pixelState(fraction, _count, _height, _estimate);
+            return;
+        }
+        const at = anchorPlace(fraction, _count, _height, _heightOf);
+        scrollToRow(at.row, at.dy);
     }
 
     /// Whether the end of the list is in view: the last item is shown whole at the end of the window (none, or all of them in it: also)
@@ -409,22 +478,105 @@ unittest
     assert(!view.reveal(99, 20), "farther than two screens: the caller scrolls to it");
 }
 
-@("RowViewport: a scroll bar reads the metrics in items and sets the position by them")
+@("RowViewport.metrics: the fraction of the bar and the part of the rows in view; all in the window is nothing to scroll")
 unittest
 {
     auto view = new RowViewport(rowsOf(20));
+    view.minHeight = 20;
     view.count = 1000;
     view.height = 100;
     view.layout();
-    auto m = view.metrics();
-    assert(m.total == 1000 && m.visible == 4 && m.position == 0);
-    view.scrollBy(30, 20);
+    assert(view.metrics() == ScrollMetrics(0, 5.0 / 1000));
+    view.scrollToFraction(0.5);
     view.layout();
-    m = view.metrics();
-    assert(m.position == 1.5, "an item and a half");
-    view.scrollToRow(500, -10);
+    const m = view.metrics();
+    assert(m.fraction - 0.5 < 1e-9 && m.fraction - 0.5 > -1e-9, "the fraction it was put at");
+    view.count = 3;
     view.layout();
-    assert(view.state == ViewState(500, 10));
+    assert(view.metrics() == ScrollMetrics.init, "three rows in the window: nothing to scroll");
+}
+
+@("RowViewport.metrics: the end in view is exactly 1, and a bar at 1 brings the end in view (it did not: the thumb stopped short)")
+unittest
+{
+    auto view = new RowViewport(rowsOf(20));
+    view.minHeight = 20;
+    view.count = 30;
+    view.height = 90; // four and a half rows
+    view.scrollToEnd();
+    view.layout();
+    assert(view.metrics().fraction == 1);
+    view.scrollTo(0);
+    view.layout();
+    view.scrollToFraction(1);
+    view.layout();
+    assert(view.endInView() && view.metrics().fraction == 1);
+}
+
+@("RowViewport.scrollToFraction: a bar dragged down never moves wrapped rows back, and reaches the end; the rows give back the fraction")
+unittest
+{
+    auto view = new RowViewport((size_t i) nothrow => i % 7 == 3 ? 300.0 : i % 3 == 0 ? 48.0 : 16.0);
+    view.minHeight = 16;
+    view.count = exactRows + 200; // by the anchor
+    view.height = 250;
+    double last = -1;
+    foreach (step; 0 .. 501)
+    {
+        const p = step / 500.0;
+        view.scrollToFraction(p);
+        view.layout();
+        double above = view.state.offset;
+        foreach (i; 0 .. view.state.first)
+            above += i % 7 == 3 ? 300.0 : i % 3 == 0 ? 48.0 : 16.0;
+        assert(above >= last - 1e-6, "never back");
+        last = above;
+        const back = view.metrics().fraction;
+        assert(back - p < 1e-9 && back - p > -1e-9, "the fraction it was put at");
+    }
+    assert(view.endInView());
+}
+
+@("RowViewport: a list shorter than a window of its least rows, wrapped taller than the window, is scrolled by pixels")
+unittest
+{
+    auto view = new RowViewport((size_t i) nothrow => i == 2 ? 400.0 : 20.0); // 5 rows: 480 px
+    view.minHeight = 20;
+    view.count = 5;
+    view.height = 200; // 5 · 20 < 200
+    assert(view.exact);
+    view.scrollToFraction(0.5); // 140 of 280
+    view.layout();
+    assert(view.state == ViewState(2, 100));
+    assert(view.metrics() == ScrollMetrics(0.5, 200.0 / 480));
+    view.count = exactRows + 1;
+    view.minHeight = 0;
+    assert(!view.exact, "many rows, the least height not known: by the anchor");
+}
+
+@("RowViewport: a few tall rows in a small window are scrolled by pixels: the thumb keeps its size and goes by the pixels")
+unittest
+{
+    HeightOf h = (size_t i) nothrow => i % 3 == 0 ? 500.0 : 20.0; // 10 rows: 4 of 500, 6 of 20: 2120 px
+    auto view = new RowViewport(h);
+    view.minHeight = 20;
+    view.count = 10;
+    view.height = 60;
+    double shown = double.nan;
+    foreach (step; 0 .. 101)
+    {
+        view.scrollToFraction(step / 100.0);
+        view.layout();
+        const m = view.metrics();
+        if (step > 0 && step < 100)
+            assert(shown != shown || m.shown == shown, "the thumb is as long all the way");
+        if (step > 0 && step < 100)
+            shown = m.shown;
+    }
+    assert(shown == 60.0 / 2120);
+    view.scrollToFraction(500.0 / 2060); // the first tall row scrolled away: the top of row 1
+    view.layout();
+    assert(view.state == ViewState(1, 0), "by the pixels, not by the rows");
 }
 
 @("RowViewport.scrollToRow: the top of the item at dy from the top of the window: above it scrolls the item away, below it shows the items before")
@@ -568,7 +720,7 @@ unittest
     auto view = new RowViewport(rowsOf(20));
     view.height = 100;
     view.layout();
-    assert(view.slots.length == 0 && view.metrics().total == 0);
+    assert(view.slots.length == 0 && view.metrics() == ScrollMetrics.init);
     view.scrollToRow(5, 0);
     assert(view.state.first == 0);
 }
@@ -671,4 +823,43 @@ unittest
     view.keepPlace();
     view.forgetPlace();
     assert(!view.restorePlace());
+}
+
+@("RowViewport: a list scrolled by pixels sums the estimates of its rows: only the rows on the screen are measured")
+unittest
+{
+    size_t measured;
+    auto view = new RowViewport((size_t i) nothrow { ++measured; return 20.0; }, (size_t i) nothrow => 20.0);
+    view.minHeight = 20;
+    view.count = 100;
+    view.height = 100;
+    assert(view.exact);
+    view.scrollToFraction(0.5);
+    view.layout();
+    measured = 0;
+    const m = view.metrics();
+    assert(m == ScrollMetrics(0.5, 100.0 / 2000) && measured == 0, "the sum is of the estimates");
+}
+
+@("RowViewport.holdScale: while a thumb is dragged the scale stays the one it had at the press, though the list grows past the threshold")
+unittest
+{
+    auto view = new RowViewport(rowsOf(20));
+    view.minHeight = 20;
+    view.height = 100;
+    view.count = exactRows;
+    view.holdScale(true);
+    view.count = exactRows + 10; // a search goes on finding rows
+    assert(view.exact, "held: by pixels, as at the press");
+    view.count = 3 * exactRows;
+    assert(!view.exact, "grown far past: the sum of all the rows would cost too much, held or not");
+    view.holdScale(false);
+    view.count = exactRows + 10;
+    assert(!view.exact, "released: by the anchor");
+    view.holdScale(true);
+    view.count = exactRows;
+    assert(!view.exact, "held by the anchor though the list got few rows");
+    view.count = 2; // 2 · 20 < 100: the anchor would move back
+    assert(view.exact, "but not when the anchor would move the rows back");
+    view.holdScale(false);
 }

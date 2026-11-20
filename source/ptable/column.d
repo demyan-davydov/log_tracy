@@ -175,7 +175,8 @@ class TableColumn
     void drawGroup(Canvas canvas, in GroupInput group, Rect area) {}
 
     /// The size of a cell in `width` (it is asked for rows off the screen too: no drawing state is needed); the widths only if `widths`
-    /// (the height of every row read is asked, the widths only of the rows the columns grow to)
+    /// (the height of every row read is asked, the widths only of the rows the columns grow to). An empty cell (`cell.data` null) is the
+    /// lowest the column has: a row is never lower than an empty one (`RowGeometry.floor`), whatever a filled cell measures
     Measured measure(ref const CellInput cell, double width, bool widths)
     {
         return Measured.init;

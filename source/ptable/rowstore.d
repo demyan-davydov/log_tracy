@@ -268,7 +268,25 @@ final class RowStore : ColumnClient
         return _cache.fallbackHeight;
     }
 
-    /// The height of the row `index`; 1 if it can't be had
+    /// The height of the row `index` as known, though measured at another width of the flex column (`RowCache.estimateOf`); an
+    /// empty row's if it can't be had
+    double estimateOf(size_t index) nothrow
+    {
+        try
+        {
+            ensure();
+            return _cache.estimateOf(index);
+        }
+        catch (Exception)
+        {
+            try
+                return _cache.fallbackHeight;
+            catch (Exception)
+                return 1;
+        }
+    }
+
+    /// The height of the row `index`; an empty row's if it can't be had (no row is lower: `RowGeometry.floor`)
     double heightOf(size_t index) nothrow
     {
         try
@@ -277,7 +295,12 @@ final class RowStore : ColumnClient
             return _cache.heightOf(index);
         }
         catch (Exception)
-            return 1;
+        {
+            try
+                return _cache.fallbackHeight;
+            catch (Exception)
+                return 1;
+        }
     }
 }
 
