@@ -283,7 +283,8 @@ final class ScrolledTable
         return table.mouseMove(x, y);
     }
 
-    bool mouseUp(double x, double y)
+    /// The button went up at `timestampMs` (the clock of `tick`; see `Table.mouseUp`)
+    bool mouseUp(double x, double y, double timestampMs = double.nan)
     {
         stopDwell();
         if (bar.dragging)
@@ -296,7 +297,7 @@ final class ScrolledTable
             return true;
         }
         _tablePressed = false;
-        return table.mouseUp(x, y);
+        return table.mouseUp(x, y, timestampMs);
     }
 
     /// The window lost the mouse or the focus with a button down: a press of the table is over

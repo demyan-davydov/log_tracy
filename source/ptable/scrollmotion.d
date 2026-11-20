@@ -1,5 +1,6 @@
 //! The scrolls the table makes by itself on the host's frames: the scroll of a drag past the rows (`DragScroll`), the
-//! coast after a pan of the trackpad (`Inertia` measures it) and the step of the mouse wheel, both a `Glide`. One `tick`
+//! coast after a pan of the trackpad (`Inertia` measures it), the step of the mouse wheel and the glide to a place the
+//! table shows (`glideTo`: no rule of the input applies to it, a press lands or stops it), each a `Glide`. One `tick`
 //! a frame gives what they moved and whether a frame is wanted again; a policy may change the distance of a coast
 //! before it begins (a row start). Who moves the rows is a `Scroll` state, `next` the table of its changes: the newest
 //! input takes over, except the wheel while the fingers move, and a wheel spinning since before the fingers (a wheel that
@@ -19,6 +20,10 @@ enum GlideShape wheelShape = GlideShape(80, 1);
 
 /// How the coast slows down: aimed 10 px past its end, so it ends at a gentle speed, not after a long tail
 enum GlideShape coastShape = GlideShape(glideTimeMs, 10);
+
+/// How a glide to a place far off goes (a jump across the document): quicker than a step of the wheel, so the eye reads a rush
+/// (a trial value, to be tuned by eye)
+enum GlideShape farShape = GlideShape(50, 1);
 
 /// How far a wheel along a coast may speed it up: the way left is kept within this many heights of the rows (or what
 /// it was, if more), so a wheel that spins on does not make a coast of seconds and a frame's step stays under a screen
@@ -126,6 +131,7 @@ final class ScrollMotion
     private Scroll _state;
     private double _lastPan; // the time of the last move of the fingers; NaN: none yet
     private WheelSpin _spin;
+    private bool _landsOnPress; // the glide is a glide to a place that a press lands (`glideTo`)
 
     /// What one frame moved
     struct Step
@@ -166,6 +172,8 @@ final class ScrollMotion
             : _state == Scroll.coast && (pixels < 0) == (_glide.left < 0) ? ScrollInput.wheelAlong : ScrollInput.wheelStep;
         const move = next(_state, input);
         _state = move.state;
+        if (move.act != GlideAct.none)
+            _landsOnPress = false; // the wheel's glide now
         final switch (move.act)
         {
         case GlideAct.none:
@@ -186,12 +194,38 @@ final class ScrollMotion
         return _glide.active;
     }
 
+    // ---- a glide to a place ----
+
+    /// The rows glide `distance` pixels (down is positive) from `timestampMs` on, by `shape`: a scroll the table makes to show
+    /// a place (a row revealed, a position asked for). No rule of the input applies: the scrolls before it stop, and the
+    /// wheel's spins and the fingers are neither asked nor changed. A step of the wheel on its way takes it over. `landsOnPress`:
+    /// a press lands it at once (a short glide: the second click of a double one finds the rows where they stay); else a press
+    /// stops it where it is (a long one: what is pressed is what was seen). True if the rows glide
+    bool glideTo(double distance, double timestampMs, GlideShape shape, bool landsOnPress)
+    {
+        stop();
+        _glide.start(distance, timestampMs, shape);
+        _state = _glide.active ? Scroll.wheel : Scroll.idle;
+        _landsOnPress = _glide.active && landsOnPress;
+        return _glide.active;
+    }
+
+    /// A press of the mouse: a glide to a place that lands on a press lands now and gives the pixels left of its way (the caller
+    /// moves them at once); any other scroll stops where it is (0)
+    double press()
+    {
+        const rest = _landsOnPress && _glide.active ? _glide.left : 0;
+        stop();
+        return rest;
+    }
+
     // ---- the pan and its coast ----
 
     /// The fingers moved the rows by `pixels` at `timestampMs` (the table scrolls them itself)
     void pan(double pixels, double timestampMs)
     {
         apply(next(_state, ScrollInput.pan));
+        _landsOnPress = false;
         _lastPan = timestampMs;
         _coast.feed(pixels, timestampMs);
     }
@@ -217,6 +251,7 @@ final class ScrollMotion
     {
         _drag.stop();
         _coast.forget();
+        _landsOnPress = false;
         apply(next(_state, ScrollInput.stop));
     }
 
@@ -472,4 +507,64 @@ unittest
     for (; motion.active && t < 20_000; t += 16)
         rest += motion.tick(t).pixels;
     assert(rest <= boostScreens * 500 + 1e-9, "what is left when the wheel stops is a few screens");
+}
+
+@("ScrollMotion: a glide to a place is no step of the wheel: a spin the fingers broke does not swallow it, it lands on its distance")
+unittest
+{
+    import std.math : isClose;
+
+    auto motion = new ScrollMotion;
+    motion.wheel(-30, 0, 500); // a spin begins ...
+    motion.pan(5, 100); // ... the fingers touch after it ...
+    motion.stop(); // ... a key
+    assert(motion.glideTo(200, 250, wheelShape, true), "within the quiet time of the spin, and still it glides");
+    double moved = 0;
+    for (double t = 266; motion.active && t < 5000; t += 16)
+        moved += motion.tick(t).pixels;
+    assert(isClose(moved, 200));
+    assert(!motion.glideTo(0, 6000, wheelShape, true) && !motion.active, "a glide of nothing");
+}
+
+@("ScrollMotion: a press lands a glide to a place that lands on a press and gives what was left of it; any other scroll it only stops")
+unittest
+{
+    import std.math : isClose;
+
+    auto motion = new ScrollMotion;
+    motion.glideTo(200, 0, wheelShape, true);
+    const moved = motion.tick(16).pixels;
+    assert(moved > 0 && moved < 200);
+    assert(isClose(moved + motion.press(), 200) && !motion.active, "the rest of the way, to be moved now");
+
+    auto stops = new ScrollMotion;
+    stops.glideTo(200, 0, wheelShape, false);
+    stops.tick(16);
+    assert(stops.press() == 0 && !stops.active, "a glide that does not land on a press stops where it is");
+
+    auto wheel = new ScrollMotion;
+    wheel.wheel(120, 0, 500);
+    wheel.tick(16);
+    assert(wheel.press() == 0 && !wheel.active, "the wheel's glide stops where it is");
+
+    auto taken = new ScrollMotion;
+    taken.glideTo(200, 0, wheelShape, true);
+    taken.wheel(50, 10, 500);
+    assert(taken.press() == 0, "a step of the wheel took it over: no more a glide to a place");
+}
+
+@("ScrollMotion: a glide to a place goes by the shape it is given and lands on its distance")
+unittest
+{
+    import std.math : isClose;
+
+    foreach (shape; [wheelShape, farShape])
+    {
+        auto motion = new ScrollMotion;
+        assert(motion.glideTo(-300, 0, shape, true));
+        double moved = 0;
+        for (double t = 16; motion.active && t < 5000; t += 16)
+            moved += motion.tick(t).pixels;
+        assert(isClose(moved, -300));
+    }
 }

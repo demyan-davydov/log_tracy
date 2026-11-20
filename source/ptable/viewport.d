@@ -28,6 +28,23 @@ struct RevealPlan
     double top = double.nan; /// where its top stands now; NaN if it is more than two screens off
 }
 
+/// Where a glide to an item begins (`RowViewport.jumpToGlide`)
+struct Approach
+{
+    double peek = 0; /// near: how much of an item out of the window shows at once, at most half of it
+    /// How many windows from its place an item is far: a glide to it begins that many windows before the place. At most 2: an
+    /// item `topOf` does not know is more than two windows off the window, so it never begins farther than it was
+    double lead = 0;
+}
+
+/// What `RowViewport.jumpToGlide` did
+enum Jump
+{
+    none, /// the window stays: the item is in it, even in part
+    near, /// the item out of the window peeks in at its edge
+    far, /// the window jumps to `Approach.lead` windows before the place
+}
+
 /// A place of the window to keep when the heights of the rows change (a font, the width of the window): the
 /// row, the point of it (a fraction of its height from its top) and where in the window that point is
 struct ScrollAnchor
@@ -248,6 +265,49 @@ final class RowViewport
         return RevealPlan(true, fits ? (above ? margin : _height - margin - height) : 0, top);
     }
 
+    /// Before a glide that brings the top of the item `index`, now at `top` (NaN: far off, `topOf`), to `dy` from the top of the
+    /// window, the window jumps to where the glide begins (`dy` one the item can reach: `reachableTop`). Far (`top` NaN, or more than `approach.lead` windows from `dy`): the
+    /// item stands `lead` windows before its place on the side it comes from, the ends of the list cutting that short. Near and out
+    /// of the window: `approach.peek` pixels of it, at most half of it, show at the edge it comes from. Near and in the window, even
+    /// in part: it stays. The slots are laid out again by the caller when it moved
+    Jump jumpToGlide(size_t index, double dy, double top, Approach approach, double fallbackHeight)
+    {
+        import std.math : abs, isNaN;
+
+        if (top.isNaN || abs(top - dy) > approach.lead * _height)
+        {
+            const below = top.isNaN ? index > _state.first : top > dy;
+            const lead = approach.lead * _height;
+            scrollToRow(index, dy); // at its place first: what is before it is walked back from there, the ends stop it
+            scrollBy(below ? -lead : lead, fallbackHeight);
+            return Jump.far;
+        }
+        const height = _heightOf(index);
+        if (top < _height && top + height > 0)
+            return Jump.none;
+        const shown = min(approach.peek, height / 2);
+        scrollToRow(index, top >= _height ? _height - shown : shown - height);
+        return Jump.near;
+    }
+
+    /// Where the top of the item `index` can stand when it is asked to stand `dy` from the top of the window: the start of the
+    /// list keeps it no lower than the items above it reach, the end keeps the bottom of the last item no higher than the bottom
+    /// of the window (a list shorter than the window stays at its top). Walks no more items than fill the window
+    double reachableTop(size_t index, double dy)
+    {
+        if (_count == 0)
+            return dy;
+        double below = 0; // the item and the ones after it, until they fill the window under dy
+        for (size_t i = index; i < _count && below < _height - dy; ++i)
+            below += _heightOf(i);
+        if (below < _height - dy)
+            dy = _height - below;
+        double above = 0; // the items before it, until they reach dy
+        for (size_t i = index; i > 0 && above < dy; --i)
+            above += _heightOf(i - 1);
+        return min(dy, above);
+    }
+
     /// Shows the item `index` by the least scroll if it is among the items on the screen, or not more than two screens off them
     /// (it then stands at the edge it came from); false if it is farther (the caller then scrolls to it)
     bool reveal(size_t index, double fallbackHeight)
@@ -441,6 +501,66 @@ unittest
     view.applyPending(20);
     view.layout();
     assert(view.state.first == 0);
+}
+
+@("RowViewport.jumpToGlide: a place far off or more than lead windows away begins the glide lead windows before it, on the side the item comes from")
+unittest
+{
+    auto view = new RowViewport(rowsOf(20)); // rows of 20 in a window of 100
+    view.count = 1000;
+    view.height = 100;
+    view.layout();
+    enum approach = Approach(20, 2);
+    assert(view.jumpToGlide(500, 60, view.topOf(500), approach, 20) == Jump.far, "far below");
+    view.layout();
+    assert(view.topOf(500) == 60 + 200, "two windows under its place");
+    assert(view.jumpToGlide(10, 24, view.topOf(10), approach, 20) == Jump.far, "far above");
+    view.layout();
+    assert(view.topOf(10) == 24 - 200, "two windows over its place");
+    view.scrollTo(0);
+    view.layout();
+    assert(view.topOf(13) == 260 && view.jumpToGlide(13, 0, 260, approach, 20) == Jump.far, "known, but more than two windows from its place");
+    view.layout();
+    assert(view.topOf(13) == 200, "it comes no farther than lead windows");
+    view.scrollTo(600);
+    view.layout();
+    assert(view.jumpToGlide(0, 0, view.topOf(0), approach, 20) == Jump.far);
+    view.layout();
+    assert(view.topOf(0) == -200, "the first item from far below: two windows over the top");
+}
+
+@("RowViewport.jumpToGlide: near, an item out of the window peeks in at its edge, at most half of it; one in the window stays")
+unittest
+{
+    auto view = new RowViewport(rowsOf(20));
+    view.count = 1000;
+    view.height = 100;
+    view.layout();
+    enum approach = Approach(20, 2);
+    assert(view.jumpToGlide(5, 60, view.topOf(5), approach, 20) == Jump.near, "row 5 at 100, 40 from its place: near");
+    view.layout();
+    assert(view.topOf(5) == 90, "half of it (10, less than 20) in at the bottom");
+    assert(view.jumpToGlide(1, 24, view.topOf(1), approach, 20) == Jump.none, "in the window: no jump");
+    view.layout();
+    assert(view.topOf(1) == 10, "in the window (partly): it stays");
+    view.scrollTo(10);
+    view.layout();
+    assert(view.jumpToGlide(9, 24, view.topOf(9), Approach(8, 2), 20) == Jump.near);
+    view.layout();
+    assert(view.topOf(9) == 8 - 20, "above: 8 of it in at the top");
+}
+
+@("RowViewport.reachableTop: where an item can stand: the start of the list keeps it no lower than the items above it, the end no higher than its bottom at the bottom")
+unittest
+{
+    auto view = new RowViewport(rowsOf(20)); // rows of 20 in a window of 100
+    view.count = 1000;
+    view.height = 100;
+    assert(view.reachableTop(0, 24) == 0 && view.reachableTop(1, 24) == 20 && view.reachableTop(2, 24) == 24, "the start");
+    assert(view.reachableTop(999, 60) == 80 && view.reachableTop(998, 0) == 60, "the end");
+    assert(view.reachableTop(500, 60) == 60 && view.reachableTop(500, -30) == -30, "the middle: as asked");
+    view.count = 3;
+    assert(view.reachableTop(2, 80) == 40, "a list shorter than the window stays at its top");
 }
 
 @("RowViewport: reveal scrolls the least way, and says no for an item off the screen")

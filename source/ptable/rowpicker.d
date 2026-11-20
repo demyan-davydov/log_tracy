@@ -184,13 +184,14 @@ final class RowPicker
         }
     }
 
-    /// A plain click on the row `index`: it alone is picked, and shown
-    void click(size_t index)
+    /// A plain click on the row `index`: it alone is picked, and shown (`timestampMs`: the clock of the host's frames, for the
+    /// glide to the row)
+    void click(size_t index, double timestampMs = double.nan)
     {
         if (_ports.isVirtual(index))
             return;
         const changed = _picks.click(index, false); // a click on a picked row picks only it: letting go of all of them is for later
-        _ports.show(index, double.nan);
+        _ports.show(index, timestampMs);
         if (changed)
             told(false);
         _ports.invalidate();

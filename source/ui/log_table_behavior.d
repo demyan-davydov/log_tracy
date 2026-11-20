@@ -278,7 +278,7 @@ final class LogTableBehavior : SciterEventHandler
             _log.scrolled.mouseOver(x, y);
             return _log.scrolled.mouseMove(x, y) || hand; // a handled move keeps its cursor
         case MOUSE_EVENTS.MOUSE_UP:
-            return _log.scrolled.mouseUp(x, y);
+            return _log.scrolled.mouseUp(x, y, nowMs()); // a click on a row cut at an edge brings it in by a glide
         case MOUSE_EVENTS.MOUSE_ENTER:
             return hand;
         case MOUSE_EVENTS.MOUSE_LEAVE:

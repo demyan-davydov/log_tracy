@@ -20,7 +20,7 @@ import ptable.rowcopy;
 import ptable.framepainter : FramePainter, Picked;
 import ptable.rowview : RowEnv, RowView;
 import ptable.dragscroll : DragScroll;
-import ptable.scrollmotion : CoastPolicy, ScrollMotion;
+import ptable.scrollmotion : CoastPolicy, farShape, ScrollMotion, wheelShape;
 import ptable.rowpicker : PickPorts, RowPicker;
 import ptable.tableselection : TableSelection;
 import ptable.tablehit : CopyTarget, HitKind, PointerKind, TableHit;
@@ -116,6 +116,11 @@ final class Table
     /// The room, in pixels, a row that is brought into view is left from the edge it came from (a row picked by the keys, by a click on one cut by
     /// an edge, by a jump): 0, the row at the edge, by default
     double revealMargin = 0;
+    /// Where a glide to a row begins (`RowViewport.jumpToGlide`): a row near and out of view peeks in by `peek` pixels, at most half
+    /// of it, and glides the rest as a step of the wheel; a place more than `lead` windows off begins `lead` windows before it and
+    /// glides quickly (`farShape`), so a jump across the document reads as a rush. Trial values, to be tuned by eye
+    enum Approach approach = Approach(20, 2);
+    static assert(approach.lead <= 2, "topOf knows no row farther: a far glide would begin farther than the row was");
 
     private bool _tableHasFocus = true; // the host says it (`tableHasFocus`): told to the painter with the hooks that may draw by it
     private bool _followEndAble; // `followEnd`: the table may follow the end of its rows
@@ -632,12 +637,13 @@ final class Table
 
     /// The top of the item `position.row` stands `position.dy` and the left of the column `position.column` `position.dx` from the corner of the room of the
     /// rows (a `dy` below the top shows the items before the row; the rows and the columns never go past their ends; a column that is pinned or that
-    /// the model has not leaves the columns where they are). With the time of the host (`timestampMs`, the clock of `tick`) the rows glide to a place
-    /// near, to a place far off they jump to a screen from it and glide the rest; without it they are moved now
+    /// the model has not leaves the columns where they are). With the time of the host (`timestampMs`, the clock of `tick`) the rows glide to it, by the
+    /// same `approach` as `reveal` (a row near out of view peeks in first, a place far off begins a few windows before it and
+    /// glides quickly); without it they are moved now
     void scrollToPosition(CellPosition position, double timestampMs = double.nan)
     {
-        import std.algorithm.comparison : max, min;
-        import std.math : abs, isFinite, isNaN;
+        import std.algorithm.comparison : min;
+        import std.math : isFinite;
 
         _motion.stop();
         prepare();
@@ -645,20 +651,7 @@ final class Table
         if (events.needFrame !is null && timestampMs.isFinite)
         {
             layout();
-            double top = _viewport.topOf(row);
-            if (top.isNaN)
-            {
-                const room = _store.space.regions.rows.h;
-                _viewport.scrollToRow(row, row > _viewport.state.first ? position.dy + room : position.dy - room);
-                layout();
-                top = _viewport.topOf(row);
-            }
-            if (!top.isNaN && top != position.dy)
-            {
-                const distance = top - position.dy; // not cut to a screen: it is at most two
-                if (_motion.wheel(distance, timestampMs, max(_store.space.regions.rows.h, abs(distance))))
-                    events.needFrame();
-            }
+            jumpThenGlide(row, position.dy, _viewport.topOf(row), timestampMs);
         }
         else
             _viewport.scrollToRow(row, position.dy);
@@ -1049,25 +1042,43 @@ final class Table
     }
 
     // Shows the row `index`: the rows glide to it on the frames of the host if it gave the time (`timestampMs`, the clock of
-    // `tick`), so the eye sees where they go; else, and for a row far off, they are moved now
+    // `tick`), so the eye sees where they go (`jumpThenGlide`: a jump to where the glide begins first); else they are moved now
     private void revealRow(size_t index, double timestampMs)
     {
-        import std.algorithm.comparison : max;
-        import std.math : abs, isFinite, isNaN;
+        import std.math : isFinite, isNaN;
 
         const plan = _viewport.revealPlan(index, revealMargin);
         if (!plan.needed)
             return;
-        if (plan.top.isNaN)
+        if (events.needFrame !is null && timestampMs.isFinite)
+            jumpThenGlide(index, plan.dy, plan.top, timestampMs);
+        else if (plan.top.isNaN)
             _viewport.scrollToRow(index, plan.dy); // far off: it stands there at once
-        else if (events.needFrame !is null && timestampMs.isFinite)
-        {
-            const distance = plan.top - plan.dy;
-            if (_motion.wheel(distance, timestampMs, max(_store.space.regions.rows.h, abs(distance))))
-                events.needFrame();
-        }
         else
             _viewport.scrollBy(plan.top - plan.dy, _store.fallbackHeight);
+    }
+
+    // The rows glide on the frames of the host until the top of the row `index`, now at `top` (NaN: far off, not laid out), stands
+    // `dy` from the top of the window, or as near it as the ends of the rows let it (`RowViewport.reachableTop`): they jump first
+    // to where the glide begins (`approach`, `RowViewport.jumpToGlide`). A far place glides quickly and a press stops it where it
+    // is; a near one a press lands. The rows are laid out
+    private void jumpThenGlide(size_t index, double dy, double top, double timestampMs)
+    {
+        import std.math : abs, isNaN;
+
+        enum hair = 1e-6; // what a glide leaves of a pixel is no way to go
+        dy = _viewport.reachableTop(index, dy);
+        const jump = _viewport.jumpToGlide(index, dy, top, approach, _store.fallbackHeight);
+        if (jump != Jump.none)
+        {
+            layout();
+            top = _viewport.topOf(index);
+        }
+        if (top.isNaN || abs(top - dy) < hair)
+            return;
+        const far = jump == Jump.far;
+        if (_motion.glideTo(top - dy, timestampMs, far ? farShape : wheelShape, !far))
+            events.needFrame();
     }
 
     /// The row `index` is shown: when it is not in view the rows move so that it stands with `revealMargin` pixels left on the side it came
@@ -1092,7 +1103,15 @@ final class Table
     bool mouseDown(double x, double y, Pick mode = Pick.replace)
     {
         layoutIfNeeded();
-        _motion.stop(); // a press that began before it never ended is over, a coast too, wherever it is pressed
+        // a press that began before it never ended is over, a coast too, wherever it is pressed; a row gliding into view
+        // lands now, so what is pressed (the second click of a double one) is where it is going to stay
+        const rest = _motion.press();
+        if (rest != 0)
+        {
+            _viewport.scrollBy(rest, _store.fallbackHeight);
+            layout();
+            invalidate();
+        }
         if (y < _store.space.regions.rows.y)
             return true;
         size_t cellRow, cellColumn;
@@ -1199,8 +1218,9 @@ final class Table
         capture(false);
     }
 
-    /// The button went up
-    bool mouseUp(double x, double y)
+    /// The button went up at `timestampMs` (the clock of `tick`): a click on a row cut at an edge brings it in by a glide on
+    /// the frames of the host; without the time it is moved now
+    bool mouseUp(double x, double y, double timestampMs = double.nan)
     {
         if (_picker.cellPress.active)
         {
@@ -1227,7 +1247,7 @@ final class Table
             if (!rowDrag)
             {
                 _motion.stop();
-                _picker.click(release.position.row);
+                _picker.click(release.position.row, timestampMs);
             }
             if (events.cellClicked !is null)
                 events.cellClicked(release.position.row, release.column);
@@ -2589,7 +2609,7 @@ unittest
     assert(!f.table.isSelected(1_000_000) && f.table.selectedCount > 0, "a row that is not there is not picked");
 }
 
-@("Table.reveal: a row below the window comes in with the margin under it, one above with the margin over it; a row in view stays; a far one jumps there")
+@("Table.reveal: a row below the window comes in with the margin under it, one above with the margin over it; a row in view stays; with no time of the host a far one jumps there")
 unittest
 {
     auto f = make(1000, 100, 121); // the window is 100 high, the rows 16
@@ -2610,6 +2630,68 @@ unittest
     f.table.reveal(10);
     f.table.paint(f.canvas);
     assert(f.table.firstVisible == CellPosition(8, 0, -8, 0), "far off above: row 10 at 24");
+}
+
+@("Table.reveal: with the time of the host a far row jumps to two windows from its place, on the side it comes from, and glides the rest")
+unittest
+{
+    auto f = make(1000, 100, 121); // the window is 100 high, the rows 16
+    f.table.revealMargin = 24;
+    f.table.events.needFrame = () {};
+    f.table.paint(f.canvas);
+    double now = 1000;
+    f.table.reveal(500, now);
+    f.table.paint(f.canvas);
+    assert(f.table.firstVisible == CellPosition(483, 0, -12, 0), "row 500 at 260: its place 60 and two windows under it");
+    while (f.table.tick(now += 16)) {}
+    f.table.paint(f.canvas);
+    assert(near(f.table.firstVisible, CellPosition(496, 0, -4, 0)), "landed: row 500 at 60, the margin under it");
+    f.table.reveal(10, now += 16);
+    f.table.paint(f.canvas);
+    assert(f.table.firstVisible == CellPosition(21, 0, 0, 0), "row 10 at -176: its place 24 and two windows over it");
+    while (f.table.tick(now += 16)) {}
+    f.table.paint(f.canvas);
+    assert(near(f.table.firstVisible, CellPosition(8, 0, -8, 0)), "landed: row 10 at 24, the margin over it");
+}
+
+@("Table.reveal: a glide to a far row is not taken for a stale step of the wheel after a touch of the trackpad")
+unittest
+{
+    auto f = make(1000, 100, 121);
+    f.table.revealMargin = 24;
+    f.table.events.needFrame = () {};
+    f.table.paint(f.canvas);
+    f.table.wheel(30, 0); // a spin of the wheel begins ...
+    f.table.pan(0, 100); // ... the fingers touch the trackpad ...
+    f.table.panEnd(110);
+    f.table.reveal(500, 250); // ... and a jump comes within the quiet time of the spin
+    double now = 250;
+    while (f.table.tick(now += 16)) {}
+    f.table.paint(f.canvas);
+    assert(f.table.partlyVisibleRows[0] <= 500 && f.table.partlyVisibleRows[1] > 500, "row 500 is in view");
+}
+
+@("Table.reveal: with the time of the host the last row, far off, lands where it stands without the time (the end of the rows)")
+unittest
+{
+    auto glides = make(1000, 100, 121), jumps = make(1000, 100, 121);
+    foreach (f; [glides, jumps])
+    {
+        f.table.revealMargin = 24;
+        f.table.paint(f.canvas);
+    }
+    glides.table.events.needFrame = () {};
+    double now = 1000;
+    glides.table.reveal(999, now);
+    while (glides.table.tick(now += 16)) {}
+    glides.table.paint(glides.canvas);
+    jumps.table.reveal(999);
+    jumps.table.paint(jumps.canvas);
+    assert(near(glides.table.firstVisible, jumps.table.firstVisible) && glides.table.partlyVisibleRows[1] == 1000);
+    glides.table.reveal(0, now += 16);
+    while (glides.table.tick(now += 16)) {}
+    glides.table.paint(glides.canvas);
+    assert(near(glides.table.firstVisible, CellPosition(0, 0, 0, 0)), "and the first one from the end");
 }
 
 @("Table.reveal: a row that does not fit the window with its margin is brought to the top; with no margin set it comes to the edge it came from")
@@ -2655,6 +2737,88 @@ unittest
     f.table.mouseUp(30, 21.0 + 2);
     f.table.paint(f.canvas);
     assert(f.table.firstVisible == CellPosition(2, 0, 0, 0), "cut at the top: it does not fit, its top comes to the top of the window");
+}
+
+@("Table: with the time of the host a click on a row cut at an edge brings it in by a glide on the frames")
+unittest
+{
+    auto f = make(10, 100, 31); // the rows have 10 of the window and are 16 high
+    f.table.events.needFrame = () {};
+    f.table.paint(f.canvas);
+    f.table.scrollToPosition(CellPosition(2, 0, 4, 0), double.nan); // it starts 4 under the top, ends 6 below the bottom
+    f.table.paint(f.canvas);
+    double now = 1000;
+    f.table.mouseDown(30, 21.0 + 6);
+    f.table.mouseUp(30, 21.0 + 6, now);
+    f.table.paint(f.canvas);
+    assert(f.table.isSelected(2) && f.table.firstVisible == CellPosition(1, 0, -12, 0), "picked now, the rows not moved yet: row 2 still 4 under the top");
+    while (f.table.tick(now += 16)) {}
+    f.table.paint(f.canvas);
+    assert(near(f.table.firstVisible, CellPosition(2, 0, 0, 0)), "landed: its top at the top of the window");
+}
+
+@("Table: a press while a clicked row glides in lands it at once: the second click of a double one finds the rows still")
+unittest
+{
+    auto f = make(10, 100, 31); // the rows have 10 of the window and are 16 high
+    f.table.events.needFrame = () {};
+    f.table.paint(f.canvas);
+    f.table.scrollToPosition(CellPosition(2, 0, 4, 0), double.nan); // it starts 4 under the top, ends 6 below the bottom
+    f.table.paint(f.canvas);
+    double now = 1000;
+    f.table.mouseDown(30, 21.0 + 6);
+    f.table.mouseUp(30, 21.0 + 6, now);
+    f.table.tick(now += 16); // a part of the way
+    f.table.mouseDown(30, 21.0 + 6);
+    f.table.paint(f.canvas);
+    assert(near(f.table.firstVisible, CellPosition(2, 0, 0, 0)) && !f.table.tick(now += 16), "landed at the press, nothing left to glide");
+    f.table.mouseUp(30, 21.0 + 6, now);
+}
+
+@("Table: a press while the rows glide to a far row stops them where they are: what is pressed is what was seen")
+unittest
+{
+    auto f = make(1000, 100, 121);
+    f.table.revealMargin = 24;
+    f.table.events.needFrame = () {};
+    f.table.paint(f.canvas);
+    double now = 1000;
+    f.table.reveal(500, now);
+    f.table.tick(now += 16);
+    f.table.paint(f.canvas);
+    const seen = f.table.firstVisible;
+    f.table.mouseDown(30, 21.0 + 3);
+    f.table.paint(f.canvas);
+    assert(f.table.firstVisible == seen && !f.table.tick(now += 16), "stopped at the press");
+    f.table.mouseUp(30, 21.0 + 3);
+}
+
+@("Table: a glide to the end or the start of the rows aims where the row can stand: no frame is asked once the rows stop")
+unittest
+{
+    auto f = make(1000, 100, 121);
+    f.table.revealMargin = 24; // the last row with 24 under it, the first with 24 over it: neither can be
+    f.table.events.needFrame = () {};
+    f.table.paint(f.canvas);
+    double now = 1000;
+    size_t idle(size_t row)
+    {
+        f.table.reveal(row, now += 16);
+        f.table.paint(f.canvas);
+        auto last = f.table.firstVisible;
+        size_t frames;
+        while (f.table.tick(now += 16))
+        {
+            f.table.paint(f.canvas);
+            if (f.table.firstVisible == last)
+                ++frames;
+            last = f.table.firstVisible;
+        }
+        return frames;
+    }
+
+    assert(idle(999) == 0 && f.table.partlyVisibleRows[1] == 1000, "the end");
+    assert(idle(0) == 0 && f.table.firstVisible == CellPosition(0, 0, 0, 0), "the start");
 }
 
 @("Table: a click on a row picks it alone, a click on a picked one too (lets go of nothing), one on another row picks only that")
@@ -2796,6 +2960,69 @@ unittest
     assert(f.table.position.first >= before.first && f.table.position.first > 0, "and arrive: the row is at the bottom");
     const last = f.table.stats.first + f.table.stats.rowsOnScreen - 1;
     assert(last >= 7, "row 7 is shown");
+}
+
+@("Table: a key that picks a hidden row shows at once as much of it as the approach peeks, at most half of it, and the rows glide the rest")
+unittest
+{
+    auto glides = make(1000, 100, 121), jumps = make(1000, 100, 121); // the window is 100 high, the rows 16
+    foreach (f; [glides, jumps])
+    {
+        f.table.revealMargin = 24;
+        f.table.paint(f.canvas);
+        f.table.scrollToPosition(CellPosition(0, 0, -12, 0), double.nan); // row 6 ends at the bottom, row 7 just under it
+        f.table.paint(f.canvas);
+        f.table.select(6);
+    }
+    glides.table.events.needFrame = () {};
+    double now = 1000;
+    glides.table.key(Key.down, Pick.replace, now);
+    glides.table.paint(glides.canvas);
+    assert(glides.table.firstVisible == CellPosition(1, 0, -4, 0), "row 7 at 92: 8 of it in view at once");
+    while (glides.table.tick(now += 16)) {}
+    glides.table.paint(glides.canvas);
+    jumps.table.key(Key.down);
+    jumps.table.paint(jumps.canvas);
+    assert(near(glides.table.firstVisible, jumps.table.firstVisible) && near(jumps.table.firstVisible, CellPosition(3, 0, -4, 0)),
+        "landed where a key with no time puts it: row 7 at 60, the margin under it");
+
+    auto up = make(1000, 100, 121);
+    up.table.revealMargin = 24;
+    up.table.events.needFrame = () {};
+    up.table.paint(up.canvas);
+    up.table.scrollToPosition(CellPosition(10, 0, 0, 0), double.nan); // row 9 ends at the top
+    up.table.paint(up.canvas);
+    up.table.select(10);
+    up.table.key(Key.up, Pick.replace, now += 16);
+    up.table.paint(up.canvas);
+    assert(up.table.firstVisible == CellPosition(9, 0, -8, 0), "row 9 at -8: half of it in view at once");
+    while (up.table.tick(now += 16)) {}
+    up.table.paint(up.canvas);
+    assert(near(up.table.firstVisible, CellPosition(7, 0, -8, 0)), "landed: row 9 at 24, the margin over it");
+}
+
+@("Table: a key that picks a hidden tall row shows the 20 the approach peeks at once, not half of it")
+unittest
+{
+    class Tall : Painter // rows of 16 and a line of 34 under each: 50 high
+    {
+        override TableGeometry geometry()
+        {
+            auto g = super.geometry();
+            g.rowBorder = 34;
+            return g;
+        }
+    }
+
+    auto table = new Table(new NumbersModel(100), new ColumnHost(new ColumnLayout), portsOf(new Tall));
+    table.resize(400, 121); // the window is 100 high: rows 0 and 1, row 2 just under it
+    table.events.needFrame = () {};
+    auto canvas = new RecordingCanvas;
+    table.paint(canvas);
+    table.select(1);
+    table.key(Key.down, Pick.replace, 1000);
+    table.paint(canvas);
+    assert(table.firstVisible == CellPosition(0, 0, -20, 0), "row 2 at 80: 20 of it in view at once");
 }
 
 @("Table: the row the keys move from is painted as focused, picked or not, and only that one")
@@ -3259,22 +3486,22 @@ unittest
     assert(f.table.firstVisible.row == 0 && f.table.firstVisible.column == 1, "a pinned column has no place to scroll to: the columns stay");
 }
 
-@("Table.scrollToPosition: with the time of the host the rows glide to a place near, far off they jump to a screen from it and glide the rest")
+@("Table.scrollToPosition: with the time of the host the rows glide to a place near, far off they jump to two windows from it and glide the rest")
 unittest
 {
     auto f = make(1000, 100, 121);
     f.table.events.needFrame = () {};
     f.table.paint(f.canvas);
-    f.table.scrollToPosition(CellPosition(10, 0, 0, 0), 1000);
+    f.table.scrollToPosition(CellPosition(3, 0, 0, 0), 1000);
     f.table.paint(f.canvas);
-    assert(f.table.firstVisible.row == 0, "near: not there yet, the frames take it");
+    assert(f.table.firstVisible.row == 0, "near, in view: not there yet, the frames take it");
     double now = 1000;
     while (f.table.tick(now += 16)) {}
     f.table.paint(f.canvas);
-    assert(near(f.table.firstVisible, CellPosition(10, 0, 0, 0)), "landed where it was told");
+    assert(near(f.table.firstVisible, CellPosition(3, 0, 0, 0)), "landed where it was told");
     f.table.scrollToPosition(CellPosition(700, 0, 20, 0), now += 16);
     f.table.paint(f.canvas);
-    assert(f.table.firstVisible == CellPosition(692, 0, -8, 0), "far off: row 700 jumped to 20 + 100 from the top, a screen under its place; the glide is left");
+    assert(f.table.firstVisible == CellPosition(686, 0, -4, 0), "far off: row 700 jumped to 220, two windows under its place; the glide is left");
     while (f.table.tick(now += 16)) {}
     f.table.paint(f.canvas);
     assert(near(f.table.firstVisible, CellPosition(698, 0, -12, 0)), "landed: row 700 is 20 from the top");
