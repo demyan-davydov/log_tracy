@@ -1,8 +1,8 @@
 //! The log table of a view of a document: an element with the native behavior `log-table` (source/ui/log_table_behavior.d) that draws
-//! the rows and handles the input; this script gives it the target (`setLogTableTarget`: which document and which view it shows, and
-//! the number the script talks to it by), carries what Sciter does not give it (the gestures of the trackpad, the menus, the clipboard,
+//! the rows and handles the input; this script writes on its element what it shows (the attributes `doc`, `search` and `table`, the
+//! number the script talks to it by: D reads them when the behavior attaches), carries what Sciter does not give it (the gestures of the trackpad, the menus, the clipboard,
 //! the notices) and tells it the look of the application. A view of a panel (view-table.js) holds one `LogTableView`.
-import { setAnchor, setLogTableTarget, logTableCall, logTableSetLook, logTableMinWidthNames } from "backend.js";
+import { setAnchor, logTableCall, logTableSetLook, logTableMinWidthNames } from "backend.js";
 import { collectLook } from "log-table-look.js";
 import { lockAxis, panAxis } from "log-table-gesture.js";
 import { anchorClickPlan, rowMoved } from "anchor-click.js";
@@ -14,6 +14,7 @@ import { tr } from "i18n/i18n.js";
 
 // The tables there are, by the number D gave each: what D tells the script (a click on an anchor, an item of a menu) names its table
 const views = new Map();
+let lastTableId = 0; // the number of the last table made: every table has one of its own, from 1
 
 // The names of the CSS variables of the least widths of the columns, asked of D once
 let minWidthNames = null;
@@ -34,13 +35,14 @@ globalThis.logTableLookChanged = logTableLookChanged;
 export class LogTableView {
     // @param docId - the document whose rows the table shows
     // @param search - false: the main view of the document, true: its search view
-    // @param slot - the element the table fills (a table is put in it: the target is set just before, so the table that
-    //   attaches then is this one)
+    // @param slot - the element the table fills
     constructor(docId, search, slot) {
         this.docId = docId;
         this.search = search;
-        this.tableId = setLogTableTarget(docId, search);
-        this.element = Element.create(<div class="log-table-view" tabindex="0" />);
+        this.tableId = ++lastTableId;
+        // what the table shows is on its element: the behavior reads it when it attaches (ui/main_window.d, createBehavior)
+        this.element = Element.create(<div class="log-table-view" tabindex="0" doc={docId} search={search ? "1" : "0"}
+            table={this.tableId} />);
         views.set(this.tableId, this);
         slot.append(this.element); // the behavior of CSS attaches here
         this.bindInput();

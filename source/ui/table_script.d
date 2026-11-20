@@ -231,7 +231,7 @@ version (DebugChannel)
     }
 }
 
-/// The tables the script talks to, by the number each got when its target was set (`LogTableTarget.set`): a table is there from its attach to its detach
+/// The tables the script talks to, by the number the script wrote on the element of each (its attribute `table`): a table is there from its attach to its detach
 struct TableRegistry
 {
     private TableControl[size_t] _controls;

@@ -59,7 +59,7 @@ behaviour: `.ai/knowledge/sciter.md`.
   mapping is `resources/panel-sizes.js`), not on each move of the splitter, and the first panel
   starts with it.
 - The log table is the native behavior `log-table` (`ui/log_table_behavior`, over `ptable`): the panel puts one in a slot for each view
-  (`LogTableView` in `resources/log-table-view.js`; the number it gets from `setLogTableTarget` is how the script talks to it,
+  (`LogTableView` in `resources/log-table-view.js`, which writes on the element what it shows, `doc`, `search` and `table`, the number the script talks to it by,
   `logTableCall(tableId, method, ...)`, `ui/table_script`). It hears the views of its document itself (a new content version starts at the top,
   rows added to the same one are appended, a table at its end follows it, rule 30), so the script tells it nothing of a reload or a growth.
   What the script does with the views is `resources/pane-state.js` (`tableStep`: which status or table a view shows, the progress under it) and

@@ -45,7 +45,7 @@ enum double wheelScale = 1.0;
 /// What the window hears of a table: it can be talked to from the attach on and no longer after the detach
 struct TableHooks
 {
-    size_t id; /// the number the script talks to the table by (`LogTableTarget.set`)
+    size_t id; /// the number the script talks to the table by (the attribute `table` of its element)
     void delegate(TableControl) attached;
     void delegate(TableControl) detached;
     void delegate(string name, const(wchar)[] text) tell; /// what the table has to tell the script, queued by the window: never called from inside an event
