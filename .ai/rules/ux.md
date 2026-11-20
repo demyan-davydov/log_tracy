@@ -165,15 +165,20 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     the row context menu offers "Copy" while text is selected, "Copy Cell" and "Copy Row" (a
     right click on a row not picked picks it, on one picked keeps the rows; the text stays).
     Selected text is painted over the match colors (`--bg-text-selected`).
-30. **A table at its end follows it, as a terminal does.** The rows that come into the table (a file
-    being written, a load, a filter or a search filling it) are followed by a table at its end: its
-    last row stays in view whatever comes. A table that fills the window is at its end (also an empty
-    one: a view being filled shows the newest rows as they come); a table scrolled to its end (the last
-    row wholly in view) follows from then on. Scrolling up (the wheel, the bar, the keys, a jump) lets
-    it go, scrolling back to the end brings it back. The selection has nothing to do with it. A new
-    list (another filter or search, a file opened anew) starts at its top. The other table doesn't
-    follow these moves. A line cut by the end of the file is shown once the file is quiet for a second;
-    a file emptied by a rotation is opened anew in its tab.
+30. **A table follows its end only when the user asks.** While the vertical scroll bar is shown, a
+    badge "A" stands under it (in the corner where the bars meet when both are there). A click on it
+    turns following on, and so does the thumb dragged onto the badge and held there for a moment: the
+    table goes to its end and keeps its last row in view whatever comes (a file being written, a load,
+    a filter or a search filling it), as a terminal does; the thumb is pinned to the bottom, takes the
+    color of the badge and runs down into it, the A at its bottom, and the bar stays wide away from
+    the mouse. A second click turns it off. A drag of the pinned thumb
+    up comes off only past a small distance, then follows the mouse and following ends; scrolling
+    away from the end (the wheel, the bar, the keys, a jump) ends it too. Reaching the end by
+    scrolling (End, the wheel, the bar) does not turn it on, and a new list (another filter or search,
+    a file opened anew), however short, starts at its top and not following: a load never starts it
+    by chance. The selection has nothing to do with it. The other table doesn't follow these moves. A
+    line cut by the end of the file is shown once the file is quiet for a second; a file emptied by a
+    rotation is opened anew in its tab.
 
 ## Search
 
@@ -287,6 +292,7 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     turned off. A bar is not shown while there is nothing to scroll that way; otherwise it is
     shown at rest too, as a thin strip at the edge. The mouse over its hover area at the edge
     widens it to the thickness of that area and shows its track, semi-transparent, under the
-    thumb (only then). Its thumb is taken by the mouse and dragged anywhere, held outside the window too; a press on
+    thumb (only then); the bar down the rows of a table that follows its end stays wide (rule 30).
+    Its thumb is taken by the mouse and dragged anywhere, held outside the window too; a press on
     its track puts the thumb there at once. How it comes, goes and widens is made smooth last
     (the user, 2026-11-20).

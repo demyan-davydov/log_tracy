@@ -94,7 +94,7 @@ final class LogTable
         _table.revealMargin = 24; // a row that comes into view has 24 dips of room from the edge it came from
         _table.followEnd(!source.demo); // the rows of a document grow (a file being written): the table at its end follows it, as a terminal does
         _scrolled = new ScrolledTable(_table, new ScrollBar(new LogScrollBarPainter(look)), new ScrollBar(new LogScrollBarPainter(look)));
-        _scrolled.bar.width = _scrolled.across.width = 12; // the hover area at the edge; a trial value (the pool of rows' bars)
+        _scrolled.bar.width = _scrolled.across.width = 13; // the hover area at the edge, the wide thumb 9 (12, a dip wider: the user, 2026-11-20); a trial value
         _look = look;
         _lookHandle = look.subscribe((const LookChange change) {
             host.setMargins(sidesOf(look)); // nothing told when they are the same
