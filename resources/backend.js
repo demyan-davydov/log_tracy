@@ -1,5 +1,6 @@
 // The calls of the backend: one function per xcall of MainWindow.handleEvent
-// (source/ui/main_window.d), each done by AppSession (source/ui/app_session.d).
+// (source/ui/main_window.d), each done by AppSession (source/ui/app_session.d), but those of the
+// log tables, which MainWindow does itself for now (.ai/knowledge/architecture.md, Script ↔ Backend).
 // The id of the document comes first in the calls of a document. JSON results
 // come parsed, with the value of "nothing" when the backend gives none; the
 // functions named ...Json give the text as it is. Messages for the user are ""
@@ -76,7 +77,7 @@ export const switchTab = docId => xcall("switchTab", docId);
 export const closeTab = docId => xcall("closeTab", docId);
 export const reorderTab = (docId, index) => xcall("reorderTab", docId, index);
 
-// PROTOTYPE (log-table.js, docs/experiments/2026-11-19-painted-rows-d.md): the table drawn by D.
+// The log table, drawn by D (log-table-view.js, ui/log_table_behavior.d).
 // The next element with `behavior: log-table` shows the view of `docId`, and the number this answers is how the script talks to that
 // table: a call to the table (ui/log_table_behavior.d) of that number, null if there is none (not attached yet, or no more)
 export const setLogTableTarget = (docId, search) => Window.this.xcall("setLogTableTarget", docId, search);

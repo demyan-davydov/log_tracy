@@ -57,7 +57,7 @@ class MainWindow : SciterWindow
         return data;
     }
 
-    // The native behaviors of CSS `behavior: ...`: the log table (prototype, ui/log_table_behavior)
+    // The native behaviors of CSS `behavior: ...`: the log table (ui/log_table_behavior)
     override protected SciterEventHandler createBehavior(string name, HELEMENT he)
     {
         if (name != logTableBehavior)

@@ -1,7 +1,7 @@
 //! The values of the columns of a record (ColumnInfo), each read by the kind of its column
 //! (ColumnKind) and given to a writer of values: the one place the columns of a decoded
-//! record are read as values to show (a filter reads them to compare: log_core/rule_filter). The log table writes Sciter values through it
-//! (ui/row_cells), another reader of the records may write text.
+//! record are read as values to show (a filter reads them to compare: log_core/rule_filter). The log table writes the texts of its cells
+//! through it (ui/row_cells); another reader of the records may write other values.
 module log_core.column_values;
 
 import log_core.log_format : ColumnInfo, ColumnKind;

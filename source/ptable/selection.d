@@ -1,6 +1,4 @@
-//! The text selected across the cells and rows of a log table (prototype of
-//! docs/experiments/2026-11-19-painted-rows-d.md): the D port of the script's selection (removed). Pure,
-//! no Sciter.
+//! The text selected across the cells and rows of a table (docs/stories/painted-table.md). Pure, no Sciter.
 //!
 //! A selection is an anchor (where the drag began) and a focus (where the mouse is now). A
 //! position is the row of the view, the cell of the row (as the cells stand on the screen) and a

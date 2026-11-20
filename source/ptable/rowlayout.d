@@ -1,5 +1,5 @@
-//! The layout of the rows a table draws itself (prototype of docs/experiments/2026-11-19-painted-rows-d.md),
-//! the D port of a script prototype (removed): the rows on a screen from (first, offset), scrolling by pixels. Pure: no
+//! The layout of the rows a table draws itself (docs/stories/painted-table.md): the rows on a screen from (first, offset),
+//! scrolling by pixels. Pure: no
 //! Sciter; the heights come in as delegates.
 module ptable.rowlayout;
 
