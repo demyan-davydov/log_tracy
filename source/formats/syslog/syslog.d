@@ -116,7 +116,7 @@ final class SyslogFormat : TextFormat
 
 private enum ColumnInfo hostColumn = ColumnInfo("host", "Host", ColumnKind.Text, SyslogField.Host);
 private enum ColumnInfo appColumn = ColumnInfo("app", "App", ColumnKind.Text, SyslogField.App);
-private enum ColumnInfo pidColumn = ColumnInfo("pid", "PID", ColumnKind.Integer, SyslogField.Pid);
+private enum ColumnInfo pidColumn = ColumnInfo("pid", "PID", ColumnKind.Integer, SyslogField.Pid, hint: "Process ID");
 private enum ColumnInfo levelColumn = ColumnInfo("level", "Level", ColumnKind.Level, -1);
 private enum ColumnInfo payloadColumn = ColumnInfo("payload", "Message", ColumnKind.Payload);
 
@@ -139,9 +139,9 @@ private static immutable ColumnInfo[] isoLevelColumns = [
 ];
 private static immutable ColumnInfo[] rfc5424Columns = [
     timeColumn(TimeKind.Absolute), hostColumn, appColumn,
-    ColumnInfo("pid", "PID", ColumnKind.Text, SyslogField.ProcId),
-    ColumnInfo("msgid", "MsgID", ColumnKind.Text, SyslogField.MsgId), levelColumn,
-    ColumnInfo("data", "Data", ColumnKind.Text, SyslogField.Data), payloadColumn
+    ColumnInfo("pid", "PID", ColumnKind.Text, SyslogField.ProcId, hint: "Process ID"),
+    ColumnInfo("msgid", "MsgID", ColumnKind.Text, SyslogField.MsgId, hint: "Message ID"), levelColumn,
+    ColumnInfo("data", "Data", ColumnKind.Text, SyslogField.Data, hint: "Structured data"), payloadColumn
 ];
 
 final class SyslogDetector : FormatDetector

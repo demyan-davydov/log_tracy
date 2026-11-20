@@ -24,6 +24,8 @@ Background: `.ai/knowledge/formats.md`.
    length than the file's.
 6. A column that needs a look of its own (a width) gets it in `resources/table.css`
    (`col-<format id>-<column id>`), not in the format.
+   A short title (`sId`, `DLC`) gets its full name in `hint` (`"Session ID"`); a title that says it
+   all leaves it empty.
 7. Variants: the detector reports the variant, `createFormat` must refuse a variant the format
    doesn't have; `formatColumns` gives the columns of all variants.
 8. Update `docs/formats.md`.

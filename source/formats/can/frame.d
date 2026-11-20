@@ -36,15 +36,15 @@ ColumnInfo[] canColumns(TimeKind timeKind, bool withDir) pure
     ColumnInfo[] columns = [
         ColumnInfo("time", "Time", ColumnKind.Time, -1, timeKind),
         ColumnInfo("channel", "Channel", ColumnKind.Text, CanField.Channel),
-        ColumnInfo("id", "ID", ColumnKind.Hex, CanField.Id),
+        ColumnInfo("id", "ID", ColumnKind.Hex, CanField.Id, hint: "CAN ID"),
     ];
     if (withDir)
-        columns ~= ColumnInfo("dir", "Dir", ColumnKind.Text, CanField.Dir);
+        columns ~= ColumnInfo("dir", "Dir", ColumnKind.Text, CanField.Dir, hint: "Direction");
     columns ~= [
         // Error frames are colored like errors
         ColumnInfo("type", "Type", ColumnKind.Enum, CanField.Type, TimeKind.None, 0,
             ["CAN", "CAN FD", "Remote", "Error", "Event"], true),
-        ColumnInfo("dlc", "DLC", ColumnKind.Integer, CanField.Dlc),
+        ColumnInfo("dlc", "DLC", ColumnKind.Integer, CanField.Dlc, hint: "Data length code"),
         ColumnInfo("payload", "Data", ColumnKind.Payload),
     ];
     return columns;

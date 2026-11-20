@@ -53,7 +53,7 @@ final class DmesgFormat : TextFormat
 
     private static immutable ColumnInfo[] _kmsgColumns = [
         _decodedColumns[0], _decodedColumns[1], _decodedColumns[2],
-        ColumnInfo("seq", "Seq", ColumnKind.Integer, DmesgField.Seq),
+        ColumnInfo("seq", "Seq", ColumnKind.Integer, DmesgField.Seq, hint: "Sequence number"),
         _decodedColumns[3],
     ];
 
