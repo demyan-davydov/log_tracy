@@ -118,9 +118,6 @@ interface TableControl
     void updateCell(size_t item, size_t column); /// the same for a cell: the column of the model
     void contextPick(size_t row); /// the click for the menu was on this row: it keeps the rows picked, or is picked alone
 
-    /// Shows the demo of the groups of rows in place of the log (`on`), or the log again
-    void showDemo(bool on);
-
     /// The measurements as JSON
     wstring stats();
 }
@@ -225,9 +222,6 @@ version (DebugChannel)
             case "updateCell":
                 control.updateCell(cast(size_t) args.number(0), cast(size_t) args.number(1));
                 return true;
-            case "demo":
-                control.showDemo(args.number(0, 1) != 0); // logTableCall("demo"), logTableCall("demo", 0) for the log again
-                return true;
             case "stats":
                 result = ScriptResult.ofText(control.stats());
                 return true;
@@ -319,7 +313,6 @@ version (unittest)
         void updateCell(size_t item, size_t column) { calls ~= "updateCell " ~ item.to!string ~ " " ~ column.to!string; }
         void anchorApplied(size_t message, bool moved) { calls ~= "anchorApplied " ~ message.to!string ~ " " ~ moved.to!string; }
         wstring stats() { calls ~= "stats"; return "{}"w; }
-        void showDemo(bool on) { calls ~= "showDemo " ~ on.to!string; }
     }
 }
 
@@ -338,7 +331,6 @@ unittest
     assert(dispatch(control, "pan", ScriptArgs([1, 4]), result));
     assert(dispatch(control, "panEnd", ScriptArgs(), result));
     assert(dispatch(control, "copyText", ScriptArgs([0]), result));
-    assert(dispatch(control, "demo", ScriptArgs(), result) && dispatch(control, "demo", ScriptArgs([0]), result));
     assert(dispatch(control, "copy", ScriptArgs(), result) && dispatch(control, "copy", ScriptArgs([2, 7, 3]), result));
     assert(dispatch(control, "hitTest", ScriptArgs([5, 6]), result) && result == ScriptResult.ofText(`{"row":1}`w));
     assert(dispatch(control, "contextPick", ScriptArgs([4]), result));
@@ -346,7 +338,7 @@ unittest
     assert(dispatch(control, "anchorApplied", ScriptArgs([9, 1]), result) && dispatch(control, "anchorApplied", ScriptArgs([8]), result));
     assert(dispatch(control, "copy", ScriptArgs([7, 1, 1]), result) && dispatch(control, "copy", ScriptArgs([2, -1, 1]), result), "no kind or row like that: known call, nothing copied");
     assert(control.calls == ["jump 500 true", "scrollBy -80 false", "render", "copyText true", "stats", "select [1, 2, 3, 4]",
-        "pan -7.5 0", "pan 1 4", "panEnd", "copyText false", "showDemo true", "showDemo false",
+        "pan -7.5 0", "pan 1 4", "panEnd", "copyText false",
         "copy text 0 0", "copy cell 7 3", "hitTest 5 6", "contextPick 4", "updateRow 4", "updateCell 4 2", "anchorApplied 9 true", "anchorApplied 8 false"]);
 }
 

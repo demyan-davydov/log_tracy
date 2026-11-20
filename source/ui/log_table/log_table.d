@@ -1,4 +1,4 @@
-//! The table of a log: the rows of a view of a document (its model; or the demo of the groups of rows), the table that
+//! The table of a log: the rows of a view of a document (its model), the table that
 //! draws them in the look of the log table, and the scroll bar beside it, made and let go of together. It has the measurer and the clipboard it is given
 //! and knows no Sciter: the behavior that shows it (ui/log_table_behavior) joins it to an element.
 module ui.log_table.log_table;
@@ -18,20 +18,17 @@ import ptable.table : Table, TableEvents;
 import ptable.selection : CopyFormat;
 import ptable.tableports : TablePorts;
 import ui.app_session : AppSession;
-import ui.log_table.demo_model : demoTableModel;
 import ui.log_table.document_model : DocumentRows, LogColumnLook, documentTableModel;
 import ui.log_table.log_look : LogLook;
 import ui.log_table.painter : LogPainter, LogScrollBarPainter;
 
-/// What a log table shows: a view of a document and the column host the tables of the document share, or the demo of
-/// the groups of rows (`demo`: ui/log_table/demo_model) with a host of its own
+/// What a log table shows: a view of a document and the column host the tables of the document share
 struct TableSource
 {
     AppSession session;
     DocumentId docId;
     bool search;
     ColumnHost host;
-    bool demo;
     bool singleLine; /// the rows are one line high (the setting of the application) from the start
 }
 
@@ -56,7 +53,7 @@ final class LogTable
     void delegate() beforeMetrics;
 
     private void delegate() _disposeModel; // the model stops hearing its source
-    private DocumentRows _rows; // the rows of the view (null for the demo): told what the model cannot know
+    private DocumentRows _rows; // the rows of the view: told what the model cannot know
     private LogPainter _painter;
     private Table _table;
     private ScrolledTable _scrolled; // the table with its scroll bar beside it
@@ -68,35 +65,22 @@ final class LogTable
     /// The model listens to the document and the table to the look from now on, until `dispose`
     this(TableSource source, LogLook look, TextMeasurer measurer, Clipboard clipboard)
     {
-        TableModel model;
-        bool delegate() anchorsFull;
         ColumnHost host = source.host;
-        if (source.demo)
-        {
-            auto demo = demoTableModel(look, measurer);
-            model = demo;
-            _disposeModel = &demo.dispose;
-            host = new ColumnHost; // its columns are not the document's
-        }
-        else
-        {
-            anchorsFull = () => source.session.doc(source.docId).anchorsFull; // the document says whether there is room
-            // The model asks for it at every row it reads: it is made again only after a change of the look or of the single line, and
-            // holds the look's own least widths (a change of the look replaces them, it never changes them in place)
-            LogColumnLook columnLook;
-            auto document = documentTableModel(source.session, source.docId, source.search, _rows, () {
-                if (_columnLookStale)
-                {
-                    // the columns only read the widths: the look's own, not a copy
-                    columnLook = LogColumnLook(look.spacing.payloadPadLeft, !_singleLine, look, anchorsFull, measurer, null,
-                        cast(double[string]) look.spacing.minWidths);
-                    _columnLookStale = false;
-                }
-                return columnLook;
-            });
-            model = document;
-            _disposeModel = &document.dispose;
-        }
+        bool delegate() anchorsFull = () => source.session.doc(source.docId).anchorsFull; // the document says whether there is room
+        // The model asks for it at every row it reads: it is made again only after a change of the look or of the single line, and
+        // holds the look's own least widths (a change of the look replaces them, it never changes them in place)
+        LogColumnLook columnLook;
+        auto model = documentTableModel(source.session, source.docId, source.search, _rows, () {
+            if (_columnLookStale)
+            {
+                // the columns only read the widths: the look's own, not a copy
+                columnLook = LogColumnLook(look.spacing.payloadPadLeft, !_singleLine, look, anchorsFull, measurer, null,
+                    cast(double[string]) look.spacing.minWidths);
+                _columnLookStale = false;
+            }
+            return columnLook;
+        });
+        _disposeModel = &model.dispose;
         _painter = new LogPainter(look);
         _painter.anchorsFull = anchorsFull;
         auto ports = TablePorts(_painter, clipboard);
@@ -104,7 +88,7 @@ final class LogTable
         host.setMargins(sidesOf(look)); // the same for the tables of a document: each gives the look's, the host keeps one
         _table = new Table(model, host, ports);
         _table.revealMargin = 24; // a row that comes into view has 24 dips of room from the edge it came from
-        _table.followEnd(!source.demo); // the rows of a document grow (a file being written): the table at its end follows it, as a terminal does
+        _table.followEnd(true); // the rows of a document grow (a file being written): the table at its end follows it, as a terminal does
         _scrolled = new ScrolledTable(_table, new ScrollBar(new LogScrollBarPainter(look)), new ScrollBar(new LogScrollBarPainter(look)));
         _scrolled.bar.width = _scrolled.across.width = 13; // the hover area at the edge, the wide thumb 9 (12, a dip wider: the user, 2026-11-20); a trial value
         _look = look;
@@ -173,24 +157,54 @@ unittest
     assert(order == ["restyle"], "no host hook is no failure");
 }
 
-@("LogTable: the demo shows rows grouped by a day and a shift, with a column host of its own: the document's is not touched")
-unittest
+version (unittest)
 {
-    import ptable_text.testing : FakeMeasurer;
-    import ui.log_table.log_look : defaultLogLook;
+    // A text log of `lines` lines in the temporary folder, opened in a session of its own and loaded whole
+    private struct TestLog
+    {
+        AppSession session;
+        DocumentId id;
+        string path;
 
-    auto shared_ = new ColumnHost;
-    auto log = new LogTable(TableSource(null, DocumentId.init, false, shared_, true), defaultLogLook(), new FakeMeasurer, null);
-    log.table.resize(400, 300);
-    import ptable.painter : RecordingCanvas;
-    log.table.paint(new RecordingCanvas);
-    assert(log.table.stats.rowsOnScreen > 0 && log.table.copyText(false).length == 0, "the demo's rows, nothing selected");
-    assert(shared_.layout.width("day") == 0 && shared_.layout.width("n") == 0 && shared_.width == 0,
-        "the document's host has none of its widths and none of its room");
-    log.table.scrollToEnd();
-    log.table.paint(new RecordingCanvas);
-    assert(!log.table.isFollowingEnd, "the demo does not follow an end: its rows do not grow");
-    log.dispose();
+        void close()
+        {
+            import std.file : remove;
+
+            session.closeAll();
+            remove(path);
+        }
+    }
+
+    private TestLog openTestLog(string name, size_t lines)
+    {
+        import core.thread : Thread;
+        import core.time : msecs;
+        import std.array : replicate;
+        import std.file : tempDir, write;
+        import std.path : buildPath;
+        import domain.document : Document;
+        import domain.document_store : DocumentStore;
+        import domain.log_document : LogDocument;
+        import log_core.log_format : FormatChoice;
+        import ui.app_settings : AppSettings;
+
+        TestLog log;
+        log.path = buildPath(tempDir(), name);
+        write(log.path, "a line of the log with some words in it\n".replicate(lines));
+        log.session = new AppSession(AppSettings.init, new DocumentStore(),
+            (string path, FormatChoice choice) => cast(Document) new LogDocument(path, choice), (in AppSettings s) {});
+        log.id = log.session.openFile(log.path).docId;
+        foreach (attempt; 0 .. 500)
+        {
+            log.session.dispatchEvents();
+            log.session.takeScriptCalls();
+            if (log.session.doc(log.id).mainView.itemsCount == lines)
+                break;
+            Thread.sleep(10.msecs);
+        }
+        assert(log.session.doc(log.id).mainView.itemsCount == lines, "the log is loaded");
+        return log;
+    }
 }
 
 @("LogTable: the margins left and right of the rows in the look are those of its column host, from the start and after a change of the look")
@@ -204,7 +218,9 @@ unittest
     spacing.rowsMarginLeft = 10;
     spacing.rowsMarginRight = 20;
     look.setSpacing(spacing);
-    auto log = new LogTable(TableSource(null, DocumentId.init, false, new ColumnHost, true), look, new FakeMeasurer, null);
+    auto opened = openTestLog("log_tracy_log_table_margins.log", 50);
+    scope (exit) opened.close();
+    auto log = new LogTable(TableSource(opened.session, opened.id, false, new ColumnHost), look, new FakeMeasurer, null);
     log.table.resize(400, 300);
     assert(log.table.rowsArea.x == 10 && log.table.rowsArea.w == 370);
     spacing.rowsMarginLeft = 5;
@@ -242,25 +258,9 @@ unittest
         void popClip() {}
     }
 
-    enum lines = 2000;
-    const path = buildPath(tempDir(), "log_tracy_log_table_frames.log");
-    write(path, "a line of the log with some words in it\n".replicate(lines));
-    scope (exit) remove(path);
-    auto session = new AppSession(AppSettings.init, new DocumentStore(),
-        (string path, FormatChoice choice) => cast(Document) new LogDocument(path, choice), (in AppSettings s) {});
-    scope (exit) session.closeAll();
-    const id = session.openFile(path).docId;
-    foreach (attempt; 0 .. 500)
-    {
-        session.dispatchEvents();
-        session.takeScriptCalls();
-        if (session.doc(id).mainView.itemsCount == lines)
-            break;
-        Thread.sleep(10.msecs);
-    }
-    assert(session.doc(id).mainView.itemsCount == lines, "the log is loaded");
-
-    auto log = new LogTable(TableSource(session, id, false, new ColumnHost), defaultLogLook(), new FakeMeasurer, null);
+    auto opened = openTestLog("log_tracy_log_table_frames.log", 2000);
+    scope (exit) opened.close();
+    auto log = new LogTable(TableSource(opened.session, opened.id, false, new ColumnHost), defaultLogLook(), new FakeMeasurer, null);
     scope (exit) log.dispose();
     static void noFrame() {}
     import std.functional : toDelegate;

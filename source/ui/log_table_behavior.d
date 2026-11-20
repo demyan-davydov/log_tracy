@@ -1,8 +1,7 @@
 //! The log table in Sciter: the thin adapter of the table of the package ptable. It is a native
 //! behavior (`behavior: log-table` puts it on an element) that turns the events of Sciter into the calls
 //! of `Table` and gives it a canvas, a text measurer and a clipboard (ui/sciter_table/sciter_host), the rows of a view
-//! of a document (ui/log_table/document_model; or the demo of grouped rows, ui/log_table/demo_model, for
-//! `logTableCall("demo")`) and the look of the log table (ui/log_table/painter, ui/log_table/log_look).
+//! of a document (ui/log_table/document_model) and the look of the log table (ui/log_table/painter, ui/log_table/log_look).
 //! docs/stories/painted-table.md, docs/experiments/2026-11-19-painted-rows-d.md.
 //!
 //! Left: anchors by a click, the matches of the search, the rule colors, the search view's own columns, the inertia
@@ -418,17 +417,6 @@ final class LogTableBehavior : SciterEventHandler
             }
         }
 
-        void showDemo(bool on)
-        {
-            if (_source.demo == on)
-                return;
-            _source.demo = on;
-            if (_log is null)
-                return; // made so once attached
-            _log.dispose(); // the table is made again of the other model
-            build();
-            _host.repaint();
-        }
         void resetStats() { _frames.reset(); }
         void select(double x1, double y1, double x2, double y2) { _log.table.selectBetween(x1, y1, x2, y2); }
         void selectWord(double x, double y, bool word) { _log.table.selectAt(x, y, word); }
