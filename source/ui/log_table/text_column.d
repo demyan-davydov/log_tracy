@@ -223,6 +223,7 @@ unittest
             calls ~= format("paragraph %s@%s,%s w%s:%s", text.to!string, x, top, width, color.r);
         }
 
+        void fillRoundRect(Rect area, double radius, Color color) { fillRect(area, color); }
         void fillCircle(double cx, double cy, double radius, Color fill, Color line) {}
         void pushClip(Rect area) {}
         void popClip() {}
@@ -284,6 +285,7 @@ unittest
         void fillRect(Rect area, Color color) { areas ~= area; colors ~= color; }
         void drawText(FontId font, const(wchar)[] text, double x, double baseline, Color color) {}
         void drawParagraph(FontId font, const(wchar)[] text, double x, double top, double width, Color color) {}
+        void fillRoundRect(Rect area, double radius, Color color) { fillRect(area, color); }
         void fillCircle(double cx, double cy, double radius, Color fill, Color line) {}
         void pushClip(Rect area) {}
         void popClip() {}
@@ -466,6 +468,7 @@ unittest
             calls ~= format("%s f%s %s,%s %s", text, font, x, baseline, color);
         }
         void drawParagraph(FontId font, const(wchar)[] text, double x, double top, double width, Color color) {}
+        void fillRoundRect(Rect area, double radius, Color color) { fillRect(area, color); }
         void fillCircle(double cx, double cy, double radius, Color fill, Color line) {}
         void pushClip(Rect area) {}
         void popClip() {}
@@ -530,6 +533,7 @@ unittest
             calls ~= format("%s f%s %s,%s %s", text, font, x, baseline, color);
         }
         void drawParagraph(FontId font, const(wchar)[] text, double x, double top, double width, Color color) {}
+        void fillRoundRect(Rect area, double radius, Color color) { fillRect(area, color); }
         void fillCircle(double cx, double cy, double radius, Color fill, Color line) {}
         void pushClip(Rect area) {}
         void popClip() {}

@@ -293,6 +293,7 @@ unittest
             }
         }
         void drawParagraph(FontId font, const(wchar)[] text, double x, double top, double width, Color color) {}
+        void fillRoundRect(Rect area, double radius, Color color) { fillRect(area, color); }
         void fillCircle(double cx, double cy, double radius, Color fill, Color line) {}
         void pushClip(Rect area) {}
         void popClip() {}

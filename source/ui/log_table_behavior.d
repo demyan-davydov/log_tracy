@@ -195,7 +195,8 @@ final class LogTableBehavior : SciterEventHandler
     // The table asks again and again while it scrolls by itself: one frame is on its way at a time
     private void requestFrame()
     {
-        if (_frameRequest.ask(MonoTime.currTime))
+        const asked = _frameRequest.ask(MonoTime.currTime);
+        if (asked)
             _host.requestFrame(frameEvent);
     }
 
@@ -206,7 +207,7 @@ final class LogTableBehavior : SciterEventHandler
             return false;
         // Sciter sends the next frame while the handler says it handled this one: asking again here would start one more
         // chain of frames each frame, and the window hangs
-        const more = _log.table.tick(nowMs());
+        const more = _log.scrolled.tick(nowMs()); // the table's own scrolls and its bars' widening
         if (more)
             _frameRequest.goesOn(MonoTime.currTime);
         else
@@ -225,7 +226,7 @@ final class LogTableBehavior : SciterEventHandler
         else if (params.cmd == FOCUS_EVENTS.FOCUS_LOST)
         {
             _log.table.tableHasFocus = false;
-            _log.table.cancelPress();
+            _log.scrolled.cancelPress();
         }
         return false;
     }

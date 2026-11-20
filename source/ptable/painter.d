@@ -204,6 +204,7 @@ version (unittest)
             calls ~= "paragraph:" ~ text.to!string;
         }
 
+        void fillRoundRect(Rect area, double radius, Color color) { fillRect(area, color); }
         void fillCircle(double cx, double cy, double radius, Color fill, Color line) { calls ~= "circle"; }
         void pushClip(Rect area) { calls ~= "clip"; }
         void popClip() { calls ~= "unclip"; }

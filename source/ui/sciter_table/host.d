@@ -326,6 +326,12 @@ final class SciterCanvas : Canvas
             rgba(line.r, line.g, line.b, line.a));
     }
 
+    void fillRoundRect(Rect area, double radius, Color color)
+    {
+        _gfx.fillRoundRect(_ox + cast(float) area.x, _oy + cast(float) area.y, cast(float) area.w, cast(float) area.h, cast(float) radius,
+            rgba(color.r, color.g, color.b, color.a));
+    }
+
     void pushClip(Rect area)
     {
         _gfx.pushClip(_ox + cast(float) area.x, _oy + cast(float) area.y, cast(float) area.w, cast(float) area.h);

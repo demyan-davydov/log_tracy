@@ -1,6 +1,6 @@
-//! A table with its scroll bars: one at the right edge for the rows and, when the columns need more room than the table has,
-//! one at the bottom for them. Gives the table the room the bars leave, draws the bars after it and sends the mouse to the one
-//! it is over. The host talks to this as it would to a `Table`. See docs/stories/painted-table.md.
+//! A table with its scroll bars: one over the right edge of its body for the rows and, when the columns need more room than
+//! the table has, one over the bottom of its body for them. The bars take no room from the table: it draws them after it
+//! and sends the mouse to the one it is over. The host talks to this as it would to a `Table`. See docs/stories/painted-table.md.
 module ptable.scrolledtable;
 
 version (unittest) import ptable.testing : portsOf;
@@ -23,7 +23,8 @@ final class ScrolledTable
     TableEvents events;
 
     private double _width = 0, _height = 0;
-    private bool _acrossShown; // the columns did not fit at the last paint: the table is as high as the bar leaves
+    private bool _acrossShown; // the columns did not fit at the last paint: the bar at the bottom is shown
+    private bool _tablePressed; // a press of the table's own is on (a selection dragged): the bars do not widen under it
 
     this(Table table, ScrollBar bar, ScrollBar across = null)
     {
@@ -47,132 +48,153 @@ final class ScrolledTable
                 events.scrolledX(m);
         };
         bar.events.scrollTo = (double fraction) { table.scrollToFraction(fraction); };
-        bar.events.capture = (bool on) { if (events.capture !is null) events.capture(on); };
-        bar.events.invalidate = () { if (events.invalidate !is null) events.invalidate(); };
+        bar.events.capture = (bool on) {
+            table.holdScale(on); // the scale of the bar does not change under the drag of its thumb
+            if (events.capture !is null)
+                events.capture(on);
+        };
+        bar.events.invalidate = () { invalidateArea(strip); };
+        bar.events.needFrame = () { if (events.needFrame !is null) events.needFrame(); };
         if (across !is null)
         {
             across.events.scrollTo = (double fraction) { table.scrollToFractionX(fraction); };
             across.events.capture = (bool on) { if (events.capture !is null) events.capture(on); };
-            across.events.invalidate = () { if (events.invalidate !is null) events.invalidate(); };
+            across.events.invalidate = () { invalidateArea(belowStrip); };
+            across.events.needFrame = () { if (events.needFrame !is null) events.needFrame(); };
         }
+    }
+
+    // A bar looks another way (it widens, its thumb was let go of): only its strip is painted again
+    private void invalidateArea(Rect area)
+    {
+        if (events.invalidateArea !is null)
+            events.invalidateArea(area);
+        else if (events.invalidate !is null)
+            events.invalidate();
     }
 
     void resize(double width, double height)
     {
         _width = width;
         _height = height;
-        relayout();
+        table.resize(width, height); // the bars lie over the edges of the rows: the table has all of the room
     }
 
-    // The table is as wide as the vertical bar leaves and as high as the bar below leaves, if there is one
-    private void relayout()
-    {
-        table.resize(max(0.0, _width - bar.width), max(0.0, _height - belowHeight));
-    }
-
+    // How high the bar at the bottom is while it is shown
     private double belowHeight() const
     {
         return _acrossShown ? across.width : 0;
     }
 
-    // The strip and the track of the bar at the right: the track is the body of the table (the margins around the rows are no matter of the bar)
-    private Rect strip() const
+    // The strip of the bar at the right, over the right edge of the body (the margins around the rows are no matter of the bar), ending
+    // where the bar at the bottom begins; its track is all of it
+    private Rect strip()
     {
-        return Rect(_width - bar.width, 0, bar.width, _height - belowHeight);
+        return stripOf(table.bodyArea);
     }
 
-    private Rect track()
+    private Rect stripOf(Rect body) const
     {
-        const body = table.bodyArea;
-        return Rect(_width - bar.width, body.y, bar.width, body.h);
+        return Rect(_width - bar.width, body.y, bar.width, max(0.0, body.h - belowHeight));
     }
 
-    // The strip of the bar at the bottom, under the table; its track is all of it
-    private Rect belowStrip() const
+    // The strip of the bar at the bottom, over the bottom of the body, ending where the bar at the right begins; its track is all of it
+    private Rect belowStrip()
     {
-        return Rect(0, _height - belowHeight, _width - bar.width, belowHeight);
+        return belowOf(table.bodyArea);
     }
 
-    private Rect corner() const
+    private Rect belowOf(Rect body) const
     {
-        return Rect(_width - bar.width, _height - belowHeight, bar.width, belowHeight);
+        return Rect(0, body.y + body.h - belowHeight, max(0.0, _width - rightWidth), belowHeight);
     }
 
-    // Whether the columns need the bar below; if that changed the table gets the other height. True if it did
-    private bool fitBelow()
+    // Where the two bars meet: neither runs under the other
+    private Rect cornerOf(Rect body) const
+    {
+        return Rect(_width - bar.width, body.y + body.h - belowHeight, bar.width, belowHeight);
+    }
+
+    // How wide the bar at the right is while it is there
+    private double rightWidth() const
+    {
+        return bar.shown ? bar.width : 0;
+    }
+
+    // Whether the bar at the bottom is there (the columns need it, as the table has learned them at its paint)
+    private void fitBelow()
     {
         if (across is null)
-            return false;
-        const need = table.scrollMetricsX().shown < 1;
-        if (need == _acrossShown)
-            return false;
-        _acrossShown = need;
-        relayout();
-        return true;
+            return;
+        _acrossShown = across.shown; // the table told it its metrics at this paint
+    }
+
+    /// A frame of the host at `timestampMs`: the table scrolls on by itself, the bars widen or narrow on. True while any of
+    /// them wants the next frame
+    bool tick(double timestampMs)
+    {
+        bool more = table.tick(timestampMs);
+        more = bar.tick(timestampMs) || more;
+        if (across !is null)
+            more = across.tick(timestampMs) || more;
+        return more;
     }
 
     void paint(Canvas canvas)
     {
-        fitBelow(); // before the table is painted: a window or a column that changed does not cost a frame without the bar
         table.paint(canvas);
-        bar.paint(canvas, strip, track);
-        if (across is null)
-            return;
-        if (fitBelow())
-        {
-            // what the table learned while it was painted (a column grew to a text) changed it: painted again at the next frame
-            if (events.invalidate !is null)
-                events.invalidate();
-            return;
-        }
+        fitBelow(); // after the table: a column that grew to a text at this paint has the bar at once
+        bar.paint(canvas, strip, strip);
         if (_acrossShown)
-        {
             across.paint(canvas, belowStrip, belowStrip);
-            across.paintCorner(canvas, corner);
-        }
     }
 
     /// Whether the point is on a bar or in the corner where they meet
-    bool onBar(double x, double y) const
+    bool onBar(double x, double y)
     {
-        return onVertical(x, y) || onBelow(x, y) || onCorner(x, y);
+        return placesNow.onBar(x, y);
     }
 
-    private bool onCorner(double x, double y) const
+    // Where the bars are now, of one read of the table's body: a host asks on every event of the mouse
+    private Places placesNow()
     {
-        return _acrossShown && x >= _width - bar.width && y >= _height - belowHeight;
+        const body = table.bodyArea;
+        return Places(stripOf(body), belowOf(body), cornerOf(body), bar.shown, _acrossShown);
     }
 
-    private bool onVertical(double x, double y) const
+    private static struct Places
     {
-        return x >= _width - bar.width && y < _height - belowHeight;
-    }
+        Rect strip, below, corner;
+        bool right, bottom; // the bar at the right, the one at the bottom are there
 
-    private bool onBelow(double x, double y) const
-    {
-        return _acrossShown && y >= _height - belowHeight && x < _width - bar.width;
+        private static bool inside(Rect r, double x, double y)
+        {
+            return x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
+        }
+
+        bool onVertical(double x, double y) const { return right && inside(strip, x, y); }
+        bool onBelow(double x, double y) const { return bottom && inside(below, x, y); }
+        bool onCorner(double x, double y) const { return right && bottom && inside(corner, x, y); }
+        bool onBar(double x, double y) const { return onVertical(x, y) || onBelow(x, y) || onCorner(x, y); }
     }
 
     bool mouseDown(double x, double y, Pick mode = Pick.replace)
     {
-        if (onVertical(x, y))
-        {
-            const took = bar.mouseDown(y, track);
-            if (bar.dragging)
-                table.holdScale(true); // the scale of the bar does not change under the drag
-            return took;
-        }
-        if (onBelow(x, y))
-            return across.mouseDown(x, belowStrip);
-        if (onCorner(x, y))
+        const at = placesNow;
+        if (at.onVertical(x, y))
+            return bar.mouseDown(y, at.strip);
+        if (at.onBelow(x, y))
+            return across.mouseDown(x, at.below);
+        if (at.onCorner(x, y))
             return true; // the corner is nobody's: the press is taken, nothing happens
+        _tablePressed = true; // until the release the mouse is the table's: no bar widens under it
         return table.mouseDown(x, y, mode);
     }
 
     bool mouseMove(double x, double y)
     {
         if (bar.dragging)
-            return bar.mouseMove(y, track);
+            return bar.mouseMove(y, strip);
         if (across !is null && across.dragging)
             return across.mouseMove(x, belowStrip);
         return table.mouseMove(x, y);
@@ -181,22 +203,28 @@ final class ScrolledTable
     bool mouseUp(double x, double y)
     {
         if (bar.dragging)
-        {
-            table.holdScale(false);
             return bar.mouseUp();
-        }
         if (across !is null && across.dragging)
             return across.mouseUp();
+        _tablePressed = false;
         return table.mouseUp(x, y);
+    }
+
+    /// The window lost the mouse or the focus with a button down: a press of the table is over
+    void cancelPress()
+    {
+        _tablePressed = false;
+        table.cancelPress();
     }
 
     /// The mouse is over the point (or left the table: `x` and `y` NaN): the bar under it is lit
     void mouseOver(double x, double y)
     {
-        table.hoverAt(onBar(x, y) ? double.nan : x, y);
-        bar.hover(onVertical(x, y));
+        const at = placesNow;
+        table.hoverAt(at.onBar(x, y) ? double.nan : x, y);
+        bar.hover(!_tablePressed && at.onVertical(x, y));
         if (across !is null)
-            across.hover(onBelow(x, y));
+            across.hover(!_tablePressed && at.onBelow(x, y));
     }
 }
 
@@ -206,7 +234,7 @@ version (unittest)
     import ptable.painter : Painter, RecordingCanvas;
 }
 
-@("ScrolledTable: the table gets the width the bar leaves, a press on the bar scrolls the table, one on the rows selects")
+@("ScrolledTable: the table gets all of the room, the bar lies over the right edge of its body: a press on it scrolls, one beside it selects")
 unittest
 {
     auto model = new NumbersModel(1000);
@@ -215,14 +243,16 @@ unittest
     scrolled.resize(410, 121);
     auto canvas = new RecordingCanvas;
     scrolled.paint(canvas); // the table paints, tells its metrics, the bar paints the thumb
+    assert(table.bodyArea.w == 410, "no room is taken from the table");
     assert(table.scrollMetrics.shown > 0 && table.scrollMetrics.shown < 0.01, "a few rows of 1000 in view");
-    // the strip is x 400..410; a press at the middle of the track jumps the thumb there
+    assert(!scrolled.onBar(405, 10), "the header is no bar's");
+    // the strip is x 400..410 over the body; a press at the middle of the track jumps the thumb there
     assert(scrolled.mouseDown(405, 21 + 50));
     assert(scrolled.bar.dragging && table.position.first > 300, "the table scrolled to about the middle");
     scrolled.mouseUp(405, 21 + 50);
     assert(!scrolled.bar.dragging);
-    assert(scrolled.mouseDown(100, 21 + 3) && scrolled.mouseUp(100, 21 + 3));
-    assert(table.selected >= 0, "a press on the rows is the table's");
+    assert(scrolled.mouseDown(395, 21 + 3) && scrolled.mouseUp(395, 21 + 3));
+    assert(table.selected >= 0, "a press beside the strip is the table's");
 }
 
 @("ScrolledTable: the bars are the table's, the margins around the rows do not change them: the track runs along the body")
@@ -246,7 +276,7 @@ unittest
     static class Tracks : ScrollBarPainter
     {
         Rect[] tracks;
-        override void paint(Canvas canvas, Rect strip, Rect track, Rect thumb, bool hover, bool dragging, Orientation orientation = Orientation.vertical)
+        override void paint(Canvas canvas, Rect strip, Rect track, Rect thumb, double wide, Orientation orientation = Orientation.vertical)
         {
             tracks ~= track;
         }
@@ -264,27 +294,23 @@ unittest
     }
 
     const plain = trackOf(new Painter, SideMargins.init);
-    assert(plain == Rect(400, 21, 10, 100), "under the header, all of the body");
+    assert(plain == Rect(400, 21, 10, 100), "under the header, all of the body, over its right edge");
     assert(trackOf(new Spaced, SideMargins(20, 10)) == plain, "the margins are room of the rows, not of the bar");
 }
 
-@("ScrolledTable: a bar at the bottom comes when the columns do not fit, cuts the table's height, scrolls the columns, and goes")
+@("ScrolledTable: a bar at the bottom comes over the bottom of the body when the columns do not fit, scrolls the columns, and goes; the table keeps its height")
 unittest
 {
     auto layout = new ColumnLayout;
     auto table = new Table(new NumbersModel(1000), new ColumnHost(layout), portsOf(new Painter));
     auto scrolled = new ScrolledTable(table, new ScrollBar, new ScrollBar);
-    int frames;
-    scrolled.events.invalidate = () { ++frames; };
     scrolled.resize(210, 121);
     auto canvas = new RecordingCanvas;
     scrolled.paint(canvas);
     assert(!scrolled.onBar(100, 118) && table.rowsArea.h == 100, "the columns fit (the flex one takes the rest): no bar");
-    layout.setWidth("text", 400); // 24 + 400 wide in 200: they do not fit
+    layout.setWidth("text", 400); // 24 + 400 wide in 210: they do not fit
     scrolled.paint(canvas);
-    assert(frames > 0, "the table is painted again at its new height");
-    scrolled.paint(canvas);
-    assert(table.rowsArea.h == 100 - 10 && scrolled.onBar(100, 118) && !scrolled.onBar(100, 50), "the bar takes its height from the table");
+    assert(table.rowsArea.h == 100 && scrolled.onBar(100, 118) && !scrolled.onBar(100, 50), "the bar lies over the rows' bottom");
     assert(scrolled.across.dragging == false);
     // a press at the middle of the strip jumps the columns about to the middle
     assert(scrolled.mouseDown(100, 118) && scrolled.across.dragging && layout.scrollX > 50);
@@ -293,24 +319,178 @@ unittest
     assert(!scrolled.across.dragging && layout.scrollX > 100, "dragged on");
     layout.setWidth("text", 100); // fit again
     scrolled.paint(canvas);
-    scrolled.paint(canvas);
-    assert(!scrolled.onBar(100, 118) && table.rowsArea.h == 100, "the bar went, the table is high as before");
+    assert(!scrolled.onBar(100, 118) && table.rowsArea.h == 100, "the bar went");
 }
 
-@("ScrolledTable: the corner where the bars meet takes a press and does nothing; the bar below does not wait a frame after a column grew")
+@("ScrolledTable: neither bar runs under the other: the corner where they meet takes a press and does nothing")
 unittest
 {
+    import ptable.scrollbar : ScrollBarPainter;
+
+    static class Tracks : ScrollBarPainter
+    {
+        Rect[] tracks;
+        override void paint(Canvas canvas, Rect strip, Rect track, Rect thumb, double wide, Orientation orientation = Orientation.vertical)
+        {
+            tracks ~= track;
+        }
+    }
+
     auto layout = new ColumnLayout;
     auto table = new Table(new NumbersModel(1000), new ColumnHost(layout), portsOf(new Painter));
-    auto scrolled = new ScrolledTable(table, new ScrollBar, new ScrollBar);
+    auto down = new Tracks, below = new Tracks;
+    auto scrolled = new ScrolledTable(table, new ScrollBar(down), new ScrollBar(below));
     scrolled.resize(210, 121);
+    layout.setWidth("text", 400); // the columns do not fit
     auto canvas = new RecordingCanvas;
     scrolled.paint(canvas);
-    layout.setWidth("text", 400); // the columns do not fit now
-    scrolled.paint(canvas); // the bar is fitted before the table is painted: the table has its height already
-    assert(table.rowsArea.h == 100 - 10, "no frame with the old height");
-    assert(scrolled.onBar(205, 118), "the corner (x 200..210, y 111..121) is on the bars' place");
+    assert(down.tracks[$ - 1] == Rect(200, 21, 10, 90) && below.tracks[$ - 1] == Rect(0, 111, 200, 10), "each ends where the other begins");
+    assert(scrolled.onBar(205, 118), "the corner (x 200..210, y 111..121) is the bars'");
     table.select(3);
     const selected = table.selected;
     assert(scrolled.mouseDown(205, 118) && table.selected == selected, "a press in the corner is taken and the table is left alone");
+}
+
+@("ScrolledTable: a bar turned off or with nothing to scroll is not drawn and leaves the mouse to the rows; the other then runs to the edge")
+unittest
+{
+    import ptable.scrollbar : ScrollBarPainter;
+
+    static class Count : ScrollBarPainter
+    {
+        int paints;
+        override void paint(Canvas canvas, Rect strip, Rect track, Rect thumb, double wide, Orientation orientation = Orientation.vertical)
+        {
+            ++paints;
+        }
+    }
+
+    auto canvas = new RecordingCanvas;
+    // nothing to scroll: 3 rows in 100 of body
+    auto few = new Count;
+    auto fit = new ScrolledTable(new Table(new NumbersModel(3), new ColumnHost, portsOf(new Painter)), new ScrollBar(few));
+    fit.resize(410, 121);
+    fit.paint(canvas);
+    fit.paint(canvas);
+    assert(few.paints == 0 && !fit.onBar(405, 21 + 3), "no bar, the edge is the rows'");
+    assert(fit.mouseDown(405, 21 + 3) && fit.mouseUp(405, 21 + 3) && fit.table.selected == 0, "a press there selects the row");
+
+    // turned off: 1000 rows, still no bar
+    auto off = new Count;
+    auto many = new ScrolledTable(new Table(new NumbersModel(1000), new ColumnHost, portsOf(new Painter)), new ScrollBar(off));
+    many.bar.enabled = false;
+    many.resize(410, 121);
+    many.paint(canvas);
+    assert(off.paints == 0 && !many.onBar(405, 21 + 50), "a bar turned off is not there");
+    many.bar.enabled = true;
+    many.paint(canvas);
+    assert(off.paints == 1 && many.onBar(405, 21 + 50), "turned on again");
+
+    // the columns do not fit, the rows do: the bar at the bottom runs to the right edge, no corner
+    auto layout = new ColumnLayout;
+    auto wide = new ScrolledTable(new Table(new NumbersModel(3), new ColumnHost(layout), portsOf(new Painter)), new ScrollBar, new ScrollBar);
+    layout.setWidth("text", 400);
+    wide.resize(210, 121);
+    wide.paint(canvas);
+    wide.paint(canvas);
+    assert(wide.onBar(205, 118) && wide.mouseDown(205, 118) && wide.across.dragging, "the right end of the strip is the bar's own");
+}
+
+@("ScrolledTable: the mouse over a bar asks the host for frames, and its tick widens the bar")
+unittest
+{
+    import ptable.scrollbar : ScrollBarPainter;
+
+    static class Wide : ScrollBarPainter
+    {
+        double wide = -1;
+        override void paint(Canvas canvas, Rect strip, Rect track, Rect thumb, double wide, Orientation orientation = Orientation.vertical)
+        {
+            this.wide = wide;
+        }
+    }
+
+    auto look = new Wide;
+    auto scrolled = new ScrolledTable(new Table(new NumbersModel(1000), new ColumnHost, portsOf(new Painter)), new ScrollBar(look));
+    int frames;
+    scrolled.events.needFrame = () { ++frames; };
+    scrolled.resize(410, 121);
+    auto canvas = new RecordingCanvas;
+    scrolled.paint(canvas);
+    scrolled.mouseOver(405, 21 + 50);
+    assert(frames > 0, "a frame is asked for");
+    foreach (now; [0.0, 100])
+        assert(scrolled.tick(now), "on its way");
+    assert(!scrolled.tick(200), "there in its time");
+    scrolled.paint(canvas);
+    assert(look.wide == 1);
+}
+
+@("ScrolledTable: a bar widening or narrowing repaints its strip only, not the table")
+unittest
+{
+    auto scrolled = new ScrolledTable(new Table(new NumbersModel(1000), new ColumnHost, portsOf(new Painter)), new ScrollBar);
+    int whole;
+    Rect[] areas;
+    scrolled.resize(410, 121);
+    scrolled.paint(new RecordingCanvas);
+    scrolled.events.invalidate = () { ++whole; };
+    scrolled.events.invalidateArea = (Rect area) { areas ~= area; };
+    scrolled.mouseOver(405, 21 + 50);
+    foreach (now; [0.0, 100, 200, 300])
+        scrolled.tick(now);
+    assert(whole == 0 && areas.length > 0, "the strip is painted again");
+    foreach (area; areas)
+        assert(area == Rect(400, 21, 10, 100), "the strip of the bar");
+}
+
+@("ScrolledTable: a drag of the table's own over the strip (a selection reaching the edge) does not widen the bar")
+unittest
+{
+    import ptable.scrollbar : ScrollBarPainter;
+
+    static class Wide : ScrollBarPainter
+    {
+        double wide = -1;
+        override void paint(Canvas canvas, Rect strip, Rect track, Rect thumb, double wide, Orientation orientation = Orientation.vertical)
+        {
+            this.wide = wide;
+        }
+    }
+
+    auto look = new Wide;
+    auto scrolled = new ScrolledTable(new Table(new NumbersModel(1000), new ColumnHost, portsOf(new Painter)), new ScrollBar(look));
+    scrolled.resize(410, 121);
+    auto canvas = new RecordingCanvas;
+    scrolled.paint(canvas);
+    assert(scrolled.mouseDown(100, 21 + 3)); // a press on the rows
+    scrolled.mouseOver(405, 21 + 50);
+    scrolled.mouseMove(405, 21 + 50);
+    foreach (now; [0.0, 100, 200, 300])
+        scrolled.tick(now);
+    scrolled.paint(canvas);
+    assert(look.wide == 0, "thin while the rows are dragged over");
+    scrolled.mouseUp(405, 21 + 50);
+    scrolled.mouseOver(405, 21 + 51);
+    foreach (now; [400.0, 500, 600, 700])
+        scrolled.tick(now);
+    scrolled.paint(canvas);
+    assert(look.wide == 1, "released: the mouse over the strip widens it");
+}
+
+@("ScrolledTable: a drag of the thumb ends when there is nothing to scroll anymore, the mouse and the scale let go")
+unittest
+{
+    auto table = new Table(new NumbersModel(10), new ColumnHost, portsOf(new Painter));
+    auto scrolled = new ScrolledTable(table, new ScrollBar);
+    bool captured;
+    scrolled.events.capture = (bool on) { captured = on; };
+    scrolled.resize(410, 121); // 10 rows of 16 in 100: something to scroll
+    auto canvas = new RecordingCanvas;
+    scrolled.paint(canvas);
+    assert(scrolled.mouseDown(405, 21 + 5) && scrolled.bar.dragging && captured);
+    scrolled.resize(410, 400); // all of them fit now
+    scrolled.paint(canvas);
+    assert(!scrolled.bar.dragging && !captured, "the drag is over");
+    assert(scrolled.mouseDown(405, 21 + 5) && scrolled.mouseUp(405, 21 + 5) && table.selected >= 0, "the edge is the rows' again");
 }

@@ -20,9 +20,17 @@ import std.algorithm.searching : canFind;
 import std.algorithm.comparison : max;
 import std.math : round;
 
-/// The look of the scroll bar beside the log table: the header's color above the track, the rows' below, the thumb
+/// The look of the scroll bar over the edge of the log table (ux.md rule 46): a thin rounded thumb at the edge; under the mouse
+/// (or held) it is as thick as the strip and a semi-transparent track shows under it. The rows show around it.
 final class LogScrollBarPainter : ScrollBarPainter
 {
+    // Trial values, taken from the bars of the pool of rows (branch row-pool) to be tuned by eye
+    private enum double thin = 4; // the thickness of the thumb at rest
+    private enum double inset = 2; // the room between the thumb and the edges of the strip
+    private enum ubyte thumbAlpha = 77;
+    private enum ubyte strongAlpha = 204; // the wide thumb, 0.8 (the user, 2026-11-20)
+    private enum ubyte trackAlpha = 26; // the track of the wide bar, 0.1: 30% over the pool of rows' 0.08 (the user, 2026-11-20)
+
     private LogLook _look;
 
     this(LogLook look)
@@ -35,36 +43,25 @@ final class LogScrollBarPainter : ScrollBarPainter
         this(defaultLogLook());
     }
 
-    private ref const(LogPalette) _palette() const
+    // The thumb and the track are the ink of the table, see-through: the theme has no color of its own for them
+    private Color ink(ubyte alpha) const
     {
-        return _look.palette;
+        const ink = _look.palette.ink;
+        return Color(ink.r, ink.g, ink.b, alpha);
     }
 
-    // The thumb is the ink of the table, thin until the mouse is on it: the theme has no color of its own for it
-    private Color thumbColor(bool strong) const
+    override void paint(Canvas canvas, Rect strip, Rect track, Rect thumb, double wide, Orientation orientation)
     {
-        const ink = _palette.ink;
-        return Color(ink.r, ink.g, ink.b, strong ? 179 : 115);
-    }
-
-    override void paint(Canvas canvas, Rect strip, Rect track, Rect thumb, bool hover, bool dragging, Orientation orientation)
-    {
-        if (orientation == Orientation.vertical)
-        {
-            canvas.fillRect(Rect(strip.x, strip.y, strip.w, track.y - strip.y), _palette.header);
-            canvas.fillRect(track, _palette.row);
-            if (thumb.h > 0)
-                canvas.fillRect(Rect(thumb.x + 2, thumb.y, thumb.w - 4, thumb.h), thumbColor(hover || dragging));
+        if (thumb.w <= 0 || thumb.h <= 0)
             return;
-        }
-        canvas.fillRect(strip, _palette.row);
-        if (thumb.w > 0)
-            canvas.fillRect(Rect(thumb.x, thumb.y + 2, thumb.w, thumb.h - 4), thumbColor(hover || dragging));
-    }
-
-    override void paintCorner(Canvas canvas, Rect corner)
-    {
-        canvas.fillRect(corner, _palette.row);
+        if (wide > 0)
+            canvas.fillRect(track, ink(cast(ubyte)(trackAlpha * wide)));
+        const vertical = orientation == Orientation.vertical;
+        const across = vertical ? strip.w : strip.h; // the thickness of the strip
+        const thick = thin + (across - 2 * inset - thin) * wide;
+        const at = across - inset - thick; // from the strip's start: the thin thumb keeps to the outer edge, it widens inwards
+        const rect = vertical ? Rect(strip.x + at, thumb.y, thick, thumb.h) : Rect(thumb.x, strip.y + at, thumb.w, thick);
+        canvas.fillRoundRect(rect, thick / 2, ink(cast(ubyte)(thumbAlpha + (strongAlpha - thumbAlpha) * wide)));
     }
 }
 
@@ -309,6 +306,7 @@ unittest
         void fillRect(Rect area, Color color) { areas ~= area; }
         void drawText(FontId font, const(wchar)[] text, double x, double baseline, Color color) {}
         void drawParagraph(FontId font, const(wchar)[] text, double x, double top, double width, Color color) {}
+        void fillRoundRect(Rect area, double radius, Color color) { fillRect(area, color); }
         void fillCircle(double cx, double cy, double radius, Color fill, Color line) {}
         void pushClip(Rect area) {}
         void popClip() {}
@@ -333,6 +331,7 @@ unittest
         void fillRect(Rect area, Color color) { areas ~= area; colors ~= color; }
         void drawText(FontId font, const(wchar)[] text, double x, double baseline, Color color) {}
         void drawParagraph(FontId font, const(wchar)[] text, double x, double top, double width, Color color) {}
+        void fillRoundRect(Rect area, double radius, Color color) { fillRect(area, color); }
         void fillCircle(double cx, double cy, double radius, Color fill, Color line) {}
         void pushClip(Rect area) {}
         void popClip() {}
@@ -361,6 +360,7 @@ unittest
         void fillRect(Rect area, Color color) { colors ~= color; }
         void drawText(FontId font, const(wchar)[] text, double x, double baseline, Color color) {}
         void drawParagraph(FontId font, const(wchar)[] text, double x, double top, double width, Color color) {}
+        void fillRoundRect(Rect area, double radius, Color color) { fillRect(area, color); }
         void fillCircle(double cx, double cy, double radius, Color fill, Color line) {}
         void pushClip(Rect area) {}
         void popClip() {}
@@ -394,6 +394,7 @@ unittest
         void fillRect(Rect area, Color color) { colors ~= color; }
         void drawText(FontId font, const(wchar)[] text, double x, double baseline, Color color) { colors ~= color; }
         void drawParagraph(FontId font, const(wchar)[] text, double x, double top, double width, Color color) {}
+        void fillRoundRect(Rect area, double radius, Color color) { fillRect(area, color); }
         void fillCircle(double cx, double cy, double radius, Color fill, Color line) {}
         void pushClip(Rect area) {}
         void popClip() {}
@@ -454,6 +455,7 @@ unittest
             colors ~= color;
         }
         void drawParagraph(FontId font, const(wchar)[] text, double x, double top, double width, Color color) {}
+        void fillRoundRect(Rect area, double radius, Color color) { fillRect(area, color); }
         void fillCircle(double cx, double cy, double radius, Color fill, Color line) {}
         void pushClip(Rect area) {}
         void popClip() {}
@@ -490,6 +492,7 @@ unittest
         void fillRect(Rect area, Color color) { areas ~= area; colors ~= color; }
         void drawText(FontId font, const(wchar)[] text, double x, double baseline, Color color) {}
         void drawParagraph(FontId font, const(wchar)[] text, double x, double top, double width, Color color) {}
+        void fillRoundRect(Rect area, double radius, Color color) { fillRect(area, color); }
         void fillCircle(double cx, double cy, double radius, Color fill, Color line) {}
         void pushClip(Rect area) {}
         void popClip() {}
@@ -588,6 +591,7 @@ unittest
         void fillRect(Rect area, Color color) { calls ~= "fill"; areas ~= area; colors ~= color; }
         void drawText(FontId font, const(wchar)[] text, double x, double baseline, Color color) { calls ~= "text"; }
         void drawParagraph(FontId font, const(wchar)[] text, double x, double top, double width, Color color) {}
+        void fillRoundRect(Rect area, double radius, Color color) { fillRect(area, color); }
         void fillCircle(double cx, double cy, double radius, Color fill, Color line) { calls ~= "circle"; }
         void pushClip(Rect area) {}
         void popClip() {}
@@ -640,6 +644,7 @@ unittest
         void fillRect(Rect area, Color color) {}
         void drawText(FontId font, const(wchar)[] text, double x, double baseline, Color color) { textX = x; }
         void drawParagraph(FontId font, const(wchar)[] text, double x, double top, double width, Color color) {}
+        void fillRoundRect(Rect area, double radius, Color color) { fillRect(area, color); }
         void fillCircle(double cx, double cy, double radius, Color fill, Color line) { circleX = cx; }
         void pushClip(Rect area) {}
         void popClip() {}

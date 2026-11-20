@@ -83,6 +83,9 @@ interface Canvas
     /// A circle of the center (`cx`, `cy`) and `radius`, filled and outlined by a line 1 dip wide
     void fillCircle(double cx, double cy, double radius, Color fill, Color line);
 
+    /// A filled rectangle with its corners rounded by `radius`, with no outline
+    void fillRoundRect(Rect area, double radius, Color color);
+
     /// Draws only inside `area` until `popClip`
     void pushClip(Rect area);
     void popClip();

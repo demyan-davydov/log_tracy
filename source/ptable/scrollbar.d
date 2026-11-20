@@ -7,6 +7,7 @@ module ptable.scrollbar;
 
 import ptable.ports;
 import ptable.rowpicks : Pick;
+import ptable.transition : Transition;
 import ptable.viewport : ScrollMetrics;
 
 import std.algorithm.comparison : max, min;
@@ -73,6 +74,10 @@ struct ScrollThumb
     }
 }
 
+/// How long a bar takes to widen under the mouse or to narrow back, in milliseconds (the user, 2026-11-20: about twice as fast as
+/// the pool of rows' 300, tuned by eye)
+enum double wideningMs = 170;
+
 /// Which way a bar lies: along the rows (at the right edge) or along the columns (at the bottom)
 enum Orientation : ubyte
 {
@@ -80,24 +85,18 @@ enum Orientation : ubyte
     horizontal,
 }
 
-/// How a bar looks. The default is a plain one; a host draws its own by overriding `paint`.
+/// How a bar looks. The default is a plain one; a host draws its own by overriding `paint`. The bar lies over the edge of the
+/// rows: what it does not draw shows them.
 class ScrollBarPainter
 {
     /// Draws the strip of the bar (`strip` is all of it, `track` the part the thumb runs along); `thumb` is
-    /// the rectangle of the thumb, empty if there is nothing to scroll
-    void paint(Canvas canvas, Rect strip, Rect track, Rect thumb, bool hover, bool dragging, Orientation orientation = Orientation.vertical)
+    /// the rectangle of the thumb, empty if there is nothing to scroll; `wide` how far it has widened under the mouse, 0 .. 1
+    void paint(Canvas canvas, Rect strip, Rect track, Rect thumb, double wide, Orientation orientation = Orientation.vertical)
     {
-        canvas.fillRect(strip, Color(0xf0, 0xf0, 0xf0));
-        const color = hover || dragging ? Color(60, 60, 60, 179) : Color(60, 60, 60, 115);
+        const color = Color(60, 60, 60, cast(ubyte)(115 + 64 * wide));
         if (thumb.w > 0 && thumb.h > 0)
             canvas.fillRect(orientation == Orientation.vertical ? Rect(thumb.x + 2, thumb.y, thumb.w - 4, thumb.h)
                 : Rect(thumb.x, thumb.y + 2, thumb.w, thumb.h - 4), color);
-    }
-
-    /// The corner where the two bars meet
-    void paintCorner(Canvas canvas, Rect corner)
-    {
-        canvas.fillRect(corner, Color(0xf0, 0xf0, 0xf0));
     }
 }
 
@@ -110,6 +109,7 @@ final class ScrollBar
         void delegate(double fraction) scrollTo; /// 0 .. 1
         void delegate(bool on) capture;
         void delegate() invalidate;
+        void delegate() needFrame; /// the bar is widening or narrowing: `tick` at the next frame
     }
 
     Events events;
@@ -120,6 +120,8 @@ final class ScrollBar
     private ScrollThumb _thumb;
     private ScrollMetrics _metrics;
     private bool _hover;
+    private bool _enabled = true;
+    private Transition _wide = Transition(wideningMs); // 1: wide under the mouse or held, 0: thin
 
     this(ScrollBarPainter painter = new ScrollBarPainter)
     {
@@ -130,6 +132,37 @@ final class ScrollBar
     void update(ScrollMetrics metrics)
     {
         _metrics = metrics;
+        if (!shown)
+            forget();
+    }
+
+    /// A bar turned off is not there: not drawn, the mouse goes to the rows under it
+    bool enabled() const { return _enabled; }
+
+    void enabled(bool on)
+    {
+        _enabled = on;
+        if (!shown)
+            forget();
+    }
+
+    /// Whether the bar is there: turned on and something to scroll
+    bool shown() const
+    {
+        return _enabled && _metrics.shown < 1;
+    }
+
+    // The bar is gone: a drag of its thumb is over, the mouse it had is let go of, and it comes back thin
+    private void forget()
+    {
+        if (_thumb.dragging)
+        {
+            _thumb.release();
+            if (events.capture !is null)
+                events.capture(false);
+        }
+        _hover = false;
+        _wide.set(0);
     }
 
     bool dragging() const
@@ -139,10 +172,28 @@ final class ScrollBar
 
     void hover(bool on)
     {
+        on = on && shown; // a bar not there is under no mouse
         if (on == _hover)
             return;
         _hover = on;
-        invalidate();
+        widen();
+    }
+
+    // Wide while the mouse is over it or its thumb is held: on the way there at the next frames
+    private void widen()
+    {
+        if (_wide.to(_hover || _thumb.dragging ? 1 : 0) && events.needFrame !is null)
+            events.needFrame();
+    }
+
+    /// A frame at `nowMs` (the host's clock): the bar widens or narrows on; true while it is still on its way
+    bool tick(double nowMs)
+    {
+        const before = _wide.value;
+        const more = _wide.tick(nowMs);
+        if (_wide.value != before)
+            invalidate();
+        return more;
     }
 
     private void invalidate()
@@ -175,6 +226,7 @@ final class ScrollBar
         scrollTo(_thumb.press(_metrics, length(track), onTrack(along, track)));
         if (_thumb.dragging && events.capture !is null)
             events.capture(true);
+        widen();
         return true;
     }
 
@@ -194,6 +246,7 @@ final class ScrollBar
         _thumb.release();
         if (events.capture !is null)
             events.capture(false);
+        widen();
         invalidate();
         return true;
     }
@@ -201,18 +254,14 @@ final class ScrollBar
     /// Draws the bar in `strip`, its track being `track`
     void paint(Canvas canvas, Rect strip, Rect track)
     {
+        if (!shown)
+            return;
         const thumb = _thumb.thumb(_metrics, length(track));
         Rect rect;
         if (thumb.visible)
             rect = orientation == Orientation.vertical ? Rect(strip.x, track.y + thumb.top, strip.w, thumb.size)
                 : Rect(track.x + thumb.top, strip.y, thumb.size, strip.h);
-        _painter.paint(canvas, strip, track, rect, _hover, _thumb.dragging, orientation);
-    }
-
-    /// The corner where this bar and the other meet
-    void paintCorner(Canvas canvas, Rect corner)
-    {
-        _painter.paintCorner(canvas, corner);
+        _painter.paint(canvas, strip, track, rect, _wide.value, orientation);
     }
 }
 
@@ -260,4 +309,87 @@ unittest
     ScrollThumb bar;
     assert(isNaN(bar.press(ScrollMetrics(0, 1), 200, 5)) && !bar.dragging);
     assert(isNaN(bar.drag(ScrollMetrics(0, 0.01), 200, 5)), "not dragging");
+}
+
+@("ScrollBar: the mouse over it widens it over the frames it asks of the host, away narrows it back; a held thumb stays wide")
+unittest
+{
+    static class Wide : ScrollBarPainter
+    {
+        double wide = -1;
+        override void paint(Canvas canvas, Rect strip, Rect track, Rect thumb, double wide, Orientation orientation = Orientation.vertical)
+        {
+            this.wide = wide;
+        }
+    }
+
+    auto look = new Wide;
+    auto bar = new ScrollBar(look);
+    int frames, paints;
+    bar.events.needFrame = () { ++frames; };
+    bar.events.invalidate = () { ++paints; };
+    bar.events.scrollTo = (double) {};
+    bar.update(ScrollMetrics(0, 0.1));
+    const strip = Rect(0, 0, 12, 200);
+    bar.paint(null, strip, strip);
+    assert(look.wide == 0, "thin at rest");
+    bar.hover(true);
+    assert(frames == 1, "the host is asked for frames");
+    bar.tick(0);
+    assert(bar.tick(150) && paints > 0, "on its way: painted again, more frames");
+    bar.paint(null, strip, strip);
+    assert(look.wide > 0 && look.wide < 1);
+    bar.tick(250);
+    assert(!bar.tick(350), "there in its time");
+    bar.paint(null, strip, strip);
+    assert(look.wide == 1, "wide");
+    bar.mouseDown(5, strip); // the thumb is taken
+    bar.hover(false); // the mouse left the strip while dragging
+    assert(!bar.tick(500) && !bar.tick(600), "held: stays wide");
+    bar.mouseUp();
+    bar.tick(700);
+    assert(bar.tick(800), "released away from it: narrows");
+}
+
+@("ScrollBar: a bar that goes (nothing to scroll, turned off) under the mouse forgets it: it comes back thin")
+unittest
+{
+    static class Wide : ScrollBarPainter
+    {
+        double wide = -1;
+        override void paint(Canvas canvas, Rect strip, Rect track, Rect thumb, double wide, Orientation orientation = Orientation.vertical)
+        {
+            this.wide = wide;
+        }
+    }
+
+    auto look = new Wide;
+    auto bar = new ScrollBar(look);
+    int frames;
+    bar.events.needFrame = () { ++frames; };
+    const strip = Rect(0, 0, 12, 200);
+    void widen(double from)
+    {
+        bar.hover(true);
+        foreach (i; 0 .. 5)
+            bar.tick(from + 100 * i);
+    }
+
+    bar.update(ScrollMetrics(0, 0.1));
+    widen(0);
+    bar.update(ScrollMetrics(0, 1)); // everything fits
+    bar.update(ScrollMetrics(0, 0.1));
+    bar.paint(null, strip, strip);
+    assert(look.wide == 0, "back thin");
+    frames = 0;
+    bar.update(ScrollMetrics(0, 1));
+    bar.hover(true);
+    assert(frames == 0, "a bar not there asks for no frames");
+
+    bar.update(ScrollMetrics(0, 0.1));
+    widen(1000);
+    bar.enabled = false;
+    bar.enabled = true;
+    bar.paint(null, strip, strip);
+    assert(look.wide == 0, "turned off and on: thin");
 }

@@ -72,6 +72,16 @@ struct Canvas
         api.gRectangle(handle, x, y, x + w, y + h);
     }
 
+    /// A filled rectangle as `fillRect` with its corners rounded by `radius`
+    void fillRoundRect(float x, float y, float w, float h, float radius, SC_COLOR color) nothrow @nogc
+    {
+        auto api = graphicsApi();
+        const SC_DIM[8] radii = radius;
+        api.gLineWidth(handle, 0);
+        api.gFillColor(handle, color);
+        api.gRoundedRectangle(handle, x, y, x + w, y + h, radii.ptr);
+    }
+
     /// Text drawn with its top left corner at (x, y)
     void drawText(TextLayout text, float x, float y) nothrow @nogc
     {

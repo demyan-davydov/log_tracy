@@ -280,3 +280,11 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     format; their marks with it) stays aligned in the part of its cell on the screen while the
     row is cut by the top or the bottom of the rows, never out of its cell's paddings. The
     Payload does not move.
+46. **Scroll bars of the log tables.** Both (down the rows and, with single-line rows, sideways)
+    behave the same and lie over the edge of the rows, taking no room from them. Either can be
+    turned off. A bar is not shown while there is nothing to scroll that way; otherwise it is
+    shown at rest too, as a thin strip at the edge. The mouse over its hover area at the edge
+    widens it to the thickness of that area and shows its track, semi-transparent, under the
+    thumb (only then). Its thumb is taken by the mouse and dragged anywhere, held outside the window too; a press on
+    its track puts the thumb there at once. How it comes, goes and widens is made smooth last
+    (the user, 2026-11-20).

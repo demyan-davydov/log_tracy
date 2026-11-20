@@ -82,6 +82,18 @@ agent can't drive it. In scapp a plain
   box on the view). A layout costs ~20 KB of memory: 5000 cached ones were +100 MB of RSS, 600 are
   +10 MB (`ui/log_table_behavior.d` keeps two generations). A layout wraps only by a `width: Npx` in its style: `textSetBox` alone leaves one line. Details and numbers:
   `docs/experiments/2026-11-19-painted-rows-d.md`.
+- Sciter's own scroll bar (`overflow-y: scroll-indicator` on an element scrolling a spacer 1/shown of
+  it high) doesn't fit the painted table: dropped after a try (2026-11-20, 6.0.5.5, macOS). The
+  indicator covers its whole element (a child placed under the header for it); a child over the
+  rows takes their mouse; it shows only over itself or while Sciter scrolls it, not on a
+  `SciterSetScrollPos` without `smooth`, and a smooth one runs ~800 px at most; a press on the
+  track pages (`SCROLL_PAGE_PLUS` and `SCROLL_PAGE_MINUS`, no place of the press); the drag is lost outside the
+  window; `SciterGetScrollInfo` tells a content size of 0; a position set right after the
+  spacer's height is clamped by the old height until the layout; the scroll events of a child
+  don't bubble to the table (`SciterAttachEventHandler` on the child gets them), and a move of
+  the position comes as cmd 14 (not in the SDK's enum) with no axis. Changing a style while
+  the table paints (its `scrolled` is told during the paint) makes a paint of every paint: the
+  window hung while a log was read. The table draws its own bars (`ptable/scrollbar`).
 
 ## Events of the System
 

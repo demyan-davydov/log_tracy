@@ -567,6 +567,7 @@ version (unittest)
         void fillRect(Rect area, Color color) {}
         void drawText(FontId font, const(wchar)[] text, double x, double baseline, Color color) {}
         void drawParagraph(FontId font, const(wchar)[] text, double x, double top, double width, Color color) {}
+        void fillRoundRect(Rect area, double radius, Color color) { fillRect(area, color); }
         void fillCircle(double cx, double cy, double radius, Color fill, Color line) {}
         void pushClip(Rect area) { stack ~= area; }
         void popClip() { stack = stack[0 .. $ - 1]; }
@@ -685,6 +686,7 @@ version (unittest)
         void fillRect(Rect area, Color color) {}
         void drawText(FontId font, const(wchar)[] text, double x, double baseline, Color color) {}
         void drawParagraph(FontId font, const(wchar)[] text, double x, double top, double width, Color color) {}
+        void fillRoundRect(Rect area, double radius, Color color) { fillRect(area, color); }
         void fillCircle(double cx, double cy, double radius, Color fill, Color line) {}
         void pushClip(Rect area) { stack ~= area; }
         void popClip() { stack = stack[0 .. $ - 1]; }
