@@ -33,16 +33,16 @@
     --column-min-width-index: 2.5em; /* 40dip */
     --column-min-width-payload: 3.5em; /* 58dip: it takes the rest of the room, a few characters are enough */
     /* DLT */
-    --column-min-width-dlt-time: 3.5em; /* 60dip */
-    --column-min-width-dlt-timestamp: 4.25em; /* 70dip */
-    --column-min-width-dlt-counter: 2.75em; /* 45dip */
-    --column-min-width-dlt-ecu: 3em; /* 50dip */
-    --column-min-width-dlt-app: 3em; /* 50dip */
-    --column-min-width-dlt-ctx: 3em; /* 50dip */
-    --column-min-width-dlt-type: 3em; /* 50dip */
-    --column-min-width-dlt-level: 3em; /* 50dip */
-    --column-min-width-dlt-session: 4.25em; /* 70dip */
-    --column-min-width-dlt-msgid: 3em; /* 50dip */
+    --column-min-width-dlt-time: 5em;
+    --column-min-width-dlt-timestamp: 4.25em;
+    --column-min-width-dlt-counter: 2.5em;
+    --column-min-width-dlt-ecu: 2.5em;
+    --column-min-width-dlt-app: 2.5em;
+    --column-min-width-dlt-ctx: 2.5em;
+    --column-min-width-dlt-session: 2.5em;
+    --column-min-width-dlt-type: 2.5em;
+    --column-min-width-dlt-level: 2.75em;
+    --column-min-width-dlt-msgid: 2.5em;
     /* Android logcat */
     --column-min-width-logcat-time: 3.5em; /* 60dip */
     --column-min-width-logcat-tag: 3.5em; /* 60dip */
