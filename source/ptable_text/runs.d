@@ -23,8 +23,10 @@ enum size_t memoFrom = 1024;
 /// `font`: `use`d for that line and font; null for a short line, or a cell without a memo
 CellMemo* lineMemo(const MemoRef memo, size_t lineStart, size_t length, uint font)
 {
+    if (length < memoFrom)
+        return null; // before `get`: a short line takes no place of its row in the ring
     auto m = memo.get();
-    if (m is null || length < memoFrom)
+    if (m is null)
         return null;
     m.use((cast(ulong) font << 40) | lineStart);
     return m;
@@ -53,9 +55,9 @@ size_t runEnd(const(wchar)[] line, size_t start) pure nothrow @safe
         ++i;
     if (i - start < maxRun || i == line.length || isGap(line[i]))
         return i;
-    // two characters below the combining marks (no surrogate, no joiner, no mark), not CR LF: a grapheme ends between them (a dump of
-    // hex or base64): the walk over the graphemes of the run is spared, it is on every walk over a line of such words
-    if (line[i - 1] < 0x300 && line[i] < 0x300 && !(line[i - 1] == '\r' && line[i] == '\n'))
+    // a grapheme surely ends between two plain neighbours (hex, base64, Han, most letters): the walk over the graphemes of the run is
+    // spared, it would be on every walk over a line of such words
+    if (plainBoundary(line[i - 1], line[i]))
         return i;
     const cut = lastGraphemeEnd(line[start .. $], maxRun);
     if (cut > 0)
@@ -71,6 +73,26 @@ private bool isGap(wchar c) pure nothrow @nogc @safe
 private bool isLow(wchar c) pure nothrow @nogc @safe
 {
     return c >= 0xDC00 && c < 0xE000;
+}
+
+// Whether a grapheme surely ends between the units `before` and `after`: neither may join one (a surrogate: an emoji, a flag, a tone; a
+// mark, a joiner, a variation selector; a jamo; a spacing vowel of Thai or Lao; a prepended mark; CR LF). Not sure: false, and the
+// graphemes are walked
+private bool plainBoundary(wchar before, wchar after) pure nothrow @nogc @safe
+{
+    if (before < 0x300 && after < 0x300)
+        return !(before == '\r' && after == '\n');
+    return !joins(before) && !joins(after) && !(before >= 0x0600 && before <= 0x0605) && before != 0x06DD && before != 0x070F
+        && before != 0x08E2 && before != 0x0D4E;
+}
+
+// Whether a unit may be part of a grapheme with its neighbour
+private bool joins(wchar c) pure nothrow @nogc @safe
+{
+    import std.uni : isMark;
+
+    return (c >= 0xD800 && c < 0xE000) || isMark(c) || c == 0x200C || c == 0x200D || (c >= 0x1100 && c < 0x1200)
+        || (c >= 0xA960 && c < 0xA980) || (c >= 0xD7B0 && c < 0xD800) || c == 0x0E33 || c == 0x0EB3 || c == 0xFF9E || c == 0xFF9F;
 }
 
 // The end of the last grapheme of `text` that ends within `limit` units; 0 if the first is longer, or the text is not valid UTF-16
@@ -280,6 +302,9 @@ unittest
     assert(runEnd(head ~ "\u0E01\u0E31"w ~ "y"w, 0) == maxRun - 1, "a Thai letter and its vowel sign");
     assert(runEnd(head ~ "\u0915\u094D"w ~ "y"w, 0) == maxRun - 1, "a Devanagari letter and its virama");
     assert(runEnd("x"w.replicate(maxRun - 3) ~ "\U0001F1E9\U0001F1EA"w, 0) == maxRun - 3, "a flag, two regional indicators");
+    assert(runEnd("\u4E2D"w.replicate(3 * maxRun), 0) == maxRun, "Han: a grapheme each, cut at the bound");
+    assert(runEnd("\u0E01"w.replicate(maxRun) ~ "\u0E33"w, 0) == maxRun - 1, "Thai SARA AM stays with its letter");
+    assert(runEnd("\uAC00"w.replicate(maxRun - 1) ~ "\u1100\u1161"w, 0) == maxRun - 1, "a syllable of jamo not split");
     const marks = "\u0301"w.replicate(3 * maxRun);
     assert(runEnd(marks, 0) == maxRun, "marks only: cut at the bound all the same");
 }

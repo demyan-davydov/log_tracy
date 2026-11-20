@@ -535,3 +535,39 @@ unittest
         assert(a.maxWidth == b.maxWidth, "a tab measured to its stop, drawn as a space");
     }
 }
+
+@("TextCell: a short cell drawn takes no memo of its row; a long line does")
+unittest
+{
+    import std.array : replicate;
+    import ptable.cellmemo : CellMemos, MemoRef;
+    import ptable.memory : mallocAllocator;
+    import ptable.model : CellData;
+    import ptable_text.testing : TestText;
+
+    static final class Nothing : Canvas
+    {
+        void fillRect(Rect area, Color color) {}
+        void drawText(FontId font, const(wchar)[] text, double x, double baseline, Color color) {}
+        void drawParagraph(FontId font, const(wchar)[] text, double x, double top, double width, Color color) {}
+        void fillRoundRect(Rect area, double radius, Color color) {}
+        void fillCircle(double cx, double cy, double radius, Color fill, Color line) {}
+        void pushClip(Rect area) {}
+        void popClip() {}
+    }
+
+    auto memos = new CellMemos(mallocAllocator());
+    memos.fit(64);
+    auto column = new TestText(ColumnDef("text", "Text"));
+    const short_ = CellData("07:16:22.000000"w), long_ = CellData("word "w.replicate(2000));
+    DrawState state;
+    state.area = Rect(0, 0, 500, 20);
+    state.clip = state.area;
+    foreach (uint col; 0 .. 6) // five short cells drawn before the Payload, as a row of the log is
+    {
+        auto cell = CellInput(7, col, col < 5 ? &short_ : &long_);
+        cell.memo = MemoRef(memos, 7, col);
+        column.draw(new Nothing, cell, state);
+    }
+    assert(memos.count == 1, "the short cells took places of the row");
+}

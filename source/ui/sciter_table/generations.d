@@ -49,9 +49,9 @@ final class Generations(K, V)
         auto before = &_generations[1 - _current];
         if (auto old = key in before.map)
         {
-            auto value = *old;
+            if (!put(*now, key, *old))
+                return key in before.map; // no memory to move it: it stays in the older
             before.map.remove(key);
-            put(*now, key, value);
             return key in now.map;
         }
         return null;
@@ -99,10 +99,14 @@ final class Generations(K, V)
         g.arena.reset();
     }
 
-    private static void put(ref Generation g, K key, V value)
+    // False if there is no memory for the copy of the text or the room of the map (nothing is kept then)
+    private static bool put(ref Generation g, K key, V value)
     {
-        key.text = g.arena.copy(key.text);
-        g.map.set(key, value);
+        const text = g.arena.copy(key.text);
+        if (text.length != key.text.length)
+            return false;
+        key.text = text;
+        return g.map.set(key, value);
     }
 }
 
@@ -213,4 +217,34 @@ unittest
     assert(released.length + cache.length == 35, "every value that went is released");
     cache.clear();
     assert(cache.length == 0 && released.length == 35);
+}
+
+@("Generations: a hit in the older generation that can't be moved for want of memory stays there, kept and not released")
+unittest
+{
+    import std.array : replicate;
+    import std.experimental.allocator : allocatorObject;
+    import std.experimental.allocator.mallocator : Mallocator;
+
+    static struct Failing // gives memory until told not to
+    {
+        bool fail;
+        enum uint alignment = Mallocator.alignment;
+        void[] allocate(size_t n) pure nothrow @nogc @trusted { return fail ? null : Mallocator.instance.allocate(n); }
+        bool deallocate(void[] b) pure nothrow @nogc @trusted { return Mallocator.instance.deallocate(b); }
+    }
+
+    Failing failing;
+    size_t released;
+    auto cache = new Cache(2, (ref int v) nothrow { ++released; }, allocatorObject(&failing));
+    const big = "w"w.replicate(40_000); // 80 KB: more than a block of an arena, its copy asks for memory
+    cache.keep(Key(0, big), 7);
+    cache.keep(key(1), 1); // the first generation is the older now
+    failing.fail = true;
+    auto found = cache.find(Key(0, big));
+    assert(found !is null && *found == 7, "the value lost on its way to the current generation");
+    assert(released == 0);
+    failing.fail = false;
+    cache.clear();
+    assert(released == 2, "each value released once");
 }
