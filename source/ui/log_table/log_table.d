@@ -63,6 +63,7 @@ final class LogTable
     private LogLook _look;
     private size_t _lookHandle;
     private bool _singleLine; // every row one line: the Payload is cut, not wrapped
+    private bool _columnLookStale = true; // the look or the single line changed: what the columns are made with is made again
 
     /// The model listens to the document and the table to the look from now on, until `dispose`
     this(TableSource source, LogLook look, TextMeasurer measurer, Clipboard clipboard)
@@ -80,8 +81,19 @@ final class LogTable
         else
         {
             anchorsFull = () => source.session.doc(source.docId).anchorsFull; // the document says whether there is room
-            auto document = documentTableModel(source.session, source.docId, source.search, _rows,
-                () => LogColumnLook(look.spacing.payloadPadLeft, !_singleLine, look, anchorsFull, measurer, null, look.spacing.minWidths.dup));
+            // The model asks for it at every row it reads: it is made again only after a change of the look or of the single line, and
+            // holds the look's own least widths (a change of the look replaces them, it never changes them in place)
+            LogColumnLook columnLook;
+            auto document = documentTableModel(source.session, source.docId, source.search, _rows, () {
+                if (_columnLookStale)
+                {
+                    // the columns only read the widths: the look's own, not a copy
+                    columnLook = LogColumnLook(look.spacing.payloadPadLeft, !_singleLine, look, anchorsFull, measurer, null,
+                        cast(double[string]) look.spacing.minWidths);
+                    _columnLookStale = false;
+                }
+                return columnLook;
+            });
             model = document;
             _disposeModel = &document.dispose;
         }
@@ -98,6 +110,7 @@ final class LogTable
         _look = look;
         _lookHandle = look.subscribe((const LookChange change) {
             host.setMargins(sidesOf(look)); // nothing told when they are the same
+            _columnLookStale = true;
             applyLookChange(change, beforeMetrics, (LookChange c) { _table.restyle(c); });
         });
     }
@@ -114,6 +127,7 @@ final class LogTable
         if (on == _singleLine)
             return;
         _singleLine = on;
+        _columnLookStale = true;
         _table.restyle(LookChange.metrics); // the columns are read again, the rows are wrapped again, the place is kept
     }
 
@@ -197,4 +211,80 @@ unittest
     look.setSpacing(spacing);
     assert(log.table.rowsArea.x == 5 && log.table.rowsArea.w == 375);
     log.dispose();
+}
+
+@("LogTable: the rows of a document scrolled frame after frame take no memory of the garbage collector")
+unittest
+{
+    import core.memory : GC;
+    import core.thread : Thread;
+    import core.time : msecs;
+    import std.array : replicate;
+    import std.file : remove, tempDir, write;
+    import std.path : buildPath;
+    import domain.document : Document;
+    import domain.document_store : DocumentStore;
+    import domain.log_document : LogDocument;
+    import log_core.log_format : FormatChoice;
+    import ptable.ports : Canvas, Color, FontId, Rect;
+    import ptable_text.testing : FakeMeasurer;
+    import ui.app_settings : AppSettings;
+    import ui.log_table.log_look : defaultLogLook;
+
+    static final class Null : Canvas
+    {
+        void fillRect(Rect area, Color color) {}
+        void drawText(FontId font, const(wchar)[] text, double x, double baseline, Color color) {}
+        void drawParagraph(FontId font, const(wchar)[] text, double x, double top, double width, Color color) {}
+        void fillRoundRect(Rect area, double radius, Color color) {}
+        void fillCircle(double cx, double cy, double radius, Color fill, Color line) {}
+        void pushClip(Rect area) {}
+        void popClip() {}
+    }
+
+    enum lines = 2000;
+    const path = buildPath(tempDir(), "log_tracy_log_table_frames.log");
+    write(path, "a line of the log with some words in it\n".replicate(lines));
+    scope (exit) remove(path);
+    auto session = new AppSession(AppSettings.init, new DocumentStore(),
+        (string path, FormatChoice choice) => cast(Document) new LogDocument(path, choice), (in AppSettings s) {});
+    scope (exit) session.closeAll();
+    const id = session.openFile(path).docId;
+    foreach (attempt; 0 .. 500)
+    {
+        session.dispatchEvents();
+        session.takeScriptCalls();
+        if (session.doc(id).mainView.itemsCount == lines)
+            break;
+        Thread.sleep(10.msecs);
+    }
+    assert(session.doc(id).mainView.itemsCount == lines, "the log is loaded");
+
+    auto log = new LogTable(TableSource(session, id, false, new ColumnHost), defaultLogLook(), new FakeMeasurer, null);
+    scope (exit) log.dispose();
+    static void noFrame() {}
+    import std.functional : toDelegate;
+    log.table.events.needFrame = toDelegate(&noFrame);
+    log.table.resize(400, 300);
+    auto canvas = new Null;
+    double t = 0;
+    void scrollAround(int frames)
+    {
+        foreach (i; 0 .. frames)
+        {
+            log.table.queueScroll(i % 2 ? 37 : -25);
+            log.table.paint(canvas);
+        }
+        foreach (i; 0 .. frames)
+        {
+            log.table.wheel(i % 3 ? 300 : -200, t += 16);
+            log.table.tick(t);
+            log.table.paint(canvas);
+        }
+    }
+
+    scrollAround(30); // warms up: the columns, the arenas, the maps, the scratch arrays
+    const before = GC.stats().allocatedInCurrentThread;
+    scrollAround(100);
+    assert(GC.stats().allocatedInCurrentThread == before, "a frame allocated from the garbage collector");
 }

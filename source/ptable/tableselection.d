@@ -7,7 +7,7 @@ version (unittest) import ptable.testing : tabbed;
 import ptable.layout : Placements;
 import ptable.pointer : PressTracker, Release, SelectionState;
 import ptable.ports : Clipboard;
-import ptable.rowcopy : RowCopier;
+import ptable.rowcopy : CopiedRows, RowCopier;
 import ptable.rowranges : RowRange;
 import ptable.selection : Position, Selection, TextRange, textRange;
 
@@ -100,9 +100,17 @@ final class TableSelection
     /// if `rowsOnly`
     wstring copyText(const(bool)[] wanted, ref const Placements p, bool wholeCellsInFull, const(RowRange)[] rows, bool rowsOnly = false)
     {
+        CopiedRows copied;
+        return copyText(wanted, p, wholeCellsInFull, rows, rowsOnly, copied);
+    }
+
+    /// The same, and how many rows it took of how many (`copied`; nothing for a text selected)
+    wstring copyText(const(bool)[] wanted, ref const Placements p, bool wholeCellsInFull, const(RowRange)[] rows, bool rowsOnly,
+        out CopiedRows copied)
+    {
         if (_text.has && !rowsOnly)
             return _copier.ofRange(textRange(_text.selection), wanted, p, wholeCellsInFull);
-        return _copier.ofRows(rows, wanted, p, wholeCellsInFull);
+        return _copier.ofRows(rows, wanted, p, wholeCellsInFull, copied);
     }
 
     /// The full text of one cell (`RowCopier.cellText`)

@@ -127,6 +127,8 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     keyboard in that document's panel (its table, or what had the focus there) once the button
     is released, as opening a file does; never nowhere. A switch shows the panel at once, the
     focus follows the release: it must not slow the switch down (`press-focus.js`).
+47. **Context menus open by the mouse only.** A right click (Control+click on macOS) opens a
+    context menu; the keyboard (the Menu key, Shift+F10) opens none, anywhere (`menu-gate.js`).
 
 ## Log Table
 

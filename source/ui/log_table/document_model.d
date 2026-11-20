@@ -283,14 +283,18 @@ final class DocumentColumns
         {
             _infos = now;
             _made = look;
-            _columns = documentColumns(now, _zone, look, (ref const LogRow row, ref Buffer!Fragment into) {
-                // what the chips of the search found in the payload of a row the search found (a row it did not find costs a test)
-                MatchBuffer found;
-                foreach (match; _session.matchesOf(_docId, row.item, found[]))
-                    into.put(Fragment(match.start, match.end, Extra(match.chip)));
-            });
+            _columns = documentColumns(now, _zone, look, &matchesOf);
         }
         return _columns;
+    }
+
+    // What the chips of the search found in the payload of a row the search found (a row it did not find costs a test). A method, not a
+    // lambda in `get`: a lambda there would make `get`, called at every row, allocate its closure each time
+    private void matchesOf(ref const LogRow row, ref Buffer!Fragment into)
+    {
+        MatchBuffer found;
+        foreach (match; _session.matchesOf(_docId, row.item, found[]))
+            into.put(Fragment(match.start, match.end, Extra(match.chip)));
     }
 
     // The color of the filter rule `rule` of the document

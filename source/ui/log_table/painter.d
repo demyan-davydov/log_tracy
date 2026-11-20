@@ -201,16 +201,18 @@ class LogPainter : Painter
         canvas.fillRect(row.area, color);
     }
 
-    // The row the keys move from has a frame over its cells, so the borders of the columns do not cross it
+    // The row the keys move from has a frame over its cells, so the borders of the columns do not cross it; a paler one while the
+    // table has not the focus (the keys go to the other table)
     override void paintRowOver(Canvas canvas, ref const RowContext row, bool tableHasFocus)
     {
         if (!row.state.focused)
             return;
         const a = row.area;
-        canvas.fillRect(Rect(a.x, a.y, a.w, 1), _palette.currentRow);
-        canvas.fillRect(Rect(a.x, a.bottom - 1, a.w, 1), _palette.currentRow);
-        canvas.fillRect(Rect(a.x, a.y + 1, 1, a.h - 2), _palette.currentRow);
-        canvas.fillRect(Rect(a.right - 1, a.y + 1, 1, a.h - 2), _palette.currentRow);
+        const color = tableHasFocus ? _palette.currentRow : _palette.currentRowInactive;
+        canvas.fillRect(Rect(a.x, a.y, a.w, 1), color);
+        canvas.fillRect(Rect(a.x, a.bottom - 1, a.w, 1), color);
+        canvas.fillRect(Rect(a.x, a.y + 1, 1, a.h - 2), color);
+        canvas.fillRect(Rect(a.right - 1, a.y + 1, 1, a.h - 2), color);
     }
 
     override void paintTextSelection(Canvas canvas, Rect area, bool tableHasFocus)

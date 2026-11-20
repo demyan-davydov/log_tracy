@@ -1,8 +1,8 @@
-//! The calls the script makes to the log table (`logTableCall("jump", ...)`) as a list of commands over a
+//! The calls the script makes to the log table (`logTableCall("reveal", ...)`) as a list of commands over a
 //! `TableControl`: which method does what with which arguments and defaults, and what it answers. Free of Sciter: the
 //! behavior converts the values of Sciter into `ScriptArgs` and the answer into a value of Sciter, and implements
-//! `TableControl` with the table it has. The checks of the experiments (docs/experiments/2026-11-19-painted-rows-d.md)
-//! and the debug channel use them.
+//! `TableControl` with the table it has. The calls of the checks and the measurements (`jump`, `render`, `stats`, ...)
+//! are in a build with the debug channel only.
 module ui.table_script;
 
 import ptable.tablehit : CopyTarget;
@@ -89,6 +89,9 @@ interface TableControl
     /// Draws at once without changing anything; answers the microseconds (the cost of a window's frame)
     long render();
 
+    /// The rows are drawn again: what they refer to changed (the colors of the filter rules)
+    void refresh();
+
     /// Wrap the Payload by the text engine of Sciter (1) or by the glyphs (0)
     void setWrap(bool bySciter);
 
@@ -122,17 +125,13 @@ interface TableControl
     wstring stats();
 }
 
-/// Does the call `method` with `args` on `control`; false for a method it does not know
+/// Does the call `method` with `args` on `control`; false for a method it does not know. The calls of the checks and the
+/// measurements (`dispatchChecks`) are there only in a build with the debug channel (version DebugChannel): the script of the
+/// application never makes them, a check makes them through the channel (`eval "logTableCall('stats')"`)
 bool dispatch(TableControl control, const(char)[] method, ScriptArgs args, out ScriptResult result)
 {
     switch (method)
     {
-    case "jump":
-        result = ScriptResult.ofNumber(control.jump(cast(size_t) args.number(0), args.number(1) != 0));
-        return true;
-    case "view":
-        result = ScriptResult.ofText(control.view());
-        return true;
     case "reveal":
         control.reveal(cast(size_t) args.number(0), args.number(1) != 0);
         return true;
@@ -142,44 +141,11 @@ bool dispatch(TableControl control, const(char)[] method, ScriptArgs args, out S
     case "currentRow":
         result = ScriptResult.ofText(control.currentRow());
         return true;
-    case "rowHeight":
-        result = ScriptResult.ofText(control.rowHeight(cast(size_t) args.number(0)));
-        return true;
-    case "scrollTo":
-        control.scrollTo(cast(size_t) args.number(0), cast(size_t) args.number(1), args.number(2), args.number(3), args.number(4) != 0);
-        return true;
-    case "scrollBy":
-        result = ScriptResult.ofNumber(control.scrollBy(args.number(0), args.number(1) != 0));
-        return true;
     case "pan":
         control.pan(args.number(0), args.number(1, 0));
         return true;
     case "panEnd":
         control.panEnd();
-        return true;
-    case "render":
-        result = ScriptResult.ofNumber(control.render());
-        return true;
-    case "setWrap":
-        control.setWrap(args.number(0) != 0);
-        return true;
-    case "setLimits":
-        control.setLimits(cast(size_t) args.number(0, 3000));
-        return true;
-    case "singleLine":
-        control.singleLine(args.number(0) != 0);
-        return true;
-    case "resetStats":
-        control.resetStats();
-        return true;
-    case "select":
-        control.select(args.number(0), args.number(1), args.number(2), args.number(3));
-        return true;
-    case "selectWord":
-        control.selectWord(args.number(0), args.number(1), args.number(2) == 0); // 0 the word, 1 the cell
-        return true;
-    case "copyText":
-        result = ScriptResult.ofText(control.copyText(args.number(0, 1) != 0)); // as Cmd+C unless 0
         return true;
     case "copy":
         // logTableCall("copy", 0): the text or the rows as Cmd+C; 1: the rows; 2, row, column: the cell of the address
@@ -190,26 +156,84 @@ bool dispatch(TableControl control, const(char)[] method, ScriptArgs args, out S
     case "hitTest":
         result = ScriptResult.ofText(control.hitTest(args.number(0), args.number(1)));
         return true;
-    case "updateRow":
-        control.updateRow(cast(size_t) args.number(0));
-        return true;
-    case "updateCell":
-        control.updateCell(cast(size_t) args.number(0), cast(size_t) args.number(1));
-        return true;
     case "anchorApplied":
         control.anchorApplied(cast(size_t) args.number(0), args.number(1) != 0);
         return true;
     case "contextPick":
         control.contextPick(cast(size_t) args.number(0));
         return true;
-    case "demo":
-        control.showDemo(args.number(0, 1) != 0); // logTableCall("demo"), logTableCall("demo", 0) for the log again
-        return true;
-    case "stats":
-        result = ScriptResult.ofText(control.stats());
+    case "refresh":
+        control.refresh();
         return true;
     default:
-        return false;
+        version (DebugChannel)
+            return dispatchChecks(control, method, args, result);
+        else
+            return false;
+    }
+}
+
+version (DebugChannel)
+{
+    // The calls of the checks and the measurements: the experiments (docs/experiments/2026-11-19-painted-rows-d.md) and the debug channel
+    private bool dispatchChecks(TableControl control, const(char)[] method, ScriptArgs args, ref ScriptResult result)
+    {
+        switch (method)
+        {
+            case "jump":
+                result = ScriptResult.ofNumber(control.jump(cast(size_t) args.number(0), args.number(1) != 0));
+                return true;
+            case "view":
+                result = ScriptResult.ofText(control.view());
+                return true;
+            case "rowHeight":
+                result = ScriptResult.ofText(control.rowHeight(cast(size_t) args.number(0)));
+                return true;
+            case "scrollTo":
+                control.scrollTo(cast(size_t) args.number(0), cast(size_t) args.number(1), args.number(2), args.number(3), args.number(4) != 0);
+                return true;
+            case "scrollBy":
+                result = ScriptResult.ofNumber(control.scrollBy(args.number(0), args.number(1) != 0));
+                return true;
+            case "render":
+                result = ScriptResult.ofNumber(control.render());
+                return true;
+            case "setWrap":
+                control.setWrap(args.number(0) != 0);
+                return true;
+            case "setLimits":
+                control.setLimits(cast(size_t) args.number(0, 3000));
+                return true;
+            case "singleLine":
+                control.singleLine(args.number(0) != 0);
+                return true;
+            case "resetStats":
+                control.resetStats();
+                return true;
+            case "select":
+                control.select(args.number(0), args.number(1), args.number(2), args.number(3));
+                return true;
+            case "selectWord":
+                control.selectWord(args.number(0), args.number(1), args.number(2) == 0); // 0 the word, 1 the cell
+                return true;
+            case "copyText":
+                result = ScriptResult.ofText(control.copyText(args.number(0, 1) != 0)); // as Cmd+C unless 0
+                return true;
+            case "updateRow":
+                control.updateRow(cast(size_t) args.number(0));
+                return true;
+            case "updateCell":
+                control.updateCell(cast(size_t) args.number(0), cast(size_t) args.number(1));
+                return true;
+            case "demo":
+                control.showDemo(args.number(0, 1) != 0); // logTableCall("demo"), logTableCall("demo", 0) for the log again
+                return true;
+            case "stats":
+                result = ScriptResult.ofText(control.stats());
+                return true;
+        default:
+            return false;
+        }
     }
 }
 
@@ -278,6 +302,7 @@ version (unittest)
         }
         long scrollBy(double pixels, bool now) { calls ~= "scrollBy " ~ pixels.to!string ~ " " ~ now.to!string; return 12; }
         long render() { calls ~= "render"; return 13; }
+        void refresh() { calls ~= "refresh"; }
         void pan(double pixels, double across) { calls ~= "pan " ~ pixels.to!string ~ " " ~ across.to!string; }
         void panEnd() { calls ~= "panEnd"; }
         void setWrap(bool bySciter) { calls ~= "setWrap " ~ bySciter.to!string; }
@@ -337,7 +362,9 @@ unittest
     assert(dispatch(control, "pickRow", ScriptArgs([7]), result) && result.kind == ScriptResult.Kind.nothing);
     assert(dispatch(control, "currentRow", ScriptArgs(), result) && result == ScriptResult.ofText(`{"row":3,"id":30}`w));
     assert(dispatch(control, "reveal", ScriptArgs([9, 1]), result) && dispatch(control, "reveal", ScriptArgs([4]), result));
-    assert(control.calls == ["view", "rowHeight 5", "scrollTo 12 1 -5 40 true", "scrollTo 3 0 0 0 false", "pickRow 7", "currentRow", "reveal 9 true", "reveal 4 false"]);
+    assert(dispatch(control, "refresh", ScriptArgs(), result) && result.kind == ScriptResult.Kind.nothing);
+    assert(control.calls == ["view", "rowHeight 5", "scrollTo 12 1 -5 40 true", "scrollTo 3 0 0 0 false", "pickRow 7", "currentRow", "reveal 9 true", "reveal 4 false",
+        "refresh"]);
 }
 
 @("dispatch: what a call leaves out is the default, a word is 0 and a cell 1, a value that is no number is the default")

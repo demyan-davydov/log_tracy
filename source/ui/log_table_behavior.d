@@ -112,6 +112,16 @@ final class LogTableBehavior : SciterEventHandler
         _log.events.needFrame = &requestFrame;
         _log.events.cellClicked = &cellClicked;
         _log.events.rowSelected = &rowChosen;
+        _log.events.copyCut = &copyCut;
+    }
+
+    // A copy of rows was cut by the limit of the copy: the script tells the user how many rows went to the clipboard
+    private void copyCut(size_t copied, size_t total)
+    {
+        import std.json : JSONValue;
+
+        JSONValue cut = ["table": JSONValue(_hooks.id), "copied": JSONValue(copied), "total": JSONValue(total)];
+        _host.callScript("logTableCopyCut", cut.toString.toUTF16);
     }
 
     // A click on a cell of a clickable column (the table picks nothing): the script knows what it is for
@@ -382,6 +392,8 @@ final class LogTableBehavior : SciterEventHandler
             _host.updateNow();
             return usSince(started);
         }
+
+        void refresh() { _host.repaint(); } // the rows are read again at every frame: a frame is all it takes
 
         void setWrap(bool bySciter)
         {

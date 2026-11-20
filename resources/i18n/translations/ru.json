@@ -32,6 +32,7 @@
     "Close": "Закрыть",
     "Color": "Цвет",
     "Conditions: all checked ones must match": "Условия: должны выполняться все отмеченные",
+    "Copied {copied} of {total} rows: a copy holds at most a million characters": "Скопировано строк: {copied} из {total}, копия вмещает не больше миллиона знаков",
     "Copy": "Копировать",
     "Copy Cell": "Копировать ячейку",
     "Copy File Name": "Копировать имя файла",

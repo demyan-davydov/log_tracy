@@ -7,7 +7,9 @@ import { collectLook } from "log-table-look.js";
 import { lockAxis } from "log-table-gesture.js";
 import { anchorClickPlan, rowMoved } from "anchor-click.js";
 import { anchorRefusalText } from "pane-commands.js";
-import { showNoticeAt } from "notice.js";
+import { showNotice, showNoticeAt } from "notice.js";
+import { copyText } from "platform.js";
+import { menuOpensByMouse } from "menu-gate.js";
 import { tr } from "i18n/i18n.js";
 
 // The tables there are, by the number D gave each: what D tells the script (a click on an anchor, an item of a menu) names its table
@@ -58,7 +60,7 @@ export class LogTableView {
 
     // The rows on screen are drawn again (the rules or the search changed what colors them)
     refreshRows() {
-        this.call("render");
+        this.call("refresh");
     }
 
     // The message of an anchor was set or cleared, from wherever it came (this table, the other one, the pass of the index that
@@ -120,6 +122,7 @@ export class LogTableView {
             return false;
         });
         element.on("contextmenu", evt => {
+            if (!menuOpensByMouse()) return true; // the Menu key, Shift+F10: no menu (menu-gate.js), and the press above is not this one's
             const hit = JSON.parse(this.call("hitTest", pressX, pressY));
             if (hit.kind === "header") {
                 // Customize Table (script.js opens the Settings on its Table section by this class)
@@ -148,7 +151,15 @@ globalThis.logTableRowChosen = json => {
 };
 
 // The clipboard is the script's: a table hands the text selected over (Cmd/Ctrl+C)
-globalThis.logTableCopy = text => Clipboard.writeText(text);
+globalThis.logTableCopy = text => copyText(text);
+
+// A copy of rows stopped at the limit of the copy (a million characters, ui/log_table/log_table.d `logCopyFormat`): the user is told
+// how many rows went to the clipboard (JSON: table, copied, total)
+globalThis.logTableCopyCut = json => {
+    const { table, copied, total } = JSON.parse(json);
+    const view = views.get(table);
+    if (view) showNotice(view.element, tr("Copied {copied} of {total} rows: a copy holds at most a million characters", { copied, total }));
+};
 
 // The items of that menu copy from their address (D puts the text on the clipboard)
 document.on("click", "menu.context > li.log-table-copy", (evt, item) => {

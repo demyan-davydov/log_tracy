@@ -9,6 +9,19 @@ import ptable.model;
 import ptable.rowranges : RowRange;
 import ptable.selection : CopyCell, CopyFormat, rangeText, TextRange;
 
+/// How many rows a copy of rows took of how many it was asked for (the rows of the ranges the model has, less the virtual ones
+/// passed before it stopped): fewer when the limit of the format stopped it
+struct CopiedRows
+{
+    size_t copied;
+    size_t asked;
+
+    bool cut() const
+    {
+        return copied < asked;
+    }
+}
+
 final class RowCopier
 {
     private TableModel _model;
@@ -61,10 +74,23 @@ final class RowCopier
     /// stops before the row that would make it longer than the limit of the format; a range of millions of rows is read only as far.
     wstring ofRows(const(RowRange)[] ranges, const(bool)[] wanted, ref const Placements p, bool wholeCellsInFull)
     {
+        CopiedRows copied;
+        return ofRows(ranges, wanted, p, wholeCellsInFull, copied);
+    }
+
+    /// The same, and how many rows it took of how many were asked (`copied`)
+    wstring ofRows(const(RowRange)[] ranges, const(bool)[] wanted, ref const Placements p, bool wholeCellsInFull, out CopiedRows copied)
+    {
         import std.array : appender;
 
         auto text = appender!wstring;
         const count = _model.itemCount();
+        size_t asked, virtuals;
+        foreach (range; ranges)
+            if (range.first < count)
+                asked += (range.last < count ? range.last : count - 1) - range.first + 1;
+        scope (exit)
+            copied.asked = asked - virtuals;
         foreach (range; ranges)
         {
             if (range.first >= count)
@@ -74,15 +100,24 @@ final class RowCopier
             {
                 const cells = cellsOf(row, wanted, p);
                 if (cells is null)
+                {
+                    ++virtuals;
                     continue;
+                }
                 const line = lineOf(cells, wholeCellsInFull);
                 const limit = _format.limit;
                 const added = (text.data.length ? _format.rows.length : 0) + line.length;
                 if (text.data.length + added > limit)
-                    return text.data.length ? text.data : line[0 .. limit]; // a single row over the limit is cut, not dropped
+                {
+                    if (text.data.length)
+                        return text.data;
+                    copied.copied = 1;
+                    return line[0 .. limit]; // a single row over the limit is cut, not dropped
+                }
                 if (text.data.length)
                     text ~= _format.rows;
                 text ~= line;
+                ++copied.copied;
             }
         }
         return text.data;
@@ -118,6 +153,24 @@ unittest
     assert(copier.ofRows(null, null, p, true) == ""w);
     assert(new RowCopier(model, columns, tabbedUpTo(20)).ofRows([RowRange(0, 9)], null, p, true) == "0\trow 0\n1\trow 1"w,
         "stops before the row that would pass the limit");
+}
+
+@("RowCopier: how many rows went into the text of all asked: all of them, or fewer when the limit stopped it")
+unittest
+{
+    import ptable.layout : ColumnLayout, placeColumns;
+
+    auto model = new NumbersModel(10);
+    auto columns = new ColumnSet(new ColumnLayout);
+    columns.refresh(model.columns());
+    const p = placeColumns(columns.columns, new ColumnLayout, 300);
+    CopiedRows copied;
+    new RowCopier(model, columns, tabbed).ofRows([RowRange(1, 2), RowRange(4, 4)], null, p, true, copied);
+    assert(copied == CopiedRows(3, 3) && !copied.cut);
+    new RowCopier(model, columns, tabbedUpTo(20)).ofRows([RowRange(0, 9)], null, p, true, copied);
+    assert(copied == CopiedRows(2, 10) && copied.cut, "the limit stopped it after two");
+    new RowCopier(model, columns, tabbed).ofRows([RowRange(8, 20)], null, p, true, copied);
+    assert(copied == CopiedRows(2, 2), "the rows the model has are all that was asked");
 }
 
 @("RowCopier: the text of one cell by its row and column of the model, none for a row or a column that is not there")

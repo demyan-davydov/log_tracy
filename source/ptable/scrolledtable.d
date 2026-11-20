@@ -45,6 +45,7 @@ final class ScrolledTable
         table.events.cellClicked = (size_t item, size_t column) { if (events.cellClicked !is null) events.cellClicked(item, column); };
         table.events.capture = (bool on) { if (events.capture !is null) events.capture(on); };
         table.events.needFrame = () { if (events.needFrame !is null) events.needFrame(); };
+        table.events.copyCut = (size_t copied, size_t total) { if (events.copyCut !is null) events.copyCut(copied, total); };
         table.events.followingEnd = (bool on) {
             bar.pinned = on; // told at the paint, before the bar is drawn: the badge and the thumb show it at once
             if (events.followingEnd !is null)
