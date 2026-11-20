@@ -114,7 +114,7 @@ final class SciterHost
     bool sciterWrap() const { return _measurer.sciterWrap; }
     void sciterWrap(bool on) { _measurer.sciterWrap = on; }
 
-    /// The layouts a generation of the cache keeps
+    /// The layouts the cache keeps (both generations)
     void textLimit(size_t layouts) { _cache.limit = layouts; }
 
     /// The layouts made so far and those kept
