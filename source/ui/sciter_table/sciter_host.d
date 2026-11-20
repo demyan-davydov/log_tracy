@@ -11,7 +11,7 @@ import sciter.api : sciterApi;
 import sciter.capi.api;
 import sciter.graphics : GfxCanvas = Canvas;
 import ui.look : TextLook;
-import ui.sciter_table.host : callHostScript = callScript, SciterCanvas, SciterMeasurer, SciterTextCache, ScriptClipboard;
+import ui.sciter_table.host : SciterCanvas, SciterMeasurer, SciterTextCache, ScriptClipboard, ScriptTeller;
 
 final class SciterHost
 {
@@ -21,13 +21,14 @@ final class SciterHost
     private SciterCanvas _canvas;
     private ScriptClipboard _clipboard;
 
-    this(HELEMENT he, TextLook look)
+    /// `tell` passes the text of a copy on to the script (`logTableCopy`)
+    this(HELEMENT he, TextLook look, ScriptTeller tell)
     {
         _he = he;
         _cache = new SciterTextCache(he, look);
         _measurer = new SciterMeasurer(_cache);
         _canvas = new SciterCanvas(_cache);
-        _clipboard = new ScriptClipboard(he);
+        _clipboard = new ScriptClipboard(tell);
     }
 
     /// The behavior is attached to `he`: every service that holds the element gets it
@@ -35,7 +36,6 @@ final class SciterHost
     {
         _he = he;
         _cache.element(he);
-        _clipboard.element(he);
     }
 
     /// The fonts changed: what was made and measured with the old ones is dropped, the cache first
@@ -49,12 +49,6 @@ final class SciterHost
     void release()
     {
         _cache.release();
-    }
-
-    /// Calls a global function of the script with a text (JSON): the host tells the script what happened in the table
-    void callScript(const(char)* name, const(wchar)[] text)
-    {
-        callHostScript(_he, name, text);
     }
 
     // ---- what the table is given ----

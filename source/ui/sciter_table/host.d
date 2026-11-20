@@ -11,7 +11,6 @@ import std.experimental.allocator : RCIAllocator;
 import sciter.api : sciterApi;
 import sciter.capi.api;
 import sciter.graphics : GfxCanvas = Canvas, TextLayout, rgba;
-import sciter.value : SciterValue;
 import ui.look : FontSpec, TextLook;
 
 import std.algorithm.comparison : max;
@@ -343,35 +342,22 @@ final class SciterCanvas : Canvas
     }
 }
 
-/// Calls the global function `name` of the script of the window of `he` with a text; what it answers is dropped
-void callScript(HELEMENT he, const(char)* name, const(wchar)[] text)
-{
-    HWINDOW hwnd;
-    if (sciterApi().SciterGetElementHwnd(he, &hwnd, true) != SCDOM_OK)
-        return;
-    SciterValue arg;
-    arg = text.idup;
-    SciterValue result;
-    sciterApi().SciterCall(hwnd, name, 1, arg.raw, result.raw);
-}
+/// What tells the script: `name(text)`, queued by the window and sent from its idle loop (ui/script_queue), never
+/// from inside the event of the table
+alias ScriptTeller = void delegate(string name, const(wchar)[] text);
 
 /// The clipboard of Sciter belongs to the script: the text goes to its `logTableCopy`
 final class ScriptClipboard : Clipboard
 {
-    private HELEMENT _he;
+    private ScriptTeller _tell;
 
-    this(HELEMENT he)
+    this(ScriptTeller tell)
     {
-        _he = he;
-    }
-
-    void element(HELEMENT he)
-    {
-        _he = he;
+        _tell = tell;
     }
 
     void writeText(const(wchar)[] text)
     {
-        callScript(_he, "logTableCopy", text);
+        _tell("logTableCopy", text);
     }
 }

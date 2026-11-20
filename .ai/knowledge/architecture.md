@@ -118,7 +118,10 @@ Until the move is done the text code (wrapping, line layout, text hit tests, col
   `onAttachmentsChanged`), never by the session polling the document. The
   session only queues those calls; `MainWindow.onIdle()` sends them (`takeScriptCalls`) after
   the document events of the indexing thread were dispatched on the UI thread, never from
-  inside an `xcall`.
+  inside an `xcall`. A log table tells the script the same way (`logTableRowChosen`,
+  `logTableCellClicked`, `logTableCopy`, `logTableCopyCut`): its behavior hands the call to
+  `TableHooks.tell`, the window queues it (`ui/script_queue`) and `onIdle()` sends it with the
+  calls of the session, in a few rounds while the script's answers queue more.
 - The resources are built into the executable (`ui/app_resources`, string imports) and served
   to Sciter at `this://app/<path>` (`SciterWindow.onLoadData`). The icons are not built in:
   `resources/icons/`, made of its `logo.png` by `scripts/utils/make-icons.mjs`, are taken by `dist`.

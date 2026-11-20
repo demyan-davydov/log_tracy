@@ -27,6 +27,7 @@ import ui.log_table.marks : marksOf;
 import ui.log_table.log_look : LogLook;
 import ui.sciter_table.frame_request : FrameRequest;
 import ui.sciter_table.input : wheelIsAcross, cursorOf, isCopy, isOurEvent, isSelectAll, keyPickMode, pickMode, startsPickPress, tableKey, wheelPixels;
+import ui.sciter_table.host : ScriptTeller;
 import ui.sciter_table.sciter_host : SciterHost;
 import ui.table_script : dispatch, ScriptArgs, ScriptResult, TableControl;
 
@@ -47,6 +48,7 @@ struct TableHooks
     size_t id; /// the number the script talks to the table by (`LogTableTarget.set`)
     void delegate(TableControl) attached;
     void delegate(TableControl) detached;
+    ScriptTeller tell; /// what the table has to tell the script, queued by the window: never called from inside an event
 }
 
 /// A call of the script to `control`, handed over by the main window: Sciter doesn't deliver `element.xcall` to a
@@ -91,7 +93,7 @@ final class LogTableBehavior : SciterEventHandler
 
     this(TableSource source, LogLook look, TableHooks hooks, HELEMENT he)
     {
-        _host = new SciterHost(he, look.text);
+        _host = new SciterHost(he, look.text, hooks.tell);
         _look = look;
         _source = source;
         _hooks = hooks;
@@ -121,7 +123,7 @@ final class LogTableBehavior : SciterEventHandler
         import std.json : JSONValue;
 
         JSONValue cut = ["table": JSONValue(_hooks.id), "copied": JSONValue(copied), "total": JSONValue(total)];
-        _host.callScript("logTableCopyCut", cut.toString.toUTF16);
+        _hooks.tell("logTableCopyCut", cut.toString.toUTF16);
     }
 
     // A click on a cell of a clickable column (the table picks nothing): the script knows what it is for
@@ -138,7 +140,7 @@ final class LogTableBehavior : SciterEventHandler
         Rect area;
         if (table.cellRect(item, column, area)) // where the cell is in the table, for what the script shows by it (a notice)
             click["rect"] = [area.x, area.y, area.w, area.h];
-        _host.callScript("logTableCellClicked", click.toString.toUTF16);
+        _hooks.tell("logTableCellClicked", click.toString.toUTF16);
     }
 
     // A row was selected by the user (the script follows it in the other table): which table, the item, the message, and whether it may move on
@@ -147,7 +149,7 @@ final class LogTableBehavior : SciterEventHandler
         import std.json : JSONValue;
 
         JSONValue chosen = ["table": JSONValue(_hooks.id), "row": JSONValue(item), "id": JSONValue(id), "delayed": JSONValue(delayed)];
-        _host.callScript("logTableRowChosen", chosen.toString.toUTF16);
+        _hooks.tell("logTableRowChosen", chosen.toString.toUTF16);
     }
 
     override protected bool handleSubscription(HELEMENT he, UINT* event_groups)
