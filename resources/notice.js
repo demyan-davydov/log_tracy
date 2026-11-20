@@ -24,7 +24,7 @@ export function showNotice(owner, text, { at = "below", ms = 4000, untilLeave = 
 // Shows `text` right of a place that has no element of its own (a cell of the table drawn by D): `parent` is the element of the table,
 // `rect` is [x, y, w, h] of the place in the parent's own coordinates, in dips. An empty element is put there, inside the parent, to own
 // the popup: the owner of a popup that is not in the table takes the mouse from it (the table loses its hover and its cursor), a child of
-// the table does not, as the cell of the old table. Sciter closes the popup by a press outside it (and the owner goes then: it hears
+// the table does not. Sciter closes the popup by a press outside it (and the owner goes then: it hears
 // `popupdismissed`); it is hidden too when the mouse leaves the place (a move of the mouse over the parent is checked, there is no
 // element to leave) and after `ms`.
 export function showNoticeAt(parent, rect, text, { ms = 2500 } = {}) {

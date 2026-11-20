@@ -69,7 +69,7 @@ struct CopyCell
 {
     wstring full;
     size_t bodyStart;
-    const(TableColumn) column; /// the column the cell is of, if it is an object: it cuts the text for the clipboard (the bridge)
+    const(TableColumn) column; /// the column the cell is of: it cuts the text for the clipboard
 
     wstring body() const pure nothrow @nogc @safe { return full[bodyStart .. $]; }
 }

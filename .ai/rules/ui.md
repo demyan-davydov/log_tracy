@@ -19,11 +19,6 @@ many rows. Keep it cheap:
 Measure before and after optimizing (`scripts/utils/bench_rows.d`, `docs/performance.md`, roughly
 100–140 ns/row of per-row work against decode).
 
-## Red Flag: Hiding a Log Table
-
-Never hide a log table itself with `display: none`: one hidden before it was ever laid out
-keeps its cells 1px wide for good. Status views cover it instead (`.status-view.overlay`).
-
 ## Red Flag: Restyling Existing UI Unasked
 
 Don't change the layout or CSS of existing UI unless the change was asked for, even when a

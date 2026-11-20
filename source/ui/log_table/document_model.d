@@ -92,7 +92,7 @@ TableColumn[] logColumns(const(ColumnInfo)[] columns, LogColumnLook look = LogCo
             : ColumnDef(c.id, c.title, minWidthOf(look.minWidths, columnMinWidthKey(look.formatId, c.id), columnMinWidth));
         TextColumn column = c.kind == ColumnKind.Level ? new LevelColumn(def, palette, look.measurer) : new TextColumn(def, palette, look.measurer);
         // the numbers and texts of the columns stand at their right side, a level in the middle, the Payload at its left;
-        // the titles are in the middle but the Payload's (as in the old table)
+        // the titles are in the middle but the Payload's
         column.style.cell.halign = c.kind == ColumnKind.Level ? Halign.center : Halign.right;
         column.style.cell.font = c.kind == ColumnKind.Level ? LogFont.body : LogFont.aux;
         column.style.header.halign = Halign.center;

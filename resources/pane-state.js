@@ -63,63 +63,11 @@ export function paneChanges(paneIds, docIds) {
     };
 }
 
-// How a table follows an anchor that added (`added`) or removed the row of
-// message `message` from its view, keeping the rows on screen where they are
-// (vlist: itemsBefore/itemsAfter are changed for rows outside the rendered ones):
-//   { before: -1, 0 or 1 rows before the rendered ones, after: the same after
-//     them, insertAt / removeAt: the place among the rendered rows, or null }
-// `rendered`: the messages of the rendered rows, in order. null if there are none.
-// `room`: all the rows of the view are rendered and the window of the list has room
-// for one more. A row added at an end is rendered then, even past the height of the
-// table: a list whose window has room doesn't ask for a row counted after the rendered
-// ones, so it couldn't be scrolled to by the wheel. With the window full the row is
-// counted, the rendered rows stay as many.
-export function anchorEdit(rendered, message, added, room) {
-    if (rendered.length === 0) return null;
-    const step = added ? 1 : -1;
-    const result = { before: 0, after: 0, insertAt: null, removeAt: null };
-    if (added && room && message < rendered[0]) result.insertAt = 0;
-    else if (added && room && message > rendered[rendered.length - 1]) result.insertAt = rendered.length;
-    else if (message < rendered[0]) result.before = step;
-    else if (message > rendered[rendered.length - 1]) result.after = step;
-    else if (added) result.insertAt = rendered.findIndex(m => m > message);
-    else result.removeAt = rendered.indexOf(message);
-    return result;
-}
-
 // The progress a tab shows under its name: the part of the file loaded (0..1)
 // while the main view (vm: { status, progress }) loads it, null otherwise (no bar)
 export function tabProgress(vm) {
     if (vm?.status !== "loadingFile") return null;
     return Math.min(1, Math.max(0, vm.progress || 0));
-}
-
-// What a panel does when the look of the rows of its tables (Settings:
-// { fontSize, singleLine }) is asked to be `asked`:
-//   { apply: the tables get it now, keep: the first rows on screen are to be
-//     scrolled back to the top once the rows are laid out anew }
-// `applied`: the look the tables have, null: none yet (a new panel, no rows to
-// keep). A hidden panel takes it when shown: rows that changed height under
-// its scroll position couldn't be found again
-export function rowLookStep(applied, asked, visible) {
-    if (applied === null) return { apply: true, keep: false };
-    if (applied.fontSize === asked.fontSize && applied.singleLine === asked.singleLine)
-        return { apply: false, keep: false };
-    return visible ? { apply: true, keep: true } : { apply: false, keep: false };
-}
-
-// What a table does with the first row kept on screen (`kept`: { top, null:
-// none }) when the look of its rows changed, once they are laid out anew:
-//   { wait: a status view covers the table (`shown`, see tableStep), it
-//     scrolls when it shows rows again; target: the row to scroll to the top,
-//     null: none }
-// Rows reloaded since keep their position (tableStep "keep"): the same row
-// number, within the `total` rows; their scroll in pixels came from the old
-// height of the rows and could be past the end
-export function keptRowStep(kept, shown, total) {
-    if (shown.dataVersion === null) return { wait: true, target: null };
-    if (kept.top === null || total === 0) return { wait: false, target: null };
-    return { wait: false, target: Math.min(kept.top, total - 1) };
 }
 
 // The search view (vm of the search machine, null if none yet) as a value: the

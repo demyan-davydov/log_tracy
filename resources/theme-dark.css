@@ -69,13 +69,10 @@
     --bg-row-found-stripe: morph(var(--bg-row-stripe), lighten:12%, sepia:35%);
     /* Text selected in the cells of a log table (the log table, ptable/selection), on any row */
     --bg-text-selected: #1a7f37;
-    /* Selected rows of a log table: while the table is focused, while it isn't
-       (a duller blue), their text; the frame of the current row */
+    /* Selected rows of a log table, their text; the frame of the current row */
     --bg-row-selected: #0b4a8c;
-    --bg-row-selected-inactive: #0b4a8c;
     --text-row-selected: #fff;
     --border-row-current: #6aa6ec;
-    --border-row-current-inactive: #6b7c92;
     /* The anchor mark (table.css): its circle, the faint one on hover, the one
        of an anchor that can't be set (the limit) */
     --bg-anchor: #4a4a4a;

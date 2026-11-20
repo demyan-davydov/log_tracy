@@ -45,7 +45,7 @@ void applyLookChange(LookChange change, scope void delegate() beforeMetrics, sco
     restyle(change);
 }
 
-/// How a copy of the log table joins its texts, as the DOM table did: the cells of a row by tabs, the rows by new lines (a table to paste
+/// How a copy of the log table joins its texts: the cells of a row by tabs, the rows by new lines (a table to paste
 /// into a sheet), a million characters at most
 enum CopyFormat logCopyFormat = CopyFormat("\t"w, "\n"w, 1_000_000);
 

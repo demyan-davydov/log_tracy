@@ -171,10 +171,10 @@ agent can't drive it. In scapp a plain
 - Mouse capture (`state.capture`) on an element recreated in the same mousedown went together
   with a segfault on tab drag; capture isn't needed for dragging: document-level
   `mousemove` / `mouseup` work.
-- A `selectable` cell consumes the mouse press and release itself: neither `mousedown` nor
-  `mouseup` bubbles to the tbody, and `addEventListener(..., {capture: true})` doesn't help. A
+- A `selectable` element consumes the mouse press and release itself: neither `mousedown` nor
+  `mouseup` bubbles to its parent, and `addEventListener(..., {capture: true})` doesn't help. A
   class handler in the sinking phase works: `["on ^mousedown"]` / `["on ^mouseup"]`
-  (`^` = sinking); not consuming it leaves the cell its text selection.
+  (`^` = sinking); not consuming it leaves the element its text selection.
 - **Don't move the focus inside a mousedown handler, and don't let a press drop it to nothing.**
   A press on a non-focusable element (a tab) drops the focus to nothing before any handler
   runs (sinking phase included) and drops again a focus the handler set. A focus set to the
@@ -307,33 +307,16 @@ agent can't drive it. In scapp a plain
 - An element with `overflow-x: hidden` still scrolls by `scrollTo` (and reports
   `scrollWidth`), but keeps its `scrollLeft` when its content gets narrower: the content stays
   shifted out of sight (`auto` brings it back); clamp it yourself.
-- The cost of a change of a table row (6.0.5.5, 2026-11-16, 13 cells): any attribute of a `tr`
-  changed (a class too, one no CSS rule names too) restyles the row and all its cells, ~0.5 ms
-  a row; the same value written again costs nothing. A text of a cell is ~10 µs. Keep the
-  attributes of the rows as they are; what changes with the row's number goes into painting.
-- Where a row goes in a table (6.0.5.5, 2026-11-16, 30–34 rows of 13 cells): `append` of a row
-  of the table itself (moved from the top to the end) or a row removed from anywhere is cheap,
-  ~1 ms for 4 rows. A row inserted anywhere but at the end (`insertBefore` the first, the
-  second, the middle one; a row of the table too) re-lays the whole table out, ~14 ms
-  (~0.45 ms a row), one row or four, fixed widths of the columns or not, wrapped or
-  single-line; `:nth-child` rules are no part of it. A row taken out of the DOM and inserted
-  again, even at the end, is styled anew with its cells: ~14 ms for 4. Blocks of
-  `flow: horizontal` instead of a table pay for an insertion at the top too (~8 ms).
 - `element.paintBackground = gfx => ...` draws under the element's content, but the element's
   own CSS background is painted over it: give the element none and paint it too. `gfx` is in
   the element's box, in px as `getBoundingClientRect`; `element.style.variable("name")` gives a
   CSS variable for `gfx.fillStyle`; `requestPaint()` asks for it again. What it paints is not
-  clipped to the element's box (a rect above a `tbody` painted over the table's header): cut
-  it yourself.
+  clipped to the element's box: cut it yourself.
 - `:nth-child` styles are not updated for the siblings that stay when an element is prepended
   or removed (6.0.5.5): `matches(":nth-child(even)")` gives the new answer, the applied style
-  is the old one. The rows virtual-list keeps while scrolling had wrong stripes
-  (`:nth-child(even)`, `table.css`) at every odd shift of its window. Any change of the
-  document restyles them: a class toggled on the `tbody` (VirtualList.restyleRows, posted
-  from `oncontentrequired`: virtual-list removes the rows past its window after it returns),
-  an attribute set on each row (followAnchor sets `view-index`). So a check of this bug
-  must not write into the page (a status text heals it): the repro writes to the window
-  caption.
+  is the old one. Any change of the document restyles them (a class toggled on the parent,
+  an attribute set on each sibling), so a check of this bug must not write into the page (a
+  status text heals it).
 - A block is centred in its parent by `margin: 0 *` (flex units); `margin: 0 auto` leaves it
   at the left. Vertical `*` margins take all the free height: a block after it (an `:after`)
   goes down to the bottom of the cell.
@@ -413,86 +396,3 @@ agent can't drive it. In scapp a plain
   room for an absolute child sticking out (the buttons of a filter chip).
 - To diagnose a layout bug, compare `el.state.box("xywh","border","parent")` between a working
   and a broken element instead of guessing.
-
-## Virtual Lists and the Log Table
-
-> The log table is drawn by D now (`ui/log_table_behavior`, `ptable`) and the DOM table with its `virtual-list` is gone. What follows is what was
-> learned of Sciter's virtual-list while the table was one; the names of its code are of the removed script (plain, not in backquotes).
-
-- **Never hide a log table itself.** A `<table>` with a virtual-list tbody hidden by
-  `display: none` before it was ever laid out keeps its cells at x=0, 1px wide, for good.
-  Hidden ancestors are harmless, so is hiding a table already laid out. Show status views over
-  it (`.status-view.overlay`).
-- Rows appended to the data of a virtual-list need no render: assigning `vlist.itemsAfter`
-  (6.0.5.5) grows the scrollbar range, keeps the rendered rows, the first visible item and the
-  scroll, and the list asks for the new rows when scrolled to them. A list whose window ends
-  at its last row with room left doesn't ask: append the rows (`VirtualList.grow`).
-  The same for a row counted by `itemsAfter` while the rendered ones just fill the table
-  (an anchor in the search list): the wheel scrolls nothing, only the scrollbar does. Render
-  such a row up to the window (followAnchor), not up to the height of the list. A row
-  inserted by hand that makes the rendered ones overflow the list leaves the wheel dead too
-  (the scrollbar works, a resize heals it): followAnchor leaves that insertion to a render
-  while the rows fit the list.
-  A list scrolled somewhere that was edited by hand shows a gap under its rows (rows removed)
-  or has its rows pushed (a row inserted above the first on screen): `settle` of
-  VirtualDltTBody puts it right: at once after the first edit of a frame (no blink: the
-  layout is read synchronously and is current), and once more in the frame, after the rest of
-  its edits (an edit each doesn't read the layout each: hundreds of anchors at open).
-- A virtual-list hidden (`display: none`, or `visibility`) and shown again keeps its rows, first
-  visible item and pixel offset, even after a resize while hidden; a hidden list requests no
-  rows. Focus stays on an element inside a hidden pane: move it on a switch.
-- `vlist.navigateTo(n)` puts row n at the top only when n is outside the sliding window or
-  above the screen; below the screen but inside the window it lands at the bottom; on screen
-  it doesn't scroll. VirtualList.navigateToTop navigates past n first
-  (n + slidingWindowSize), then to n (resources/list-navigation.js).
-- A virtual-list scrolls animated with `scrollTo({ top, behavior: "smooth" })` and
-  `vlist.advanceTo(n)` (~250 ms, eased); `vlist.scrollBy` and vlist.navigateTo are instant
-  (6.0.5.5). A smooth scroll renders no rows: it stops at the last rendered one; it goes past
-  the last row of the list (clamp to `scrollHeight - clientHeight`); in the frame of an
-  instant `scrollTo` it overshoots by that one. VirtualList.smoothAnimateTo jumps first,
-  then animates the last rows of the way (approachStep).
-- When rows change height (a class toggle, a smaller font) the scroll position stays in pixels
-  and may be past the end. Layout isn't redone until the next frame, not even in a `post`ed
-  call; inside `requestAnimationFrame(...)` the geometry is new and navigateTo works.
-  vlist.firstVisibleItem is kept while hidden.
-- 6.0.5.5: a far jump (scrollbar drag) asks `where=±1` with a far `start` and drops the old
-  rows itself (6.0.3.12 asks `where=0`). It first renders ~half a window of rows around the
-  old place, then a whole window at the new one, and lays every new row out (styles, the
-  widths of the table): about 1 ms a row of a log table, nearly all of a jump; our script
-  is ~6 %. So the window is sized to the list (vlist.slidingWindowSize, read-write, 160 by
-  default; windowSize of resources/list-navigation.js, VirtualDltTBody.fitWindow).
-  Dragging the thumb to an end of a list of ~85M+ rows segfaults inside Sciter
-  (`vlist_ctl::move_buffer_to`), reproduced with the SDK sample alone.
-- Sciter fills a list (a new view, a jump) with half its window, a couple of rows less, and
-  asks for no more until it scrolls: a window grown after (a higher list, a smaller font)
-  leaves a gap under the rows. `VirtualList.fill` renders the rows itself (fillStep).
-  Rows prepended with `itemsBefore` lowered push the rows on screen down, the end of the
-  list too: navigate to the last row again.
-- A window smaller than the rows on screen segfaults on a jump (`vlist_ctl::move_buffer_to`),
-  and so does `navigateTo(n)` with `n >= vlist.itemsTotal` while rows are rendered, whatever
-  the window (advanceTo past it returns null). `itemsTotal` lags behind `totalItems()`
-  while a view grows; an empty list navigated past it lands on its last known row. Navigate
-  through VirtualList.navigateTo (navigationStep: counts the rows first, keeps the target
-  within them), never vlist.navigateTo or `vlist.navigate`.
-- `vlist.navigateTo("end")` asks for a row per pixel of the list's height (483 rows for a
-  list 483px high), whatever slidingWindowSize, and keeps them: ~0.5 s on a tall list.
-  `navigateTo(last row)` puts the last row at the bottom just the same with a window of rows
-  (safeTarget does it). `navigateTo("start")` asks for a window.
-- `sizechange` reaches a virtual-list subscribed with `on("sizechange", ...)`; an
-  `["on sizechange"]` method of its class is never called. A `thead` gets it when the font
-  size of its table changes (its row follows the font), before the next frame.
-- The `outline` of a row of a scrolled virtual-list is painted `scrollTop` lower than the row
-  (6.0.5.5), a frame over another row; frame a row with `box-shadow: inset ...` instead.
-- Text selection: `behavior: virtual-list` blocks drag selection of text whatever carries
-  `selectable`; only `selectable` per cell works, inside one cell. Selection over a
-  virtual-list is ours, in JS (resources/text-selection.js).
-- `element.rangeFromPoint(x, y)` (x, y in the element's inner box) works on a non-selectable
-  cell too: it gives the character **under** the point (right of the text: length − 1), on the
-  line under `y`; an empty cell gives a node outside it.
-- No frozen columns in CSS (6.0.5.5, tried 2026-11-13 on the log table with single-line
-  rows, which the `table` itself scrolls sideways): the attributes `fixedcols` and
-  `fixedrows` (their names are in the library) change nothing, on a plain table too, and
-  `position: sticky` is unknown (`style.position` stays null). A cell with
-  `position: relative` moves twice its `left` (`left: 100dip` → 200dip), and
-  `transform: translate(...)` doesn't move a cell at all. Pinning the anchor and Index
-  columns would take a scroll handler shifting them: dropped as not worth it.

@@ -43,11 +43,6 @@ document.on("ready", function () {
     initApp();
 });
 
-function stopScroll(element) {
-    const currentScroll = element.scrollTop;
-    element.scrollTo({ top: currentScroll, behavior: "instant" });
-}
-
 // Save UI state while the window and DOM are still fully alive.
 // Must not be done from native BEHAVIOR_DETACH: calling scripts during view teardown crashes Sciter.
 platform.onWindowCloseRequest(() => {
@@ -61,32 +56,6 @@ platform.onWindowCloseRequest(() => {
 // The frame is written once the user is done with it: a Quit that can't ask
 // the script any more (the Dock, logging out) or a crash keeps it
 platform.onWindowFrameChanged(() => backend.windowFrameChanged());
-
-platform.onWindowClose(() => {
-    console.log("Closing Window...");
-
-    // Stop the inertial scroll: jump to the current position without animation
-    for (const pane of panes.values()) for (const list of pane.lists) stopList(list);
-
-    console.log("Window is closing, resources released");
-});
-
-function stopList(logList) {
-    stopScroll(logList);
-    logList.style.behavior = "none";
-    logList.state.disabled = true;
-    logList.itemAt = null;
-    logList.totalItems = 0;
-
-    //logList.vlist.itemsTotal = 0;
-
-    logList.onScroll = null;
-    logList.onVisualChange = null;
-
-    //logList.stopTimers();
-
-    logList.remove(); // remove from DOM
-}
 
 function initApp() {
     let settings = null;

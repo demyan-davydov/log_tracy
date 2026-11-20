@@ -74,8 +74,8 @@ struct ScrollThumb
     }
 }
 
-/// How long a bar takes to widen under the mouse or to narrow back, in milliseconds (the user, 2026-11-20: about twice as fast as
-/// the pool of rows' 300, tuned by eye)
+/// How long a bar takes to widen under the mouse or to narrow back, in milliseconds (the user, 2026-11-20,
+/// tuned by eye)
 enum double wideningMs = 170;
 
 /// Which way a bar lies: along the rows (at the right edge) or along the columns (at the bottom)

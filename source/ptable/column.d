@@ -130,7 +130,7 @@ class TableColumn
     void drawBack(Canvas canvas, ref const CellInput cell, ref const DrawState state) {}
 
     /// The text of the part [from, to) of what the cell shows for the clipboard; `inFull`: the cell selected whole gives its full text, the head a
-    /// group goes by too (`bodyStart` is where what it shows begins) (the bridge: the table asks it where it cut the text itself)
+    /// group goes by too (`bodyStart` is where what it shows begins)
     wstring copyPart(wstring full, size_t bodyStart, size_t from, size_t to, bool inFull) const
     {
         const body = full[bodyStart .. $];

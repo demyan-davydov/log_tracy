@@ -15,7 +15,7 @@ enum LogFont : FontId
     aux, /// the other cells: 8pt Courier New
     header, /// the titles: 10pt Courier New
     bodyBold, /// the louder levels
-    sign, /// the sign of a refusal pressed on: the body font made big (19pt, as the DOM table's 190 %)
+    sign, /// the sign of a refusal pressed on: the body font made big (19pt)
 }
 
 /// The fonts by `LogFont`
@@ -48,7 +48,7 @@ struct LogPalette
     Color row = Color(255, 255, 255), stripe = Color(0xf4, 0xf4, 0xf4), selected = Color(0xb0, 0xd2, 0xf8);
     Color found = Color(0xee, 0xe6, 0xd4), foundStripe = Color(0xe7, 0xdf, 0xcd), header = Color(0xff, 0xe4, 0xc4);
     Color border = Color(0xd0, 0xd0, 0xd0), textSelected = Color(0x7f, 0xdc, 0x94);
-    Color currentRow = Color(0x3b, 0x82, 0xd6); // the frame of the row the keys move from (--border-row-current, as in the DOM table)
+    Color currentRow = Color(0x3b, 0x82, 0xd6); // the frame of the row the keys move from (--border-row-current)
     Color fatalBg = Color(0xc2, 0x12, 0x3a), fatalText = Color(255, 255, 255), error = Color(255, 0, 0);
     Color warn = Color(0xff, 0x8c, 0x00), info = Color(0, 0x80, 0), debug_ = Color(0x88, 0x88, 0x88);
     // a group of rows (a day): the ground of its margin, its lines, the plate of its head and the plate's ink

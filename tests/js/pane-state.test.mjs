@@ -3,7 +3,7 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { noTable, tableStep, paneChanges, anchorEdit, rowLookStep, keptRowStep, searchViewKey, jumpStep, showsRowsOf } from "../../resources/pane-state.js";
+import { noTable, tableStep, paneChanges, searchViewKey, jumpStep, showsRowsOf } from "../../resources/pane-state.js";
 
 const ready = (dataVersion) => ({ status: "ready", dataVersion });
 
@@ -96,35 +96,6 @@ test("panels are created for new documents and removed for closed ones", () => {
     assert.deepEqual(paneChanges([1, 2], [2, 1]), { create: [], remove: [] }, "a new order changes nothing");
 });
 
-const edit = (fields) => ({ before: 0, after: 0, insertAt: null, removeAt: null, ...fields });
-
-test("an anchor outside the rendered rows changes the count of rows before or after them", () => {
-    const rendered = [10, 20, 30];
-    assert.deepEqual(anchorEdit(rendered, 5, true, false), edit({ before: 1 }));
-    assert.deepEqual(anchorEdit(rendered, 5, false, false), edit({ before: -1 }));
-    assert.deepEqual(anchorEdit(rendered, 40, true, false), edit({ after: 1 }));
-    assert.deepEqual(anchorEdit(rendered, 40, false, false), edit({ after: -1 }));
-});
-
-test("an anchor among the rendered rows inserts or removes its row in place", () => {
-    const rendered = [10, 20, 30];
-    assert.deepEqual(anchorEdit(rendered, 15, true, false), edit({ insertAt: 1 }));
-    assert.deepEqual(anchorEdit(rendered, 25, true, false), edit({ insertAt: 2 }));
-    assert.deepEqual(anchorEdit(rendered, 10, false, false), edit({ removeAt: 0 }));
-    assert.deepEqual(anchorEdit(rendered, 30, false, false), edit({ removeAt: 2 }));
-});
-
-test("a list that doesn't fill the table shows the row of a new anchor at its end", () => {
-    const rendered = [10, 20, 30];
-    assert.deepEqual(anchorEdit(rendered, 40, true, true), edit({ insertAt: 3 }));
-    assert.deepEqual(anchorEdit(rendered, 5, true, true), edit({ insertAt: 0 }));
-    assert.deepEqual(anchorEdit(rendered, 20, false, true), edit({ removeAt: 1 }));
-});
-
-test("no rendered rows: nothing to follow", () => {
-    assert.equal(anchorEdit([], 5, true, true), null);
-});
-
 test("a tab shows the progress of loading its file, nothing otherwise", async () => {
     const { tabProgress } = await import("../../resources/pane-state.js");
     assert.equal(tabProgress({ status: "loadingFile", progress: 0.25 }), 0.25);
@@ -135,45 +106,6 @@ test("a tab shows the progress of loading its file, nothing otherwise", async ()
     assert.equal(tabProgress({ status: "filtering", progress: 0.5 }), null);
     assert.equal(tabProgress(null), null);
     assert.equal(tabProgress(undefined), null);
-});
-
-const look = (fontSize, singleLine) => ({ fontSize, singleLine });
-
-test("the look of the rows: the first one is applied as it is, nothing to keep", () => {
-    assert.deepEqual(rowLookStep(null, look(100, false), false), { apply: true, keep: false });
-    assert.deepEqual(rowLookStep(null, look(100, true), true), { apply: true, keep: false });
-});
-
-test("the look of the rows: the same one again changes nothing", () => {
-    assert.deepEqual(rowLookStep(look(100, true), look(100, true), true), { apply: false, keep: false });
-});
-
-test("the look of the rows: a shown panel takes another one at once, keeping its first rows", () => {
-    assert.deepEqual(rowLookStep(look(100, false), look(100, true), true), { apply: true, keep: true });
-    assert.deepEqual(rowLookStep(look(100, false), look(150, false), true), { apply: true, keep: true });
-});
-
-test("the look of the rows: a hidden panel takes another one when shown", () => {
-    assert.deepEqual(rowLookStep(look(100, false), look(100, true), false), { apply: false, keep: false });
-});
-
-test("a kept first row is scrolled to while the table shows rows", () => {
-    assert.deepEqual(keptRowStep({ top: 42 }, { loaded: true, dataVersion: 3 }, 100), { wait: false, target: 42 });
-});
-
-test("a kept first row of a table with other rows now keeps its place, within the rows", () => {
-    // a reload keeps the position (tableStep "keep"): the same row number, not the pixels
-    assert.deepEqual(keptRowStep({ top: 42 }, { loaded: true, dataVersion: 4 }, 100), { wait: false, target: 42 });
-    assert.deepEqual(keptRowStep({ top: 42 }, { loaded: true, dataVersion: 4 }, 10), { wait: false, target: 9 });
-    assert.deepEqual(keptRowStep({ top: 42 }, { loaded: true, dataVersion: 4 }, 0), { wait: false, target: null });
-});
-
-test("a kept first row waits while a status view covers the table", () => {
-    assert.deepEqual(keptRowStep({ top: 42 }, { loaded: true, dataVersion: null }, 100), { wait: true, target: null });
-});
-
-test("no row was on screen: nothing to scroll to", () => {
-    assert.deepEqual(keptRowStep({ top: null }, { loaded: true, dataVersion: 3 }, 100), { wait: false, target: null });
 });
 
 // ---- the found rows of the main table follow the search view ----

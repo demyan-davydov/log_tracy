@@ -81,9 +81,6 @@ export const onWindowCloseRequest = handler => Window.this.on("closerequest", ha
 // The user finished moving or resizing the window
 export const onWindowFrameChanged = handler => Window.this.on("replacementend", handler);
 
-// The window closes
-export const onWindowClose = handler => Window.this.on("close", handler);
-
 // ── The clipboard ────────────────────────────────────────────────────────────
 
 export const copyText = text => Clipboard.writeText(text);

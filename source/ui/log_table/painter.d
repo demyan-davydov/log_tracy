@@ -1,7 +1,6 @@
 //! How the log table looks when the log table (ptable) draws it: the fonts, the colors (`LogPalette`) and the
 //! spacing (`LogSpacing`) the script reads from the CSS of the themes and of the table (resources/log-table-look.js), the
-//! cells of the Index, the levels, the anchor marks, the Payload and the groups of rows (a day). The look the DOM table
-//! has in resources/table.css, written as a `Painter`. Free of Sciter. See docs/stories/painted-table.md.
+//! cells of the Index, the levels, the anchor marks, the Payload and the groups of rows (a day), written as a `Painter`. Free of Sciter. See docs/stories/painted-table.md.
 module ui.log_table.painter;
 
 import ptable.column : CellInput, CellLayout, DrawState, GroupInput, HeaderState, TableColumn;
@@ -24,12 +23,12 @@ import std.math : round;
 /// (or held) it is as thick as the strip and a semi-transparent track shows under it. The rows show around it.
 final class LogScrollBarPainter : ScrollBarPainter
 {
-    // Trial values, taken from the bars of the pool of rows (branch row-pool) to be tuned by eye
+    // Trial values, to be tuned by eye
     private enum double thin = 4; // the thickness of the thumb at rest
     private enum double inset = 2; // the room between the thumb and the edges of the strip
     private enum ubyte thumbAlpha = 77;
     private enum ubyte strongAlpha = 204; // the wide thumb, 0.8 (the user, 2026-11-20)
-    private enum ubyte trackAlpha = 26; // the track of the wide bar, 0.1: 30% over the pool of rows' 0.08 (the user, 2026-11-20)
+    private enum ubyte trackAlpha = 26; // the track of the wide bar, 0.1 (the user, 2026-11-20)
 
     private LogLook _look;
 
@@ -149,7 +148,7 @@ class LogPainter : Painter
     {
         TableGeometry g;
         g.headerHeight = 0; // the header follows its font
-        g.columnBorder = 1; // a line between two columns, as the table of the DOM had
+        g.columnBorder = 1; // a line between two columns
         g.groupHeight = -1; // a date over the rows of its day is a plate as high as the header
         g.groupPadTop = _look.spacing.groupPadTop; // with room above it: the groups stand apart
         g.groupPadBottom = _look.spacing.groupPadBottom;

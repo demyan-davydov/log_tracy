@@ -83,16 +83,6 @@ the load ~1.5 s (~1.6 s before), a filter ~1.15 s (~1.25 s before), a search sta
 of the load ends with it, ~2.3 s after it was asked for. See `docs/backlog.md` for what is
 left to measure.
 
-## Jumps in the log table: `scroll-window` (2026-11-11)
-
-A far jump (`vlist.navigateTo(n)` and the layout of its rows) in a table ~484 px high, debug
-build, Apple M1 Pro; how it was measured: `docs/experiments/2026-11-11-scroll-window.md`.
-
-| Jump | master (window 160) | `scroll-window` (window by height) |
-|---|---|---|
-| far row, log of 4.5 M records | ~150 ms | ~35–45 ms |
-| End, log of 85 M records | ~240 ms (483 rows) | ~38 ms |
-
 ## Joined parts of DLT messages: `joined-parts` against master at 7063709 (2026-11-11)
 
 The offset index asks every record of a DLT log whether it is a numbered part of a message
