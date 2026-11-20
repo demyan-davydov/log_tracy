@@ -278,7 +278,10 @@ unittest
     import std.experimental.allocator.building_blocks.stats_collector : Options, StatsCollector;
     import std.experimental.allocator.mallocator : Mallocator;
 
-    StatsCollector!(Mallocator, Options.bytesUsed) stats;
+    // Static, not a local: the memos are collected later, and their finalizer lets the object of the allocator go back to it,
+    // counted in `stats`: on the stack of this test that is a write into the frame of whatever runs there by then
+    static StatsCollector!(Mallocator, Options.bytesUsed) stats;
+    stats = typeof(stats).init;
     auto memos = new CellMemos(allocatorObject(&stats));
     const base = stats.bytesUsed; // the object of the allocator is in it
     memos.fit(64);
