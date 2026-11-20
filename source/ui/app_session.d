@@ -27,7 +27,7 @@ import ui.document_tabs : DocumentTabs;
 import ui.document_ui : DocumentUi;
 import ui.filter_commands : DocumentFilters;
 import ui.table_columns : TableColumns;
-import ui.log_table.view_events : versionOf, ViewListener, ViewVersion;
+import ui.view_listeners : versionOf, ViewListener, ViewListeners, ViewVersion;
 import ui.translations : Catalog, CatalogFile, parseCatalog, Translation, findTranslations,
     catalogLanguagesJson = languagesJson, catalogTranslationJson = translationJson;
 import ui.main_view_fsm : toJson;
@@ -75,14 +75,7 @@ final class AppSession
     private FileShower _showInFolder;
     private ScriptCall[] _scriptCalls; // queued for the idle loop
     private void delegate(DocumentId)[] _documentClosed; // told when the tab of a document goes
-    private struct ViewHearer
-    {
-        DocumentId doc;
-        ViewListener listener;
-    }
-
-    private ViewHearer[size_t] _viewListeners; // the painted tables, by handle
-    private size_t _nextViewListener;
+    private ViewListeners _viewListeners; // the painted tables, each hearing the views of its document
     private DocumentId[] _reopen; // to be opened anew after the dispatch (ReopenWanted)
     // When each document began to open, until its load completes: the console tells
     // how long the whole load took (a load that never completes tells nothing)
@@ -198,29 +191,23 @@ final class AppSession
     /// through the script), and a change of the columns of any document. Returns the handle for `unsubscribeViews`.
     size_t subscribeViews(DocumentId docId, ViewListener listener)
     {
-        _viewListeners[_nextViewListener] = ViewHearer(docId, listener);
-        return _nextViewListener++;
+        return _viewListeners.subscribe(docId, listener);
     }
 
     /// ditto
     void unsubscribeViews(size_t handle)
     {
-        _viewListeners.remove(handle);
+        _viewListeners.unsubscribe(handle);
     }
 
     private void tellViewShown(DocumentId docId, bool search, ViewVersion shown)
     {
-        // a listener may unsubscribe another while it hears: those gone are not called
-        foreach (handle, hearer; _viewListeners.dup)
-            if (handle in _viewListeners && hearer.doc == docId && hearer.listener.viewShown !is null)
-                hearer.listener.viewShown(search, shown);
+        _viewListeners.viewShown(docId, search, shown);
     }
 
     private void tellColumnsChanged()
     {
-        foreach (handle, hearer; _viewListeners.dup)
-            if (handle in _viewListeners && hearer.listener.columnsChanged !is null)
-                hearer.listener.columnsChanged();
+        _viewListeners.columnsChanged();
     }
 
     /// Returns: true if the settings changed and are to be written now

@@ -31,7 +31,8 @@ import ui.log_table.log_columns : anchorColumnId, AnchorColumn, indexColumnId, I
 import ui.log_table.column_widths : anchorMinWidth, columnMinWidth, columnMinWidthKey, indexMinWidth, minWidthOf, payloadMinWidth;
 import ui.log_table.log_look : LogFont, LogLook, defaultLogLook;
 import ui.row_cells : putColumnText, putNumber;
-import ui.log_table.view_events : ViewChangeTracker, ViewListener, ViewVersion;
+import ui.log_table.view_events : ViewChangeTracker;
+import ui.view_listeners : ViewListener, ViewVersion;
 
 import std.datetime.timezone : LocalTime, TimeZone;
 import std.uni : toLower;
