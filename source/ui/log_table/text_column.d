@@ -8,6 +8,7 @@ import ptable.layout : ColumnDef;
 import ptable.ports : Canvas, Color, FontId, Rect;
 import ptable_text.columnstyle : Halign, alignedX, noColor;
 import ptable_text.measurer : TextMeasurer;
+import ptable_text.runs : xAt;
 import ptable_text.textcell : TextCell;
 import ui.log_table.log_look : LogFont, LogLook, defaultLogLook, pick;
 
@@ -115,6 +116,7 @@ class TextColumn : TextCell
         const text = cell.data.text;
         const lines = linesOf(cell, state.area.w);
         const spot = spotOf(cell, state.area, state.clip, lines.length);
+        double width(const(wchar)[] piece) { return measurer.width(spot.font, piece); }
         foreach (fragment; cell.fragments)
         {
             const color = chips[fragment.extra.bits % chips.length];
@@ -132,8 +134,11 @@ class TextColumn : TextCell
                 const start = max(lineStart, fragment.start), end = min(lineEnd, fragment.end);
                 if (end <= start)
                     continue;
-                const x1 = spot.x + measurer.width(spot.font, text[lineStart .. start]);
-                const x2 = spot.x + measurer.width(spot.font, text[lineStart .. end]);
+                // word by word, as the line is drawn (ptable_text/runs): a layout of the start of the line, up to a whole Payload, for each
+                // match of each frame cost more than the frame (measured 2026-11-20)
+                const line = text[lineStart .. lineEnd];
+                const x1 = spot.x + xAt(line, start - lineStart, &width);
+                const x2 = spot.x + xAt(line, end - lineStart, &width);
                 canvas.fillRect(Rect(x1, lineTop, max(1.0, x2 - x1), spot.line), color);
             }
         }
@@ -195,7 +200,7 @@ unittest
     assert(heightOf(twice) == heightOf(plain) + 14, "a second break is an empty line");
 }
 
-@("TextColumn.draw: a line of text, the lines of a wrapped cell without the spaces at their ends and only those on the screen, a paragraph")
+@("TextColumn.draw: a line of text word by word, the lines of a wrapped cell without the spaces at their ends and only those on the screen, a paragraph")
 unittest
 {
     import ptable.model : CellData;
@@ -247,16 +252,20 @@ unittest
     state.clip = state.area;
     auto canvas = new Noted;
     column.draw(canvas, input, state);
-    assert(canvas.calls == ["ab cd ef@5,13:255"], "it fits: one line, without the space that ends it");
+    assert(canvas.calls == ["ab@5,13:255", "cd@35,13:255", "ef@65,13:255"], "it fits: one line, a word after another at the widths of those before");
     canvas.calls = null;
     state.area = Rect(0, 0, 68, 60); // 68 - 5 - 3 = 60: six glyphs of 10 in a line
     state.clip = state.area;
     column.draw(canvas, input, state);
-    assert(canvas.calls == ["ab cd@5,13:255", "ef@5,27:255"], "the space that ends a line is not drawn");
+    assert(canvas.calls == ["ab@5,13:255", "cd@35,13:255", "ef@5,27:255"], "the second line starts again at the left");
     canvas.calls = null;
     state.clip = Rect(0, 0, 100, 10); // only the first line is on the screen: the second starts at 16
     column.draw(canvas, input, state);
-    assert(canvas.calls == ["ab cd@5,13:255"]);
+    assert(canvas.calls == ["ab@5,13:255", "cd@35,13:255"]);
+    canvas.calls = null;
+    state.clip = Rect(40, 0, 20, 60); // only the second word of each line is seen
+    column.draw(canvas, input, state);
+    assert(canvas.calls == ["cd@35,13:255"], "a word out of the part seen is not drawn");
     canvas.calls = null;
     auto host = new Paragraphs;
     column = new TextColumn(def, null, host); // the host wraps: the column asks it when it lays a cell out
@@ -329,6 +338,58 @@ unittest
     canvas.areas = null;
     wrapping.drawBack(canvas, input, state);
     assert(canvas.areas.length == 0, "no rectangles of a range in a paragraph");
+}
+
+@("TextColumn.drawBack: a match far into a long line is placed by the widths of the words before it, the start of the line is never measured")
+unittest
+{
+    import std.array : replicate;
+    import ptable.model : CellData, Extra, Fragment;
+    import ptable.ports : Color, FontId;
+    import ptable_text.measurer : FontMetrics;
+    import ptable_text.runs : maxRun;
+    import ui.log_table.log_look : defaultLogLook;
+
+    static final class Counting : TextMeasurer
+    {
+        size_t longest; // the longest text measured
+        FontMetrics metrics(FontId font) { return FontMetrics(11, 3, 14); }
+        double width(FontId font, const(wchar)[] text)
+        {
+            if (text.length > longest)
+                longest = text.length;
+            return text.length * 10.0;
+        }
+        int wrappedLines(FontId font, const(wchar)[] text, double width) { return -1; }
+    }
+
+    static final class Fills : Canvas
+    {
+        Rect[] areas;
+        void fillRect(Rect area, Color color) { areas ~= area; }
+        void drawText(FontId font, const(wchar)[] text, double x, double baseline, Color color) {}
+        void drawParagraph(FontId font, const(wchar)[] text, double x, double top, double width, Color color) {}
+        void fillRoundRect(Rect area, double radius, Color color) {}
+        void fillCircle(double cx, double cy, double radius, Color fill, Color line) {}
+        void pushClip(Rect area) {}
+        void popClip() {}
+    }
+
+    auto measurer = new Counting;
+    auto column = new TextColumn(ColumnDef("t", "T", 24, true), defaultLogLook(), measurer);
+    column.style.wrap = false; // one line of all of it, as in the single-line view
+    column.lookChanged();
+    const data = CellData("word "w.replicate(12_000));
+    auto input = CellInput(0, 0, &data);
+    input.fragments = [Fragment(59_000, 59_004, Extra(1)), Fragment(0, 1, Extra(1))];
+    DrawState state;
+    state.area = Rect(0, 0, 600, 20);
+    state.clip = state.area;
+    auto canvas = new Fills;
+    column.drawBack(canvas, input, state);
+    assert(canvas.areas.length == 2 && canvas.areas[0].w == 40);
+    assert(canvas.areas[0].x - canvas.areas[1].x == 590_000, "59 000 units of 10 after the start of the text");
+    assert(measurer.longest <= maxRun, "words are measured, never the start of the line");
 }
 
 @("TextColumn: a double click takes the word at the caret, a triple one the whole text; the text cut for the clipboard is what the table did itself")

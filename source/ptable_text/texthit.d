@@ -1,12 +1,13 @@
 //! Where a text lies in its cell, as the hit tests of a text column see it: the caret nearest to a point, the rectangles a part of it takes, what a double
-//! click selects. Pure.
+//! click selects. A line is placed word by word (ptable_text/runs), as it is drawn: the start of a long line is never laid out. Pure.
 module ptable_text.texthit;
 
 version (unittest) import ptable_text.testing : TestText;
 import ptable.column : Unit;
 import ptable.ports : FontId, Rect;
 import ptable_text.measurer : TextMeasurer;
-import ptable_text.wordpick : caretAt, wordAt;
+import ptable_text.runs : placeAt, xAt;
+import ptable_text.wordpick : wordAt;
 import ptable_text.wrap : LineSpan;
 
 import std.algorithm.comparison : max, min;
@@ -34,15 +35,16 @@ size_t caretInText(const(wchar)[] text, ref const TextSpot spot, TextMeasurer me
         from = spot.lines[j].start;
         to = spot.lines[j].end;
     }
-    return from + caretAt(x - spot.x, to - from, (size_t n) => measurer.width(spot.font, text[from .. from + n]));
+    return from + placeAt(text[from .. to], x - spot.x, (const(wchar)[] piece) => measurer.width(spot.font, piece));
 }
 
 /// The rectangles the part [`from`, `to`) of `text` lying at `spot` takes: one for a text of one line, one for each line it touches
 void rectsInText(const(wchar)[] text, ref const TextSpot spot, TextMeasurer measurer, size_t from, size_t to, scope void delegate(Rect) emit)
 {
+    double width(const(wchar)[] piece) { return measurer.width(spot.font, piece); }
     if (spot.lines.length == 0)
     {
-        const x1 = spot.x + measurer.width(spot.font, text[0 .. from]), x2 = spot.x + measurer.width(spot.font, text[0 .. to]);
+        const x1 = spot.x + xAt(text, from, &width), x2 = spot.x + xAt(text, to, &width);
         emit(Rect(round(x1), spot.top, max(1.0, round(x2 - x1)), spot.line));
         return;
     }
@@ -51,7 +53,8 @@ void rectsInText(const(wchar)[] text, ref const TextSpot spot, TextMeasurer meas
         const start = max(span.start, from), end = min(span.end, to);
         if (end <= start)
             continue;
-        const x1 = spot.x + measurer.width(spot.font, text[span.start .. start]), x2 = spot.x + measurer.width(spot.font, text[span.start .. end]);
+        const line = text[span.start .. span.end];
+        const x1 = spot.x + xAt(line, start - span.start, &width), x2 = spot.x + xAt(line, end - span.start, &width);
         emit(Rect(round(x1), spot.top + j * spot.line, max(1.0, round(x2 - x1)), spot.line));
     }
 }
@@ -184,6 +187,36 @@ unittest
     Rect[] seen;
     selectionRects(cells, TextRange(Position(1, 0, 2), Position(1, 0, 6)), 1, (Rect r) { seen ~= r; });
     assert(seen == [Rect(20, 100, 20, 20), Rect(0, 120, 20, 20)]);
+}
+
+@("rectsInText and caretInText: a part far into a long line is placed by the widths of the words before it, the start of the line is never measured")
+unittest
+{
+    import std.array : replicate;
+    import ptable_text.measurer : FontMetrics;
+    import ptable_text.runs : maxRun;
+
+    static final class Counting : TextMeasurer
+    {
+        size_t longest; // the longest text measured
+        FontMetrics metrics(FontId font) { return FontMetrics(11, 3, 14); }
+        double width(FontId font, const(wchar)[] text)
+        {
+            if (text.length > longest)
+                longest = text.length;
+            return text.length * 10.0;
+        }
+        int wrappedLines(FontId font, const(wchar)[] text, double width) { return -1; }
+    }
+
+    auto measurer = new Counting;
+    const text = "word "w.replicate(12_000);
+    const spot = TextSpot(0, 5, 0, 14);
+    Rect[] seen;
+    rectsInText(text, spot, measurer, 59_000, 59_004, (Rect r) { seen ~= r; });
+    assert(seen == [Rect(590_005, 0, 40, 14)]);
+    assert(caretInText(text, spot, measurer, 590_005 + 21, 3) == 59_002);
+    assert(measurer.longest <= maxRun, "words are measured, never the start of the line");
 }
 
 @("unitInText: a double click takes the word at the caret, the character after it if that is no word, a triple click all; nothing in no text")

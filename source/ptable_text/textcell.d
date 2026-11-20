@@ -11,6 +11,7 @@ import ptable.memory : Arena;
 import ptable.ports : Canvas, Color, FontId, Rect, Span;
 import ptable_text.columnstyle : ColumnStyle, Halign, alignOffset, alignedTopInView, alignedX, alignedXInView, noFont;
 import ptable_text.measurer : FontMetrics, TextMeasurer;
+import ptable_text.runs : eachRun;
 import ptable_text.texthit : TextSpot, caretInText, rectsInText, unitInText;
 import ptable_text.wrap : LineSpan, firstLineWidth, glyphWidth, wrapLines;
 
@@ -265,7 +266,7 @@ class TextCell : TableColumn
         }
         if (lines.length == 0)
         {
-            canvas.drawText(spot.font, text, spot.x, spot.baseline, ink);
+            drawLine(canvas, text, spot.font, spot.x, spot.baseline, state.clip, ink);
             return;
         }
         foreach (j, line; lines)
@@ -275,11 +276,25 @@ class TextCell : TableColumn
                 continue;
             if (lineTop > state.clip.bottom)
                 break;
-            size_t end = line.end;
-            while (end > line.start && text[end - 1] == ' ')
-                end--;
-            canvas.drawText(spot.font, text[line.start .. end], spot.x, spot.baseline + j * spot.line, ink);
+            drawLine(canvas, text[line.start .. line.end], spot.font, spot.x, spot.baseline + j * spot.line, state.clip, ink);
         }
+    }
+
+    // A line word by word (ptable_text/runs): each run by a layout of its own at the widths of those before it, only those that cross
+    // the part seen; the spaces that end a run are not drawn
+    private void drawLine(Canvas canvas, const(wchar)[] line, FontId font, double x, double baseline, Rect clip, Color ink)
+    {
+        if (_measurer is null)
+        {
+            canvas.drawText(font, line, x, baseline, ink);
+            return;
+        }
+        eachRun(line, clip.x - x, clip.right - x, (const(wchar)[] piece) => _measurer.width(font, piece), (size_t start, size_t end, double at) {
+            while (end > start && line[end - 1] == ' ')
+                end--;
+            if (end > start)
+                canvas.drawText(font, line[start .. end], x + at, baseline, ink);
+        });
     }
 
     /// The text of the cell in black (a column that knows colors draws it in its own ink)

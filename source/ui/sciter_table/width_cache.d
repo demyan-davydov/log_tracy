@@ -7,7 +7,7 @@ module ui.sciter_table.width_cache;
 
 final class WidthCache
 {
-    enum size_t maxTexts = 20_000; /// texts a font keeps
+    enum size_t maxTexts = 100_000; /// texts a font keeps: the words of the lines on the screen and of the long lines before what is seen (ptable_text/runs)
 
     private double[wstring][] _widths;
 
