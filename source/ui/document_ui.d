@@ -30,6 +30,7 @@ final class DocumentUi : MainViewSink, MainViewCommands, SearchViewSink, SearchV
     bool searchViewChanged;
     bool attachmentsChanged; // the files sent in the log changed since it was last told to JS
     bool fileInfoChanged; // its descriptions or format choice changed since it was last told to JS
+    uint[] searchColors; // the match color of each chip of the search the document runs, by the chip's place (ui/search_chips)
 
     this(DocumentStore documents, DocumentId docId)
     {

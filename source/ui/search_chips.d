@@ -1,6 +1,6 @@
 //! The chips of a search query as the search editor of the script sends them:
-//! a JSON array of {"text", "isRegex", "matchCase"} (resources/search-query.js).
-//! The same form keeps the queries of a file in the settings (its search history).
+//! a JSON array of {"text", "isRegex", "matchCase", "color"} (resources/pane-commands.js, `runSearch`).
+//! The same form, without the colors, keeps the queries of a file in the settings (its search history).
 //! Apart from the window so it can be tested.
 module ui.search_chips;
 
@@ -27,6 +27,36 @@ SearchChip[] chipsFromJson(const JSONValue json)
         chips ~= SearchChip(item["text"].str, flag(item, "isRegex"), !flag(item, "matchCase"));
     }
     return chips;
+}
+
+//! A query the script starts: its chips and the match color of each, by its place (`LogPalette.match`, the script's
+//! `matchColorClass`): what a chip finds is colored by its color, which is the chip's own, not its place in the query
+struct ChipQuery
+{
+    SearchChip[] chips;
+    uint[] colors;
+}
+
+//! @brief Reads a query the script starts: a chip without a color gets the one of its place
+//! @throws Exception if `json` is not an array of chips, or a color is not a number of 0 or more
+ChipQuery queryFromJson(string json)
+{
+    import std.json : parseJSON;
+
+    const parsed = parseJSON(json);
+    ChipQuery query;
+    query.chips = chipsFromJson(parsed);
+    foreach (i, const ref item; parsed.array)
+    {
+        const color = "color" in item.object;
+        if (color is null)
+            query.colors ~= cast(uint) i;
+        else if (color.type == JSONType.uinteger || (color.type == JSONType.integer && color.integer >= 0))
+            query.colors ~= cast(uint) color.integer;
+        else
+            throw new JSONException("the color of a chip is not a number of 0 or more");
+    }
+    return query;
 }
 
 //! @brief The chips of a query in the form the script sends them
@@ -64,6 +94,25 @@ unittest
     assertThrown(chipsFromJson(`[{"text": "a", "isRegex": "yes", "matchCase": true}]`), "a flag that isn't a boolean");
     assertThrown(chipsFromJson(`[{"text": "a", "isRegex": false, "ignoreCase": true}]`), "no matchCase");
     assertThrown(chipsFromJson(`[`), "not JSON");
+}
+
+@("queryFromJson: each chip with its color, a chip without one with its place")
+unittest
+{
+    const query = queryFromJson(`[{"text": "a", "isRegex": false, "matchCase": false, "color": 5},
+        {"text": "b", "isRegex": false, "matchCase": false}, {"text": "c", "isRegex": true, "matchCase": true, "color": 2}]`);
+    assert(query.chips == [SearchChip("a", false, true), SearchChip("b", false, true), SearchChip("c", true, false)]);
+    assert(query.colors == [5, 1, 2]);
+}
+
+@("queryFromJson: a color that is not a number of 0 or more is refused")
+unittest
+{
+    import std.exception : assertThrown;
+
+    assertThrown(queryFromJson(`[{"text": "a", "isRegex": false, "matchCase": false, "color": "red"}]`));
+    assertThrown(queryFromJson(`[{"text": "a", "isRegex": false, "matchCase": false, "color": -1}]`));
+    assertThrown(queryFromJson(`[{"text": "a", "isRegex": false, "matchCase": false, "color": 1.5}]`));
 }
 
 @("chipsToJson: the form chipsFromJson reads")

@@ -303,13 +303,18 @@ final class DocumentColumns
         return _columns;
     }
 
-    // What the chips of the search found in the payload of a row the search found (a row it did not find costs a test). A method, not a
-    // lambda in `get`: a lambda there would make `get`, called at every row, allocate its closure each time
+    // What the chips of the search found in the payload of a row the search found (a row it did not find costs a test), each in the
+    // color of its chip (`LogPalette.match`). A method, not a lambda in `get`: a lambda there would make `get`, called at every row,
+    // allocate its closure each time
     private void matchesOf(ref const LogRow row, ref Buffer!Fragment into)
     {
         MatchBuffer found;
-        foreach (match; _session.matchesOf(_docId, row.item, found[]))
-            into.put(Fragment(match.start, match.end, Extra(match.chip)));
+        const matches = _session.matchesOf(_docId, row.item, found[]);
+        if (matches.length == 0)
+            return;
+        const colors = _session.searchColors(_docId);
+        foreach (match; matches)
+            into.put(Fragment(match.start, match.end, Extra(match.chip < colors.length ? colors[match.chip] : match.chip)));
     }
 
     // The color of the filter rule `rule` of the document

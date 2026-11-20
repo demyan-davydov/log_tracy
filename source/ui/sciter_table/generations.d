@@ -29,6 +29,8 @@ final class Generations(K, V)
     private Generation[2] _generations;
     private size_t _current;
     private Release _release;
+    private V _loose; // the value `keep` had no memory for: the caller uses it until the next `keep`, which releases it
+    private bool _hasLoose;
     size_t limit; /// keys both generations keep together
 
     /// `release`: called for each value that goes (null: nothing to release)
@@ -57,9 +59,11 @@ final class Generations(K, V)
         return null;
     }
 
-    /// Keeps `value` for `key` (not kept yet), its text copied
-    void keep(K key, V value)
+    /// Keeps `value` for `key` (not kept yet), its text copied. False if there is no memory to keep it: the value is then the
+    /// cache's still, valid until the next `keep` or `clear`, which release it
+    bool keep(K key, V value)
     {
+        releaseLoose();
         // A new key rotates when the current keeps half the limit (the older then holds what was used since the rotation before, to
         // be moved back by a hit), or both together the limit: a move doesn't change how many are kept, so they stay bounded. The
         // current alone at the limit (the older empty: a working set as big as the limit) leaves an older at the limit: that goes too.
@@ -67,7 +71,11 @@ final class Generations(K, V)
             rotate();
         if (length >= limit)
             rotate();
-        put(_generations[_current], key, value);
+        if (put(_generations[_current], key, value))
+            return true;
+        _loose = value;
+        _hasLoose = true;
+        return false;
     }
 
     /// How many keys are kept
@@ -79,8 +87,17 @@ final class Generations(K, V)
     /// Lets go of everything, each value released
     void clear()
     {
+        releaseLoose();
         drop(_generations[0]);
         drop(_generations[1]);
+    }
+
+    private void releaseLoose()
+    {
+        if (_hasLoose && _release !is null)
+            _release(_loose);
+        _loose = V.init;
+        _hasLoose = false;
     }
 
     // The older generation goes, the current becomes the older
@@ -247,4 +264,37 @@ unittest
     failing.fail = false;
     cache.clear();
     assert(released == 2, "each value released once");
+}
+
+@("Generations: a value that can't be kept for want of memory stays valid until the next keep, then is released once")
+unittest
+{
+    import std.array : replicate;
+    import std.experimental.allocator : allocatorObject;
+    import std.experimental.allocator.mallocator : Mallocator;
+
+    static struct Failing // gives memory until told not to
+    {
+        bool fail;
+        enum uint alignment = Mallocator.alignment;
+        void[] allocate(size_t n) pure nothrow @nogc @trusted { return fail ? null : Mallocator.instance.allocate(n); }
+        bool deallocate(void[] b) pure nothrow @nogc @trusted { return Mallocator.instance.deallocate(b); }
+    }
+
+    Failing failing;
+    int[] released;
+    auto cache = new Cache(100, (ref int v) nothrow { released ~= v; }, allocatorObject(&failing));
+    const big = "w"w.replicate(40_000); // 80 KB: more than a block of an arena, its copy asks for memory
+    failing.fail = true;
+    assert(!cache.keep(Key(0, big), 7), "kept with no memory for its text");
+    assert(cache.length == 0 && cache.find(Key(0, big)) is null);
+    assert(released.length == 0, "released while the caller still uses it");
+    failing.fail = false;
+    assert(cache.keep(key(1), 1));
+    assert(released == [7], "the value not kept is released by the next keep");
+    failing.fail = true;
+    assert(!cache.keep(Key(0, big), 8));
+    failing.fail = false;
+    cache.clear();
+    assert(released == [7, 8, 1], "clear releases the value not kept too, each once");
 }

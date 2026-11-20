@@ -107,7 +107,7 @@ class TextColumn : TextCell
     }
 
     /// The back of the text the fragments mark (a search's matches): a rectangle in the color of the chip behind each part of each line it
-    /// takes; the number of the chip is the fragment's `extra`. A paragraph the host wraps has no rectangles to give: none there.
+    /// takes; the color of the chip (its number in `LogPalette.match`) is the fragment's `extra`. A paragraph the host wraps has no rectangles to give: none there.
     override void drawBack(Canvas canvas, ref const CellInput cell, ref const DrawState state)
     {
         if (paragraph || cell.fragments.length == 0 || cell.data is null || measurer is null)

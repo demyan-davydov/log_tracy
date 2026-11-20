@@ -59,7 +59,7 @@ struct LogPalette
     Color anchorFill = Color(0xd6, 0xd6, 0xd6), anchorLine = Color(0xb0, 0xb0, 0xb0);
     Color anchorFaint = Color(0xb0, 0xb0, 0xb0); // the anchor shown over a cell with none (--anchor-faint), no circle
     Color anchorRefused = Color(0xc7, 0x5b, 0x5b); // the sign shown over a cell with none when no anchor can be set (--anchor-refused)
-    /// The colors of the search chips, by their place in the query (--match-color-N, `matchColorCount` of them, the chip repeats them).
+    /// The colors of the search chips, by the color of a chip (--match-color-N, `matchColorCount` of them, a chip's color repeats them).
     /// Not in `LogColor`: a style never names one, the data of a fragment does (its `extra`)
     Color[matchColorCount] match = [
         Color(0xff, 0xb2, 0xb2), Color(0xa4, 0xec, 0xd9), Color(0xff, 0xeb, 0x8c), Color(0xfb, 0xab, 0xd9), Color(0xac, 0xeb, 0xb8),

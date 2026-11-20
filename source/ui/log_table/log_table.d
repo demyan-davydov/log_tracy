@@ -236,6 +236,38 @@ unittest
     assert(!heardSearch.canFind!(c => c.kind == ModelChange.Kind.looks), "the search rows are told their own view as rows");
 }
 
+@("DocumentColumns: what a chip finds carries the chip's color, not its place in the query")
+unittest
+{
+    import core.thread : Thread;
+    import core.time : msecs;
+    import ptable.memory : Buffer, mallocAllocator;
+    import ptable.model : Fragment;
+    import ui.log_table.document_model : DocumentColumns, DocumentRows, LogRow;
+
+    auto opened = openTestLog("log_tracy_log_table_chip_colors.log", 5);
+    scope (exit) opened.close();
+    // "a line of the log with some words in it": "line" at 2, "words" at 28
+    assert(opened.session.startChipSearch(opened.id, `[{"text": "line", "isRegex": false, "matchCase": false, "color": 5},
+        {"text": "words", "isRegex": false, "matchCase": false, "color": 2}]`) == "");
+    foreach (attempt; 0 .. 500)
+    {
+        opened.session.dispatchEvents();
+        opened.session.takeScriptCalls();
+        if (opened.session.doc(opened.id).searchView.itemsCount == 5)
+            break;
+        Thread.sleep(10.msecs);
+    }
+    auto rows = new DocumentRows(opened.session, opened.id, true);
+    LogRow row;
+    assert(rows.fetch(0, row));
+    auto payload = new DocumentColumns(opened.session, opened.id, null).get()[$ - 1];
+    auto found = Buffer!Fragment(mallocAllocator());
+    payload.fragments(row, found);
+    assert(found.length == 2);
+    assert(found[][0].start == 2 && found[][0].extra.bits == 5 && found[][1].start == 28 && found[][1].extra.bits == 2);
+}
+
 @("LogTable: the margins left and right of the rows in the look are those of its column host, from the start and after a change of the look")
 unittest
 {

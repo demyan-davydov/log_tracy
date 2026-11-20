@@ -574,6 +574,14 @@ final class AppSession
         return search is null ? null : search.matchRanges(item.message(), buffer);
     }
 
+    /// The match colors of the chips of the search the document runs, by the place of a chip (`MatchRange.chip`): its own color,
+    /// as the search editor shows it (empty: none told, a chip is colored by its place)
+    const(uint)[] searchColors(DocumentId docId)
+    {
+        auto ui = _documentUis.get(docId, null);
+        return ui is null ? null : ui.searchColors;
+    }
+
     /// Sets or clears the anchor of a message.
     /// Returns: JSON `{"refused": null | "limit" | "unavailable", "max": <the
     /// anchor limit>, "full": <no room for another anchor now>, "pending": <the
@@ -654,17 +662,20 @@ final class AppSession
     {
         import log_core.search_filter : SearchFilter;
         import std.stdio : writeln;
-        import ui.search_chips : chipsFromJson;
+        import ui.search_chips : queryFromJson;
 
         writeln("startChipSearch request: ", chipsJson);
         try
         {
             // An invalid regex throws here, before any background work starts
-            const chips = chipsFromJson(chipsJson);
+            auto query = queryFromJson(chipsJson);
+            const chips = query.chips;
             auto filter = SearchFilter.fromChips(chips);
             if (!docId.isValid)
                 return _catalog.translate(uiText("the document is not open"));
             _documents.doc(docId).applySearchFilter(filter); // null clears the search
+            if (auto ui = _documentUis.get(docId, null))
+                ui.searchColors = query.colors; // with the filter: the matches of its chips are colored by them
             // the history of the file, remembered as its filters are (the
             // latest query again changes nothing)
             if (filter !is null)
