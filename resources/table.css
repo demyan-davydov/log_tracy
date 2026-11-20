@@ -24,64 +24,65 @@
        come on top. --column-min-width for a column no variable names, one for the columns every table has (-anchor, -index, -payload)
        and one for each column of a format by its ids (--column-min-width-dlt-time; the formats and their columns are in source/formats,
        a name D does not know fails a test of source/ui/log_table/column_widths.d). The values are those of the table of the DOM; where
-       the variants of a format differ (the time of a CAN trace), that of the narrowest. A length is the table's own at 100%: the script
-       tells D the dips, D multiplies them by the size of the text the user chose */
+       the variants of a format differ (the time of a CAN trace), that of the narrowest. A width is in em of the font of the table (the
+       font-size below, the text at 100%; the dips in a comment are what it was), so it follows the font: the script tells D the dips,
+       D multiplies them by the size of the text the user chose */
     font-size: 12.5pt;
     --column-min-width: 1.5em; /* 25dip */
-    --column-min-width-anchor: 20dip;
-    --column-min-width-index: 40dip;
+    --column-min-width-anchor: 1.25em; /* 20dip */
+    --column-min-width-index: 2.5em; /* 40dip */
     --column-min-width-payload: 3.5em; /* 58dip: it takes the rest of the room, a few characters are enough */
     /* DLT */
-    --column-min-width-dlt-time: 60dip;
-    --column-min-width-dlt-timestamp: 70dip;
-    --column-min-width-dlt-counter: 45dip;
-    --column-min-width-dlt-ecu: 50dip;
-    --column-min-width-dlt-app: 50dip;
-    --column-min-width-dlt-ctx: 50dip;
-    --column-min-width-dlt-type: 50dip;
-    --column-min-width-dlt-level: 50dip;
-    --column-min-width-dlt-session: 70dip;
-    --column-min-width-dlt-msgid: 50dip;
+    --column-min-width-dlt-time: 3.5em; /* 60dip */
+    --column-min-width-dlt-timestamp: 4.25em; /* 70dip */
+    --column-min-width-dlt-counter: 2.75em; /* 45dip */
+    --column-min-width-dlt-ecu: 3em; /* 50dip */
+    --column-min-width-dlt-app: 3em; /* 50dip */
+    --column-min-width-dlt-ctx: 3em; /* 50dip */
+    --column-min-width-dlt-type: 3em; /* 50dip */
+    --column-min-width-dlt-level: 3em; /* 50dip */
+    --column-min-width-dlt-session: 4.25em; /* 70dip */
+    --column-min-width-dlt-msgid: 3em; /* 50dip */
     /* Android logcat */
-    --column-min-width-logcat-time: 60dip;
-    --column-min-width-logcat-tag: 60dip;
-    --column-min-width-logcat-pid: 50dip;
-    --column-min-width-logcat-tid: 50dip;
-    --column-min-width-logcat-level: 60dip;
+    --column-min-width-logcat-time: 3.5em; /* 60dip */
+    --column-min-width-logcat-tag: 3.5em; /* 60dip */
+    --column-min-width-logcat-pid: 3em; /* 50dip */
+    --column-min-width-logcat-tid: 3em; /* 50dip */
+    --column-min-width-logcat-level: 3.5em; /* 60dip */
     /* Syslog */
-    --column-min-width-syslog-time: 60dip;
-    --column-min-width-syslog-host: 80dip;
-    --column-min-width-syslog-app: 60dip;
-    --column-min-width-syslog-pid: 50dip;
-    --column-min-width-syslog-level: 60dip;
-    --column-min-width-syslog-msgid: 60dip;
-    --column-min-width-syslog-data: 70dip;
+    --column-min-width-syslog-time: 3.5em; /* 60dip */
+    --column-min-width-syslog-host: 4.75em; /* 80dip */
+    --column-min-width-syslog-app: 3.5em; /* 60dip */
+    --column-min-width-syslog-pid: 3em; /* 50dip */
+    --column-min-width-syslog-level: 3.5em; /* 60dip */
+    --column-min-width-syslog-msgid: 3.5em; /* 60dip */
+    --column-min-width-syslog-data: 4.25em; /* 70dip */
     /* Kernel log (dmesg) */
-    --column-min-width-dmesg-time: 60dip;
-    --column-min-width-dmesg-level: 60dip;
-    --column-min-width-dmesg-facility: 60dip;
-    --column-min-width-dmesg-seq: 70dip;
+    --column-min-width-dmesg-time: 3.5em; /* 60dip */
+    --column-min-width-dmesg-level: 3.5em; /* 60dip */
+    --column-min-width-dmesg-facility: 3.5em; /* 60dip */
+    --column-min-width-dmesg-seq: 4.25em; /* 70dip */
     /* Web server access log */
-    --column-min-width-access-log-time: 70dip;
-    --column-min-width-access-log-client: 60dip;
-    --column-min-width-access-log-user: 60dip;
-    --column-min-width-access-log-method: 60dip;
-    --column-min-width-access-log-status: 50dip;
-    --column-min-width-access-log-bytes: 70dip;
-    --column-min-width-access-log-referer: 50dip;
-    --column-min-width-access-log-agent: 50dip;
+    --column-min-width-access-log-time: 4.25em; /* 70dip */
+    --column-min-width-access-log-client: 3.5em; /* 60dip */
+    --column-min-width-access-log-user: 3.5em; /* 60dip */
+    --column-min-width-access-log-method: 3.5em; /* 60dip */
+    --column-min-width-access-log-status: 3em; /* 50dip */
+    --column-min-width-access-log-bytes: 4.25em; /* 70dip */
+    --column-min-width-access-log-referer: 3em; /* 50dip */
+    --column-min-width-access-log-agent: 3em; /* 50dip */
     /* CAN traces */
-    --column-min-width-candump-time: 50dip;
-    --column-min-width-candump-channel: 40dip;
-    --column-min-width-candump-id: 40dip;
-    --column-min-width-candump-dlc: 40dip;
-    --column-min-width-candump-type: 50dip;
-    --column-min-width-vector-asc-time: 50dip;
-    --column-min-width-vector-asc-channel: 40dip;
-    --column-min-width-vector-asc-id: 40dip;
-    --column-min-width-vector-asc-dir: 40dip;
-    --column-min-width-vector-asc-dlc: 40dip;
-    --column-min-width-vector-asc-type: 50dip;
+    --column-min-width-candump-time: 3em; /* 50dip */
+    --column-min-width-candump-channel: 2.5em; /* 40dip */
+    --column-min-width-candump-id: 2.5em; /* 40dip */
+    --column-min-width-candump-dlc: 2.5em; /* 40dip */
+    --column-min-width-candump-type: 3em; /* 50dip */
+    --column-min-width-vector-asc-time: 3em; /* 50dip */
+    --column-min-width-vector-asc-channel: 2.5em; /* 40dip */
+    --column-min-width-vector-asc-id: 2.5em; /* 40dip */
+    --column-min-width-vector-asc-dir: 2.5em; /* 40dip */
+    --column-min-width-vector-asc-dlc: 2.5em; /* 40dip */
+    --column-min-width-vector-asc-type: 3em; /* 50dip */
     display: block;
     width: *;
     height: *;
