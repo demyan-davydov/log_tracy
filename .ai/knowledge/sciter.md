@@ -131,11 +131,15 @@ agent can't drive it. In scapp a plain
 - `style.variables({name: null})` doesn't remove a variable: `var(name, default)` then doesn't
   fall back; set the default value explicitly.
 - componentUpdate() doesn't render synchronously: it posts `render()`. Anything posted right
-  after it runs before the render and before what `render()` posts itself (e.g. VirtualList's
-  `navigate("start")`), so scroll targets are passed into render
-  (VirtualList.navigateTarget), not posted next to componentUpdate.
+  after it runs before the render and before what `render()` posts itself, so what depends on
+  the render (a scroll target) is passed into render, not posted next to componentUpdate.
 - An element needs `tabindex="0"` (not -1) to take the focus from `state.focus = true`;
   otherwise the focus lands on an ancestor.
+- Focus stays on an element inside a pane hidden by `display: none` (or `visibility`): move it
+  on a switch.
+- `element.rangeFromPoint(x, y)` (x, y in the element's inner box) works on a non-selectable
+  element too: it gives the character **under** the point (right of the text: length − 1), on
+  the line under `y`; an empty element gives a node outside it.
 - `Clipboard.readText()` returns the text with a trailing NUL (`\u0000`): strip it.
 - Changing `src` of an existing `<style>` doesn't reload it. A `<style src>` created at run
   time does apply, but asynchronously: what is styled meanwhile computes without it, and when
@@ -396,3 +400,7 @@ agent can't drive it. In scapp a plain
   room for an absolute child sticking out (the buttons of a filter chip).
 - To diagnose a layout bug, compare `el.state.box("xywh","border","parent")` between a working
   and a broken element instead of guessing.
+- No frozen columns of a `<table>` in CSS (6.0.5.5, 2026-11-13): the attributes `fixedcols` and
+  `fixedrows` (their names are in the library) change nothing, and `position: sticky` is
+  unknown (`style.position` stays null). A cell with `position: relative` moves twice its
+  `left` (`left: 100dip` → 200dip), and `transform: translate(...)` doesn't move a cell at all.

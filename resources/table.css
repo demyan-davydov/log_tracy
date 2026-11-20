@@ -25,7 +25,7 @@
        and one for each column of a format by its ids (--column-min-width-dlt-time; the formats and their columns are in source/formats,
        a name D does not know fails a test of source/ui/log_table/column_widths.d). Where
        the variants of a format differ (the time of a CAN trace), that of the narrowest. A width is in em of the font of the table (the
-       font-size below, the text at 100%; the dips in a comment are what it was), so it follows the font: the script tells D the dips,
+       font-size below, the text at 100%; a comment beside a value gives it in dips), so it follows the font: the script tells D the dips,
        D multiplies them by the size of the text the user chose */
     font-size: 12.5pt;
     --column-min-width: 1.5em; /* 25dip */

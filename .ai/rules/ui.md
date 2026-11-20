@@ -19,6 +19,13 @@ many rows. Keep it cheap:
 Measure before and after optimizing (`scripts/utils/bench_rows.d`, `docs/performance.md`, roughly
 100–140 ns/row of per-row work against decode).
 
+## Red Flag: Hiding a Log Table
+
+Never hide a log table itself with `display: none`. The tables of a document share one column host
+(`ptable/columnhost`), whose room of the columns is the least width its tables tell: a hidden table
+told 0 wide narrows the columns of the other one. Status views cover a table instead
+(`.status-view.overlay`); a table under a status leaves its host by `Table.detach`.
+
 ## Red Flag: Restyling Existing UI Unasked
 
 Don't change the layout or CSS of existing UI unless the change was asked for, even when a
