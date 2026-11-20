@@ -166,7 +166,7 @@ struct SciterAPI_T
 
     ) SciterHttpRequest; // 89
 
-    extern (C) SCDOM_RESULT function(HELEMENT he, POINT scrollPos, RECT viewRect, SIZE contentSize) SciterGetScrollInfo; // 90
+    extern (C) SCDOM_RESULT function(HELEMENT he, POINT* scrollPos, RECT* viewRect, SIZE* contentSize) SciterGetScrollInfo; // 90
     extern (C) SCDOM_RESULT function(HELEMENT he, POINT scrollPos, SBOOL smooth) SciterSetScrollPos; // 91
     extern (C) SCDOM_RESULT function(HELEMENT he, INT* pMinWidth, INT* pMaxWidth) SciterGetElementIntrinsicWidths; // 92
     extern (C) SCDOM_RESULT function(HELEMENT he, INT forWidth, INT* pHeight) SciterGetElementIntrinsicHeight; // 93
