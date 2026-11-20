@@ -1,5 +1,6 @@
 //! Where a text lies in its cell, as the hit tests of a text column see it: the caret nearest to a point, the rectangles a part of it takes, what a double
-//! click selects. A line is placed word by word (ptable_text/runs), as it is drawn: the start of a long line is never laid out. Pure.
+//! click selects. A line is placed run by run (ptable_text/runs), as it is drawn: the start of a long line is never laid out. Pure but
+//! for the memo of a long line's cell, where a walk notes its marks (ptable/cellmemo).
 module ptable_text.texthit;
 
 version (unittest) import ptable_text.testing : TestText;
@@ -195,7 +196,7 @@ unittest
     assert(seen == [Rect(20, 100, 20, 20), Rect(0, 120, 20, 20)]);
 }
 
-@("rectsInText and caretInText: a part far into a long line is placed by the widths of the words before it, the start of the line is never measured")
+@("rectsInText: a part far into a long line is placed by the widths of the words before it, as is the caret; the start of the line is never measured")
 unittest
 {
     import std.array : replicate;

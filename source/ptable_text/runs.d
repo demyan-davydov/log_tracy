@@ -35,8 +35,9 @@ CellMemo* lineMemo(const MemoRef memo, size_t lineStart, size_t length, uint fon
 enum size_t maxRun = 256;
 
 /// Where the run that starts at `start` of `line` ends: a run is a word (no space, no tab in it) or a gap (spaces, or tabs); either
-/// ends at `maxRun` units at most, a long word between two characters (`cutsAt`)
-size_t runEnd(const(wchar)[] line, size_t start) pure nothrow @nogc @safe
+/// ends at `maxRun` units at most, a long word at the end of a character as it is seen (a grapheme: a letter and its marks, an emoji
+/// sequence, a flag), or at the bound if its first character is longer
+size_t runEnd(const(wchar)[] line, size_t start) pure nothrow @safe
 {
     if (start >= line.length)
         return start;
@@ -52,10 +53,14 @@ size_t runEnd(const(wchar)[] line, size_t start) pure nothrow @nogc @safe
         ++i;
     if (i - start < maxRun || i == line.length || isGap(line[i]))
         return i;
-    foreach_reverse (cut; start + 1 .. i + 1)
-        if (cutsAt(line, cut))
-            return cut;
-    return i < line.length && isLow(line[i]) ? i + 1 : i; // a run of marks: at the bound, not inside a pair
+    // two characters below the combining marks (no surrogate, no joiner, no mark), not CR LF: a grapheme ends between them (a dump of
+    // hex or base64): the walk over the graphemes of the run is spared, it is on every walk over a line of such words
+    if (line[i - 1] < 0x300 && line[i] < 0x300 && !(line[i - 1] == '\r' && line[i] == '\n'))
+        return i;
+    const cut = lastGraphemeEnd(line[start .. $], maxRun);
+    if (cut > 0)
+        return start + cut;
+    return isLow(line[i]) ? i + 1 : i; // one character longer than a run: at the bound, not inside a pair
 }
 
 private bool isGap(wchar c) pure nothrow @nogc @safe
@@ -68,40 +73,51 @@ private bool isLow(wchar c) pure nothrow @nogc @safe
     return c >= 0xDC00 && c < 0xE000;
 }
 
-// Whether a word may be cut before `line[i]` without splitting a character as it is seen: not inside a surrogate pair, not before a
-// combining mark, a variation selector or a skin tone, not on either side of a joiner (Unicode's rules of graphemes, the common cases)
-private bool cutsAt(const(wchar)[] line, size_t i) pure nothrow @nogc @safe
+// The end of the last grapheme of `text` that ends within `limit` units; 0 if the first is longer, or the text is not valid UTF-16
+private size_t lastGraphemeEnd(const(wchar)[] text, size_t limit) pure nothrow @safe
 {
-    const c = line[i];
-    if (isLow(c) || line[i - 1] == 0x200D || c == 0x200D)
-        return false;
-    if ((c >= 0x0300 && c < 0x0370) || (c >= 0x1AB0 && c < 0x1B00) || (c >= 0x1DC0 && c < 0x1E00) || (c >= 0x20D0 && c < 0x2100)
-        || (c >= 0xFE00 && c < 0xFE10) || (c >= 0xFE20 && c < 0xFE30))
-        return false; // combining marks, variation selectors
-    if (i + 1 < line.length)
+    import std.uni : graphemeStride;
+
+    size_t end;
+    try
     {
-        const next = line[i + 1];
-        if (c == 0xD83C && next >= 0xDFFB && next <= 0xDFFF)
-            return false; // U+1F3FB..1F3FF, a skin tone
-        if (c == 0xDB40 && next >= 0xDD00 && next <= 0xDDEF)
-            return false; // U+E0100..E01EF, a variation selector
+        for (size_t at = 0; at < text.length;)
+        {
+            const next = at + graphemeStride(text, at);
+            if (next > limit)
+                break;
+            end = at = next;
+        }
     }
-    return true;
+    catch (Exception)
+    {
+        return end;
+    }
+    return end;
 }
 
 /// The x of the place `at` of `line` from the start of the line: the widths of the runs before it, and of the part of its own run before it.
-/// With a `memo` (`use`d for this line), from the last mark before it
-double xAt(const(wchar)[] line, size_t at, scope PieceWidth width, CellMemo* memo = null)
+/// With a `memo` (`use`d for this line), from the last mark before it. With a `bound`, a place past it is not walked up to: the x of the
+/// first run past the bound is given (more than `bound`)
+double xAt(const(wchar)[] line, size_t at, scope PieceWidth width, CellMemo* memo = null, double bound = double.infinity)
 {
     auto w = fromPlace(memo, at);
     while (w.start < at)
     {
+        if (w.x > bound)
+            return w.x;
         const end = runEnd(line, w.start);
         if (end > at)
             return w.x + measure(line[w.start .. at], width);
         step(w, end, measure(line[w.start .. end], width), memo);
     }
     return w.x;
+}
+
+/// The width of `line` as it is drawn: the sum of the widths of its runs (a tab as a space, each word as its own layout makes it)
+double lineWidth(const(wchar)[] line, scope PieceWidth width)
+{
+    return xAt(line, line.length, width);
 }
 
 /// Calls `visit(start, end, x)` for each run of `line` that crosses [`left`, `right`) (from the start of the line), in order; the runs
@@ -136,13 +152,24 @@ size_t placeAt(const(wchar)[] line, double dx, scope PieceWidth width, CellMemo*
     return line.length;
 }
 
-// The width of a piece of a run: a gap of tabs is as wide as as many spaces (a tab is drawn as a space: a text engine would lay it out
-// to the next stop of its own layout, a run's, not the line's)
+/// A run (or a piece of one) as it is drawn and measured: a gap of tabs as as many spaces. A tab is shown as a space: a text engine
+/// would lay it out to the next stop of its own layout, a run's, not the line's
+const(wchar)[] shown(const(wchar)[] run) pure nothrow @nogc @safe
+{
+    static immutable wchar[maxRun] spaces = ' ';
+    return run.length && run[0] == '\t' ? spaces[0 .. run.length] : run;
+}
+
+/// A glyph as it is drawn (`shown`): a tab as a space
+dchar shownGlyph(dchar glyph) pure nothrow @nogc @safe
+{
+    return glyph == '\t' ? ' ' : glyph;
+}
+
+// The width of a piece of a run as it is drawn
 private double measure(const(wchar)[] piece, scope PieceWidth width)
 {
-    if (piece.length && piece[0] == '\t')
-        return piece.length * width(" "w);
-    return width(piece);
+    return width(shown(piece));
 }
 
 // Where a walk over the runs of a line stands: the start of a run, its x, how many runs are before it
@@ -239,7 +266,7 @@ unittest
     assert(runEnd(gap, 0) == maxRun && runEnd(gap, maxRun) == maxRun + 3);
 }
 
-@("runEnd: a long word is cut between two characters: not inside a surrogate pair, not before a combining mark, a variation selector or a skin tone, not by a joiner")
+@("runEnd: a long word is cut between two characters: not inside a surrogate pair, not before a combining mark, a variation selector or a skin tone, not inside an emoji sequence, a script's cluster or a flag")
 unittest
 {
     import std.array : replicate;
@@ -249,12 +276,15 @@ unittest
     assert(runEnd(head ~ "e\u0301"w ~ "y"w, 0) == maxRun - 1, "e and its accent stay together");
     assert(runEnd(head ~ "\u2764\uFE0F"w ~ "y"w, 0) == maxRun - 1, "a heart and its selector");
     assert(runEnd("x"w.replicate(maxRun - 2) ~ "\U0001F44D\U0001F3FD"w, 0) == maxRun - 2, "a thumb and its tone");
-    assert(runEnd("x"w.replicate(maxRun - 1) ~ "\u200D"w ~ "y"w, 0) == maxRun - 2, "nor on either side of a joiner");
+    assert(runEnd("x"w.replicate(maxRun - 2) ~ "\U0001F468\u200D\U0001F469"w, 0) == maxRun - 2, "an emoji joined to another stays whole");
+    assert(runEnd(head ~ "\u0E01\u0E31"w ~ "y"w, 0) == maxRun - 1, "a Thai letter and its vowel sign");
+    assert(runEnd(head ~ "\u0915\u094D"w ~ "y"w, 0) == maxRun - 1, "a Devanagari letter and its virama");
+    assert(runEnd("x"w.replicate(maxRun - 3) ~ "\U0001F1E9\U0001F1EA"w, 0) == maxRun - 3, "a flag, two regional indicators");
     const marks = "\u0301"w.replicate(3 * maxRun);
     assert(runEnd(marks, 0) == maxRun, "marks only: cut at the bound all the same");
 }
 
-@("runs: a tab is as wide as a space: placed, measured and walked so, whatever the measurer makes of a tab")
+@("shown: a tab is as wide as a space: placed, measured and walked so, whatever the measurer makes of a tab")
 unittest
 {
     // a tab as a text engine lays it out, to the next stop of eight: never asked for
@@ -349,7 +379,7 @@ unittest
     assert(ruler.asked <= markEvery + 40, "summed from the start again");
 }
 
-@("runs: with the marks of a memo, xAt, placeAt and eachRun answer as from the start, measuring at most `markEvery` runs before")
+@("xAt: with the marks of a memo, it, placeAt and eachRun answer as from the start, measuring at most `markEvery` runs before")
 unittest
 {
     auto ruler = new Ruler;
@@ -381,7 +411,7 @@ unittest
     }
 }
 
-@("runs: the marks go as far as a walk went, and a walk further only adds to them")
+@("eachRun: the marks of a memo go as far as a walk went, and a walk further only adds to them")
 unittest
 {
     auto ruler = new Ruler;
@@ -396,7 +426,7 @@ unittest
     assert(ruler.asked <= 6000 + markEvery, "the first half measured again");
 }
 
-@("runs: a line of fewer than `markEvery` runs has no marks")
+@("eachRun: a line of fewer than `markEvery` runs has no marks")
 unittest
 {
     auto ruler = new Ruler;
@@ -405,4 +435,15 @@ unittest
 
     walkAll("word "w.replicate(markEvery / 2 - 1), ruler, &memo); // a word and a gap each
     assert(memo.marks.length == 0);
+}
+
+@("xAt: with a bound, a place past it measures the runs up to the bound only, and is past it")
+unittest
+{
+    auto ruler = new Ruler;
+    const line = longLine(); // runs of 40 and 10
+    assert(xAt(line, 59_000, &ruler.width, null, 1000) > 1000);
+    assert(ruler.asked <= 1000 / 40 * 2 + 2, "walked past the bound");
+    ruler.asked = 0;
+    assert(xAt(line, 52, &ruler.width, null, 1000) == xAt(line, 52, &ruler.width), "a place before the bound as without one");
 }

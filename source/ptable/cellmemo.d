@@ -49,20 +49,35 @@ struct CellMemo
     }
 }
 
-/// The memo of a cell as `CellInput` carries it: a cell is given as const, its memo is not part of what it is (a cache the column
-/// fills while it draws), so it is reached through this. Null: no memo (a row the table keeps nothing of, a test).
+/// The memo of a cell as `CellInput` carries it: where to find it (the ring, the row, the column), taken only when the column asks
+/// (`get`: a long line; a short cell takes no place of its row). A cell is given as const, its memo is not part of what it is (a cache
+/// the column fills while it draws), so it is reached through this. Empty: no memo (a row the table keeps nothing of).
 struct MemoRef
 {
-    private CellMemo* _memo;
+    private CellMemos _memos;
+    private size_t _row;
+    private uint _col;
+    private CellMemo* _memo; // a memo of its own (a test)
+
+    this(CellMemos memos, size_t row, uint col) nothrow @nogc
+    {
+        _memos = memos;
+        _row = row;
+        _col = col;
+    }
 
     this(CellMemo* memo) nothrow @nogc
     {
         _memo = memo;
     }
 
-    CellMemo* get() const nothrow @nogc @trusted
+    /// The memo, taken in the ring now if it was not; null if there is none to be had
+    CellMemo* get() const @trusted
     {
-        return cast(CellMemo*) _memo; // logical const: the cell is not changed, the cache next to it is
+        // logical const: the cell is not changed, the cache next to it is
+        if (_memos !is null)
+            return (cast(CellMemos) _memos).of(_row, _col);
+        return cast(CellMemo*) _memo;
     }
 }
 

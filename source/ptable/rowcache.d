@@ -185,6 +185,12 @@ final class RowCache
         _memos.fit(_geometry.capacity);
     }
 
+    /// What the columns noted of the cells of the rows near the window, let go with their room
+    CellMemos memos()
+    {
+        return _memos;
+    }
+
     /// The memo of the cell of the row `index` in the column `col` (`CellMemos.of`): null if none can be kept
     CellMemo* memoOf(size_t index, uint col)
     {

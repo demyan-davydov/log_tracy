@@ -234,9 +234,9 @@ private struct WidthKey
 /// Measures text with the layouts of Sciter; what it measured is kept by font and text in two generations (ui/sciter_table/generations)
 final class SciterMeasurer : TextMeasurer
 {
-    /// Widths kept: more than the words of a frame (ptable_text/runs), a single-line view scrolled far right over 40 lines of ~60 KB
-    /// is ~240 000 of them
-    enum size_t maxWidths = 300_000;
+    /// Widths kept, of both generations: a frame needs the runs it draws and at most `markEvery` before each place it looks for on a long
+    /// line (ptable_text/runs keeps marks of them); the first walk of a long line goes through all of its runs once, the words repeated
+    enum size_t maxWidths = 100_000;
 
     private SciterTextCache _cache;
     private Generations!(WidthKey, double) _widths;

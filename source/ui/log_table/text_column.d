@@ -137,10 +137,14 @@ class TextColumn : TextCell
                 // word by word, as the line is drawn (ptable_text/runs): a layout of the start of the line, up to a whole Payload, for each
                 // match of each frame cost more than the frame (measured 2026-11-20)
                 // from the last marks of the memo of the cell before the ends: a frame at the right end of a long line doesn't sum it all
+                // a match right of the part seen is not walked up to
                 const line = text[lineStart .. lineEnd];
                 auto memo = lineMemo(cell.memo, lineStart, line.length, spot.font);
-                const x1 = spot.x + xAt(line, start - lineStart, &width, memo);
-                const x2 = spot.x + xAt(line, end - lineStart, &width, memo);
+                const bound = state.clip.right - spot.x;
+                const x1 = spot.x + xAt(line, start - lineStart, &width, memo, bound);
+                if (x1 > state.clip.right)
+                    continue;
+                const x2 = spot.x + xAt(line, end - lineStart, &width, memo, bound);
                 canvas.fillRect(Rect(x1, lineTop, max(1.0, x2 - x1), spot.line), color);
             }
         }
@@ -387,7 +391,7 @@ unittest
     auto input = CellInput(0, 0, &data);
     input.fragments = [Fragment(59_000, 59_004, Extra(1)), Fragment(0, 1, Extra(1))];
     DrawState state;
-    state.area = Rect(0, 0, 600, 20);
+    state.area = Rect(0, 0, 600_100, 20); // all of the line seen
     state.clip = state.area;
     auto canvas = new Fills;
     column.drawBack(canvas, input, state);
@@ -446,6 +450,51 @@ unittest
     column.drawBack(canvas, input, state);
     column.draw(canvas, input, state);
     assert(measurer.asked <= 4 * (markEvery + 1) + markEvery + 25, "a frame summed the line from its start");
+}
+
+@("TextColumn.drawBack: a match right of the part seen draws nothing and doesn't walk the line up to it")
+unittest
+{
+    import std.array : replicate;
+    import ptable.model : CellData, Extra, Fragment;
+    import ptable.ports : Color, FontId;
+    import ptable_text.measurer : FontMetrics;
+    import ui.log_table.log_look : defaultLogLook;
+
+    static final class Counting : TextMeasurer
+    {
+        size_t asked;
+        FontMetrics metrics(FontId font) { return FontMetrics(11, 3, 14); }
+        double width(FontId font, const(wchar)[] text) { ++asked; return text.length * 10.0; }
+        int wrappedLines(FontId font, const(wchar)[] text, double width) { return -1; }
+    }
+
+    static final class Fills : Canvas
+    {
+        size_t fills;
+        void fillRect(Rect area, Color color) { ++fills; }
+        void drawText(FontId font, const(wchar)[] text, double x, double baseline, Color color) {}
+        void drawParagraph(FontId font, const(wchar)[] text, double x, double top, double width, Color color) {}
+        void fillRoundRect(Rect area, double radius, Color color) {}
+        void fillCircle(double cx, double cy, double radius, Color fill, Color line) {}
+        void pushClip(Rect area) {}
+        void popClip() {}
+    }
+
+    auto measurer = new Counting;
+    auto column = new TextColumn(ColumnDef("t", "T", 24, true), defaultLogLook(), measurer);
+    column.style.wrap = false;
+    column.lookChanged();
+    const data = CellData("word "w.replicate(12_000));
+    auto input = CellInput(0, 0, &data);
+    input.fragments = [Fragment(59_000, 59_004, Extra(1))];
+    DrawState state;
+    state.area = Rect(0, 0, 600_100, 20); // the start of the line seen
+    state.clip = Rect(0, 0, 1000, 20);
+    auto canvas = new Fills;
+    column.drawBack(canvas, input, state);
+    assert(canvas.fills == 0, "a match out of sight drawn");
+    assert(measurer.asked <= 60, "the line walked up to a match out of sight");
 }
 
 @("TextColumn: a double click takes the word at the caret, a triple one the whole text; the text cut for the clipboard is what the table did itself")

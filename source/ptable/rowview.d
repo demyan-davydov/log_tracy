@@ -5,7 +5,7 @@
 module ptable.rowview;
 
 version (unittest) import ptable.testing : withBoxes;
-import ptable.cellmemo : CellMemo, MemoRef;
+import ptable.cellmemo : CellMemos, MemoRef;
 import ptable.column : CellInput;
 import ptable.columnset : ColumnSet;
 
@@ -32,7 +32,7 @@ struct RowEnv
 {
     ColumnSet columns;
     const(TableSpace)* space;
-    CellMemo* delegate(size_t row, uint col) memoOf; /// the memo of a cell (`RowCache.memoOf`); null: no memos
+    CellMemos memos; /// the memos of the cells (`RowCache.memos`), taken by a column that asks; null: none
 }
 
 final class RowView
@@ -83,8 +83,8 @@ final class RowView
             cell.data = &e.data.cells[defIndex];
         if (defIndex < e.data.fragments.length)
             cell.fragments = e.data.fragments[defIndex];
-        if (_env.memoOf !is null)
-            cell.memo = MemoRef(_env.memoOf(row.index, cell.col));
+        if (_env.memos !is null)
+            cell.memo = MemoRef(_env.memos, row.index, cell.col);
         return cell;
     }
 
@@ -239,4 +239,33 @@ unittest
     assert(focused.cell(0).view.x == 0 && focused.cell(0).view.w == 50, "the left strip: seen whole");
     assert(focused.cell(1).view.x == 50 && focused.cell(1).view.w == 80, "the middle one: 30..50 under the left strip");
     assert(focused.cell(2).view.x == 260 && focused.cell(2).view.w == 40, "the right strip: seen whole");
+}
+
+@("RowView: a cell's input takes no memo of its own: a memo is given to the cell that asks for it, the Payload after the short cells too")
+unittest
+{
+    import ptable.cellmemo : CellMemos;
+    import ptable.layout : ColumnDef, ColumnLayout;
+    import ptable.memory : mallocAllocator;
+    import ptable.model : CellData;
+
+    ColumnDef[] defs;
+    foreach (i; 0 .. 6)
+        defs ~= ColumnDef([cast(char)('a' + i)].idup, "T");
+    auto columns = new ColumnSet(new ColumnLayout);
+    columns.refresh(withBoxes(defs));
+    TableSpace space;
+    auto memos = new CellMemos(mallocAllocator());
+    memos.fit(64);
+    auto view = new RowView(RowEnv(columns, &space, memos));
+
+    Entry entry;
+    entry.data.cells = new CellData[6];
+    RowContext row;
+    row.index = 7;
+    CellInput[6] inputs;
+    foreach (i; 0 .. 6)
+        inputs[i] = view.cellInputAt(&entry, row, i); // every cell drawn, as a frame does
+    assert(inputs[5].memo.get() !is null, "the Payload, the last of six cells, has no memo");
+    assert(memos.count == 1, "the short cells took places they never use");
 }

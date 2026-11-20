@@ -5,14 +5,14 @@
 //! The look of the colors is not here: `inkOf` and the title and group drawing are for the subclass. See docs/stories/painted-table.md.
 module ptable_text.textcell;
 
+import ptable.cellmemo : CellMemo;
 import ptable.column : CellInput, CellLayout, DrawState, GroupInput, Measured, TableColumn, Unit;
 import ptable.layout : ColumnDef;
 import ptable.memory : Arena;
 import ptable.ports : Canvas, Color, FontId, Rect, Span;
 import ptable_text.columnstyle : ColumnStyle, Halign, alignOffset, alignedTopInView, alignedX, alignedXInView, noFont;
 import ptable_text.measurer : FontMetrics, TextMeasurer;
-import ptable.cellmemo : CellMemo;
-import ptable_text.runs : eachRun, lineMemo;
+import ptable_text.runs : eachRun, lineMemo, lineWidth, shown;
 import ptable_text.texthit : TextSpot, caretInText, rectsInText, unitInText;
 import ptable_text.wrap : LineSpan, firstLineWidth, glyphWidth, wrapLines;
 
@@ -121,7 +121,9 @@ class TextCell : TableColumn
             const style = this.style.cell;
             const font = fontOf(cell);
             const text = cell.data.text;
-            const textWidth = def.flex ? firstLineWidth(text, (const(wchar)[] t) => _measurer.width(font, t)) : _measurer.width(font, text);
+            // as the line is drawn: by its runs (a whole layout would lay a tab out to its stop, and round once, not by the word)
+            double runs(const(wchar)[] t) { return lineWidth(t, (const(wchar)[] piece) => _measurer.width(font, piece)); }
+            const textWidth = def.flex ? firstLineWidth(text, &runs) : runs(text);
             m.maxWidth = m.minWidth = style.left(sidePad) + max(textWidth, def.minWidth) + style.right(sidePad); // the least width is of the text
         }
         return m;
@@ -193,7 +195,8 @@ class TextCell : TableColumn
         spot.line = ceil(_metrics.cell.lineHeight);
         const text = cell.data !is null ? cell.data.text : ""w;
         const atLeft = style.halign == Halign.left || style.halign == Halign.inherit;
-        const width = atLeft && !style.keepInViewX || _measurer is null ? 0.0 : _measurer.width(spot.font, text); // kept in view: it stops at the far side
+        const width = atLeft && !style.keepInViewX || _measurer is null ? 0.0
+            : lineWidth(text, (const(wchar)[] piece) => _measurer.width(spot.font, piece)); // as drawn; kept in view: it stops at the far side
         spot.x = alignedAcross(width, area, view);
         const above = style.top(linePad), under = style.bottom(linePad);
         // a paragraph's lines are the host's: asked only where they move it, so a column not kept in view stands as it did
@@ -293,17 +296,8 @@ class TextCell : TableColumn
         }
         eachRun(line, clip.x - x, clip.right - x, (const(wchar)[] piece) => _measurer.width(font, piece), (size_t start, size_t end, double at) {
             const run = line[start .. end];
-            canvas.drawText(font, run[0] == '\t' ? spacesFor(run.length) : run, x + at, baseline, ink);
+            canvas.drawText(font, shown(run), x + at, baseline, ink);
         }, memo);
-    }
-
-        // As many spaces as a gap of tabs has (a run: `maxRun` at most)
-    private static const(wchar)[] spacesFor(size_t count)
-    {
-        import ptable_text.runs : maxRun;
-
-        static immutable wchar[maxRun] spaces = ' ';
-        return spaces[0 .. count];
     }
 
     /// The text of the cell in black (a column that knows colors draws it in its own ink)
@@ -509,4 +503,35 @@ unittest
     assert(canvas.texts == ["ab"w, "  "w, "c"w, " "w, "d"w]);
     const x0 = canvas.xs[0];
     assert(canvas.xs == [x0, x0 + 20, x0 + 40, x0 + 50, x0 + 60]);
+}
+
+@("TextCell.measure: the width of a cell is that of its runs as they are drawn: a tab as a space")
+unittest
+{
+    import ptable.model : CellData;
+    import ptable_text.measurer : FontMetrics;
+    import ptable_text.testing : TestText;
+
+    static final class Tabs : TextMeasurer // a tab as a text engine lays it out: to its stop
+    {
+        FontMetrics metrics(FontId font) { return FontMetrics(11, 3, 14); }
+        double width(FontId font, const(wchar)[] text)
+        {
+            double w = 0;
+            foreach (c; text)
+                w += c == '\t' ? 80 : 10;
+            return w;
+        }
+        int wrappedLines(FontId font, const(wchar)[] text, double width) { return -1; }
+    }
+
+    foreach (flex; [false, true])
+    {
+        auto column = new TestText(ColumnDef("text", "Text", 24, flex), new Tabs);
+        column.style.wrap = false;
+        const tabbed = CellData("ab\tcd"w), spaced = CellData("ab cd"w);
+        const ca = CellInput(0, 0, &tabbed), cb = CellInput(0, 0, &spaced);
+        const a = column.measure(ca, 0, true), b = column.measure(cb, 0, true);
+        assert(a.maxWidth == b.maxWidth, "a tab measured to its stop, drawn as a space");
+    }
 }

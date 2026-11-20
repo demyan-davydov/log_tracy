@@ -193,7 +193,7 @@ version (DebugChannel)
                 control.setWrap(args.number(0) != 0);
                 return true;
             case "setLimits":
-                control.setLimits(cast(size_t) args.number(0, 3000));
+                control.setLimits(cast(size_t) args.number(0, 6000)); // the layouts of both generations, as by default (ui/sciter_table/host)
                 return true;
             case "singleLine":
                 control.singleLine(args.number(0) != 0);
@@ -363,7 +363,7 @@ unittest
     dispatch(control, "singleLine", ScriptArgs([1]), result);
     dispatch(control, "singleLine", ScriptArgs([0]), result);
     dispatch(control, "resetStats", ScriptArgs(), result);
-    assert(control.calls == ["setLimits 3000", "setLimits 100", "selectWord 5 6 true",
+    assert(control.calls == ["setLimits 6000", "setLimits 100", "selectWord 5 6 true",
         "selectWord 5 6 false", "setWrap false", "singleLine true", "singleLine false", "resetStats"]);
 }
 

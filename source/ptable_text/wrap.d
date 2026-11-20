@@ -4,6 +4,7 @@ module ptable_text.wrap;
 
 import ptable.ports : FontId;
 import ptable_text.measurer : TextMeasurer;
+import ptable_text.runs : shownGlyph;
 import std.utf : decode;
 
 /// A line of a wrapped text: [start, end) in UTF-16 units
@@ -13,7 +14,7 @@ struct LineSpan
 }
 
 /// The lines of `text` in a width of `width` px; `advance(glyph)` is the width of a code
-/// point. A line breaks after a space (the space may stick out of the width); a word longer
+/// point. A line breaks after a space or a tab (it may stick out of the width); a word longer
 /// than a line breaks at the width; a hard "\n" breaks too, but one at the very end of the text ends its line and starts no empty one. A line has a glyph at least, so
 /// a width smaller than a glyph still moves on. An empty text is one empty line.
 /// `lines` is filled (its old content is dropped).
@@ -36,7 +37,8 @@ void wrapLines(ref LineSpan[] lines, const(wchar)[] text, double width, scope do
             continue;
         }
         const step = advance(glyph);
-        if (glyph != ' ' && glyphStart > start && lineWidth + step > width)
+        const gap = glyph == ' ' || glyph == '\t';
+        if (!gap && glyphStart > start && lineWidth + step > width)
         {
             if (breakAt != size_t.max && breakAt > start) // after the last space of the line
             {
@@ -60,7 +62,7 @@ void wrapLines(ref LineSpan[] lines, const(wchar)[] text, double width, scope do
             }
         }
         lineWidth += step;
-        if (glyph == ' ')
+        if (gap)
         {
             breakAt = position;
             breakWidth = lineWidth;
@@ -73,8 +75,7 @@ void wrapLines(ref LineSpan[] lines, const(wchar)[] text, double width, scope do
 /// The width of one glyph in `font` by `measurer` (a code point beyond the BMP is two units; a tab is a space); 6 if the measurer fails
 double glyphWidth(TextMeasurer measurer, FontId font, dchar glyph) nothrow
 {
-    if (glyph == '\t')
-        glyph = ' '; // a tab is drawn as a space (ptable_text/runs)
+    glyph = shownGlyph(glyph); // a tab as a space
     wchar[2] units;
     size_t length = 0;
     if (glyph < 0x10000)
@@ -204,4 +205,11 @@ unittest
     }
 
     assert(glyphWidth(new Tabs, 0, '\t') == 10);
+}
+
+@("wrapLines: a line breaks after a tab as after a space, and the tab may stick out of the width")
+unittest
+{
+    assert(wrapped("aaa\tbbb\tccc", 70) == ["aaa\tbbb\t", "ccc"]);
+    assert(wrapped("aaaa\tbb", 40) == ["aaaa\t", "bb"]);
 }
