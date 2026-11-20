@@ -98,7 +98,6 @@ export class FilterPanel {
     // @param docId - the id of the document in the backend
     // @param host - what the panel asks of the document panel:
     //   theme() -> "light" | "dark" (of the rule editor),
-    //   refreshRows() - the rows on screen refer to the rules again,
     //   setActive(active) - whether any rule works on the log (the backend's
     //     active: filters the view or colors the rows), given whenever the
     //     panel is rendered
@@ -139,8 +138,7 @@ export class FilterPanel {
     // Shows the sets after a command of the backend, with its message
     showResult(error) {
         this.message = error || "";
-        this.render();
-        this.host.refreshRows();
+        this.render(); // the rows of the tables follow a change of the rules by themselves: the backend tells them
     }
 
     // Shows the filter sets

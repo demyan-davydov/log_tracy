@@ -206,6 +206,36 @@ version (unittest)
     }
 }
 
+@("DocumentRows: the rows of the main view look another way when the search view is shown anew (what the search found marks them)")
+unittest
+{
+    import core.thread : Thread;
+    import core.time : msecs;
+    import ptable.model : ModelChange;
+    import ui.log_table.document_model : DocumentRows;
+
+    auto opened = openTestLog("log_tracy_log_table_found.log", 50);
+    scope (exit) opened.close();
+    auto main = new DocumentRows(opened.session, opened.id, false);
+    auto search = new DocumentRows(opened.session, opened.id, true);
+    ModelChange[] heardMain, heardSearch;
+    main.subscribe((const ModelChange c) { heardMain ~= c; });
+    search.subscribe((const ModelChange c) { heardSearch ~= c; });
+    assert(opened.session.startChipSearch(opened.id, `[{"text": "words", "isRegex": false, "matchCase": false}]`) == "");
+    foreach (attempt; 0 .. 500)
+    {
+        opened.session.dispatchEvents();
+        opened.session.takeScriptCalls();
+        if (opened.session.doc(opened.id).searchView.itemsCount == 50)
+            break;
+        Thread.sleep(10.msecs);
+    }
+    import std.algorithm.searching : canFind;
+
+    assert(heardMain.canFind!(c => c.kind == ModelChange.Kind.looks), "the main rows show what was found");
+    assert(!heardSearch.canFind!(c => c.kind == ModelChange.Kind.looks), "the search rows are told their own view as rows");
+}
+
 @("LogTable: the margins left and right of the rows in the look are those of its column host, from the start and after a change of the look")
 unittest
 {

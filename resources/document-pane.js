@@ -14,7 +14,6 @@ import * as platform from "platform.js";
 import { allFiles, fileFilter } from "file-types.js";
 import { anchorRefusalText } from "pane-commands.js";
 import { SelectionFollower } from "row-selection.js";
-import { searchViewKey } from "pane-state.js";
 import { tr, trc } from "i18n/i18n.js";
 import { translateTree } from "i18n/dom.js";
 import { fileInfoRows } from "file-info.js";
@@ -153,7 +152,6 @@ export class DocumentPane {
         this.host = host;
         this.visible = false;
         this.jumps = []; // the history of Go to Message, the newest first: kept while the tab is open
-        this.foundShownFor = null; // the search view (searchViewKey) the main rows show the found rows of
         this.lastFocus = null; // focused in the panel last (focusin): it gets the keys again when shown
         this.textsStale = false; // the language changed while hidden: rendered again on show
         this.bottomPage = "search"; // the page of the bottom panel shown (data-page)
@@ -177,7 +175,6 @@ export class DocumentPane {
 
         this.filterPanel = new FilterPanel(this.root.$(".filter-page"), docId, {
             theme: () => host.theme(),
-            refreshRows: () => this.refreshRuleColors(),
             setActive: active => this.markFiltersTab(active),
         });
         this.searchBar = new SearchBar(this.root.$(".search-bar"), docId);
@@ -443,23 +440,13 @@ export class DocumentPane {
 
     // Shows the main view as its machine shows it, see ViewTable.update()
     updateMainView() {
-        const step = this.main.update();
-        if (!step?.table) return;
-        // reloaded main rows show what the search found now: not refreshed again for it
-        if (step.reload) this.foundShownFor = searchViewKey(this.search.view);
+        this.main.update();
     }
 
-    // Shows the search view likewise. The rows of the main view show what the
-    // search found: more of them while it runs, other ones after a new search
-    // or none after a reset. Only when the search view changed since they
-    // were shown, not on every show of the panel.
+    // Shows the search view likewise. The rows of the main view show what the search found: D draws them again when the search view
+    // is shown anew (ui/log_table/document_model.d, DocumentRows), the script tells it nothing
     updateSearchView() {
-        const step = this.search.update();
-        const key = searchViewKey(this.search.view);
-        if (key !== this.foundShownFor && this.shows(this.main)) {
-            this.main.logTable.refreshRows();
-            this.foundShownFor = key;
-        }
+        this.search.update();
     }
 
     // The message index of the current row of the main table, null if none:
@@ -492,12 +479,6 @@ export class DocumentPane {
     }
 
     // ---- the rows: rule colors and anchors ----
-
-    // The rows on screen refer to the rules again: a change of a rule may change
-    // the rule with a color a row matches without filtering the view again
-    refreshRuleColors() {
-        for (const table of this.tables) if (this.shows(table)) table.logTable.refreshRows();
-    }
 
     // Follows the rows an anchor changed (backend: { message, anchored, main,
     // search }): each table reads the row of the message again, also a hidden

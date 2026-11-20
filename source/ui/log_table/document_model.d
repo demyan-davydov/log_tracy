@@ -209,7 +209,7 @@ final class DocumentRows : RowSource!LogRow
         if (!_hearing)
         {
             _hearing = true;
-            _sessionHandle = _session.subscribeViews(_docId, ViewListener(&viewShown, &columnsChanged));
+            _sessionHandle = _session.subscribeViews(_docId, ViewListener(&viewShown, &columnsChanged, &rulesChanged));
         }
         return _listeners.add(listener);
     }
@@ -224,11 +224,24 @@ final class DocumentRows : RowSource!LogRow
         }
     }
 
+    // A view of the document was shown anew: this view's own grows or is replaced; the search view shown anew marks other rows of the
+    // main view found (`DocumentItem.found`, the matches of the chips), which look another way
     private void viewShown(bool search, ViewVersion shown)
     {
         ModelChange change;
-        if (search == _search && _tracker.next(shown, count(), change))
-            tell(change);
+        if (search == _search)
+        {
+            if (_tracker.next(shown, count(), change))
+                tell(change);
+        }
+        else if (search)
+            tell(ModelChange(ModelChange.Kind.looks));
+    }
+
+    // The rule a row matches with a color may be another one: the rows look another way
+    private void rulesChanged()
+    {
+        tell(ModelChange(ModelChange.Kind.looks));
     }
 
     private void columnsChanged()

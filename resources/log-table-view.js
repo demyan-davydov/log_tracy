@@ -60,11 +60,6 @@ export class LogTableView {
         return logTableCall(this.tableId, method, ...args);
     }
 
-    // The rows on screen are drawn again (the rules or the search changed what colors them)
-    refreshRows() {
-        this.call("refresh");
-    }
-
     // The message of an anchor was set or cleared, from wherever it came (this table, the other one, the pass of the index that
     // applied it later): the table reads its row again. `rows` as the backend tells it: { message, anchored, main, search }
     anchorApplied(rows) {

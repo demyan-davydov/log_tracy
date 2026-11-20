@@ -860,6 +860,7 @@ final class AppSession
             if (auto path = sourcePathOf(docId))
                 _settings.recentFiles = withFilters(_settings.recentFiles, path, filters.saved());
             settingsChanged();
+            _viewListeners.rulesChanged(docId); // a row may match another rule now, of another color, though the view is not filtered again
         }
         return message;
     }
@@ -1875,6 +1876,24 @@ unittest
     const id = f.session.openFile(testPath("/logs/a.log")).docId;
     assert(f.session.filterCommand(id, (DocumentFilters filters) => filters.newSet()) == "");
     assert(savedFilters(f.session.settings.recentFiles, testPath("/logs/a.log")).length == 1);
+}
+
+@("AppSession: a filter command that changes the sets is told to the listeners of the document's views, one that changes nothing is not")
+unittest
+{
+    auto f = Fixture.make();
+    const id = f.session.openFile(testPath("/logs/a.log")).docId;
+    const other = f.session.openFile(testPath("/logs/b.log")).docId;
+    int rules, otherRules;
+    ViewListener listener, otherListener;
+    listener.rulesChanged = () { ++rules; };
+    otherListener.rulesChanged = () { ++otherRules; };
+    f.session.subscribeViews(id, listener);
+    f.session.subscribeViews(other, otherListener);
+    f.session.filterCommand(id, (DocumentFilters filters) => filters.newSet());
+    assert(rules == 1 && otherRules == 0, "the rows of the document may match another rule");
+    f.session.filterCommand(id, (DocumentFilters filters) => filters.remove(7));
+    assert(rules == 1, "a refused command changed nothing");
 }
 
 @("AppSession: a filter command that changes the sets is kept even when it has a note (what was lost)")

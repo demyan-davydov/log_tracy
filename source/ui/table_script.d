@@ -89,9 +89,6 @@ interface TableControl
     /// Draws at once without changing anything; answers the microseconds (the cost of a window's frame)
     long render();
 
-    /// The rows are drawn again: what they refer to changed (the colors of the filter rules)
-    void refresh();
-
     /// Wrap the Payload by the text engine of Sciter (1) or by the glyphs (0)
     void setWrap(bool bySciter);
 
@@ -158,9 +155,6 @@ bool dispatch(TableControl control, const(char)[] method, ScriptArgs args, out S
         return true;
     case "contextPick":
         control.contextPick(cast(size_t) args.number(0));
-        return true;
-    case "refresh":
-        control.refresh();
         return true;
     default:
         version (DebugChannel)
@@ -296,7 +290,6 @@ version (unittest)
         }
         long scrollBy(double pixels, bool now) { calls ~= "scrollBy " ~ pixels.to!string ~ " " ~ now.to!string; return 12; }
         long render() { calls ~= "render"; return 13; }
-        void refresh() { calls ~= "refresh"; }
         void pan(double pixels, double across) { calls ~= "pan " ~ pixels.to!string ~ " " ~ across.to!string; }
         void panEnd() { calls ~= "panEnd"; }
         void setWrap(bool bySciter) { calls ~= "setWrap " ~ bySciter.to!string; }
@@ -354,9 +347,7 @@ unittest
     assert(dispatch(control, "pickRow", ScriptArgs([7]), result) && result.kind == ScriptResult.Kind.nothing);
     assert(dispatch(control, "currentRow", ScriptArgs(), result) && result == ScriptResult.ofText(`{"row":3,"id":30}`w));
     assert(dispatch(control, "reveal", ScriptArgs([9, 1]), result) && dispatch(control, "reveal", ScriptArgs([4]), result));
-    assert(dispatch(control, "refresh", ScriptArgs(), result) && result.kind == ScriptResult.Kind.nothing);
-    assert(control.calls == ["view", "rowHeight 5", "scrollTo 12 1 -5 40 true", "scrollTo 3 0 0 0 false", "pickRow 7", "currentRow", "reveal 9 true", "reveal 4 false",
-        "refresh"]);
+    assert(control.calls == ["view", "rowHeight 5", "scrollTo 12 1 -5 40 true", "scrollTo 3 0 0 0 false", "pickRow 7", "currentRow", "reveal 9 true", "reveal 4 false"]);
 }
 
 @("dispatch: what a call leaves out is the default, a word is 0 and a cell 1, a value that is no number is the default")

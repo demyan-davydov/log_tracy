@@ -1,5 +1,5 @@
 //! What the session tells those who listen to the views of the documents (the painted tables): a view shown anew, with the version of
-//! its content, and the columns changed; and the list of the listeners, each of one document. Knows no table: what a table makes of it
+//! its content, the filter rules of a document changed, and the columns changed; and the list of the listeners, each of one document. Knows no table: what a table makes of it
 //! is ui/log_table/view_events. The rule of the version is that of ReadyView.dataVersion (ui/main_view_fsm): under one version a view
 //! only grows, a new version replaces it. Free of Sciter.
 module ui.view_listeners;
@@ -41,6 +41,7 @@ struct ViewListener
 {
     void delegate(bool search, ViewVersion shown) viewShown; /// a view of the document was shown anew
     void delegate() columnsChanged; /// the columns the tables show changed (the Settings)
+    void delegate() rulesChanged; /// the filter rules of the document changed: a row may match another one, of another color
 }
 
 /// The listeners to the views, each of one document: a view shown is told to those of its document, a change of the columns to all.
@@ -86,6 +87,15 @@ struct ViewListeners
         });
     }
 
+    /// The filter rules of `doc` changed
+    void rulesChanged(DocumentId doc)
+    {
+        tell((ref Entry e) {
+            if (e.doc == doc && e.listener.rulesChanged !is null)
+                e.listener.rulesChanged();
+        });
+    }
+
     /// The columns changed: every listener hears it
     void columnsChanged()
     {
@@ -123,6 +133,21 @@ unittest
     assert(heard == ["as"], "only the listener of the document");
     listeners.columnsChanged();
     assert(heard == ["as", "a cols", "b cols"]);
+}
+
+@("ViewListeners: a change of the rules is heard by the listeners of its document")
+unittest
+{
+    ViewListeners listeners;
+    string[] heard;
+    ViewListener a, b;
+    a.rulesChanged = () { heard ~= "a"; };
+    b.rulesChanged = () { heard ~= "b"; };
+    listeners.subscribe(DocumentId(1), a);
+    listeners.subscribe(DocumentId(2), b);
+    listeners.subscribe(DocumentId(1), ViewListener.init); // one without the hook is passed by
+    listeners.rulesChanged(DocumentId(1));
+    assert(heard == ["a"]);
 }
 
 @("ViewListeners: a listener unsubscribed hears nothing, also when another unsubscribes it while it is being told")

@@ -379,7 +379,6 @@ final class LogTableBehavior : SciterEventHandler
             return usSince(started);
         }
 
-        void refresh() { _log.table.repaint(); } // the next frame reads the rows again
 
         void setWrap(bool bySciter)
         {

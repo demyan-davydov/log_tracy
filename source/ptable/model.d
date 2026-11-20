@@ -59,6 +59,7 @@ struct ModelChange
         count, /// items were added or removed from `first` on
         rows, /// the items from `first` to `last` (not including) changed, their count did not
         columns, /// the columns changed
+        looks, /// the rows look another way (a mark, a color the world outside them gives), their texts and heights the same: read again
     }
 
     Kind kind;

@@ -119,9 +119,13 @@ final class RowStore : ColumnClient
     /// The model told a change; true if what was picked in the text is no longer where it was
     bool modelChanged(const ModelChange change)
     {
+        if (change.kind == ModelChange.Kind.looks)
+            return false; // the texts and the heights are the same: what is known of the rows and the widths stays, the next pass reads them
         _fitDirty = true;
         final switch (change.kind)
         {
+        case ModelChange.Kind.looks:
+            assert(false);
         case ModelChange.Kind.everything:
         case ModelChange.Kind.columns:
             _columns.markStale();

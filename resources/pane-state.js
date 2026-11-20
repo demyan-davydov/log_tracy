@@ -69,15 +69,6 @@ export function tabProgress(vm) {
     return Math.min(1, Math.max(0, vm.progress || 0));
 }
 
-// The search view (vm of the search machine, null if none yet) as a value: the
-// rows of the main table show what the search found, and are refreshed when
-// this changes. The models come as new objects with every snapshot of the
-// workspace (refreshTabs), so they are compared by what they say.
-export function searchViewKey(vm) {
-    if (!vm) return "";
-    return `${vm.status}/${vm.dataVersion ?? ""}/${vm.progress ?? ""}`;
-}
-
 // True if the rows a table shows (`shown`, see tableStep) are of the content of
 // its view `vm`: a status doesn't cover them and they aren't the rows of a
 // content being replaced. A load, a filter or a search filling the view counts:

@@ -294,6 +294,8 @@ final class Table
 
     private void modelChanged(const ModelChange change)
     {
+        if (change.kind == ModelChange.Kind.looks)
+            _passOfTick = false; // the next paint reads the rows again, even of a frame whose tick read them
         if (_store.modelChanged(change))
             setSelection(false);
         if (change.kind == ModelChange.Kind.everything)
@@ -1399,6 +1401,27 @@ unittest
     const before = f.table.stats.fetches;
     f.table.paint(f.canvas);
     assert(f.table.stats.fetches - before >= f.table.stats.rowsOnScreen, "a paint of a frame of its own reads its rows");
+}
+
+@("Table: rows that look another way are read again at the next paint, where they stand: nothing measured anew, nothing picked lost")
+unittest
+{
+    auto f = make(1000);
+    f.table.scrollTo(400);
+    f.table.paint(f.canvas);
+    f.table.pickRow(402);
+    const first = f.table.firstVisible;
+    const height = f.table.rowHeight(401);
+    size_t told;
+    f.table.events.invalidate = () { ++told; };
+    f.model.tell(ModelChange(ModelChange.Kind.looks));
+    assert(told == 1, "painted again");
+    const before = f.table.stats.fetches;
+    f.table.paint(f.canvas);
+    assert(f.table.stats.fetches - before == f.table.stats.rowsOnScreen, "the rows on the screen read again");
+    assert(f.table.stats.fitRounds == 0, "no widths fit anew");
+    assert(f.table.firstVisible == first && f.table.rowHeight(401) == height, "the place and the heights stay");
+    assert(f.table.isSelected(402), "what was picked stays");
 }
 
 @("Table: a frame reads each row on the screen once, whether it scrolls on the frame of the host, by pixels or not at all")
