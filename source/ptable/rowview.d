@@ -5,6 +5,7 @@
 module ptable.rowview;
 
 version (unittest) import ptable.testing : withBoxes;
+import ptable.cellmemo : CellMemo, MemoRef;
 import ptable.column : CellInput;
 import ptable.columnset : ColumnSet;
 
@@ -31,6 +32,7 @@ struct RowEnv
 {
     ColumnSet columns;
     const(TableSpace)* space;
+    CellMemo* delegate(size_t row, uint col) memoOf; /// the memo of a cell (`RowCache.memoOf`); null: no memos
 }
 
 final class RowView
@@ -71,7 +73,7 @@ final class RowView
         return ctx;
     }
 
-    /// What the column of the cell `defIndex` of an entry in a row is given to draw it: its data and its fragments
+    /// What the column of the cell `defIndex` of an entry in a row is given to draw it: its data, its fragments and its memo
     CellInput cellInputAt(Entry* e, ref const RowContext row, size_t defIndex)
     {
         CellInput cell;
@@ -81,6 +83,8 @@ final class RowView
             cell.data = &e.data.cells[defIndex];
         if (defIndex < e.data.fragments.length)
             cell.fragments = e.data.fragments[defIndex];
+        if (_env.memoOf !is null)
+            cell.memo = MemoRef(_env.memoOf(row.index, cell.col));
         return cell;
     }
 

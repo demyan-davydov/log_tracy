@@ -3,10 +3,11 @@
 module ptable_text.texthit;
 
 version (unittest) import ptable_text.testing : TestText;
+import ptable.cellmemo : MemoRef;
 import ptable.column : Unit;
 import ptable.ports : FontId, Rect;
 import ptable_text.measurer : TextMeasurer;
-import ptable_text.runs : placeAt, xAt;
+import ptable_text.runs : lineMemo, placeAt, xAt;
 import ptable_text.wordpick : wordAt;
 import ptable_text.wrap : LineSpan;
 
@@ -23,8 +24,8 @@ struct TextSpot
 }
 
 /// The caret in `text` lying at `spot` nearest to the point (`x`, `y`): in the line the height says, the nearest place between two
-/// characters of it; 0 in an empty text
-size_t caretInText(const(wchar)[] text, ref const TextSpot spot, TextMeasurer measurer, double x, double y)
+/// characters of it; 0 in an empty text. A long line is walked from the last mark of the cell's `memo` before the point
+size_t caretInText(const(wchar)[] text, ref const TextSpot spot, TextMeasurer measurer, double x, double y, const MemoRef memo = MemoRef.init)
 {
     if (text.length == 0)
         return 0;
@@ -35,16 +36,20 @@ size_t caretInText(const(wchar)[] text, ref const TextSpot spot, TextMeasurer me
         from = spot.lines[j].start;
         to = spot.lines[j].end;
     }
-    return from + placeAt(text[from .. to], x - spot.x, (const(wchar)[] piece) => measurer.width(spot.font, piece));
+    return from + placeAt(text[from .. to], x - spot.x, (const(wchar)[] piece) => measurer.width(spot.font, piece),
+        lineMemo(memo, from, to - from, spot.font));
 }
 
-/// The rectangles the part [`from`, `to`) of `text` lying at `spot` takes: one for a text of one line, one for each line it touches
-void rectsInText(const(wchar)[] text, ref const TextSpot spot, TextMeasurer measurer, size_t from, size_t to, scope void delegate(Rect) emit)
+/// The rectangles the part [`from`, `to`) of `text` lying at `spot` takes: one for a text of one line, one for each line it touches. A long
+/// line is walked from the last marks of the cell's `memo` before the ends
+void rectsInText(const(wchar)[] text, ref const TextSpot spot, TextMeasurer measurer, size_t from, size_t to, scope void delegate(Rect) emit,
+    const MemoRef memo = MemoRef.init)
 {
     double width(const(wchar)[] piece) { return measurer.width(spot.font, piece); }
     if (spot.lines.length == 0)
     {
-        const x1 = spot.x + xAt(text, from, &width), x2 = spot.x + xAt(text, to, &width);
+        auto m = lineMemo(memo, 0, text.length, spot.font);
+        const x1 = spot.x + xAt(text, from, &width, m), x2 = spot.x + xAt(text, to, &width, m);
         emit(Rect(round(x1), spot.top, max(1.0, round(x2 - x1)), spot.line));
         return;
     }
@@ -54,7 +59,8 @@ void rectsInText(const(wchar)[] text, ref const TextSpot spot, TextMeasurer meas
         if (end <= start)
             continue;
         const line = text[span.start .. span.end];
-        const x1 = spot.x + xAt(line, start - span.start, &width), x2 = spot.x + xAt(line, end - span.start, &width);
+        auto m = lineMemo(memo, span.start, line.length, spot.font);
+        const x1 = spot.x + xAt(line, start - span.start, &width, m), x2 = spot.x + xAt(line, end - span.start, &width, m);
         emit(Rect(round(x1), spot.top + j * spot.line, max(1.0, round(x2 - x1)), spot.line));
     }
 }

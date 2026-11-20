@@ -4,7 +4,7 @@
 //! is). See docs/experiments/2026-11-19-painted-rows-d.md.
 module ui.sciter_table.host;
 
-import ptable.memory : Arena, HashMap, mallocAllocator;
+import ptable.memory : mallocAllocator;
 import ptable.ports;
 import ptable_text.measurer : FontMetrics, TextMeasurer;
 import std.experimental.allocator : RCIAllocator;
@@ -12,7 +12,7 @@ import sciter.api : sciterApi;
 import sciter.capi.api;
 import sciter.graphics : GfxCanvas = Canvas, TextLayout, rgba;
 import ui.look : FontSpec, TextLook;
-import ui.sciter_table.width_cache : WidthCache;
+import ui.sciter_table.generations : Generations;
 
 import std.algorithm.comparison : max;
 import std.math : ceil, round;
@@ -25,43 +25,13 @@ private struct TextKey
     const(wchar)[] text;
 }
 
-// One generation of the layouts: the layouts, and the memory the texts of their keys are in
-private struct Generation
-{
-    Arena arena;
-    HashMap!(TextKey, TextLayout) layouts;
-
-    this(RCIAllocator allocator)
-    {
-        arena = Arena(allocator);
-        layouts = HashMap!(TextKey, TextLayout)(allocator);
-    }
-
-    void releaseLayouts()
-    {
-        foreach (ref const TextKey key, ref TextLayout layout; layouts)
-            layout.release();
-        layouts.clear();
-        arena.reset();
-    }
-
-    // Keeps `layout` by `key`, its text copied into the arena
-    void keep(TextKey key, TextLayout layout)
-    {
-        key.text = arena.copy(key.text);
-        layouts.set(key, layout);
-    }
-}
-
-/// The text layouts of a table: made on demand for a font, a color and a text, kept in two generations. The keys
-/// and the maps are in memory of the allocator given, the garbage collector is not asked for a lookup.
+/// The text layouts of a table: made on demand for a font, a color and a text, kept in two generations (ui/sciter_table/generations),
+/// released when they go. The keys and the maps are in memory of the allocator given, the garbage collector is not asked for a lookup.
 final class SciterTextCache
 {
     private HELEMENT _he;
-    private Generation[2] _generations;
-    private size_t _current;
+    private Generations!(TextKey, TextLayout) _layouts;
     private immutable(wchar)[][ulong] _styles; // by font, color, kind and width (`styleKey`): made once, the misses after it allocate nothing for it
-    size_t limit = 3000; /// layouts a generation keeps
     size_t made; /// layouts made so far
     private TextLook _look;
     private double[] _ascent, _advance;
@@ -75,8 +45,7 @@ final class SciterTextCache
         _ascent = new double[look.fonts.length];
         _advance = new double[look.fonts.length];
         _lineHeights = new double[look.fonts.length];
-        _generations[0] = Generation(allocator);
-        _generations[1] = Generation(allocator);
+        _layouts = new Generations!(TextKey, TextLayout)(6000, delegate(ref TextLayout layout) nothrow { layout.release(); }, allocator);
     }
 
     void element(HELEMENT he)
@@ -90,9 +59,16 @@ final class SciterTextCache
         return _look;
     }
 
+    /// The layouts kept
     size_t count()
     {
-        return _generations[0].layouts.length + _generations[1].layouts.length;
+        return _layouts.length;
+    }
+
+    /// How many layouts are kept at most (both generations: a layout is ~20 KB of memory, .ai/knowledge/sciter.md)
+    void limit(size_t layouts)
+    {
+        _layouts.limit = layouts;
     }
 
     // The style of a layout, made once for its font, color, kind and width
@@ -140,26 +116,11 @@ final class SciterTextCache
 
     private TextLayout get(TextKey key, Color color, bool paragraph, int width)
     {
-        auto now = &_generations[_current];
-        if (auto found = key in now.layouts)
+        if (auto found = _layouts.find(key))
             return *found;
-        auto before = &_generations[1 - _current];
-        if (auto old = key in before.layouts)
-        {
-            auto layout = *old;
-            before.layouts.remove(key);
-            now.keep(key, layout);
-            return layout;
-        }
-        if (now.layouts.length >= limit)
-        {
-            before.releaseLayouts(); // the older generation goes, the current becomes the older
-            _current = 1 - _current;
-            now = &_generations[_current];
-        }
         made++;
         auto layout = TextLayout.create(_he, key.text, styleOf(key.font, color, paragraph, false, width));
-        now.keep(key, layout);
+        _layouts.keep(key, layout);
         return layout;
     }
 
@@ -218,8 +179,7 @@ final class SciterTextCache
 
     void release()
     {
-        foreach (ref g; _generations)
-            g.releaseLayouts();
+        _layouts.clear();
     }
 
     /// The text changed (the fonts, their sizes): what was made and read with the old fonts goes
@@ -265,18 +225,28 @@ private bool isPlain(const(wchar)[] text) pure nothrow @nogc @safe
     return true;
 }
 
-/// Measures text with the layouts of Sciter
+private struct WidthKey
+{
+    uint font;
+    const(wchar)[] text;
+}
+
+/// Measures text with the layouts of Sciter; what it measured is kept by font and text in two generations (ui/sciter_table/generations)
 final class SciterMeasurer : TextMeasurer
 {
+    /// Widths kept: more than the words of a frame (ptable_text/runs), a single-line view scrolled far right over 40 lines of ~60 KB
+    /// is ~240 000 of them
+    enum size_t maxWidths = 300_000;
+
     private SciterTextCache _cache;
-    private WidthCache _widths;
+    private Generations!(WidthKey, double) _widths;
     /// Wrap the Payload by the text engine of Sciter (it knows scripts our wrap does not), not by the glyphs
     bool sciterWrap;
 
     this(SciterTextCache cache)
     {
         _cache = cache;
-        _widths = new WidthCache(cache.look.fonts.length);
+        _widths = new Generations!(WidthKey, double)(maxWidths);
     }
 
     FontMetrics metrics(FontId font)
@@ -291,11 +261,11 @@ final class SciterMeasurer : TextMeasurer
             return 0;
         if (_cache.look.fonts[font].monospace && isPlain(text))
             return text.length * _cache.advance(font);
-        double known;
-        if (_widths.find(font, text, known))
-            return known;
+        const key = WidthKey(font, text);
+        if (auto known = _widths.find(key))
+            return *known;
         const result = _cache.measure(font, text);
-        _widths.keep(font, text, result);
+        _widths.keep(key, result);
         return result;
     }
 
@@ -309,7 +279,7 @@ final class SciterMeasurer : TextMeasurer
     /// What was measured is dropped (the fonts changed)
     void forget()
     {
-        _widths.forget(_cache.look.fonts.length);
+        _widths.clear();
     }
 }
 

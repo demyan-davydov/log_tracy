@@ -70,9 +70,11 @@ void wrapLines(ref LineSpan[] lines, const(wchar)[] text, double width, scope do
         lines ~= LineSpan(start, text.length);
 }
 
-/// The width of one glyph in `font` by `measurer` (a code point beyond the BMP is two units); 6 if the measurer fails
+/// The width of one glyph in `font` by `measurer` (a code point beyond the BMP is two units; a tab is a space); 6 if the measurer fails
 double glyphWidth(TextMeasurer measurer, FontId font, dchar glyph) nothrow
 {
+    if (glyph == '\t')
+        glyph = ' '; // a tab is drawn as a space (ptable_text/runs)
     wchar[2] units;
     size_t length = 0;
     if (glyph < 0x10000)
@@ -187,4 +189,19 @@ unittest
     auto many = new wchar[maxMeasuredChars * 3];
     many[] = 'x';
     assert(firstLineWidth(many, &width) == maxMeasuredChars * 3 * 10.0 && longest == maxMeasuredChars, "measured by the part, the rest estimated");
+}
+
+@("glyphWidth: a tab is as wide as a space, as a line draws it (ptable_text/runs)")
+unittest
+{
+    import ptable_text.measurer : FontMetrics;
+
+    static final class Tabs : TextMeasurer
+    {
+        FontMetrics metrics(FontId font) { return FontMetrics(11, 3, 14); }
+        double width(FontId font, const(wchar)[] text) { return text == "\t"w ? 80 : text.length * 10.0; }
+        int wrappedLines(FontId font, const(wchar)[] text, double width) { return -1; }
+    }
+
+    assert(glyphWidth(new Tabs, 0, '\t') == 10);
 }

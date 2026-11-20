@@ -87,7 +87,7 @@ agent can't drive it. In scapp a plain
   in a text is had by measuring the text before it, or by summing what was measured. Its
   coordinates of a `DRAW_CONTENT` are the element's own in dips (`params.area` is the content
   box on the view). A layout costs ~20 KB of memory: 5000 cached ones were +100 MB of RSS, 600 are
-  +10 MB (`ui/log_table_behavior.d` keeps two generations). A layout wraps only by a `width: Npx` in its style: `textSetBox` alone leaves one line. Details and numbers:
+  +10 MB (`SciterTextCache` keeps two generations, `ui/sciter_table/generations`). A layout wraps only by a `width: Npx` in its style: `textSetBox` alone leaves one line. Details and numbers:
   `docs/experiments/2026-11-19-painted-rows-d.md`.
 - Sciter's own scroll bar (`overflow-y: scroll-indicator` on an element scrolling a spacer 1/shown of
   it high) doesn't fit the painted table: dropped after a try (2026-11-20, 6.0.5.5, macOS). The

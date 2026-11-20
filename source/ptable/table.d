@@ -144,7 +144,7 @@ final class Table
             PickPorts(&isVirtualItem, &rowAtHeight, &showRow, &toldRow, &invalidate));
         _viewport = new RowViewport(&_store.heightOf, &_store.estimateOf);
         _motion = new ScrollMotion;
-        auto rows = new RowView(RowEnv(_store.columns, _store.space));
+        auto rows = new RowView(RowEnv(_store.columns, _store.space, &_store.cache.memoOf));
         _frame = new FramePainter(ports.painter, _store, rows, _store.space);
         _hits = new RowHits(_store, _viewport, rows);
         _store.listen((const ModelChange change) { modelChanged(change); }, (const LayoutChange change) { layoutChanged(change); });

@@ -65,6 +65,12 @@ final class RowGeometry
         _ring = ring;
     }
 
+    /// The places of the ring (a power of two; 0 before the first `fit`): `CellMemos` keeps the same
+    size_t capacity() const
+    {
+        return _ring.length;
+    }
+
     /// The room of the item `index`, measured if it is not known
     RowGeom of(size_t index)
     {

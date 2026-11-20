@@ -11,7 +11,8 @@ import ptable.memory : Arena;
 import ptable.ports : Canvas, Color, FontId, Rect, Span;
 import ptable_text.columnstyle : ColumnStyle, Halign, alignOffset, alignedTopInView, alignedX, alignedXInView, noFont;
 import ptable_text.measurer : FontMetrics, TextMeasurer;
-import ptable_text.runs : eachRun;
+import ptable.cellmemo : CellMemo;
+import ptable_text.runs : eachRun, lineMemo;
 import ptable_text.texthit : TextSpot, caretInText, rectsInText, unitInText;
 import ptable_text.wrap : LineSpan, firstLineWidth, glyphWidth, wrapLines;
 
@@ -266,7 +267,7 @@ class TextCell : TableColumn
         }
         if (lines.length == 0)
         {
-            drawLine(canvas, text, spot.font, spot.x, spot.baseline, state.clip, ink);
+            drawLine(canvas, text, spot.font, spot.x, spot.baseline, state.clip, ink, lineMemo(cell.memo, 0, text.length, spot.font));
             return;
         }
         foreach (j, line; lines)
@@ -276,13 +277,14 @@ class TextCell : TableColumn
                 continue;
             if (lineTop > state.clip.bottom)
                 break;
-            drawLine(canvas, text[line.start .. line.end], spot.font, spot.x, spot.baseline + j * spot.line, state.clip, ink);
+            drawLine(canvas, text[line.start .. line.end], spot.font, spot.x, spot.baseline + j * spot.line, state.clip, ink,
+                lineMemo(cell.memo, line.start, line.end - line.start, spot.font));
         }
     }
 
-    // A line word by word (ptable_text/runs): each run by a layout of its own at the widths of those before it, only those that cross
-    // the part seen; the spaces that end a run are not drawn
-    private void drawLine(Canvas canvas, const(wchar)[] line, FontId font, double x, double baseline, Rect clip, Color ink)
+    // A line run by run (ptable_text/runs): each word and each gap by a layout of its own at the widths of those before it, only those
+    // that cross the part seen, from the last mark of `memo` before it; a gap of tabs as as many spaces (a tab is drawn as a space)
+    private void drawLine(Canvas canvas, const(wchar)[] line, FontId font, double x, double baseline, Rect clip, Color ink, CellMemo* memo)
     {
         if (_measurer is null)
         {
@@ -290,11 +292,18 @@ class TextCell : TableColumn
             return;
         }
         eachRun(line, clip.x - x, clip.right - x, (const(wchar)[] piece) => _measurer.width(font, piece), (size_t start, size_t end, double at) {
-            while (end > start && line[end - 1] == ' ')
-                end--;
-            if (end > start)
-                canvas.drawText(font, line[start .. end], x + at, baseline, ink);
-        });
+            const run = line[start .. end];
+            canvas.drawText(font, run[0] == '\t' ? spacesFor(run.length) : run, x + at, baseline, ink);
+        }, memo);
+    }
+
+        // As many spaces as a gap of tabs has (a run: `maxRun` at most)
+    private static const(wchar)[] spacesFor(size_t count)
+    {
+        import ptable_text.runs : maxRun;
+
+        static immutable wchar[maxRun] spaces = ' ';
+        return spaces[0 .. count];
     }
 
     /// The text of the cell in black (a column that knows colors draws it in its own ink)
@@ -318,7 +327,7 @@ class TextCell : TableColumn
         if (_measurer is null)
             return 0;
         const spot = textSpotOf(cell, area, view);
-        return caretInText(text, spot, _measurer, x, y);
+        return caretInText(text, spot, _measurer, x, y, cell.memo);
     }
 
     /// The rectangles of a part of the text: one for a cell of one line, one for each line a part of a wrapped cell touches
@@ -327,7 +336,7 @@ class TextCell : TableColumn
         if (_measurer is null || cell.data is null)
             return;
         const spot = textSpotOf(cell, area, view);
-        rectsInText(cell.data.text, spot, _measurer, from, to, emit);
+        rectsInText(cell.data.text, spot, _measurer, from, to, emit, cell.memo);
     }
 
     /// What a double click (the word at the caret) or a triple click (the whole text) selects
@@ -454,4 +463,50 @@ unittest
     state.clip = Rect(100, 130, 60, 30); // the top of the cell is not seen
     column.draw(canvas, cell, state);
     assert(canvas.top == 159 - 42, "it stops at the bottom padding with all of its lines in the cell");
+}
+
+@("TextCell: a line is drawn by its words and its gaps, each at the widths of those before it; a tab as a space")
+unittest
+{
+    import ptable.model : CellData;
+    import ptable_text.measurer : FontMetrics;
+    import ptable_text.testing : TestText;
+
+    static final class Tabs : TextMeasurer // a tab as a text engine lays it out: to its stop
+    {
+        FontMetrics metrics(FontId font) { return FontMetrics(11, 3, 14); }
+        double width(FontId font, const(wchar)[] text)
+        {
+            double w = 0;
+            foreach (c; text)
+                w += c == '\t' ? 80 : 10;
+            return w;
+        }
+        int wrappedLines(FontId font, const(wchar)[] text, double width) { return -1; }
+    }
+
+    static final class Texts : Canvas
+    {
+        wstring[] texts;
+        double[] xs;
+        void fillRect(Rect area, Color color) {}
+        void drawText(FontId font, const(wchar)[] text, double x, double baseline, Color color) { texts ~= text.idup; xs ~= x; }
+        void drawParagraph(FontId font, const(wchar)[] text, double x, double top, double width, Color color) {}
+        void fillRoundRect(Rect area, double radius, Color color) {}
+        void fillCircle(double cx, double cy, double radius, Color fill, Color line) {}
+        void pushClip(Rect area) {}
+        void popClip() {}
+    }
+
+    auto column = new TestText(ColumnDef("text", "Text"), new Tabs);
+    const data = CellData("ab  c\td"w);
+    const cell = CellInput(0, 0, &data);
+    auto canvas = new Texts;
+    DrawState state;
+    state.area = Rect(0, 0, 500, 20);
+    state.clip = state.area;
+    column.draw(canvas, cell, state);
+    assert(canvas.texts == ["ab"w, "  "w, "c"w, " "w, "d"w]);
+    const x0 = canvas.xs[0];
+    assert(canvas.xs == [x0, x0 + 20, x0 + 40, x0 + 50, x0 + 60]);
 }

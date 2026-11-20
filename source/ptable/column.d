@@ -6,6 +6,7 @@
 //! passes no style. See docs/stories/painted-table.md.
 module ptable.column;
 
+import ptable.cellmemo : MemoRef;
 import ptable.cellparts : CellPartsExtractor, trivialCellParts;
 import ptable.layout : ColumnDef;
 import std.typecons : Rebindable;
@@ -43,6 +44,7 @@ struct CellInput
     uint col;
     const(CellData)* data;
     const(Fragment)[] fragments;
+    MemoRef memo; /// what the column noted of the cell in frames before (ptable/cellmemo), while the row is near the window; null: nothing
 }
 
 /// What a content says of a cell by the rules of HTML: the least width it can be shown in without breaking what cannot
