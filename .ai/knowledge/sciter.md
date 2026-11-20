@@ -77,7 +77,14 @@ agent can't drive it. In scapp a plain
   `SciterGraphicsAPI` (the order is checked by a unittest), every one `nothrow`. `RGBA` packs a, b, g, r from the
   top byte. A text layout (`TextLayout`, `textCreateForElementAndStyle`) takes the font, the size
   and the color from its style declaration (`font-size: 8pt; font-family: 'Courier New', ...;
-  color: #333`); `gDrawText` has no color, so a text of another color is another layout. Its
+  color: #333`); `gDrawText` has no color, so a text of another color is another layout. Not even
+  through the fill: `gFillColor` before `gDrawText` doesn't recolor a layout (it keeps the color
+  of its style), and a layout with no `color` in its style draws black, not in the fill color,
+  and its words stood wider apart (the JS `graphics.draw(text, {fill})` of the docs paints it
+  in a fill color; the C API can't: tried 2026-11-20, 6.0.5.5, macOS). The C API gives no
+  position of a character in a layout either (`textGetMetrics`: widths, height, lines only;
+  the JS `Graphics.Text` likewise: its widths, height, the metrics and the text of a line): a place
+  in a text is had by measuring the text before it, or by summing what was measured. Its
   coordinates of a `DRAW_CONTENT` are the element's own in dips (`params.area` is the content
   box on the view). A layout costs ~20 KB of memory: 5000 cached ones were +100 MB of RSS, 600 are
   +10 MB (`ui/log_table_behavior.d` keeps two generations). A layout wraps only by a `width: Npx` in its style: `textSetBox` alone leaves one line. Details and numbers:
