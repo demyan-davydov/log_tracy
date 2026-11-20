@@ -700,14 +700,15 @@ final class Table
     /// Draws the table: the whole of it is (0, 0, width, height) of `canvas`
     void paint(Canvas canvas)
     {
+        const passOfTick = _passOfTick; // the rows of a tick are for the paint of its frame only, whatever this paint draws
+        _passOfTick = false;
         if (_detached)
         {
             _frame.paintBlank(canvas); // nothing of the rows, nothing told: the place, the bars and the scroll stay as they were
             return;
         }
-        if (!_passOfTick)
+        if (!passOfTick)
             beginPass();
-        _passOfTick = false;
         prepare();
         _viewport.applyPending(_store.fallbackHeight);
         layout();
@@ -1381,6 +1382,23 @@ unittest
     assert(stats.rowsOnScreen == 7, "100 / 16 rounded up");
     assert(stats.cachedRows == 7, "the pass has read the rows of the window");
     assert(stats.fetches >= 7, "the model was asked for them");
+}
+
+@("Table: the rows a tick read are for the paint of its frame only: a paint of the background between does not hand them to the next one")
+unittest
+{
+    auto f = make(1000);
+    f.table.events.needFrame = () {};
+    f.table.scrollTo(400);
+    f.table.paint(f.canvas);
+    f.table.wheel(-40, 0);
+    f.table.tick(16); // the rows move: the tick begins the pass of its frame
+    f.table.detach();
+    f.table.paint(f.canvas); // the frame's paint draws the background only
+    f.table.attach();
+    const before = f.table.stats.fetches;
+    f.table.paint(f.canvas);
+    assert(f.table.stats.fetches - before >= f.table.stats.rowsOnScreen, "a paint of a frame of its own reads its rows");
 }
 
 @("Table: a frame reads each row on the screen once, whether it scrolls on the frame of the host, by pixels or not at all")

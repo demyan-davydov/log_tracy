@@ -229,7 +229,7 @@ class LogPainter : Painter
 
 version (unittest)
 {
-    import ui.log_table.log_columns : AnchorColumn, IndexColumn, LevelColumn;
+    import ui.log_table.log_columns : AnchorColumn, IndexColumn, LevelColumn, LevelInkColumn;
     import ui.log_table.text_column : TextColumn;
 
     // What the frame painter does with a cell the context `ctx` says of: its column draws it, the painter adds its border
@@ -333,6 +333,38 @@ unittest
     cell.data = &fatal;
     column.draw(canvas, cell, state);
     assert(canvas.calls == ["round", "text"] && canvas.colors == [palette.fatalBg, palette.fatalText], "the rounded plate of a Fatal, on a selected row too");
+}
+
+@("LevelInkColumn: the text is in the color of the level of its record, the ordinary ink when it has none")
+unittest
+{
+    import ptable.model : CellData;
+
+    static final class Inks : Canvas
+    {
+        Color[] texts;
+        void fillRect(Rect area, Color color) {}
+        void drawText(FontId font, const(wchar)[] text, double x, double baseline, Color color) { texts ~= color; }
+        void drawParagraph(FontId font, const(wchar)[] text, double x, double top, double width, Color color) {}
+        void fillRoundRect(Rect area, double radius, Color color) {}
+        void fillCircle(double cx, double cy, double radius, Color fill, Color line) {}
+        void pushClip(Rect area) {}
+        void popClip() {}
+    }
+
+    auto look = defaultLogLook();
+    auto column = new LevelInkColumn(ColumnDef("status", "Status"), look, new Ruler);
+    const area = Rect(0, 0, 60, 16);
+    const state = DrawState(area, area, RowState.init);
+    auto canvas = new Inks;
+    CellInput cell;
+    const error = CellData("500"w, packMarks(LogMarks(LogLevel.Error)));
+    cell.data = &error;
+    column.draw(canvas, cell, state);
+    const none = CellData("200"w, packMarks(LogMarks(LogLevel.None)));
+    cell.data = &none;
+    column.draw(canvas, cell, state);
+    assert(canvas.texts == [look.palette.error, look.palette.ink], "an Error in red, a record of no level in the ink");
 }
 
 @("LogPainter: the color of a filter rule is a gradient in the Index cell, a text column shows none (the anchor cell fills with it: AnchorColumn)")

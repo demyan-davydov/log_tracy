@@ -1,6 +1,7 @@
 //! The columns of the log table that draw more than text: the anchors (the color of the filter rule filling the cell, a circle with the
 //! anchor, the faint one over a cell with none, the sign of a refusal), the Index (the color of the filter rule behind the number) and the level (bold by the row's level, a rounded badge for
-//! a Fatal one, the color of the level, a selected row too). The log table makes them with the look; the table asks them (docs/stories/painted-table.md).
+//! a Fatal one, the color of the level, a selected row too) and a column of the format colored by the level of its record (`ColumnInfo.byLevel`).
+//! The log table makes them with the look; the table asks them (docs/stories/painted-table.md).
 module ui.log_table.log_columns;
 
 import ptable.column : CellInput, DrawState, TableColumn;
@@ -141,3 +142,23 @@ final class LevelColumn : TextColumn
         drawText(canvas, cell, state, levelInkOf(palette, level));
     }
 }
+
+/// A column of the format colored by the level of its record (`ColumnInfo.byLevel`: an HTTP status shown as it is): its text in
+/// the color of the level, kept on a selected row as the level column keeps it; the font and the place are the column's (a number
+/// as the others: no bold, the small font has none). A record of no level, or a Fatal (whose color is for its plate), has the ink.
+final class LevelInkColumn : TextColumn
+{
+    this(ColumnDef def, LogLook look, TextMeasurer measurer = null)
+    {
+        super(def, look, measurer);
+    }
+
+    override void draw(Canvas canvas, ref const CellInput cell, ref const DrawState state)
+    {
+        fillBack(canvas, state);
+        const level = marksOf(cell).level;
+        const plain = level == LogLevel.None || level == LogLevel.Fatal;
+        drawText(canvas, cell, state, plain ? inkOf(state.row.selected) : levelInkOf(look.palette, level));
+    }
+}
+
