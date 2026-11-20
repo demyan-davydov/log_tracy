@@ -89,7 +89,7 @@ behaviour: `.ai/knowledge/sciter.md`.
 - A row is read from the document when the table draws it (`DocumentRows`: the message, the marks of found, anchored, its level and the
   color of its rule), cell by cell by the columns; nothing of it is kept for the next frame.
   - Found: the current search found the record (`DocumentItem.found`; an anchor the search doesn't match is listed in the results but not
-    found); its background is `--bg-row-found` / `--bg-row-found-stripe` (rule 27 of `.ai/rules/ux.md`), its matches are in the chips' colors.
+    found); its background is `--bg-row-found` / `--bg-row-found-stripe` (rule 27 of `.ai/rules/ux.md`), its matches are in the chips' own colors (`.ai/knowledge/filters.md`, Search).
   - The rule id: see `.ai/knowledge/filters.md`.
   - A time cell shows the time by the kind of the record, not of the column. Hex cells are formatted by the backend.
   - The level colors the cells of columns with `ColumnInfo.byLevel` (an HTTP status shown as it is).

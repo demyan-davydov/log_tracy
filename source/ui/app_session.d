@@ -574,12 +574,13 @@ final class AppSession
         return search is null ? null : search.matchRanges(item.message(), buffer);
     }
 
-    /// The match colors of the chips of the search the document runs, by the place of a chip (`MatchRange.chip`): its own color,
-    /// as the search editor shows it (empty: none told, a chip is colored by its place)
+    /// The match colors of the chips of the search the document runs (the one `matchesOf` gives the matches of, not a query that
+    /// hasn't started yet), by the place of a chip (`MatchRange.chip`): its own color, as the search editor shows it (null: none
+    /// told, a chip is colored by its place)
     const(uint)[] searchColors(DocumentId docId)
     {
         auto ui = _documentUis.get(docId, null);
-        return ui is null ? null : ui.searchColors;
+        return ui is null ? null : ui.searchColors.of(_documents.doc(docId).searchFilter);
     }
 
     /// Sets or clears the anchor of a message.
@@ -673,9 +674,10 @@ final class AppSession
             auto filter = SearchFilter.fromChips(chips);
             if (!docId.isValid)
                 return _catalog.translate(uiText("the document is not open"));
-            _documents.doc(docId).applySearchFilter(filter); // null clears the search
+            auto doc = _documents.doc(docId);
+            doc.applySearchFilter(filter); // null clears the search
             if (auto ui = _documentUis.get(docId, null))
-                ui.searchColors = query.colors; // with the filter: the matches of its chips are colored by them
+                ui.searchColors.told(filter, query.colors, doc.searchFilter); // the search that runs keeps its own till the new starts
             // the history of the file, remembered as its filters are (the
             // latest query again changes nothing)
             if (filter !is null)

@@ -258,6 +258,7 @@ unittest
             break;
         Thread.sleep(10.msecs);
     }
+    assert(opened.session.doc(opened.id).searchView.itemsCount == 5, "the search found every line");
     auto rows = new DocumentRows(opened.session, opened.id, true);
     LogRow row;
     assert(rows.fetch(0, row));
