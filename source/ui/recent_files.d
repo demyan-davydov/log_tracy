@@ -151,6 +151,18 @@ RecentFile[] withSearch(const RecentFile[] list, string path, const(SearchChip)[
     return result;
 }
 
+/// Returns the recent list without `query` in the search history of `path`, in
+/// place. A query not in it and a file not in the list change nothing.
+RecentFile[] withoutSearch(const RecentFile[] list, string path, const(SearchChip)[] query)
+{
+    path = recentFilePath(path);
+    RecentFile[] result = copyOf(list);
+    foreach (ref file; result)
+        if (filenameCmp(file.path, path) == 0)
+            file.searches = file.searches.filter!(q => q != query).array;
+    return result;
+}
+
 /// Returns: the anchors of `path`, sorted; null if it isn't in the list
 size_t[] savedAnchors(const RecentFile[] list, string path)
 {
@@ -763,6 +775,28 @@ unittest
 
     assert(withRecentFile(list, RecentFile(testPath("/a.log"), FormatChoice("dlt"), 200))[0].searches == [a, c, b]);
     assert(withFilesUsed(list, [testPath("/a.log")], 300)[0].searches == [a, c, b]);
+}
+
+@("withoutSearch: only that query of that file is removed, in place; anything else changes nothing")
+unittest
+{
+    const a = [SearchChip("a")], b = [SearchChip("b", true, true)], c = [SearchChip("a"), SearchChip("c")];
+    auto list = [RecentFile(testPath("/b.log")), RecentFile(testPath("/a.log"))];
+    foreach (query; [a, b, c])
+    {
+        list = withSearch(list, testPath("/a.log"), query);
+        list = withSearch(list, testPath("/b.log"), query);
+    }
+    auto removed = withoutSearch(list, testPath("/logs/../a.log"), b);
+    assert(savedSearches(removed, testPath("/a.log")) == [c, a]);
+    assert(removed[1].path == testPath("/a.log"), "in place");
+    assert(savedSearches(removed, testPath("/b.log")) == [c, b, a], "another file keeps it");
+    assert(savedSearches(list, testPath("/a.log")) == [c, b, a], "the list given isn't changed");
+
+    assert(withoutSearch(list, testPath("/a.log"), [SearchChip("b", true, false)]) == list,
+        "another case is another query");
+    assert(withoutSearch(list, testPath("/a.log"), [SearchChip("c")]) == list, "a part of a query isn't it");
+    assert(withoutSearch(list, testPath("/c.log"), a) == list, "a file not in the list");
 }
 
 @("withAnchors: a file's anchors are kept sorted, in place, when it is opened again or the window is closed")

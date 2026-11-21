@@ -19,6 +19,7 @@ export class SearchBar {
             onCommit: () => this.run(),
             history: () => backend.searchHistory(this.docId),
             historyButton: root.$(".btn-chip-history"),
+            removeHistory: query => backend.removeSearch(this.docId, query),
         });
         this.updatePending();
         root.on("click", ".btn-chip-search", () => {

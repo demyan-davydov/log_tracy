@@ -113,6 +113,8 @@ export const cancelSearchView = docId => xcall("cancelSearchView", docId);
 export const startChipSearch = (docId, chips) => message(xcall("startChipSearch", docId, JSON.stringify(chips)));
 // The queries searched in the file, the latest first: [[chips]]
 export const searchHistory = docId => parsed(xcall("getSearchHistory", docId), []);
+// Removes a query [chips] from the history of the file: whether it was there
+export const removeSearch = (docId, chips) => xcall("removeSearch", docId, JSON.stringify(chips)) === true;
 // {name, path, format, bytes, records, descriptions} of the document for its File Info page,
 // null if it isn't open. descriptions: null for a log that takes none (no FIBEX row), else
 // {taken, folder, choice, read, reading, problem} (source/ui/app_session.d, documentInfoJson)

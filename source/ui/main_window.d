@@ -341,6 +341,10 @@ class MainWindow : SciterWindow
             // getSearchHistory(docId) -> [[chips]] of the document, the latest first
             answer(_session.searchHistoryJson(docParam()));
             return true;
+        case "removeSearch":
+            // removeSearch(docId, chipsJson) -> whether the query was in the history of the file
+            resultView = _session.removeSearch(docParam(), param!string(1));
+            return true;
         case "checkRegex":
             // checkRegex(pattern, matchCase) -> error message, "" for a valid regex
             answer(_session.checkRegex(param!string(0), param!bool(1)));

@@ -214,6 +214,11 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     selects the chip left of it whole (none before the first chip); in a chip it selects a word
     of its text. A triple click on a chip selects that chip whole, as chips are selected (not its
     text: the text selection goes); between chips it selects every chip.
+50. **A query is removed from the history by its "×".** The item of the history list under the
+    mouse (not one marked by the arrows) shows a "×" at its right, in a slot of its own (nothing
+    moves); a click on it removes that query from the history of the file, without confirmation,
+    undo or tooltip, and doesn't take it. The item folds up and goes, the list stays open, the
+    next query is marked. No key removes a query.
 
 ## Filters
 

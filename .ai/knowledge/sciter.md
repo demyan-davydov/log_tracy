@@ -367,6 +367,9 @@ agent can't drive it. In scapp a plain
   the background of the row (its stripe shows through) and under the text.
 - `:empty` is not re-evaluated when a script changes `innerText`: set `style.display` from the
   script instead.
+- A transition of `height` works on an inline style: set the element's own height in px, then
+  `0px` in the next requestAnimationFrame, and it folds (the removed item of the search history,
+  `SearchEditor.removeHistory`; checked by the user, 2026-11-21).
 - A transition doesn't delay `visibility` (`transition-delay` or a duration: it switches at
   once); keep an element shown for a while by an `animation` of `@keyframes` with `visibility:
   visible` in both, set on the hidden state (`.filter-chip-actions`). In `transform`,

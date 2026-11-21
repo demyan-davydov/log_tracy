@@ -21,6 +21,8 @@ import { matchColorCount, matchColorClass } from "match-colors.js";
 
 const isMac = platform.isMac;
 
+// How long a query removed from the history takes to fold up (its transition in search-editor.css)
+const historyFoldMs = 200;
 let editorCount = 0; // gives each editor its id: its context menu carries it
 
 export class SearchEditor {
@@ -30,13 +32,15 @@ export class SearchEditor {
     // @param onCommit() - Enter: run the search
     // @param history() -> the queries searched in the document, the latest first
     // @param historyButton - the button that shows them; it owns the history popup
-    constructor(root, { checkRegex, onEdited, onCommit, history, historyButton }) {
+    // @param removeHistory(query) -> whether a query of history() was removed from the document's history
+    constructor(root, { checkRegex, onEdited, onCommit, history, historyButton, removeHistory }) {
         this.root = root;
         this.checkRegexBy = checkRegex;
         this.onEdited = onEdited;
         this.onCommit = onCommit;
         this.historyOf = history ?? (() => []);
         this.historyButton = historyButton ?? null;
+        this.removeFromHistory = removeHistory ?? (() => false);
         this.historyPopup = null; // {element, queries, current} while the history is shown
         this.state = { chips: [], pos: { gap: 0 } };
         this.history = new EditHistory(); // the undo steps of the chips shown
@@ -442,8 +446,13 @@ export class SearchEditor {
             else this.openHistory();
             return true; // the focus stays in the editor
         });
+        // the "×" of an item removes its query, a click elsewhere on it takes it;
+        // a click without a target (Sciter, see recent-file-menu.js) does nothing
         button.on("click", ".history-item", (evt, item) => {
-            this.takeHistory(parseInt(item.getAttribute("data-query")));
+            const i = parseInt(item.getAttribute("data-query"));
+            if (!evt.target) return true;
+            if (evt.target.closest(".history-remove")) this.removeHistory(i);
+            else this.takeHistory(i);
             return true;
         });
         button.on("mousemove", ".history-item", (evt, item) => {
@@ -467,19 +476,22 @@ export class SearchEditor {
         const queries = this.historyOf();
         const items = queries.map((query, i) =>
             <div class="history-item" data-query={i}>
-                {assignColors(query, matchColorCount).map(chip =>
-                    <span class={`history-chip ${matchColorClass(chip.color)}`}>
-                        {chip.isRegex ? <span class="history-flag">.*</span> : ""}
-                        {chip.matchCase ? <span class="history-flag">Aa</span> : ""}
-                        <span class={chip.isRegex ? "history-text regex" : "history-text"}>{chip.text}</span>
-                    </span>)}
+                <div class="history-chips">
+                    {assignColors(query, matchColorCount).map(chip =>
+                        <span class={`history-chip ${matchColorClass(chip.color)}`}>
+                            {chip.isRegex ? <span class="history-flag">.*</span> : ""}
+                            {chip.matchCase ? <span class="history-flag">Aa</span> : ""}
+                            <span class={chip.isRegex ? "history-text regex" : "history-text"}>{chip.text}</span>
+                        </span>)}
+                </div>
+                <span class="history-remove">×</span>
             </div>);
         // under the editor, as wide as it, wherever the button is
         const [x, y, width, height] = this.root.state.box("xywh", "border", "window");
         const element = this.historyElement;
         element.innerHTML = "";
         if (queries.length) for (const item of items) element.append(item);
-        else element.append(<div class="history-empty">{tr("No searches in this file yet")}</div>);
+        else this.showHistoryEmpty(element);
         element.style.width = `${width}px`;
         button.popup(element, { popupAt: 7, x, y: y + height }); // returns a PopupWindow, not the element
         this.historyPopup = { element, queries, current: -1 };
@@ -504,6 +516,44 @@ export class SearchEditor {
         const items = popup.element.$$(".history-item");
         items.forEach((item, k) => item.classList.toggle("current", k === i));
         items[i]?.scrollIntoView();
+    }
+
+    showHistoryEmpty(element) {
+        element.append(<div class="history-empty">{tr("No searches in this file yet")}</div>);
+    }
+
+    // Removes the i-th query of the list shown from the history of the document, no
+    // confirmation: its item folds up and goes, the mark stays at its place. Not while
+    // another item folds: the next one comes up under the pointer, and a double click
+    // on a "×" would remove it too. Nothing changes if the backend kept the query.
+    removeHistory(i) {
+        const popup = this.historyPopup;
+        const query = popup?.queries[i];
+        if (!query || Date.now() < (popup.foldEnd ?? 0)) return;
+        if (!this.removeFromHistory(query)) return;
+        popup.foldEnd = Date.now() + historyFoldMs;
+        popup.queries.splice(i, 1);
+        const items = popup.element.$$(".history-item");
+        const gone = items[i];
+        // out of the items at once: the others are numbered again, the arrows skip it
+        gone.classList.remove("history-item", "current");
+        gone.classList.add("history-gone");
+        items.splice(i, 1);
+        items.forEach((item, k) => item.setAttribute("data-query", k));
+        // from its own height to none (a transition needs a height to start from)
+        gone.style.height = `${gone.state.box("height", "inner")}px`;
+        requestAnimationFrame(() => {
+            gone.style.height = "0px";
+            gone.classList.add("folded");
+        });
+        setTimeout(() => {
+            const list = gone.parentElement; // none if the list was filled again meanwhile
+            if (!list) return;
+            gone.remove();
+            if (!list.$(".history-item, .history-gone")) this.showHistoryEmpty(list);
+        }, historyFoldMs);
+        popup.current = -1;
+        this.markHistory(Math.min(i, popup.queries.length - 1));
     }
 
     // The query taken from the history replaces the whole query: an undo step;

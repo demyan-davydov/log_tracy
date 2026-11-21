@@ -170,16 +170,62 @@ popup.search-history > .history-empty {
     color: var(--text-label);
 }
 
-popup.search-history > .history-item {
-    flow: horizontal-wrap;
-    border-spacing: 4dip;
+popup.search-history > .history-item,
+popup.search-history > .history-gone {
+    flow: horizontal;
     padding: 3dip 4dip;
     border-radius: 2dip;
     cursor: default;
 }
 
+popup.search-history .history-chips {
+    width: *;
+    flow: horizontal-wrap;
+    border-spacing: 4dip;
+}
+
 popup.search-history > .history-item.current {
     background: var(--chip-selected);
+}
+
+/* The "×" of a query, in a slot of its own (nothing moves when it shows): only on
+   the item under the mouse, not on one marked by the arrows */
+popup.search-history .history-remove {
+    width: 16dip;
+    height: 16dip;
+    min-width: 16dip;
+    /* Sciter: flexible top/bottom margins center it; the right one keeps it clear of
+       the scrollbar of a long list, which lies over the items */
+    margin: * 10dip * 4dip;
+    line-height: 15dip;
+    text-align: center;
+    font-size: 11pt;
+    border-radius: 8dip;
+    color: var(--tab-close);
+    visibility: hidden;
+    transition: background-color linear 100ms;
+}
+
+popup.search-history > .history-item:hover .history-remove {
+    visibility: visible;
+}
+
+popup.search-history .history-remove:hover {
+    color: var(--text-main);
+    background: var(--tab-close-hover);
+}
+
+/* A query removed folds up (historyFoldMs of search-editor.js), then goes */
+popup.search-history > .history-gone {
+    overflow: hidden;
+    transition: height cubic-out 200ms, padding-top cubic-out 200ms, padding-bottom cubic-out 200ms,
+        opacity linear 200ms;
+}
+
+popup.search-history > .history-gone.folded {
+    padding-top: 0;
+    padding-bottom: 0;
+    opacity: 0;
 }
 
 popup.search-history .history-chip {

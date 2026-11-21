@@ -847,6 +847,29 @@ final class AppSession
         return JSONValue(queries).toString();
     }
 
+    /// Removes a query (its chips as JSON) from the search history of the file
+    /// of the document. Returns: whether it was there
+    bool removeSearch(DocumentId docId, string chipsJson)
+    {
+        import log_core.search_filter : SearchChip;
+        import ui.search_chips : chipsFromJson;
+
+        auto path = sourcePathOf(docId);
+        if (!path)
+            return false;
+        SearchChip[] query;
+        try
+            query = chipsFromJson(chipsJson);
+        catch (Exception e)
+            return false;
+        const before = savedSearches(_settings.recentFiles, path).length;
+        _settings.recentFiles = withoutSearch(_settings.recentFiles, path, query);
+        if (savedSearches(_settings.recentFiles, path).length == before)
+            return false;
+        settingsChanged();
+        return true;
+    }
+
     // ── Filters ──────────────────────────────────────────────────────────────
 
     /// The filter sets of the document, null if it isn't open
@@ -1840,6 +1863,30 @@ unittest
     assert(f.session.startChipSearch(id, `[{"text": "(", "isRegex": true, "matchCase": true}]`).length,
         "an invalid regex is an error");
     assert(f.docOf(testPath("/logs/a.log")).searches.length == 1, "and searches nothing");
+}
+
+@("AppSession: a query is removed from the history of the file; one not in it, bad chips or no document remove nothing")
+unittest
+{
+    auto f = Fixture.make();
+    const id = f.session.openFile(testPath("/logs/a.log")).docId;
+    const error = `[{"text": "error", "isRegex": false, "matchCase": false}]`;
+    const warn = `[{"text": "warn", "isRegex": true, "matchCase": true}]`;
+    f.session.startChipSearch(id, error);
+    f.session.startChipSearch(id, warn);
+    f.session.saveSettings(`{}`);
+
+    assert(!f.session.removeSearch(id, `[{"text": "warn", "isRegex": true, "matchCase": false}]`),
+        "another case is another query");
+    assert(!f.session.removeSearch(id, `{"text": "warn"}`), "not chips");
+    assert(!f.session.removeSearch(DocumentId.init, warn), "no document");
+    assert(parseJSON(f.session.searchHistoryJson(id)).array.length == 2);
+    assert(!f.session.settingsDue, "nothing changed");
+
+    assert(f.session.removeSearch(id, warn));
+    assert(parseJSON(f.session.searchHistoryJson(id)) == parseJSON("[" ~ error ~ "]"));
+    assert(f.session.settingsDue, "the change is saved");
+    assert(!f.session.removeSearch(id, warn), "it is gone");
 }
 
 @("AppSession: a file removed from the recent list loses its filters, the change is saved")

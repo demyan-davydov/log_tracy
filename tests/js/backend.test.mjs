@@ -25,6 +25,10 @@ test("a call is the xcall of its name, the document first", () => {
     assert.deepEqual(callOf(() => backend.removeRecentFile("/a.log"), true),
         { call: ["removeRecentFile", "/a.log"], value: true });
     assert.deepEqual(callOf(() => backend.showInFolder("/a.log"), ""), { call: ["showInFolder", "/a.log"], value: "" });
+    const query = [{ text: "a", isRegex: false, matchCase: true }];
+    assert.deepEqual(callOf(() => backend.removeSearch(3, query), true),
+        { call: ["removeSearch", 3, JSON.stringify(query)], value: true });
+    assert.equal(callOf(() => backend.removeSearch(3, query), false).value, false);
 });
 
 test("the names of the variables of the least widths come parsed, none when the backend gives none", () => {

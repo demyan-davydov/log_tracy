@@ -118,7 +118,9 @@ behaviour: `.ai/knowledge/sciter.md`.
 - The log table: `log-table-view.js` (the table of a view), `log-table-look.js`, `log-table-gesture.js`, `table.css`, `row-selection.js`,
   `rule-colors.js`
 - Search: `search-editor.js`, `search-query.js`, `search-editing.js`, `edit-history.js`,
-  `match-colors.js`, `match-colors.css`, `search-editor.css`
+  `match-colors.js`, `match-colors.css`, `search-editor.css`; the history of a file's queries
+  (`backend.searchHistory`, `backend.removeSearch`; `withSearch`/`withoutSearch` of
+  `ui/recent_files`) is the popup of `SearchEditor.openHistory`
 - Filters and the rule editor: `rule-editor.htm`, `rule-form.js`
 - Settings: `settings.htm`, `settings-sections.js`, `column-settings.js`
 - Go to Message (Navigation menu, Cmd+G / Ctrl+G): `go-to-message.htm`, `go-to-message.js`;
