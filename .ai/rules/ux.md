@@ -137,7 +137,10 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     no ellipsis; their widths are minimums so the layout is recalculated rarely. An exception
     to rule 10. The font size setting scales the font only. Settings → Table → "Single-line
     rows" (off by default) makes every row one line high, Payload not wrapped and not cut: it
-    runs on to the right and the table scrolls sideways (chosen over an ellipsis).
+    runs on to the right and the table scrolls sideways (chosen over an ellipsis). The one
+    exception: a line wider than the widest column (`maxFitWidth`, 100 000 px; a record of 64 KB
+    can be ~4 times wider) is cut and ends in `…` at the right side of its cell; selecting,
+    copying and searching still take the whole record.
 27. **Rule colors mark, they don't paint.** A record matching a filter rule with a color is not
     painted whole: its anchor cell is filled with the color, solid, on a selected row too, and its
     Index cell shows it as a gradient from the left edge fading out at about a third of the cell;
