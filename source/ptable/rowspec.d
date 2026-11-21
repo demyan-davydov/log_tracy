@@ -9,7 +9,7 @@ import ptable.painter : TableGeometry;
 import ptable.rowgroups : RowGroups;
 
 /// The widest a column grows to by the text it shows (the flex column that does not wrap): the line of a megabyte
-/// would make a column nobody can scroll along
+/// would make a column nobody can scroll along. A wider line is cut: a text column ends it in an ellipsis (`TextCell`)
 enum double maxFitWidth = 100_000;
 
 

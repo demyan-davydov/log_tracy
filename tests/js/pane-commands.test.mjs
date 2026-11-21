@@ -10,12 +10,14 @@ import { setCatalog } from "../../resources/i18n/i18n.js";
 
 const chips = [{ text: "error", isRegex: false, matchCase: false }];
 
-test("a search the backend starts is committed with its colors", () => {
-    const run = runSearch(noSearch, chips, () => ["c0"], () => "", query => { assert.deepEqual(query, chips); return ""; });
+test("a search the backend starts gets each chip with its match color", () => {
+    const two = [{ text: "a", isRegex: false, matchCase: false }, { text: "b", isRegex: true, matchCase: true }];
+    let query = null;
+    const run = runSearch(noSearch, two, () => [5, 2], () => "", q => { query = q; return ""; });
     assert.equal(run.message, "");
     assert.equal(run.started, true);
-    assert.deepEqual(run.search.colors, ["c0"]);
-    assert.equal(searchPending(run.search, chips), false, "the results are those of the query");
+    assert.deepEqual(query, [{ ...two[0], color: 5 }, { ...two[1], color: 2 }], "colors not equal to the places of the chips");
+    assert.equal(searchPending(run.search, two), false, "the results are those of the query: its colors are no part of it");
     assert.equal(searchPending(run.search, []), true, "an edited query is pending");
 });
 

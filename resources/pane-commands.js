@@ -8,20 +8,24 @@ import { allFiles } from "./file-types.js";
 // The query is committed only by Enter or the Search button; editing it doesn't
 // touch the results, the toolbar just shows that what's typed isn't what the
 // results were found by (searchPending). See docs/stories/advanced-search.md.
-// Search: { committed: JSON of the chips the shown results were found by,
-//           colors: their match colors, by their place }
+// Search: { committed: JSON of the chips the shown results were found by }
 
-export const noSearch = Object.freeze({ committed: "[]", colors: [] });
+export const noSearch = Object.freeze({ committed: "[]" });
 
 // Runs the search for `chips`: an invalid regex is refused here (firstError()
 // -> its error, "" if none), the rest by the backend (start(chips) -> its error,
-// "" if the search started); colors() gives the match colors of the chips, asked
-// for a search that started only.
+// "" if the search started). The backend gets each chip with its match color
+// (colors(): by the place of the chip), which colors what the chip finds; the
+// colors are no part of the committed query.
 // @returns { search: committed now, started, message: for the toolbar, "" if none }
 export function runSearch(search, chips, colors, firstError, start) {
-    const error = firstError() || start(chips);
+    let error = firstError();
+    if (!error) {
+        const shades = colors();
+        error = start(chips.map((chip, i) => ({ ...chip, color: shades[i] ?? i })));
+    }
     if (error) return { search, started: false, message: tr("Search error: {error}", { error }) };
-    return { search: Object.freeze({ committed: JSON.stringify(chips), colors: colors() }), started: true, message: "" };
+    return { search: Object.freeze({ committed: JSON.stringify(chips) }), started: true, message: "" };
 }
 
 // Whether the chips typed aren't those the results were found by

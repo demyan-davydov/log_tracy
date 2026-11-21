@@ -24,7 +24,8 @@ Measure before and after optimizing (`scripts/utils/bench_rows.d`, `docs/perform
 Never hide a log table itself with `display: none`. The tables of a document share one column host
 (`ptable/columnhost`), whose room of the columns is the least width its tables tell: a hidden table
 told 0 wide narrows the columns of the other one. Status views cover a table instead
-(`.status-view.overlay`); a table under a status leaves its host by `Table.detach`.
+(`.status-view.overlay`); the table under a status stays in its host and keeps taking part in the
+fitting of the widths (taking it out by `Table.detach` is in `docs/backlog.md`).
 
 ## Red Flag: Restyling Existing UI Unasked
 

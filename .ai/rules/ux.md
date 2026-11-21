@@ -127,6 +127,8 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     keyboard in that document's panel (its table, or what had the focus there) once the button
     is released, as opening a file does; never nowhere. A switch shows the panel at once, the
     focus follows the release: it must not slow the switch down (`press-focus.js`).
+47. **Context menus open by the mouse only.** A right click (Control+click on macOS) opens a
+    context menu; the keyboard (the Menu key, Shift+F10) opens none, anywhere (`menu-gate.js`).
 
 ## Log Table
 
@@ -135,7 +137,10 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     no ellipsis; their widths are minimums so the layout is recalculated rarely. An exception
     to rule 10. The font size setting scales the font only. Settings → Table → "Single-line
     rows" (off by default) makes every row one line high, Payload not wrapped and not cut: it
-    runs on to the right and the table scrolls sideways (chosen over an ellipsis).
+    runs on to the right and the table scrolls sideways (chosen over an ellipsis). The one
+    exception: a line wider than the widest column (`maxFitWidth`, 100 000 px; a record of 64 KB
+    can be ~4 times wider) is cut and ends in `…` at the right side of its cell; selecting,
+    copying and searching still take the whole record.
 27. **Rule colors mark, they don't paint.** A record matching a filter rule with a color is not
     painted whole: its anchor cell is filled with the color, solid, on a selected row too, and its
     Index cell shows it as a gradient from the left edge fading out at about a third of the cell;
@@ -150,11 +155,11 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     table is shown in the other one if it has that message: selected there, scrolled only if
     not already wholly on screen: a row from below comes in with about 24 dips of room under it,
     one from above with the same over it, a row that does not fit the window with that room goes
-    to the top of the window, one taller than the window that covers it stays (the far part of the
-    way is jumped over, the last screen or so scrolls animated, so the eye sees which way the
-    rows went; Go to Message and the keys bring a row into view the same way). Multiple
-    selection: the last
-    clicked/dragged-to/arrowed row. A click follows at once; a drag and the arrow keys only
+    to the top of the window, one taller than the window that covers it stays, one taller than
+    the window that comes from above (only its bottom seen) ends at the bottom of the window
+    (the far part of the way is jumped over, the last screen or so scrolls animated, so the eye
+    sees which way the rows went; Go to Message and the keys bring a row into view the same
+    way). Multiple selection: the last clicked/dragged-to/arrowed row. A click follows at once; a drag and the arrow keys only
     after the row rests 500 ms. The keyboard focus stays in the table where the user selects.
 29. **Text is selected across cells and rows.** A plain drag in any cell (not the anchor)
     selects text from the press to the mouse, across cells and rows, auto-scrolling at the

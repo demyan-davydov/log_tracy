@@ -1,8 +1,7 @@
 //! The log table in Sciter: the thin adapter of the table of the package ptable. It is a native
 //! behavior (`behavior: log-table` puts it on an element) that turns the events of Sciter into the calls
 //! of `Table` and gives it a canvas, a text measurer and a clipboard (ui/sciter_table/sciter_host), the rows of a view
-//! of a document (ui/log_table/document_model; or the demo of grouped rows, ui/log_table/demo_model, for
-//! `logTableCall("demo")`) and the look of the log table (ui/log_table/painter, ui/log_table/log_look).
+//! of a document (ui/log_table/document_model) and the look of the log table (ui/log_table/painter, ui/log_table/log_look).
 //! docs/stories/painted-table.md, docs/experiments/2026-11-19-painted-rows-d.md.
 //!
 //! Left: anchors by a click, the matches of the search, the rule colors, the search view's own columns, the inertia
@@ -27,7 +26,9 @@ import ui.log_table.marks : marksOf;
 import ui.log_table.log_look : LogLook;
 import ui.sciter_table.frame_request : FrameRequest;
 import ui.sciter_table.input : wheelIsAcross, cursorOf, isCopy, isOurEvent, isSelectAll, keyPickMode, pickMode, startsPickPress, tableKey, wheelPixels;
+
 import ui.sciter_table.sciter_host : SciterHost;
+import ui.table_messages : cellClickedJson, copyCutJson, currentRowJson, rowChosenJson;
 import ui.table_script : dispatch, ScriptArgs, ScriptResult, TableControl;
 
 import core.time : MonoTime;
@@ -44,9 +45,10 @@ enum double wheelScale = 1.0;
 /// What the window hears of a table: it can be talked to from the attach on and no longer after the detach
 struct TableHooks
 {
-    size_t id; /// the number the script talks to the table by (`LogTableTarget.set`)
+    size_t id; /// the number the script talks to the table by (the attribute `table` of its element)
     void delegate(TableControl) attached;
     void delegate(TableControl) detached;
+    void delegate(string name, const(wchar)[] text) tell; /// what the table has to tell the script, queued by the window: never called from inside an event
 }
 
 /// A call of the script to `control`, handed over by the main window: Sciter doesn't deliver `element.xcall` to a
@@ -91,7 +93,7 @@ final class LogTableBehavior : SciterEventHandler
 
     this(TableSource source, LogLook look, TableHooks hooks, HELEMENT he)
     {
-        _host = new SciterHost(he, look.text);
+        _host = new SciterHost(he, look.text, (const(wchar)[] text) { hooks.tell("logTableCopy", text); }); // the clipboard is the script's
         _look = look;
         _source = source;
         _hooks = hooks;
@@ -112,32 +114,32 @@ final class LogTableBehavior : SciterEventHandler
         _log.events.needFrame = &requestFrame;
         _log.events.cellClicked = &cellClicked;
         _log.events.rowSelected = &rowChosen;
+        _log.events.copyCut = &copyCut;
+    }
+
+    // A copy of rows was cut by the limit of the copy: the script tells the user how many rows went to the clipboard
+    private void copyCut(size_t copied, size_t total)
+    {
+        _hooks.tell("logTableCopyCut", copyCutJson(_hooks.id, copied, total).toUTF16);
     }
 
     // A click on a cell of a clickable column (the table picks nothing): the script knows what it is for
     private void cellClicked(size_t item, size_t column)
     {
-        import std.json : JSONValue;
-
         auto table = _log.table;
         ulong id;
         if (!table.isClickable(column) || !table.rowId(item, id))
             return; // a click on text is no business of the script, and a row that is gone since the press is nobody's click
-        JSONValue click = ["table": JSONValue(_hooks.id), "item": JSONValue(item), "id": JSONValue(id), "column": JSONValue(table.columnId(column)),
-            "anchored": JSONValue(marksOf(Extra(table.rowExtra(item))).anchored)];
         Rect area;
-        if (table.cellRect(item, column, area)) // where the cell is in the table, for what the script shows by it (a notice)
-            click["rect"] = [area.x, area.y, area.w, area.h];
-        _host.callScript("logTableCellClicked", click.toString.toUTF16);
+        const placed = table.cellRect(item, column, area); // where the cell is in the table, for what the script shows by it (a notice)
+        const anchored = marksOf(Extra(table.rowExtra(item))).anchored;
+        _hooks.tell("logTableCellClicked", cellClickedJson(_hooks.id, item, id, table.columnId(column), anchored, placed ? &area : null).toUTF16);
     }
 
     // A row was selected by the user (the script follows it in the other table): which table, the item, the message, and whether it may move on
     private void rowChosen(size_t item, ulong id, bool delayed)
     {
-        import std.json : JSONValue;
-
-        JSONValue chosen = ["table": JSONValue(_hooks.id), "row": JSONValue(item), "id": JSONValue(id), "delayed": JSONValue(delayed)];
-        _host.callScript("logTableRowChosen", chosen.toString.toUTF16);
+        _hooks.tell("logTableRowChosen", rowChosenJson(_hooks.id, item, id, delayed).toUTF16);
     }
 
     override protected bool handleSubscription(HELEMENT he, UINT* event_groups)
@@ -337,14 +339,11 @@ final class LogTableBehavior : SciterEventHandler
 
         wstring currentRow()
         {
-            import std.json : JSONValue;
-
             long row;
             ulong id;
             auto table = _log.table;
-            if (!table.currentRow(row) || !table.rowId(cast(size_t) row, id))
-                return "null"w;
-            return JSONValue(["row": JSONValue(row), "id": JSONValue(id)]).toString.toUTF16;
+            const has = table.currentRow(row) && table.rowId(cast(size_t) row, id);
+            return currentRowJson(has, row, id).toUTF16;
         }
 
         wstring rowHeight(size_t index) { import std.conv : to; return _log.table.rowHeight(index).to!wstring; }
@@ -365,11 +364,8 @@ final class LogTableBehavior : SciterEventHandler
 
         void pan(double pixels, double across)
         {
-            // a move of the fingers is along the axis it goes farther on: a trackpad's small sideways jitter during a scroll down
-            // does not drift the columns, and the other way round
-            import std.math : abs;
-
-            if (abs(across) > abs(pixels))
+            // the script gives a move along one axis (resources/log-table-gesture.js `panAxis`): the other is 0
+            if (across != 0)
                 _log.table.scrollXBy(across * panScale);
             else
                 _log.table.pan(pixels * panScale, nowMs());
@@ -382,6 +378,7 @@ final class LogTableBehavior : SciterEventHandler
             _host.updateNow();
             return usSince(started);
         }
+
 
         void setWrap(bool bySciter)
         {
@@ -404,17 +401,6 @@ final class LogTableBehavior : SciterEventHandler
             }
         }
 
-        void showDemo(bool on)
-        {
-            if (_source.demo == on)
-                return;
-            _source.demo = on;
-            if (_log is null)
-                return; // made so once attached
-            _log.dispose(); // the table is made again of the other model
-            build();
-            _host.repaint();
-        }
         void resetStats() { _frames.reset(); }
         void select(double x1, double y1, double x2, double y2) { _log.table.selectBetween(x1, y1, x2, y2); }
         void selectWord(double x, double y, bool word) { _log.table.selectAt(x, y, word); }

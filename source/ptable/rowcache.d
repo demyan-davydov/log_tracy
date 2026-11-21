@@ -1,12 +1,14 @@
 //! The rows of a table: what the model gave for an item as the table lays it out (`Entry`), for the pass of a frame
-//! (`RowWindow`), and the room the rows near the window take (`RowGeometry`), brought together over the units that read,
+//! (`RowWindow`), the room the rows near the window take (`RowGeometry`) and what the columns noted of their cells (`CellMemos`,
+//! let go with the room), brought together over the units that read,
 //! wrap and measure them. Nothing of a row's content lives from one frame to the next: the model is asked again. The
 //! facade the table's store talks to. Not thread safe. See docs/stories/painted-table.md.
 module ptable.rowcache;
 
 version (unittest) import ptable.testing : withBoxes;
+import ptable.cellmemo : CellMemo, CellMemos;
 import ptable.column : TableColumn;
-import ptable.layout : ColumnDef, ColumnLayout;
+import ptable.layout : ColumnDef;
 import ptable.memory : mallocAllocator;
 import ptable.model : TableModel;
 import ptable.painter : Painter, TableGeometry;
@@ -38,9 +40,10 @@ final class RowCache
     private RowReader _reader;
     private RowGeometry _geometry;
     private RowWindow _window;
+    private CellMemos _memos;
     private double _fallback; // the height of an empty row, made at the first ask after the columns or the wanted ones changed
 
-    this(TableModel model, ColumnLayout layout, RCIAllocator source = mallocAllocator())
+    this(TableModel model, RCIAllocator source = mallocAllocator())
     {
         _wrap = new RowWrap(&_spec);
         _grow = new RowGrow(&_spec);
@@ -48,6 +51,7 @@ final class RowCache
         _geometry = new RowGeometry(_reader, &_spec, source);
         _geometry.floor = &fallbackHeight;
         _window = new RowWindow(_reader, _geometry, source);
+        _memos = new CellMemos(source);
     }
 
     /// The columns and the geometry: the rows are read again
@@ -98,6 +102,7 @@ final class RowCache
         if (keeps)
             return;
         _geometry.markStale(); // the heights known are estimates now: a sum over all the rows does not measure them again
+        _memos.clear(); // the lines of a wrapped cell are others
         _window.clear();
     }
 
@@ -106,6 +111,7 @@ final class RowCache
     {
         _window.release();
         _geometry.release();
+        _memos.release();
     }
 
     /// The width the flex column has now
@@ -148,6 +154,7 @@ final class RowCache
     void clear()
     {
         _geometry.clear();
+        _memos.clear();
         _window.clear();
     }
 
@@ -161,6 +168,7 @@ final class RowCache
     void removeRange(size_t first, size_t last)
     {
         _geometry.removeRange(first, last);
+        _memos.removeRange(first, last);
         _window.clear();
     }
 
@@ -174,6 +182,19 @@ final class RowCache
     void fit(size_t rowsInSight)
     {
         _geometry.fit(rowsInSight);
+        _memos.fit(_geometry.capacity);
+    }
+
+    /// What the columns noted of the cells of the rows near the window, let go with their room
+    CellMemos memos()
+    {
+        return _memos;
+    }
+
+    /// The memo of the cell of the row `index` in the column `col` (`CellMemos.of`): null if none can be kept
+    CellMemo* memoOf(size_t index, uint col)
+    {
+        return _memos.of(index, col);
     }
 
     /// The item `index` as it lays out; valid until the next pass begins
@@ -214,7 +235,7 @@ unittest
 
     auto model = new DatedModel(100, 10);
     model.marked = 23;
-    auto cache = new RowCache(model, new ColumnLayout);
+    auto cache = new RowCache(model);
     TableGeometry geometry;
     cache.configure(model.columns(), 1, geometry);
     auto e = cache.entry(23);
@@ -230,7 +251,7 @@ unittest
     import ptable.testing : DatedModel;
 
     auto model = new DatedModel(100, 10);
-    auto cache = new RowCache(model, new ColumnLayout);
+    auto cache = new RowCache(model);
     TableGeometry geometry;
     geometry.groupHeight = 20;
     cache.configure(model.columns(), 1, geometry);
@@ -255,7 +276,7 @@ unittest
     import ptable.testing : DatedModel;
 
     auto model = new DatedModel(100, 10);
-    auto cache = new RowCache(model, new ColumnLayout);
+    auto cache = new RowCache(model);
     TableGeometry geometry;
     geometry.groupHeight = 20;
     cache.configure(model.columns(), 1, geometry);
@@ -277,7 +298,7 @@ unittest
     import ptable.testing : DatedModel;
 
     auto model = new DatedModel(100, 3);
-    auto cache = new RowCache(model, new ColumnLayout);
+    auto cache = new RowCache(model);
     TableGeometry geometry;
     geometry.groupHeight = 20;
     cache.configure(model.columns(), 1, geometry);
@@ -294,8 +315,7 @@ unittest
 
     auto model = new DatedModel(100, 3);
     model.dayPrefix = "a long day "; // the head "a long day 0" is wider than the body "t5"
-    auto layout = new ColumnLayout;
-    auto cache = new RowCache(model, layout);
+    auto cache = new RowCache(model);
     TableGeometry geometry;
     geometry.groupHeight = 20;
     cache.configure(model.columns(), 1, geometry);
@@ -311,8 +331,7 @@ unittest
     import ptable.testing : TwoHeadsModel;
 
     auto model = new TwoHeadsModel(100);
-    auto layout = new ColumnLayout;
-    auto cache = new RowCache(model, layout);
+    auto cache = new RowCache(model);
     TableGeometry geometry;
     geometry.groupHeight = 20;
     cache.configure(model.columns(), 2, geometry);
@@ -334,11 +353,52 @@ unittest
     import ptable.testing : DatedModel;
 
     auto model = new DatedModel(100, 3);
-    auto cache = new RowCache(model, new ColumnLayout);
+    auto cache = new RowCache(model);
     TableGeometry geometry;
     geometry.groupHeight = 20;
     geometry.groupPadTop = 6;
     geometry.groupPadBottom = 1;
     cache.configure(model.columns(), 1, geometry);
     assert(cache.entry(3).margin == 27 && cache.entry(3).height == rowHeight(1, 14, 1) + 27);
+}
+
+@("RowCache: the memo of a cell stays from pass to pass, and goes with the room of its row: cleared, removed, a new width of the wrapping column")
+unittest
+{
+    import ptable.cellmemo : PlaceMark;
+    import ptable.testing : DatedModel;
+
+    auto model = new DatedModel(1000, 10);
+    auto cache = new RowCache(model);
+    TableGeometry geometry;
+    cache.configure(model.columns(), 1, geometry);
+    cache.fit(30);
+    assert(cache.memoOf(1, 1) !is null);
+
+    void mark(size_t row)
+    {
+        auto memo = cache.memoOf(row, 1);
+        memo.use(7);
+        memo.put(PlaceMark(5, 50));
+    }
+
+    size_t marks(size_t row) { return cache.memoOf(row, 1).marks.length; }
+
+    mark(3);
+    cache.beginPass();
+    assert(marks(3) == 1, "a pass later");
+    cache.removeRange(3, 4);
+    assert(marks(3) == 0, "the row was removed");
+    mark(3);
+    cache.clear();
+    assert(marks(3) == 0, "every row let go");
+    mark(3);
+    cache.setFlexWidth(300);
+    assert(marks(3) == 0, "the lines of the wrapping column are others");
+    mark(3);
+    cache.configure(model.columns(), 1, geometry);
+    assert(marks(3) == 0, "the columns were set again");
+    mark(3);
+    cache.fit(300);
+    assert(marks(3) == 1, "a bigger ring keeps them");
 }

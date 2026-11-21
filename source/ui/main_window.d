@@ -17,31 +17,33 @@ import ui.app_resources : appResourceOfUrl, appResourceUrl, builtInCatalogs;
 import ui.app_session : AppSession;
 import ui.app_settings : toJSON;
 import ui.filter_commands : DocumentFilters;
-import ui.log_table.column_widths : minWidthVariables;
-import ui.log_table.look_json : applyLookJson;
-import ui.log_table.log_table_target : LogTableTarget;
+import ui.log_table.log_tables : LogTables, TableAttributes, tableAttributesOf;
+import sciter.element : attributeOf;
 import ui.log_table.log_table : TableSource;
+import ui.script_queue : ScriptQueue;
 import ui.log_table_behavior : LogTableBehavior, logTableBehavior, runScript, TableHooks;
-import ui.table_script : TableControl, TableRegistry;
+import ui.table_script : TableControl;
 import ui.columns_json : columnsJson;
 
 import std.algorithm : startsWith;
 import std.array : empty;
 import std.conv : to;
-import std.json : JSONValue;
 import std.stdio : writeln;
 import std.string : fromStringz;
 import std.utf : toUTF8, toUTF16;
 
+/// How many times one idle round tells the script what was queued, the script's answers queuing more
+private enum maxScriptRounds = 4;
+
 /// The window: the bridge between the script and the session. A call of the
 /// script (xcall) is read from its Sciter values, done by the AppSession and
-/// answered; what the script is to be told goes from onIdle(), never from
-/// inside a call (see AppSession).
+/// answered; what the script is to be told, by the session or by a log table,
+/// goes from onIdle(), never from inside a call (see AppSession, ui/script_queue).
 class MainWindow : SciterWindow
 {
     private AppSession _session;
-    private LogTableTarget _target = new LogTableTarget; // what the next log table (log-table) shows
-    private TableRegistry _tables; // the painted tables the script talks to, by their numbers
+    private LogTables _tables; // the log tables: what the script asks of them is done there, the window converts the values
+    private ScriptQueue _tableCalls; // what the tables tell the script, sent by onIdle()
 
     /// The files of the interface are built in (`this://app/...`), for the dialogs too
     override protected immutable(ubyte)[] onLoadData(string uri)
@@ -52,15 +54,22 @@ class MainWindow : SciterWindow
         return data;
     }
 
-    // The native behaviors of CSS `behavior: ...`: the log table (prototype, ui/log_table_behavior)
+    // The native behaviors of CSS `behavior: ...`: the log table (ui/log_table_behavior)
     override protected SciterEventHandler createBehavior(string name, HELEMENT he)
     {
         if (name != logTableBehavior)
             return null;
-        const id = _target.id;
-        auto source = TableSource(_session, _session.findDocument(_target.doc), _target.search, _target.hostOf(_target.doc), false, _target.singleLine);
-        return new LogTableBehavior(source, _target.look,
-            TableHooks(id, (TableControl control) { _tables.attach(id, control); }, (TableControl control) { _tables.detach(control); }), he);
+        // the element says what it shows: the script wrote it on it (resources/log-table-view.js)
+        TableAttributes shown;
+        if (!tableAttributesOf(attributeOf(he, "doc"), attributeOf(he, "search"), attributeOf(he, "table"), shown))
+        {
+            writeln("A log table without its document, view or number: not drawn");
+            return null;
+        }
+        const id = shown.id;
+        auto source = TableSource(_session, _session.findDocument(shown.doc), shown.search, _tables.hostOf(shown.doc), _tables.singleLine);
+        return new LogTableBehavior(source, _tables.look,
+            TableHooks(id, (TableControl control) { _tables.attached(id, control); }, &_tables.detached, &_tableCalls.put), he);
     }
 
     /// The menu bar of the window on `platform`, in the language of the interface
@@ -76,7 +85,9 @@ class MainWindow : SciterWindow
     this(AppSession session, bool sciterDebugMode = false)
     {
         _session = session;
-        _session.documentClosed = (DocumentId docId) { _target.forget(cast(int) docId.toInt()); };
+        _tableCalls = new ScriptQueue;
+        _tables = new LogTables;
+        _session.subscribeDocumentClosed((DocumentId docId) { _tables.documentClosed(cast(int) docId.toInt()); });
         _session.useTranslations(builtInCatalogs());
 
         import sciter.capi.def;
@@ -232,10 +243,10 @@ class MainWindow : SciterWindow
             return true;
 
         case "logTableCall":
-            // logTableCall(tableId, method, args...): a call to the table drawn by D (ui/log_table_behavior) that `setLogTableTarget` gave that number; null if
+            // logTableCall(tableId, method, args...): a call to the table drawn by D (ui/log_table_behavior) of that number (the attribute `table` of its element); null if
             // there is none (not attached yet, or no more)
             {
-                auto table = params.argc >= 2 ? _tables.get(param!int(0)) : null;
+                auto table = params.argc >= 2 ? _tables.table(param!int(0)) : null;
                 if (table is null)
                     resultView.set(SciterValue.makeNull());
                 else
@@ -245,20 +256,15 @@ class MainWindow : SciterWindow
         case "logTableSetLook":
             // logTableSetLook(json): the look of the application: every log table has it, one that is not attached yet too
             if (params.argc >= 1)
-                applyLookJson(_target.look, param!string(0));
+                _tables.setLook(param!string(0));
             return true;
         case "logTableMinWidthNames":
             // logTableMinWidthNames() -> the names of the CSS variables of the least widths of the columns, as a JSON array (ui/log_table/column_widths)
-            answer(JSONValue(minWidthVariables()).toString());
+            answer(_tables.minWidthNames());
             return true;
         case "logTableSingleLine":
             // logTableSingleLine(on): the rows of the painted tables are one line high (the setting of the application): every table now, the next ones from the start
-            _target.singleLine = param!bool(0);
-            _tables.each((TableControl table) { table.singleLine(_target.singleLine); });
-            return true;
-        case "setLogTableTarget":
-            // setLogTableTarget(docId, search): the next element with `behavior: log-table` shows that view; answers the number of that table
-            resultView = cast(int) _target.set(param!int(0), param!bool(1));
+            _tables.singleLine(param!bool(0));
             return true;
 
         // ── The views ───────────────────────────────────────────────────────
@@ -440,16 +446,27 @@ class MainWindow : SciterWindow
     void onIdle()
     {
         //fixMacTitlebarBackground();
-        _session.dispatchEvents();
-        const calls = _session.takeScriptCalls();
-        if (_session.closing)
-            return; // the view is being torn down: calling the script would crash
-        foreach (call; calls)
+        // What the script does when told may queue more (a click on an anchor sets it, the document tells the anchor
+        // applied): the rounds go on till nothing is left, a few at most, so that it comes now and not with the next
+        // event of the loop. What is left after them goes with the next idle round.
+        foreach (round; 0 .. maxScriptRounds)
         {
-            if (call.json is null)
-                callScript(call.name, call.docId);
-            else
-                callScript(call.name, call.docId, call.json.toUTF16());
+            const tableCalls = _tableCalls.take();
+            _session.dispatchEvents();
+            const calls = _session.takeScriptCalls();
+            if (_session.closing)
+                return; // the view is being torn down: calling the script would crash
+            if (tableCalls.empty && calls.empty)
+                break;
+            foreach (call; tableCalls)
+                callScript(call.name, call.text);
+            foreach (call; calls)
+            {
+                if (call.json is null)
+                    callScript(call.name, call.docId);
+                else
+                    callScript(call.name, call.docId, call.json.toUTF16());
+            }
         }
         if (_session.settingsDue)
             _session.saveSettings(appStateOfScript());

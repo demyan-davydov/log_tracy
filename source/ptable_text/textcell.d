@@ -5,14 +5,16 @@
 //! The look of the colors is not here: `inkOf` and the title and group drawing are for the subclass. See docs/stories/painted-table.md.
 module ptable_text.textcell;
 
+import ptable.cellmemo : CellMemo;
 import ptable.column : CellInput, CellLayout, DrawState, GroupInput, Measured, TableColumn, Unit;
 import ptable.layout : ColumnDef;
 import ptable.memory : Arena;
 import ptable.ports : Canvas, Color, FontId, Rect, Span;
 import ptable_text.columnstyle : ColumnStyle, Halign, alignOffset, alignedTopInView, alignedX, alignedXInView, noFont;
 import ptable_text.measurer : FontMetrics, TextMeasurer;
+import ptable_text.runs : eachRun, lineMemo, lineWidth, shown, xAt;
 import ptable_text.texthit : TextSpot, caretInText, rectsInText, unitInText;
-import ptable_text.wrap : LineSpan, firstLineWidth, glyphWidth, wrapLines;
+import ptable_text.wrap : LineSpan, firstLineWidth, glyphWidth, maxMeasuredChars, wrapLines;
 
 import std.algorithm.comparison : max;
 import std.conv : to;
@@ -119,7 +121,9 @@ class TextCell : TableColumn
             const style = this.style.cell;
             const font = fontOf(cell);
             const text = cell.data.text;
-            const textWidth = def.flex ? firstLineWidth(text, (const(wchar)[] t) => _measurer.width(font, t)) : _measurer.width(font, text);
+            // as the line is drawn: by its runs (a whole layout would lay a tab out to its stop, and round once, not by the word)
+            double runs(const(wchar)[] t) { return lineWidth(t, (const(wchar)[] piece) => _measurer.width(font, piece)); }
+            const textWidth = def.flex ? firstLineWidth(text, &runs) : runs(text);
             m.maxWidth = m.minWidth = style.left(sidePad) + max(textWidth, def.minWidth) + style.right(sidePad); // the least width is of the text
         }
         return m;
@@ -191,7 +195,8 @@ class TextCell : TableColumn
         spot.line = ceil(_metrics.cell.lineHeight);
         const text = cell.data !is null ? cell.data.text : ""w;
         const atLeft = style.halign == Halign.left || style.halign == Halign.inherit;
-        const width = atLeft && !style.keepInViewX || _measurer is null ? 0.0 : _measurer.width(spot.font, text); // kept in view: it stops at the far side
+        const width = atLeft && !style.keepInViewX || _measurer is null ? 0.0
+            : lineWidth(text, (const(wchar)[] piece) => _measurer.width(spot.font, piece)); // as drawn; kept in view: it stops at the far side
         spot.x = alignedAcross(width, area, view);
         const above = style.top(linePad), under = style.bottom(linePad);
         // a paragraph's lines are the host's: asked only where they move it, so a column not kept in view stands as it did
@@ -265,9 +270,11 @@ class TextCell : TableColumn
         }
         if (lines.length == 0)
         {
-            canvas.drawText(spot.font, text, spot.x, spot.baseline, ink);
+            drawLine(canvas, text, spot.font, spot.x, spot.baseline, state.clip, ink, lineMemo(cell.memo, 0, text.length, spot.font));
             return;
         }
+        if (!style.wrap && drawCutLine(canvas, text[lines[0].start .. lines[0].end], cell, state, spot, ink))
+            return;
         foreach (j, line; lines)
         {
             const lineTop = spot.top + j * spot.line;
@@ -275,11 +282,46 @@ class TextCell : TableColumn
                 continue;
             if (lineTop > state.clip.bottom)
                 break;
-            size_t end = line.end;
-            while (end > line.start && text[end - 1] == ' ')
-                end--;
-            canvas.drawText(spot.font, text[line.start .. end], spot.x, spot.baseline + j * spot.line, ink);
+            drawLine(canvas, text[line.start .. line.end], spot.font, spot.x, spot.baseline + j * spot.line, state.clip, ink,
+                lineMemo(cell.memo, line.start, line.end - line.start, spot.font));
         }
+    }
+
+    // The one line of the flex column that does not wrap, if the right side of its cell is seen and the line runs past it (wider than the
+    // widest column, `maxFitWidth`, or wider than measured): cut before an ellipsis at the right padding. False: it is not cut there. Only
+    // the end of the line is walked, from the last mark of the memo; a line measured whole (`measure`) is never: its column is as wide as it
+    private bool drawCutLine(Canvas canvas, const(wchar)[] line, ref const CellInput cell, ref const DrawState state, ref const Spot spot, Color ink)
+    {
+        const limit = state.area.right - style.cell.right(sidePad);
+        if (line.length <= maxMeasuredChars || state.clip.right < limit)
+            return false;
+        auto memo = lineMemo(cell.memo, 0, line.length, spot.font);
+        const font = spot.font;
+        if (xAt(line, line.length, (const(wchar)[] piece) => _measurer.width(font, piece), memo, limit - spot.x) <= limit - spot.x)
+            return false;
+        enum wstring ellipsis = "…";
+        const dots = _measurer.width(font, ellipsis);
+        const room = Rect(state.clip.x, state.clip.y, max(0.0, limit - dots - state.clip.x), state.clip.h);
+        canvas.pushClip(room);
+        drawLine(canvas, line, font, spot.x, spot.baseline, room, ink, memo);
+        canvas.popClip();
+        canvas.drawText(font, ellipsis, limit - dots, spot.baseline, ink);
+        return true;
+    }
+
+    // A line run by run (ptable_text/runs): each word and each gap by a layout of its own at the widths of those before it, only those
+    // that cross the part seen, from the last mark of `memo` before it; a gap of tabs as as many spaces (a tab is drawn as a space)
+    private void drawLine(Canvas canvas, const(wchar)[] line, FontId font, double x, double baseline, Rect clip, Color ink, CellMemo* memo)
+    {
+        if (_measurer is null)
+        {
+            canvas.drawText(font, line, x, baseline, ink);
+            return;
+        }
+        eachRun(line, clip.x - x, clip.right - x, (const(wchar)[] piece) => _measurer.width(font, piece), (size_t start, size_t end, double at) {
+            const run = line[start .. end];
+            canvas.drawText(font, shown(run), x + at, baseline, ink);
+        }, memo);
     }
 
     /// The text of the cell in black (a column that knows colors draws it in its own ink)
@@ -303,7 +345,7 @@ class TextCell : TableColumn
         if (_measurer is null)
             return 0;
         const spot = textSpotOf(cell, area, view);
-        return caretInText(text, spot, _measurer, x, y);
+        return caretInText(text, spot, _measurer, x, y, cell.memo);
     }
 
     /// The rectangles of a part of the text: one for a cell of one line, one for each line a part of a wrapped cell touches
@@ -312,7 +354,7 @@ class TextCell : TableColumn
         if (_measurer is null || cell.data is null)
             return;
         const spot = textSpotOf(cell, area, view);
-        rectsInText(cell.data.text, spot, _measurer, from, to, emit);
+        rectsInText(cell.data.text, spot, _measurer, from, to, emit, cell.memo);
     }
 
     /// What a double click (the word at the caret) or a triple click (the whole text) selects
@@ -439,4 +481,166 @@ unittest
     state.clip = Rect(100, 130, 60, 30); // the top of the cell is not seen
     column.draw(canvas, cell, state);
     assert(canvas.top == 159 - 42, "it stops at the bottom padding with all of its lines in the cell");
+}
+
+@("TextCell: a line is drawn by its words and its gaps, each at the widths of those before it; a tab as a space")
+unittest
+{
+    import ptable.model : CellData;
+    import ptable_text.measurer : FontMetrics;
+    import ptable_text.testing : TestText;
+
+    static final class Tabs : TextMeasurer // a tab as a text engine lays it out: to its stop
+    {
+        FontMetrics metrics(FontId font) { return FontMetrics(11, 3, 14); }
+        double width(FontId font, const(wchar)[] text)
+        {
+            double w = 0;
+            foreach (c; text)
+                w += c == '\t' ? 80 : 10;
+            return w;
+        }
+        int wrappedLines(FontId font, const(wchar)[] text, double width) { return -1; }
+    }
+
+    static final class Texts : Canvas
+    {
+        wstring[] texts;
+        double[] xs;
+        void fillRect(Rect area, Color color) {}
+        void drawText(FontId font, const(wchar)[] text, double x, double baseline, Color color) { texts ~= text.idup; xs ~= x; }
+        void drawParagraph(FontId font, const(wchar)[] text, double x, double top, double width, Color color) {}
+        void fillRoundRect(Rect area, double radius, Color color) {}
+        void fillCircle(double cx, double cy, double radius, Color fill, Color line) {}
+        void pushClip(Rect area) {}
+        void popClip() {}
+    }
+
+    auto column = new TestText(ColumnDef("text", "Text"), new Tabs);
+    const data = CellData("ab  c\td"w);
+    const cell = CellInput(0, 0, &data);
+    auto canvas = new Texts;
+    DrawState state;
+    state.area = Rect(0, 0, 500, 20);
+    state.clip = state.area;
+    column.draw(canvas, cell, state);
+    assert(canvas.texts == ["ab"w, "  "w, "c"w, " "w, "d"w]);
+    const x0 = canvas.xs[0];
+    assert(canvas.xs == [x0, x0 + 20, x0 + 40, x0 + 50, x0 + 60]);
+}
+
+@("TextCell: a line of the flex column that does not wrap, cut by the right side of its cell, ends in an ellipsis where that side is seen")
+unittest
+{
+    import ptable.model : CellData;
+    import ptable_text.testing : TestText;
+
+    static final class Texts : Canvas
+    {
+        wstring[] texts;
+        double[] xs;
+        Rect[] clips;
+        void fillRect(Rect area, Color color) {}
+        void drawText(FontId font, const(wchar)[] text, double x, double baseline, Color color) { texts ~= text.idup; xs ~= x; }
+        void drawParagraph(FontId font, const(wchar)[] text, double x, double top, double width, Color color) {}
+        void fillRoundRect(Rect area, double radius, Color color) {}
+        void fillCircle(double cx, double cy, double radius, Color fill, Color line) {}
+        void pushClip(Rect area) { clips ~= area; }
+        void popClip() {}
+    }
+
+    Texts drawn(bool flex, wstring text, Rect clip)
+    {
+        auto column = new TestText(ColumnDef("text", "Text", 24, flex)); // a glyph 10 wide, the text 3 from each side
+        column.style.wrap = false;
+        const data = CellData(text);
+        const cell = CellInput(0, 0, &data);
+        auto canvas = new Texts;
+        DrawState state;
+        state.area = Rect(0, 0, 60, 20);
+        state.clip = clip;
+        column.draw(canvas, cell, state);
+        return canvas;
+    }
+
+    import std.array : replicate;
+    import ptable_text.runs : maxRun;
+    import ptable_text.wrap : maxMeasuredChars;
+
+    const whole = Rect(0, 0, 60, 20);
+    const long_ = "a"w.replicate(maxMeasuredChars + 1); // wider than measured: its column may be narrower than it
+    auto cut = drawn(true, long_, whole);
+    assert(cut.texts == [long_[0 .. maxRun], "…"w] && cut.xs == [3, 47], "the line, then the ellipsis at the right padding");
+    assert(cut.clips == [Rect(0, 0, 47, 20)], "the line stops where the ellipsis begins");
+    assert(drawn(true, long_, Rect(0, 0, 30, 20)).texts == [long_[0 .. maxRun]], "the right side not seen: no ellipsis");
+    assert(drawn(true, "abcdefghij"w, whole).texts == ["abcdefghij"w],
+        "a line measured whole: its column is as wide as it (here it is not), it is not walked to its end for the ellipsis");
+    assert(drawn(false, long_, whole).texts.length == 1, "another column: none (it grows to its text)");
+}
+
+@("TextCell.measure: the width of a cell is that of its runs as they are drawn: a tab as a space")
+unittest
+{
+    import ptable.model : CellData;
+    import ptable_text.measurer : FontMetrics;
+    import ptable_text.testing : TestText;
+
+    static final class Tabs : TextMeasurer // a tab as a text engine lays it out: to its stop
+    {
+        FontMetrics metrics(FontId font) { return FontMetrics(11, 3, 14); }
+        double width(FontId font, const(wchar)[] text)
+        {
+            double w = 0;
+            foreach (c; text)
+                w += c == '\t' ? 80 : 10;
+            return w;
+        }
+        int wrappedLines(FontId font, const(wchar)[] text, double width) { return -1; }
+    }
+
+    foreach (flex; [false, true])
+    {
+        auto column = new TestText(ColumnDef("text", "Text", 24, flex), new Tabs);
+        column.style.wrap = false;
+        const tabbed = CellData("ab\tcd"w), spaced = CellData("ab cd"w);
+        const ca = CellInput(0, 0, &tabbed), cb = CellInput(0, 0, &spaced);
+        const a = column.measure(ca, 0, true), b = column.measure(cb, 0, true);
+        assert(a.maxWidth == b.maxWidth, "a tab measured to its stop, drawn as a space");
+    }
+}
+
+@("TextCell: a short cell drawn takes no memo of its row; a long line does")
+unittest
+{
+    import std.array : replicate;
+    import ptable.cellmemo : CellMemos, MemoRef;
+    import ptable.memory : mallocAllocator;
+    import ptable.model : CellData;
+    import ptable_text.testing : TestText;
+
+    static final class Nothing : Canvas
+    {
+        void fillRect(Rect area, Color color) {}
+        void drawText(FontId font, const(wchar)[] text, double x, double baseline, Color color) {}
+        void drawParagraph(FontId font, const(wchar)[] text, double x, double top, double width, Color color) {}
+        void fillRoundRect(Rect area, double radius, Color color) {}
+        void fillCircle(double cx, double cy, double radius, Color fill, Color line) {}
+        void pushClip(Rect area) {}
+        void popClip() {}
+    }
+
+    auto memos = new CellMemos(mallocAllocator());
+    memos.fit(64);
+    auto column = new TestText(ColumnDef("text", "Text"));
+    const short_ = CellData("07:16:22.000000"w), long_ = CellData("word "w.replicate(2000));
+    DrawState state;
+    state.area = Rect(0, 0, 500, 20);
+    state.clip = state.area;
+    foreach (uint col; 0 .. 6) // five short cells drawn before the Payload, as a row of the log is
+    {
+        auto cell = CellInput(7, col, col < 5 ? &short_ : &long_);
+        cell.memo = MemoRef(memos, 7, col);
+        column.draw(new Nothing, cell, state);
+    }
+    assert(memos.count == 1, "the short cells took places of the row");
 }

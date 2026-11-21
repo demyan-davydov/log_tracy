@@ -3,34 +3,28 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { noTable, tableStep, paneChanges, searchViewKey, jumpStep, showsRowsOf } from "../../resources/pane-state.js";
+import { noTable, tableStep, paneChanges, jumpStep, showsRowsOf } from "../../resources/pane-state.js";
 
 const ready = (dataVersion) => ({ status: "ready", dataVersion });
 
 const table = (dataVersion) => ({ loaded: true, dataVersion });
 
-test("the first rows of a table start at the top, nothing selected", () => {
+test("the first rows of a table start at the top", () => {
     const step = tableStep(noTable, ready(1));
     assert.equal(step.table, true);
     assert.equal(step.reload, "start");
-    assert.equal(step.resetSelection, true);
-    assert.equal(step.grow, false);
     assert.deepEqual(step.shown, table(1));
 });
 
-test("the same content again: the table keeps its rows and counts the new ones", () => {
+test("the same content again: nothing is reloaded (the table counts the new rows itself)", () => {
     const step = tableStep(table(1), ready(1));
     assert.equal(step.table, true);
     assert.equal(step.reload, false);
-    assert.equal(step.resetSelection, false);
-    assert.equal(step.grow, true, "a view that is ready may grow too: a source that never ends");
 });
 
-test("other content, complete: other rows at the same scroll, the selection dropped", () => {
+test("other content, complete: other rows at the same scroll", () => {
     const step = tableStep(table(1), ready(2));
     assert.equal(step.reload, "keep");
-    assert.equal(step.resetSelection, true);
-    assert.equal(step.grow, false);
     assert.deepEqual(step.shown, table(2));
 });
 
@@ -42,7 +36,6 @@ test("a failure instead of the table: the table is reloaded when it comes back",
     assert.deepEqual(failed.shown, { loaded: true, dataVersion: null });
     const back = tableStep(failed.shown, ready(1));
     assert.equal(back.reload, "keep", "even with the same dataVersion: the view was rebuilt");
-    assert.equal(back.resetSelection, true);
 });
 
 test("a file being loaded shows the records found so far, from the top, and grows", () => {
@@ -52,9 +45,9 @@ test("a file being loaded shows the records found so far, from the top, and grow
     assert.equal(first.reload, "start");
     assert.equal(first.running, false, "no progress at the table: the tab shows it, closing it stops the load");
     const more = tableStep(first.shown, { ...loading, progress: 0.5 });
-    assert.deepEqual([more.table, more.reload, more.resetSelection, more.grow], [true, false, false, true]);
+    assert.deepEqual([more.table, more.reload], [true, false]);
     const done = tableStep(more.shown, ready(1));
-    assert.deepEqual([done.table, done.reload, done.resetSelection, done.grow], [true, false, false, true],
+    assert.deepEqual([done.table, done.reload], [true, false],
         "the same content, complete: the last records are counted, nothing is reloaded");
 });
 
@@ -62,22 +55,22 @@ test("a filter or a search running shows what it found so far, with its progress
     for (const status of ["filtering", "searching"]) {
         const vm = { status, canCancel: true, progress: 0.1, dataVersion: 2 };
         const empty = tableStep(table(1), vm);
-        assert.deepEqual([empty.table, empty.reload, empty.resetSelection, empty.grow], [true, "start", true, false],
+        assert.deepEqual([empty.table, empty.reload], [true, "start"],
             `${status}: the table, empty, before the first row is found: new content starts at the top`);
         assert.equal(empty.running, true, `${status}: the progress and Cancel under the table, never over it`);
         const more = tableStep(empty.shown, { ...vm, progress: 0.6 });
-        assert.deepEqual([more.table, more.reload, more.resetSelection, more.grow, more.running],
-            [true, false, false, true, true], status);
+        assert.deepEqual([more.table, more.reload, more.running],
+            [true, false, true], status);
         const done = tableStep(more.shown, ready(2));
-        assert.deepEqual([done.table, done.reload, done.resetSelection, done.grow, done.running],
-            [true, false, false, true, false], status);
+        assert.deepEqual([done.table, done.reload, done.running],
+            [true, false, false], status);
     }
 });
 
 test("an operation that found nothing ends in an empty table", () => {
     const empty = tableStep(table(1), { status: "searching", canCancel: true, progress: 0.9, dataVersion: 2 });
     const done = tableStep(empty.shown, ready(2));
-    assert.deepEqual([done.table, done.reload, done.resetSelection, done.grow], [true, false, false, true]);
+    assert.deepEqual([done.table, done.reload], [true, false]);
 });
 
 test("a view shows its table when it has content, its progress under it when it can be cancelled, whatever its status", () => {
@@ -106,26 +99,6 @@ test("a tab shows the progress of loading its file, nothing otherwise", async ()
     assert.equal(tabProgress({ status: "filtering", progress: 0.5 }), null);
     assert.equal(tabProgress(null), null);
     assert.equal(tabProgress(undefined), null);
-});
-
-// ---- the found rows of the main table follow the search view ----
-
-test("searchViewKey: the same search view gives the same key, whatever object it came in", () => {
-    const a = { status: "ready", canCancel: false, dataVersion: 3 };
-    assert.equal(searchViewKey(a), searchViewKey(JSON.parse(JSON.stringify(a))), "a snapshot of the workspace");
-    assert.equal(searchViewKey(null), searchViewKey(null));
-});
-
-test("searchViewKey: another status, result or progress gives another key", () => {
-    const keys = [
-        { status: "ready", dataVersion: 3 },
-        { status: "ready", dataVersion: 4 },
-        { status: "searching", canCancel: true, progress: 0.25 },
-        { status: "searching", canCancel: true, progress: 0.5 },
-        { status: "searchCancelled", canCancel: false },
-        null,
-    ].map(searchViewKey);
-    assert.equal(new Set(keys).size, keys.length, keys.join(", "));
 });
 
 const at = (position) => () => position;

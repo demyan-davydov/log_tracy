@@ -59,7 +59,7 @@ behaviour: `.ai/knowledge/sciter.md`.
   mapping is `resources/panel-sizes.js`), not on each move of the splitter, and the first panel
   starts with it.
 - The log table is the native behavior `log-table` (`ui/log_table_behavior`, over `ptable`): the panel puts one in a slot for each view
-  (`LogTableView` in `resources/log-table-view.js`; the number it gets from `setLogTableTarget` is how the script talks to it,
+  (`LogTableView` in `resources/log-table-view.js`, which writes on the element what it shows, `doc`, `search` and `table`, the number the script talks to it by,
   `logTableCall(tableId, method, ...)`, `ui/table_script`). It hears the views of its document itself (a new content version starts at the top,
   rows added to the same one are appended, a table at its end follows it, rule 30), so the script tells it nothing of a reload or a growth.
   What the script does with the views is `resources/pane-state.js` (`tableStep`: which status or table a view shows, the progress under it) and
@@ -89,7 +89,7 @@ behaviour: `.ai/knowledge/sciter.md`.
 - A row is read from the document when the table draws it (`DocumentRows`: the message, the marks of found, anchored, its level and the
   color of its rule), cell by cell by the columns; nothing of it is kept for the next frame.
   - Found: the current search found the record (`DocumentItem.found`; an anchor the search doesn't match is listed in the results but not
-    found); its background is `--bg-row-found` / `--bg-row-found-stripe` (rule 27 of `.ai/rules/ux.md`), its matches are in the chips' colors.
+    found); its background is `--bg-row-found` / `--bg-row-found-stripe` (rule 27 of `.ai/rules/ux.md`), its matches are in the chips' own colors (`.ai/knowledge/filters.md`, Search).
   - The rule id: see `.ai/knowledge/filters.md`.
   - A time cell shows the time by the kind of the record, not of the column. Hex cells are formatted by the backend.
   - The level colors the cells of columns with `ColumnInfo.byLevel` (an HTTP status shown as it is).

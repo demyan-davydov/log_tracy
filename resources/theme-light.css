@@ -75,6 +75,7 @@
     --bg-row-selected: #b0d2f8;
     --text-row-selected: #000;
     --border-row-current: #3b82d6;
+    --border-row-current-inactive: #8aa4c2; /* while the table has not the focus */
     /* The anchor mark (table.css): its circle, the faint one on hover, the one
        of an anchor that can't be set (the limit) */
     --bg-anchor: #d6d6d6;

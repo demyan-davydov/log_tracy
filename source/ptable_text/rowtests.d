@@ -5,7 +5,7 @@ module ptable_text.rowtests;
 version (unittest)
 {
     import ptable.column : TableColumn;
-    import ptable.layout : ColumnDef, ColumnLayout;
+    import ptable.layout : ColumnDef;
     import ptable.memory : mallocAllocator;
     import ptable.model : CellData, ItemKind, ModelListener, NumbersModel, RowData, TableModel;
     import ptable.painter : TableGeometry;
@@ -23,9 +23,9 @@ version (unittest)
 @("RowCache: the wrap width is the flex column's width less the padding of its style")
 unittest
 {
-    import ptable.layout : ColumnDef, ColumnLayout;
+    import ptable.layout : ColumnDef;
     import ptable.model : NumbersModel;
-    auto cache = new RowCache(new NumbersModel(5), new ColumnLayout, mallocAllocator());
+    auto cache = new RowCache(new NumbersModel(5), mallocAllocator());
     ColumnDef[] defs = [ColumnDef("n", "N"), ColumnDef("text", "Text", 24, true)];
     auto styles = new ColumnStyle[defs.length];
     TableGeometry geometry;
@@ -41,9 +41,9 @@ unittest
 @("RowCache: a flex column that does not wrap is one line of its text, up to a hard break, however narrow")
 unittest
 {
-    import ptable.layout : ColumnDef, ColumnLayout;
+    import ptable.layout : ColumnDef;
     import ptable.model : NumbersModel;
-    auto cache = new RowCache(new NumbersModel(5), new ColumnLayout, mallocAllocator());
+    auto cache = new RowCache(new NumbersModel(5), mallocAllocator());
     ColumnDef[] defs = [ColumnDef("n", "N"), ColumnDef("text", "Text", 24, true)];
     auto styles = new ColumnStyle[defs.length];
     TableGeometry geometry;
@@ -60,10 +60,9 @@ unittest
 @("RowCache: a flex column that does not wrap needs its longest first line and keeps its rows when it grows")
 unittest
 {
-    import ptable.layout : ColumnDef, ColumnLayout;
+    import ptable.layout : ColumnDef;
     import ptable.model : NumbersModel;
-    auto layout = new ColumnLayout;
-    auto cache = new RowCache(new NumbersModel(2000), layout, mallocAllocator());
+    auto cache = new RowCache(new NumbersModel(2000), mallocAllocator());
     ColumnDef[] defs = [ColumnDef("n", "N"), ColumnDef("text", "Text", 24, true)];
     auto styles = new ColumnStyle[defs.length];
     TableGeometry geometry;
@@ -94,9 +93,9 @@ unittest
 @("RowCache: a column that asks for a least height makes the row at least that high, a hidden one does not")
 unittest
 {
-    import ptable.layout : ColumnDef, ColumnLayout;
+    import ptable.layout : ColumnDef;
     import ptable.model : NumbersModel;
-    auto cache = new RowCache(new NumbersModel(5), new ColumnLayout, mallocAllocator());
+    auto cache = new RowCache(new NumbersModel(5), mallocAllocator());
     ColumnDef[] defs = [ColumnDef("n", "N"), ColumnDef("text", "Text", 24, true)];
     auto styles = new ColumnStyle[defs.length];
     styles[0].minHeight = 40;
@@ -112,11 +111,11 @@ unittest
 unittest
 {
     import ptable_text.testing : Sized;
-    import ptable.layout : ColumnDef, ColumnLayout;
+    import ptable.layout : ColumnDef;
     import ptable.model : NumbersModel;
 
     auto measurer = new Sized;
-    auto cache = new RowCache(new NumbersModel(5), new ColumnLayout, mallocAllocator());
+    auto cache = new RowCache(new NumbersModel(5), mallocAllocator());
     ColumnDef[] defs = [ColumnDef("n", "N"), ColumnDef("text", "Text", 24, true)];
     auto styles = new ColumnStyle[defs.length];
     styles[0].cell.font = 30;
@@ -132,11 +131,11 @@ unittest
 unittest
 {
     import ptable_text.testing : Sized;
-    import ptable.layout : ColumnDef, ColumnLayout;
+    import ptable.layout : ColumnDef;
     import ptable.model : NumbersModel;
 
     auto measurer = new Sized;
-    auto cache = new RowCache(new NumbersModel(5), new ColumnLayout, mallocAllocator());
+    auto cache = new RowCache(new NumbersModel(5), mallocAllocator());
     ColumnDef[] defs = [ColumnDef("n", "N"), ColumnDef("text", "Text", 24, true)];
     auto styles = new ColumnStyle[defs.length];
     styles[0].cell.font = 30;
@@ -159,7 +158,7 @@ unittest
 @("RowCache: a very long line of the flex column that does not wrap is measured by its first part and the rest is estimated")
 unittest
 {
-    import ptable.layout : ColumnDef, ColumnLayout;
+    import ptable.layout : ColumnDef;
     import ptable.model : CellData, ItemKind, ModelListener, RowData, TableModel;
     static final class Longest : TextMeasurer
     {
@@ -191,9 +190,8 @@ unittest
         void unsubscribe(size_t handle) {}
     }
 
-    auto layout = new ColumnLayout;
     auto measurer = new Longest;
-    auto cache = new RowCache(new LongLine, layout, mallocAllocator());
+    auto cache = new RowCache(new LongLine, mallocAllocator());
     ColumnDef[] defs = [ColumnDef("t", "T", 24, true)];
     auto styles = new ColumnStyle[defs.length];
     styles[0].wrap = false;

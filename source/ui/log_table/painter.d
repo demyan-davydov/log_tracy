@@ -123,10 +123,6 @@ final class LogScrollBarPainter : ScrollBarPainter
 /// The painter of the log table
 class LogPainter : Painter
 {
-    /// Whether no room is left for another anchor, asked of the document each time it matters (a cell with none under the mouse or pressed),
-    /// so what it answers is always the truth. Null: there is always room
-    bool delegate() anchorsFull;
-
     private LogLook _look;
 
     this(LogLook look)
@@ -201,16 +197,18 @@ class LogPainter : Painter
         canvas.fillRect(row.area, color);
     }
 
-    // The row the keys move from has a frame over its cells, so the borders of the columns do not cross it
+    // The row the keys move from has a frame over its cells, so the borders of the columns do not cross it; a paler one while the
+    // table has not the focus (the keys go to the other table)
     override void paintRowOver(Canvas canvas, ref const RowContext row, bool tableHasFocus)
     {
         if (!row.state.focused)
             return;
         const a = row.area;
-        canvas.fillRect(Rect(a.x, a.y, a.w, 1), _palette.currentRow);
-        canvas.fillRect(Rect(a.x, a.bottom - 1, a.w, 1), _palette.currentRow);
-        canvas.fillRect(Rect(a.x, a.y + 1, 1, a.h - 2), _palette.currentRow);
-        canvas.fillRect(Rect(a.right - 1, a.y + 1, 1, a.h - 2), _palette.currentRow);
+        const color = tableHasFocus ? _palette.currentRow : _palette.currentRowInactive;
+        canvas.fillRect(Rect(a.x, a.y, a.w, 1), color);
+        canvas.fillRect(Rect(a.x, a.bottom - 1, a.w, 1), color);
+        canvas.fillRect(Rect(a.x, a.y + 1, 1, a.h - 2), color);
+        canvas.fillRect(Rect(a.right - 1, a.y + 1, 1, a.h - 2), color);
     }
 
     override void paintTextSelection(Canvas canvas, Rect area, bool tableHasFocus)
@@ -227,7 +225,7 @@ class LogPainter : Painter
 
 version (unittest)
 {
-    import ui.log_table.log_columns : AnchorColumn, IndexColumn, LevelColumn;
+    import ui.log_table.log_columns : AnchorColumn, IndexColumn, LevelColumn, LevelInkColumn;
     import ui.log_table.text_column : TextColumn;
 
     // What the frame painter does with a cell the context `ctx` says of: its column draws it, the painter adds its border
@@ -331,6 +329,38 @@ unittest
     cell.data = &fatal;
     column.draw(canvas, cell, state);
     assert(canvas.calls == ["round", "text"] && canvas.colors == [palette.fatalBg, palette.fatalText], "the rounded plate of a Fatal, on a selected row too");
+}
+
+@("LevelInkColumn: the text is in the color of the level of its record, the ordinary ink when it has none")
+unittest
+{
+    import ptable.model : CellData;
+
+    static final class Inks : Canvas
+    {
+        Color[] texts;
+        void fillRect(Rect area, Color color) {}
+        void drawText(FontId font, const(wchar)[] text, double x, double baseline, Color color) { texts ~= color; }
+        void drawParagraph(FontId font, const(wchar)[] text, double x, double top, double width, Color color) {}
+        void fillRoundRect(Rect area, double radius, Color color) {}
+        void fillCircle(double cx, double cy, double radius, Color fill, Color line) {}
+        void pushClip(Rect area) {}
+        void popClip() {}
+    }
+
+    auto look = defaultLogLook();
+    auto column = new LevelInkColumn(ColumnDef("status", "Status"), look, new Ruler);
+    const area = Rect(0, 0, 60, 16);
+    const state = DrawState(area, area, RowState.init);
+    auto canvas = new Inks;
+    CellInput cell;
+    const error = CellData("500"w, packMarks(LogMarks(LogLevel.Error)));
+    cell.data = &error;
+    column.draw(canvas, cell, state);
+    const none = CellData("200"w, packMarks(LogMarks(LogLevel.None)));
+    cell.data = &none;
+    column.draw(canvas, cell, state);
+    assert(canvas.texts == [look.palette.error, look.palette.ink], "an Error in red, a record of no level in the ink");
 }
 
 @("LogPainter: the color of a filter rule is a gradient in the Index cell, a text column shows none (the anchor cell fills with it: AnchorColumn)")

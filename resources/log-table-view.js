@@ -1,17 +1,20 @@
 //! The log table of a view of a document: an element with the native behavior `log-table` (source/ui/log_table_behavior.d) that draws
-//! the rows and handles the input; this script gives it the target (`setLogTableTarget`: which document and which view it shows, and
-//! the number the script talks to it by), carries what Sciter does not give it (the gestures of the trackpad, the menus, the clipboard,
+//! the rows and handles the input; this script writes on its element what it shows (the attributes `doc`, `search` and `table`, the
+//! number the script talks to it by: D reads them when the behavior attaches), carries what Sciter does not give it (the gestures of the trackpad, the menus, the clipboard,
 //! the notices) and tells it the look of the application. A view of a panel (view-table.js) holds one `LogTableView`.
-import { setAnchor, setLogTableTarget, logTableCall, logTableSetLook, logTableMinWidthNames } from "backend.js";
+import { setAnchor, logTableCall, logTableSetLook, logTableMinWidthNames } from "backend.js";
 import { collectLook } from "log-table-look.js";
-import { lockAxis } from "log-table-gesture.js";
+import { lockAxis, panAxis } from "log-table-gesture.js";
 import { anchorClickPlan, rowMoved } from "anchor-click.js";
 import { anchorRefusalText } from "pane-commands.js";
-import { showNoticeAt } from "notice.js";
+import { showNotice, showNoticeAt } from "notice.js";
+import { copyText } from "platform.js";
+import { menuOpensByMouse } from "menu-gate.js";
 import { tr } from "i18n/i18n.js";
 
 // The tables there are, by the number D gave each: what D tells the script (a click on an anchor, an item of a menu) names its table
 const views = new Map();
+let lastTableId = 0; // the number of the last table made: every table has one of its own, from 1
 
 // The names of the CSS variables of the least widths of the columns, asked of D once
 let minWidthNames = null;
@@ -32,13 +35,14 @@ globalThis.logTableLookChanged = logTableLookChanged;
 export class LogTableView {
     // @param docId - the document whose rows the table shows
     // @param search - false: the main view of the document, true: its search view
-    // @param slot - the element the table fills (a table is put in it: the target is set just before, so the table that
-    //   attaches then is this one)
+    // @param slot - the element the table fills
     constructor(docId, search, slot) {
         this.docId = docId;
         this.search = search;
-        this.tableId = setLogTableTarget(docId, search);
-        this.element = Element.create(<div class="log-table-view" tabindex="0" />);
+        this.tableId = ++lastTableId;
+        // what the table shows is on its element: the behavior reads it when it attaches (ui/main_window.d, createBehavior)
+        this.element = Element.create(<div class="log-table-view" tabindex="0" doc={docId} search={search ? "1" : "0"}
+            table={this.tableId} />);
         views.set(this.tableId, this);
         slot.append(this.element); // the behavior of CSS attaches here
         this.bindInput();
@@ -54,11 +58,6 @@ export class LogTableView {
     // A call to the table (ui/table_script.d, `dispatch`): logTableCall("stats")
     call(method, ...args) {
         return logTableCall(this.tableId, method, ...args);
-    }
-
-    // The rows on screen are drawn again (the rules or the search changed what colors them)
-    refreshRows() {
-        this.call("render");
     }
 
     // The message of an anchor was set or cleared, from wherever it came (this table, the other one, the pass of the index that
@@ -101,7 +100,8 @@ export class LogTableView {
             if (axis === null) {
                 ({ axis, across, down } = lockAxis(across, down, evt.deltaX, evt.deltaY));
             }
-            this.call("pan", axis === "x" ? 0 : -evt.deltaY, axis === "y" ? 0 : -evt.deltaX);
+            const along = panAxis(axis, evt.deltaX, evt.deltaY);
+            this.call("pan", along === "x" ? 0 : -evt.deltaY, along === "y" ? 0 : -evt.deltaX);
             return true;
         });
         element.on("gestureend", () => { this.call("panEnd"); return true; });
@@ -120,6 +120,7 @@ export class LogTableView {
             return false;
         });
         element.on("contextmenu", evt => {
+            if (!menuOpensByMouse()) return true; // the Menu key, Shift+F10: no menu (menu-gate.js), and the press above is not this one's
             const hit = JSON.parse(this.call("hitTest", pressX, pressY));
             if (hit.kind === "header") {
                 // Customize Table (script.js opens the Settings on its Table section by this class)
@@ -148,7 +149,15 @@ globalThis.logTableRowChosen = json => {
 };
 
 // The clipboard is the script's: a table hands the text selected over (Cmd/Ctrl+C)
-globalThis.logTableCopy = text => Clipboard.writeText(text);
+globalThis.logTableCopy = text => copyText(text);
+
+// A copy of rows stopped at the limit of the copy (a million characters, ui/log_table/log_table.d `logCopyFormat`): the user is told
+// how many rows went to the clipboard (JSON: table, copied, total)
+globalThis.logTableCopyCut = json => {
+    const { table, copied, total } = JSON.parse(json);
+    const view = views.get(table);
+    if (view) showNotice(view.element, tr("Copied {copied} of {total} rows: a copy holds at most a million characters", { copied, total }));
+};
 
 // The items of that menu copy from their address (D puts the text on the clipboard)
 document.on("click", "menu.context > li.log-table-copy", (evt, item) => {
@@ -159,10 +168,12 @@ document.on("click", "menu.context > li.log-table-copy", (evt, item) => {
 // A table tells a click on a cell of a clickable column (the anchor column; JSON: table, item, id of the message, column id, whether the
 // row is anchored). The anchor is set or cleared by the backend; `onAnchorApplied` (script.js) tells every table of the document. A
 // refusal says why in a notice right of the cell.
+const anchorColumnId = "anchor"; // the id of the anchor column, as D names it (ui/log_table/log_columns.d anchorColumnId)
+
 globalThis.logTableCellClicked = json => {
     const click = JSON.parse(json);
     const view = views.get(click.table);
-    if (click.column !== "anchor" || !view) return;
+    if (click.column !== anchorColumnId || !view) return;
     const answer = setAnchor(view.docId, click.id, !click.anchored);
     const { rows, notice } = anchorClickPlan(click, answer, anchorRefusalText);
     if (rows) globalThis.onAnchorApplied?.(view.docId, JSON.stringify(rows));

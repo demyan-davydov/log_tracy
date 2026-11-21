@@ -86,6 +86,8 @@ struct TableEvents
     /// The table follows the end of its rows now (`on`) or no more: it reached the end, or it was moved away from it. Told once for each change,
     /// after a paint
     void delegate(bool on) followingEnd;
+    /// A copy of rows took only `copied` of the `total` rows asked: the limit of the copy format stopped it (the user is to know)
+    void delegate(size_t copied, size_t total) copyCut;
 }
 
 // What the host was last told of the scrolls, to tell it again only when it changes
@@ -133,6 +135,7 @@ final class Table
     private size_t _fitRounds; // the rounds the settling of the widths of the last layout took, 0 if it settled none (a statistic)
     private RowPicker _picker; // the rows picked and how the input picks them, the text selected, the press and the copy
     private ScrollMotion _motion; // the scrolls on the host's frames: a drag past the rows, the wheel's step, the coast
+    private bool _passOfTick; // the tick of this frame began the pass and read its rows: the paint that follows draws them
 
     this(TableModel model, ColumnHost host, TablePorts ports)
     {
@@ -141,7 +144,7 @@ final class Table
             PickPorts(&isVirtualItem, &rowAtHeight, &showRow, &toldRow, &invalidate));
         _viewport = new RowViewport(&_store.heightOf, &_store.estimateOf);
         _motion = new ScrollMotion;
-        auto rows = new RowView(RowEnv(_store.columns, _store.space));
+        auto rows = new RowView(RowEnv(_store.columns, _store.space, _store.cache.memos));
         _frame = new FramePainter(ports.painter, _store, rows, _store.space);
         _hits = new RowHits(_store, _viewport, rows);
         _store.listen((const ModelChange change) { modelChanged(change); }, (const LayoutChange change) { layoutChanged(change); });
@@ -213,9 +216,11 @@ final class Table
         invalidate();
     }
 
-    /// The table is to be painted again, nothing else changed (a flag of the host's painter)
+    /// The table is to be painted again, its rows read again (a flag of the host's painter, a color the model gives a row by the world
+    /// outside it): the next paint begins a pass of its own
     void repaint()
     {
+        _passOfTick = false;
         invalidate();
     }
 
@@ -289,6 +294,8 @@ final class Table
 
     private void modelChanged(const ModelChange change)
     {
+        if (change.kind == ModelChange.Kind.looks)
+            _passOfTick = false; // the next paint reads the rows again, even of a frame whose tick read them
         if (_store.modelChanged(change))
             setSelection(false);
         if (change.kind == ModelChange.Kind.everything)
@@ -298,6 +305,7 @@ final class Table
             _viewport.dropPending();
             _viewport.scrollToRow(0, 0);
             _newList = true;
+            forgetPicks(); // the same numbers are other rows now: nothing stays picked (nobody is told: nothing was picked for them)
         }
         invalidate();
     }
@@ -313,10 +321,17 @@ final class Table
 
     // ---- what the table is made of ----
 
-    // Everything a row or a hit needs, brought up to date: what the store keeps, then the window on the rows
+    // A frame begins: the rows of the last pass are let go, the model is asked again for what this one needs. A pass is a frame: it
+    // begins at the paint, or at the tick of the frame that moves the rows (the paint then draws the rows the tick read); the hits
+    // between two frames read into the pass of the last one. A row the model changes in between comes with a change, which lets it go.
+    private void beginPass()
+    {
+        _store.cache.beginPass();
+    }
+
+    // Everything a row or a hit needs, brought up to date: what the store keeps, then the window on the rows. The rows read stay for the pass
     private void prepare()
     {
-        _store.cache.beginPass(); // the rows of the last pass are let go: the model is asked again for what this one needs
         _store.ensure();
         _viewport.height(_store.space.regions.rows.h);
         _viewport.count(_store.itemCount);
@@ -608,6 +623,26 @@ final class Table
         return cellInSight(true);
     }
 
+    // The first (or the last) item whole in sight; the first (or the last) partly in sight when none is whole (a row higher than the
+    // window), the first item when none is in sight
+    private long wholeRowInSight(bool last)
+    {
+        _store.ensure();
+        const height = _store.space.regions.rows.h;
+        enum hair = 0.5;
+        long whole = -1, part = -1;
+        foreach (ref slot; _viewport.slots)
+        {
+            if (!inSight(slot, height))
+                continue;
+            if (part < 0 || last)
+                part = slot.index;
+            if (slot.top >= -hair && slot.top + slot.height <= height + hair && (whole < 0 || last))
+                whole = slot.index;
+        }
+        return whole >= 0 ? whole : part >= 0 ? part : cast(long) _viewport.state.first;
+    }
+
     private CellPosition cellInSight(bool last)
     {
         _store.ensure();
@@ -667,11 +702,15 @@ final class Table
     /// Draws the table: the whole of it is (0, 0, width, height) of `canvas`
     void paint(Canvas canvas)
     {
+        const passOfTick = _passOfTick; // the rows of a tick are for the paint of its frame only, whatever this paint draws
+        _passOfTick = false;
         if (_detached)
         {
             _frame.paintBlank(canvas); // nothing of the rows, nothing told: the place, the bars and the scroll stay as they were
             return;
         }
+        if (!passOfTick)
+            beginPass();
         prepare();
         _viewport.applyPending(_store.fallbackHeight);
         layout();
@@ -815,9 +854,12 @@ final class Table
         const p = places();
         bool changed;
         const wanted = _store.columns.wanted(changed);
+        CopiedRows copied;
         const text = target == CopyTarget.cell ? _picker.text.cellText(row, column, wanted)
-            : _picker.text.copyText(wanted, p, true, _picker.ranges, target == CopyTarget.rows);
+            : _picker.text.copyText(wanted, p, true, _picker.ranges, target == CopyTarget.rows, copied);
         _picker.text.toClipboard(text);
+        if (copied.cut && events.copyCut !is null)
+            events.copyCut(copied.copied, copied.asked);
         return text.length > 0;
     }
 
@@ -1082,7 +1124,8 @@ final class Table
     }
 
     /// The row `index` is shown: when it is not in view the rows move so that it stands with `revealMargin` pixels left on the side it came
-    /// from, or at the top of the window if it does not fit with them (see `RowViewport.revealPlan`). With the time of the host the rows glide
+    /// from, or at the top of the window if it does not fit with them; one taller than the window that came from above ends at the bottom of the
+    /// window (see `RowViewport.revealPlan`). With the time of the host the rows glide
     void reveal(size_t index, double timestampMs = double.nan)
     {
         _motion.stop();
@@ -1169,7 +1212,9 @@ final class Table
         if (step.pixels != 0)
         {
             // the rows move now, by all of it (not through the wheel's queue, cut to a screen): the mouse is over the new
-            // ones, a coast lands where it was aimed
+            // ones, a coast lands where it was aimed. The frame's pass begins here, the paint draws what it read
+            beginPass();
+            _passOfTick = true;
             prepare();
             _viewport.scrollBy(step.pixels, _store.fallbackHeight);
             layout();
@@ -1271,7 +1316,11 @@ final class Table
         if (count == 0)
             return false;
         const page = cast(long) max(1UL, _viewport.slots.length - 1);
-        const at = _picker.currentRow < 0 ? cast(long) _viewport.state.first : _picker.currentRow; // the row with the marker, picked or not
+        // from the row with the marker, picked or not; without one the arrows start from the rows on screen: down lands on the first
+        // whole one, up on the last whole one (the step of `navigate` is taken from the row before or after it), the rest from the first
+        long at = _picker.currentRow;
+        if (at < 0)
+            at = k == Key.down ? wholeRowInSight(false) - 1 : k == Key.up ? wholeRowInSight(true) + 1 : cast(long) _viewport.state.first;
         setSelection(false);
         const to = navigate(k, at, count, page, (long i) => entry(cast(size_t) i).data.kind == ItemKind.virtual_);
         if (to >= 0)
@@ -1338,6 +1387,73 @@ unittest
     assert(stats.fetches >= 7, "the model was asked for them");
 }
 
+@("Table: the rows a tick read are for the paint of its frame only: a paint of the background between does not hand them to the next one")
+unittest
+{
+    auto f = make(1000);
+    f.table.events.needFrame = () {};
+    f.table.scrollTo(400);
+    f.table.paint(f.canvas);
+    f.table.wheel(-40, 0);
+    f.table.tick(16); // the rows move: the tick begins the pass of its frame
+    f.table.detach();
+    f.table.paint(f.canvas); // the frame's paint draws the background only
+    f.table.attach();
+    const before = f.table.stats.fetches;
+    f.table.paint(f.canvas);
+    assert(f.table.stats.fetches - before >= f.table.stats.rowsOnScreen, "a paint of a frame of its own reads its rows");
+}
+
+@("Table: rows that look another way are read again at the next paint, where they stand: nothing measured anew, nothing picked lost")
+unittest
+{
+    auto f = make(1000);
+    f.table.scrollTo(400);
+    f.table.paint(f.canvas);
+    f.table.pickRow(402);
+    const first = f.table.firstVisible;
+    const height = f.table.rowHeight(401);
+    size_t told;
+    f.table.events.invalidate = () { ++told; };
+    f.model.tell(ModelChange(ModelChange.Kind.looks));
+    assert(told == 1, "painted again");
+    const before = f.table.stats.fetches;
+    f.table.paint(f.canvas);
+    assert(f.table.stats.fetches - before == f.table.stats.rowsOnScreen, "the rows on the screen read again");
+    assert(f.table.stats.fitRounds == 0, "no widths fit anew");
+    assert(f.table.firstVisible == first && f.table.rowHeight(401) == height, "the place and the heights stay");
+    assert(f.table.isSelected(402), "what was picked stays");
+}
+
+@("Table: a frame reads each row on the screen once, whether it scrolls on the frame of the host, by pixels or not at all")
+unittest
+{
+    auto f = make(1000);
+    f.table.events.needFrame = () {};
+    f.table.scrollTo(400); // numbers of three digits around: the widths stay, no row is laid out again for another width
+    f.table.paint(f.canvas);
+    // the rows read by a frame: those on the screen after it, and at most the one the move passed over to get there
+    void frame(scope void delegate() run, string what)
+    {
+        const before = f.table.stats.fetches;
+        run();
+        const stats = f.table.stats;
+        assert(stats.fetches - before <= stats.rowsOnScreen + 1, what);
+    }
+    double t = 0;
+    foreach (i; 0 .. 20)
+    {
+        if (i % 4 == 0)
+            f.table.wheel(i % 8 ? -40 : 40, t);
+        frame({ f.table.tick(t += 16); f.table.paint(f.canvas); }, "the wheel's glide: the tick read the rows of the frame, the paint draws them");
+    }
+    foreach (i; 0 .. 20)
+        frame({ f.table.queueScroll(i % 2 ? 7 : -5); f.table.paint(f.canvas); }, "a scroll by pixels");
+    const before = f.table.stats.fetches;
+    f.table.paint(f.canvas);
+    assert(f.table.stats.fetches - before == f.table.stats.rowsOnScreen, "a paint alone");
+}
+
 @("Table: the wheel moves the rows by the pixels at the next paint, up to a screen")
 unittest
 {
@@ -1393,6 +1509,25 @@ unittest
     assert(f.clipboard.last.length > text.length, "the rows, not the text");
     f.table.selectAll();
     assert(!f.table.hasTextSelected, "the text goes");
+}
+
+@("Table: a copy of rows the limit of the format cut tells the host how many rows it took of how many; a whole one tells nothing")
+unittest
+{
+    import ptable.testing : tabbedUpTo;
+
+    auto f = make(50);
+    auto ports = portsOf(new Painter, f.clipboard);
+    ports.copyFormat = tabbedUpTo(20);
+    auto table = new Table(f.model, new ColumnHost(f.layout), ports);
+    table.resize(400, 121);
+    table.paint(f.canvas);
+    size_t[2][] told;
+    table.events.copyCut = (size_t copied, size_t total) { told ~= [copied, total]; };
+    table.selectAll();
+    assert(table.copy(CopyTarget.rows) && told == [[2, 50]] && f.clipboard.last == "0\trow 0\n1\trow 1"w);
+    table.selectRow(3, Pick.replace);
+    assert(table.copy(CopyTarget.rows) && told.length == 1, "one row fits: nothing told");
 }
 
 @("Table: the pointer is a hand over the cells of a clickable column, the arrow over the others, the header and below the rows")
@@ -2072,6 +2207,42 @@ unittest
     assert(f.table.firstVisible.row == 0, "rows that come after stay under the top");
 }
 
+@("Table: a new list of rows forgets the rows picked and the current one: the same numbers are other rows now, and nobody is told")
+unittest
+{
+    auto f = make(1000, 100, 121);
+    f.table.paint(f.canvas);
+    f.table.selectRow(3, Pick.replace);
+    f.table.selectRow(5, Pick.toggle);
+    size_t told;
+    f.table.events.rowSelected = (size_t item, ulong id, bool delayed) { ++told; };
+    f.model.tell(ModelChange(ModelChange.Kind.everything));
+    f.table.paint(f.canvas);
+    long row;
+    assert(f.table.selectedCount == 0 && !f.table.currentRow(row) && told == 0);
+    f.table.selectRow(7, Pick.replace);
+    f.model.append(10);
+    f.table.paint(f.canvas);
+    assert(f.table.isSelected(7) && f.table.currentRow(row) && row == 7, "rows appended keep what is picked");
+}
+
+@("Table: without a current row the arrows start from the rows on screen: down picks the first whole one, up the last whole one")
+unittest
+{
+    long row;
+    auto f = make(1000); // rows 16 high under 100 of body
+    f.table.paint(f.canvas);
+    assert(f.table.key(Key.down) && f.table.currentRow(row) && row == 0, "the top row, whole: it is not passed over");
+
+    foreach (key, expected; [Key.down: 1L, Key.up: 5L])
+    {
+        auto g = make(1000);
+        g.table.scrollToPosition(CellPosition(0, 0, -8, 0)); // row 0 is half gone, rows 1 to 5 are whole, row 6 is cut by the bottom
+        g.table.paint(g.canvas);
+        assert(g.table.key(key) && g.table.currentRow(row) && row == expected, key == Key.down ? "the first whole row" : "the last whole row");
+    }
+}
+
 @("Table: a hit right after a resize, before any paint, finds the row by the new size")
 unittest
 {
@@ -2736,7 +2907,7 @@ unittest
     f.table.mouseDown(30, 21.0 + 2);
     f.table.mouseUp(30, 21.0 + 2);
     f.table.paint(f.canvas);
-    assert(f.table.firstVisible == CellPosition(2, 0, 0, 0), "cut at the top: it does not fit, its top comes to the top of the window");
+    assert(f.table.firstVisible == CellPosition(2, 0, -6, 0), "cut at the top: it does not fit, its bottom comes to the bottom of the window");
 }
 
 @("Table: with the time of the host a click on a row cut at an edge brings it in by a glide on the frames")

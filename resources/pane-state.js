@@ -28,9 +28,8 @@ function runsUnder(vm) {
 // dataVersion, ... }) changes or tells its progress:
 //   { table: true if the table is shown (else the status of the view),
 //     reload: false, "start" (the first rows: scroll to the top) or "keep"
-//     (other rows: keep the scroll), resetSelection,
-//     grow: the content is the one shown and may have more rows now: they are
-//       counted, the rows on screen, the scroll and the selection stay,
+//     (other rows: keep the scroll); what the table does with its rows and its
+//     selection, D decides (ViewChangeTracker, ui/log_table/view_events.d),
 //     running: a filter or a search is filling the table: its progress and
 //       Cancel are shown by the table,
 //     shown: the next state }
@@ -39,18 +38,18 @@ function runsUnder(vm) {
 // it and after, for a source that never ends.
 export function tableStep(shown, vm) {
     if (!showsRows(vm)) {
-        return { table: false, reload: false, resetSelection: false, grow: false, running: false,
+        return { table: false, reload: false, running: false,
             shown: { ...shown, dataVersion: null } };
     }
     const filling = vm.status !== "ready";
-    const step = { table: true, reload: false, resetSelection: false, grow: false,
+    const step = { table: true, reload: false,
         running: runsUnder(vm), shown: { loaded: true, dataVersion: vm.dataVersion } };
     // New content being filled starts at the top: it has no rows yet to keep the scroll at
-    if (!shown.loaded) return { ...step, reload: "start", resetSelection: true };
+    if (!shown.loaded) return { ...step, reload: "start" };
     // null: a status was shown, the view may have been rebuilt meanwhile
     if (shown.dataVersion === null || shown.dataVersion !== vm.dataVersion)
-        return { ...step, reload: filling ? "start" : "keep", resetSelection: true };
-    return { ...step, grow: true };
+        return { ...step, reload: filling ? "start" : "keep" };
+    return step;
 }
 
 // The panels to create and remove for the documents open now
@@ -68,15 +67,6 @@ export function paneChanges(paneIds, docIds) {
 export function tabProgress(vm) {
     if (vm?.status !== "loadingFile") return null;
     return Math.min(1, Math.max(0, vm.progress || 0));
-}
-
-// The search view (vm of the search machine, null if none yet) as a value: the
-// rows of the main table show what the search found, and are refreshed when
-// this changes. The models come as new objects with every snapshot of the
-// workspace (refreshTabs), so they are compared by what they say.
-export function searchViewKey(vm) {
-    if (!vm) return "";
-    return `${vm.status}/${vm.dataVersion ?? ""}/${vm.progress ?? ""}`;
 }
 
 // True if the rows a table shows (`shown`, see tableStep) are of the content of

@@ -5,6 +5,7 @@
 module ptable.rowview;
 
 version (unittest) import ptable.testing : withBoxes;
+import ptable.cellmemo : CellMemos, MemoRef;
 import ptable.column : CellInput;
 import ptable.columnset : ColumnSet;
 
@@ -13,7 +14,7 @@ version (unittest)
 
     private immutable RowRanges noRows;
 }
-import ptable.layout : Placement, Placements;
+import ptable.layout : Pin, Placement, Placements;
 import ptable.painter : CellContext, Painter, RowContext, RowState;
 import ptable.ports : Rect;
 import ptable.regions : Panes, cellIn, panesOf, seenOf;
@@ -31,6 +32,7 @@ struct RowEnv
 {
     ColumnSet columns;
     const(TableSpace)* space;
+    CellMemos memos; /// the memos of the cells (`RowCache.memos`), taken by a column that asks; null: none
 }
 
 final class RowView
@@ -71,7 +73,7 @@ final class RowView
         return ctx;
     }
 
-    /// What the column of the cell `defIndex` of an entry in a row is given to draw it: its data and its fragments
+    /// What the column of the cell `defIndex` of an entry in a row is given to draw it: its data, its fragments and its memo
     CellInput cellInputAt(Entry* e, ref const RowContext row, size_t defIndex)
     {
         CellInput cell;
@@ -81,6 +83,8 @@ final class RowView
             cell.data = &e.data.cells[defIndex];
         if (defIndex < e.data.fragments.length)
             cell.fragments = e.data.fragments[defIndex];
+        if (_env.memos !is null)
+            cell.memo = MemoRef(_env.memos, row.index, cell.col);
         return cell;
     }
 
@@ -126,10 +130,10 @@ final class RowView
         return textPositionAt(focused, row, x, y, at);
     }
 
-    /// The rectangles `range` takes in the row `focused`
-    void selectionRects(ref FocusedRow focused, TextRange range, size_t row, scope void delegate(Rect) emit)
+    /// The rectangles `range` takes in the cells of the row `focused` that stand in `area`
+    void selectionRects(ref FocusedRow focused, TextRange range, size_t row, Pin area, scope void delegate(Rect) emit)
     {
-        .selectionRects(focused, range, row, emit);
+        .selectionRects(focused, range, row, emit, (size_t col) => focused.area(col) == area);
     }
 }
 
@@ -144,6 +148,7 @@ struct FocusedRow
 
     size_t length() { return _cells.length; }
     double right(size_t col) { return _cells[col].x + _cells[col].width; }
+    Pin area(size_t col) { return _cells[col].area; } /// the area the cell `col` stands in
     CellText cell(size_t col) { return _view.cellText(_entry, _row, _cells[col], _panes[_cells[col].area]); }
 }
 
@@ -235,4 +240,33 @@ unittest
     assert(focused.cell(0).view.x == 0 && focused.cell(0).view.w == 50, "the left strip: seen whole");
     assert(focused.cell(1).view.x == 50 && focused.cell(1).view.w == 80, "the middle one: 30..50 under the left strip");
     assert(focused.cell(2).view.x == 260 && focused.cell(2).view.w == 40, "the right strip: seen whole");
+}
+
+@("RowView: a cell's input takes no memo of its own: a memo is given to the cell that asks for it, the Payload after the short cells too")
+unittest
+{
+    import ptable.cellmemo : CellMemos;
+    import ptable.layout : ColumnDef, ColumnLayout;
+    import ptable.memory : mallocAllocator;
+    import ptable.model : CellData;
+
+    ColumnDef[] defs;
+    foreach (i; 0 .. 6)
+        defs ~= ColumnDef([cast(char)('a' + i)].idup, "T");
+    auto columns = new ColumnSet(new ColumnLayout);
+    columns.refresh(withBoxes(defs));
+    TableSpace space;
+    auto memos = new CellMemos(mallocAllocator());
+    memos.fit(64);
+    auto view = new RowView(RowEnv(columns, &space, memos));
+
+    Entry entry;
+    entry.data.cells = new CellData[6];
+    RowContext row;
+    row.index = 7;
+    CellInput[6] inputs;
+    foreach (i; 0 .. 6)
+        inputs[i] = view.cellInputAt(&entry, row, i); // every cell drawn, as a frame does
+    assert(inputs[5].memo.get() !is null, "the Payload, the last of six cells, has no memo");
+    assert(memos.count == 1, "the short cells took places they never use");
 }

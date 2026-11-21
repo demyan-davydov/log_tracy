@@ -7,6 +7,7 @@
 module ui.log_table.column_widths;
 
 import log_core.log_format : ColumnKind;
+import ui.log_table.log_columns : anchorColumnId, indexColumnId;
 
 /// The start of the names of the variables
 enum minWidthPrefix = "column-min-width";
@@ -58,7 +59,7 @@ string[] minWidthVariables()
 {
     import formats.registry : formatColumns, formatInfos;
 
-    string[] names = [minWidthVariable(defaultKey), minWidthVariable("anchor"), minWidthVariable("index"), minWidthVariable("payload")];
+    string[] names = [minWidthVariable(defaultKey), minWidthVariable(anchorColumnId), minWidthVariable(indexColumnId), minWidthVariable("payload")];
     foreach (format; formatInfos())
         foreach (ref column; formatColumns(format.id))
             if (column.kind != ColumnKind.Payload)

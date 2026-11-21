@@ -1,47 +1,10 @@
-//! What the painted tables are told of a document's views: a view shown (its content version) and the columns
-//! changed, and how a table's model turns them into `ModelChange`s. Free of Sciter.
+//! How a table's model turns the views of a document it hears (ui/view_listeners) into `ModelChange`s. Free of Sciter.
 //! The rule is that of ReadyView.dataVersion (ui/main_view_fsm): under one version a view only grows, a
 //! new version replaces it.
 module ui.log_table.view_events;
 
 import ptable.model : ModelChange;
-import std.sumtype : match;
-import ui.main_view_fsm : MainViewModel;
-import ui.search_view_fsm : SearchViewModel;
-
-/// The content version of a view shown; a view without content (cancelled, failed, lost) has none
-struct ViewVersion
-{
-    bool has;
-    uint value;
-}
-
-/// The version of the content a view shows
-ViewVersion versionOf(in MainViewModel vm)
-{
-    return vm.match!((in v) => versionOfView(v));
-}
-
-/// ditto
-ViewVersion versionOf(in SearchViewModel vm)
-{
-    return vm.match!((in v) => versionOfView(v));
-}
-
-private ViewVersion versionOfView(V)(in V view)
-{
-    static if (is(typeof(view.dataVersion)))
-        return ViewVersion(true, view.dataVersion);
-    else
-        return ViewVersion(false, 0);
-}
-
-/// What a table listening to a document hears
-struct ViewListener
-{
-    void delegate(bool search, ViewVersion shown) viewShown; /// a view of the document was shown anew
-    void delegate() columnsChanged; /// the columns the tables show changed (the Settings)
-}
+import ui.view_listeners : ViewVersion;
 
 /// Turns the views shown into the changes of one model: rows appended under the same version, everything
 /// else when the view was replaced or has no content
@@ -92,17 +55,4 @@ unittest
     assert(t.next(ViewVersion(false, 0), 0, c) && c.kind == ModelChange.Kind.everything, "cancelled");
     assert(t.next(ViewVersion(true, 2), 5, c) && c.kind == ModelChange.Kind.everything, "back, the version is not trusted");
     assert(t.next(ViewVersion(true, 2), 3, c) && c.kind == ModelChange.Kind.everything, "it only grows under a version");
-}
-
-@("versionOf: the views with content have a version, the others none")
-unittest
-{
-    import ui.main_view_fsm : FilterCancelledView, FilteringView, ReadyView;
-    import ui.search_view_fsm : SearchResultsView, SearchWaitingView;
-
-    assert(versionOf(MainViewModel(ReadyView(7))) == ViewVersion(true, 7));
-    assert(versionOf(MainViewModel(FilteringView(0.5, 3))) == ViewVersion(true, 3));
-    assert(!versionOf(MainViewModel(FilterCancelledView())).has);
-    assert(versionOf(SearchViewModel(SearchResultsView(2))) == ViewVersion(true, 2));
-    assert(!versionOf(SearchViewModel(SearchWaitingView())).has);
 }

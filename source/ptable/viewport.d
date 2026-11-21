@@ -246,7 +246,9 @@ final class RowViewport
     /// How the item `index` is to be shown: whether it has to be, where it is to stand, and where it stands now. Shown already: wholly in the window, or
     /// taller than the window and covering it (a second click on it does not scroll it). Else it is brought in with `margin` pixels left on the
     /// side it came from: under it if it came from below, above it if from above; one that does not fit the window with its margin is brought to
-    /// the top of the window. `top`: where it stands now from the top of the window, NaN if it is more than two screens off (the caller jumps to it)
+    /// the top of the window, except one taller than the window that came from above: its bottom is brought to the bottom of the window (the least
+    /// scroll that makes it cover the window). `top`: where it stands now from the top of the window, NaN if it is more than two screens off (the
+    /// caller jumps to it)
     RevealPlan revealPlan(size_t index, double margin)
     {
         import std.math : isNaN;
@@ -262,7 +264,8 @@ final class RowViewport
         }
         const above = top.isNaN ? (_slots.length > 0 && index < _slots[0].index) : top < 0;
         const fits = height + margin <= _height;
-        return RevealPlan(true, fits ? (above ? margin : _height - margin - height) : 0, top);
+        const dy = fits ? (above ? margin : _height - margin - height) : (above && height > _height ? _height - height : 0);
+        return RevealPlan(true, dy, top);
     }
 
     /// Before a glide that brings the top of the item `index`, now at `top` (NaN: far off, `topOf`), to `dy` from the top of the
@@ -798,7 +801,7 @@ unittest
     assert(view.revealPlan(16, 90).dy == 0, "a margin that leaves no room for the item: the top");
 }
 
-@("RowViewport.revealPlan: an item taller than the window that covers it is shown, one that does not is brought to the top")
+@("RowViewport.revealPlan: an item taller than the window that covers it is shown; one that does not is brought to cover it from the side it came from")
 unittest
 {
     auto view = new RowViewport((size_t i) nothrow => i == 5 ? 250.0 : 20.0);
@@ -817,7 +820,11 @@ unittest
     view.scrollToRow(5, -200); // its last 50 are in the window
     view.layout();
     plan = view.revealPlan(5, 24);
-    assert(plan.needed && plan.dy == 0 && plan.top == -200, "cut at the top: its top comes to the top of the window");
+    assert(plan.needed && plan.dy == 100 - 250 && plan.top == -200, "cut at the top: its bottom comes to the bottom of the window");
+    view.scrollToRow(15, 0); // item 5 is far off above
+    view.layout();
+    plan = view.revealPlan(5, 24);
+    assert(plan.needed && plan.top != plan.top && plan.dy == 100 - 250, "far off above: its bottom comes to the bottom of the window");
 }
 
 @("RowViewport.topOf: the top of an item in the window or near it, NaN when it is more than two screens away")

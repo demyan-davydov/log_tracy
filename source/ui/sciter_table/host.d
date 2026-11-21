@@ -4,15 +4,15 @@
 //! is). See docs/experiments/2026-11-19-painted-rows-d.md.
 module ui.sciter_table.host;
 
-import ptable.memory : Arena, HashMap, mallocAllocator;
+import ptable.memory : mallocAllocator;
 import ptable.ports;
 import ptable_text.measurer : FontMetrics, TextMeasurer;
 import std.experimental.allocator : RCIAllocator;
 import sciter.api : sciterApi;
 import sciter.capi.api;
 import sciter.graphics : GfxCanvas = Canvas, TextLayout, rgba;
-import sciter.value : SciterValue;
 import ui.look : FontSpec, TextLook;
+import ui.sciter_table.generations : Generations;
 
 import std.algorithm.comparison : max;
 import std.math : ceil, round;
@@ -25,36 +25,13 @@ private struct TextKey
     const(wchar)[] text;
 }
 
-// One generation of the layouts: the layouts, and the memory the texts of their keys are in
-private struct Generation
-{
-    Arena arena;
-    HashMap!(TextKey, TextLayout) layouts;
-
-    this(RCIAllocator allocator)
-    {
-        arena = Arena(allocator);
-        layouts = HashMap!(TextKey, TextLayout)(allocator);
-    }
-
-    void releaseLayouts()
-    {
-        foreach (ref const TextKey key, ref TextLayout layout; layouts)
-            layout.release();
-        layouts.clear();
-        arena.reset();
-    }
-}
-
-/// The text layouts of a table: made on demand for a font, a color and a text, kept in two generations. The keys
-/// and the maps are in memory of the allocator given, the garbage collector is not asked for a lookup.
+/// The text layouts of a table: made on demand for a font, a color and a text, kept in two generations (ui/sciter_table/generations),
+/// released when they go. The keys and the maps are in memory of the allocator given, the garbage collector is not asked for a lookup.
 final class SciterTextCache
 {
     private HELEMENT _he;
-    private Generation[2] _generations;
-    private size_t _current;
-    private immutable(wchar)[][ulong] _styles; // by font, color and kind: made on a miss only
-    size_t limit = 3000; /// layouts a generation keeps
+    private Generations!(TextKey, TextLayout) _layouts;
+    private immutable(wchar)[][ulong] _styles; // by font, color, kind and width (`styleKey`): made once, the misses after it allocate nothing for it
     size_t made; /// layouts made so far
     private TextLook _look;
     private double[] _ascent, _advance;
@@ -68,8 +45,7 @@ final class SciterTextCache
         _ascent = new double[look.fonts.length];
         _advance = new double[look.fonts.length];
         _lineHeights = new double[look.fonts.length];
-        _generations[0] = Generation(allocator);
-        _generations[1] = Generation(allocator);
+        _layouts = new Generations!(TextKey, TextLayout)(6000, delegate(ref TextLayout layout) nothrow { layout.release(); }, allocator);
     }
 
     void element(HELEMENT he)
@@ -83,13 +59,31 @@ final class SciterTextCache
         return _look;
     }
 
+    /// The layouts kept
     size_t count()
     {
-        return _generations[0].layouts.length + _generations[1].layouts.length;
+        return _layouts.length;
+    }
+
+    /// How many layouts are kept at most (both generations: a layout is ~20 KB of memory, .ai/knowledge/sciter.md)
+    void limit(size_t layouts)
+    {
+        _layouts.limit = layouts;
+    }
+
+    // The style of a layout, made once for its font, color, kind and width
+    private immutable(wchar)[] styleOf(uint font, Color color, bool paragraph, bool measure, int width)
+    {
+        const key = styleKey(font, color, paragraph ? 2 : measure ? 1 : 0, width);
+        if (auto found = key in _styles)
+            return *found;
+        auto style = makeStyle(font, color, paragraph, measure, width);
+        _styles[key] = style;
+        return style;
     }
 
     // `white-space: nowrap` drops the trailing spaces of a text from its width: a piece to measure is `pre`
-    private immutable(wchar)[] styleOf(uint font, Color color, bool paragraph, bool measure, int width)
+    private immutable(wchar)[] makeStyle(uint font, Color color, bool paragraph, bool measure, int width)
     {
         import std.format : format;
 
@@ -122,28 +116,11 @@ final class SciterTextCache
 
     private TextLayout get(TextKey key, Color color, bool paragraph, int width)
     {
-        auto now = &_generations[_current];
-        if (auto found = key in now.layouts)
+        if (auto found = _layouts.find(key))
             return *found;
-        auto before = &_generations[1 - _current];
-        if (auto old = key in before.layouts)
-        {
-            auto layout = *old;
-            before.layouts.remove(key);
-            key.text = now.arena.copy(key.text);
-            now.layouts.set(key, layout);
-            return layout;
-        }
-        if (now.layouts.length >= limit)
-        {
-            before.releaseLayouts(); // the older generation goes, the current becomes the older
-            _current = 1 - _current;
-            now = &_generations[_current];
-        }
         made++;
         auto layout = TextLayout.create(_he, key.text, styleOf(key.font, color, paragraph, false, width));
-        key.text = now.arena.copy(key.text);
-        now.layouts.set(key, layout);
+        _layouts.keep(key, layout);
         return layout;
     }
 
@@ -202,8 +179,7 @@ final class SciterTextCache
 
     void release()
     {
-        foreach (ref g; _generations)
-            g.releaseLayouts();
+        _layouts.clear();
     }
 
     /// The text changed (the fonts, their sizes): what was made and read with the old fonts goes
@@ -214,8 +190,29 @@ final class SciterTextCache
         _advance = new double[look.fonts.length];
         _lineHeights = new double[look.fonts.length];
         _read = false;
+        _styles = null;
         release();
     }
+}
+
+/// The key of a style of `SciterTextCache`: the font, the color (its alpha is not in a style), the kind (0 a line, 1 a piece to measure,
+/// 2 a paragraph) and the width of a paragraph, one number
+ulong styleKey(uint font, Color color, uint kind, int width) pure nothrow @nogc @safe
+{
+    const rgb = (cast(ulong) color.r << 16) | (cast(ulong) color.g << 8) | color.b;
+    return (cast(ulong) (font & 0xFF) << 56) | (cast(ulong) (kind & 3) << 54) | (rgb << 22) | (cast(ulong) width & 0x3F_FFFF);
+}
+
+@("styleKey: another font, color, kind or width is another key, the alpha of the color is not in it")
+unittest
+{
+    const base = styleKey(1, Color(10, 20, 30, 255), 2, 640);
+    assert(styleKey(1, Color(10, 20, 30, 128), 2, 640) == base);
+    assert(styleKey(2, Color(10, 20, 30, 255), 2, 640) != base);
+    assert(styleKey(1, Color(10, 20, 31, 255), 2, 640) != base);
+    assert(styleKey(1, Color(10, 20, 30, 255), 0, 640) != base);
+    assert(styleKey(1, Color(10, 20, 30, 255), 2, 641) != base);
+    assert(styleKey(255, Color(255, 255, 255, 255), 3, 0x3F_FFFF) != styleKey(255, Color(255, 255, 255, 255), 3, 0x3F_FFFE));
 }
 
 // Printable ASCII: one unit, one glyph of the same width in a monospace font. Other text (a surrogate pair, a
@@ -228,18 +225,28 @@ private bool isPlain(const(wchar)[] text) pure nothrow @nogc @safe
     return true;
 }
 
-/// Measures text with the layouts of Sciter
+private struct WidthKey
+{
+    uint font;
+    const(wchar)[] text;
+}
+
+/// Measures text with the layouts of Sciter; what it measured is kept by font and text in two generations (ui/sciter_table/generations)
 final class SciterMeasurer : TextMeasurer
 {
+    /// Widths kept, of both generations: a frame needs the runs it draws and at most `markEvery` before each place it looks for on a long
+    /// line (ptable_text/runs keeps marks of them); the first walk of a long line goes through all of its runs once, the words repeated
+    enum size_t maxWidths = 100_000;
+
     private SciterTextCache _cache;
-    private double[wstring][] _widths;
+    private Generations!(WidthKey, double) _widths;
     /// Wrap the Payload by the text engine of Sciter (it knows scripts our wrap does not), not by the glyphs
     bool sciterWrap;
 
     this(SciterTextCache cache)
     {
         _cache = cache;
-        _widths = new double[wstring][cache.look.fonts.length];
+        _widths = new Generations!(WidthKey, double)(maxWidths);
     }
 
     FontMetrics metrics(FontId font)
@@ -254,13 +261,11 @@ final class SciterMeasurer : TextMeasurer
             return 0;
         if (_cache.look.fonts[font].monospace && isPlain(text))
             return text.length * _cache.advance(font);
-        auto key = cast(wstring) text;
-        if (auto found = key in _widths[font])
-            return *found;
-        if (_widths[font].length > 20_000)
-            _widths[font] = null;
+        const key = WidthKey(font, text);
+        if (auto known = _widths.find(key))
+            return *known;
         const result = _cache.measure(font, text);
-        _widths[font][text.idup] = result;
+        _widths.keep(key, result);
         return result;
     }
 
@@ -274,7 +279,7 @@ final class SciterMeasurer : TextMeasurer
     /// What was measured is dropped (the fonts changed)
     void forget()
     {
-        _widths = new double[wstring][_cache.look.fonts.length];
+        _widths.clear();
     }
 }
 
@@ -343,35 +348,21 @@ final class SciterCanvas : Canvas
     }
 }
 
-/// Calls the global function `name` of the script of the window of `he` with a text; what it answers is dropped
-void callScript(HELEMENT he, const(char)* name, const(wchar)[] text)
-{
-    HWINDOW hwnd;
-    if (sciterApi().SciterGetElementHwnd(he, &hwnd, true) != SCDOM_OK)
-        return;
-    SciterValue arg;
-    arg = text.idup;
-    SciterValue result;
-    sciterApi().SciterCall(hwnd, name, 1, arg.raw, result.raw);
-}
+/// Where a copy goes: the clipboard of Sciter belongs to the script, the one who makes the host says how the text reaches it
+alias CopyTaker = void delegate(const(wchar)[] text);
 
-/// The clipboard of Sciter belongs to the script: the text goes to its `logTableCopy`
+/// The clipboard of a table: the text goes to whom the host was told (`CopyTaker`)
 final class ScriptClipboard : Clipboard
 {
-    private HELEMENT _he;
+    private CopyTaker _take;
 
-    this(HELEMENT he)
+    this(CopyTaker take)
     {
-        _he = he;
-    }
-
-    void element(HELEMENT he)
-    {
-        _he = he;
+        _take = take;
     }
 
     void writeText(const(wchar)[] text)
     {
-        callScript(_he, "logTableCopy", text);
+        _take(text);
     }
 }

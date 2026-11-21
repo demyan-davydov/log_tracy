@@ -52,13 +52,17 @@ bool textPositionAt(Cells)(auto ref Cells cells, size_t row, double x, double y,
     return true;
 }
 
-/// The rectangles the selection `range` takes in the row `row`, as the columns of its cells place them: `emit` is called for each
-void selectionRects(Cells)(auto ref Cells cells, TextRange range, size_t row, scope void delegate(Rect) emit)
+/// The rectangles the selection `range` takes in the row `row`, as the columns of its cells place them: `emit` is called for each; only
+/// in the cells `take` takes, if given (a pinned strip draws its own over the middle)
+void selectionRects(Cells)(auto ref Cells cells, TextRange range, size_t row, scope void delegate(Rect) emit,
+    scope bool delegate(size_t col) take = null)
 {
     if (row < range.start.row || row > range.end.row)
         return;
     foreach (col; 0 .. cells.length)
     {
+        if (take !is null && !take(col))
+            continue;
         auto info = cells.cell(col);
         const part = cellPart(range, row, col, info.text.length);
         if (!part.any)

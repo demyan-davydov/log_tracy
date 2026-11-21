@@ -27,11 +27,12 @@ import ui.log_table.text_column : TextColumn;
 import ui.log_table.marks;
 import ptable.cellparts : HeadedCellPartsExtractor, firstSpace;
 import ptable_text.columnstyle : Halign;
-import ui.log_table.log_columns : AnchorColumn, IndexColumn, LevelColumn;
+import ui.log_table.log_columns : anchorColumnId, AnchorColumn, indexColumnId, IndexColumn, LevelColumn, LevelInkColumn;
 import ui.log_table.column_widths : anchorMinWidth, columnMinWidth, columnMinWidthKey, indexMinWidth, minWidthOf, payloadMinWidth;
 import ui.log_table.log_look : LogFont, LogLook, defaultLogLook;
 import ui.row_cells : putColumnText, putNumber;
-import ui.log_table.view_events : ViewChangeTracker, ViewListener, ViewVersion;
+import ui.log_table.view_events : ViewChangeTracker;
+import ui.view_listeners : ViewListener, ViewVersion;
 
 import std.datetime.timezone : LocalTime, TimeZone;
 import std.uni : toLower;
@@ -74,12 +75,12 @@ LogMarks logMarksOf(ref const DocumentItem item, RuleId rule)
 TableColumn[] logColumns(const(ColumnInfo)[] columns, LogColumnLook look = LogColumnLook.init)
 {
     auto palette = look.look !is null ? look.look : defaultLogLook();
-    auto anchorDef = ColumnDef("anchor", "⚓", minWidthOf(look.minWidths, "anchor", anchorMinWidth));
+    auto anchorDef = ColumnDef(anchorColumnId, "⚓", minWidthOf(look.minWidths, anchorColumnId, anchorMinWidth));
     anchorDef.selectable = false;
     anchorDef.clickable = true; // a click sets or clears the anchor
     auto anchor = new AnchorColumn(anchorDef, palette, look.anchorsFull, look.ruleColor, look.measurer);
     anchor.style.cell.halign = Halign.center; // the mark stands in the middle of its cell
-    auto index = new IndexColumn(ColumnDef("index", "Index", minWidthOf(look.minWidths, "index", indexMinWidth)), palette, look.ruleColor,
+    auto index = new IndexColumn(ColumnDef(indexColumnId, "Index", minWidthOf(look.minWidths, indexColumnId, indexMinWidth)), palette, look.ruleColor,
         look.measurer);
     index.style.cell.halign = Halign.right;
     anchor.style.header.halign = index.style.header.halign = Halign.center;
@@ -90,7 +91,8 @@ TableColumn[] logColumns(const(ColumnInfo)[] columns, LogColumnLook look = LogCo
     {
         const def = i + 1 == columns.length ? ColumnDef(c.id, c.title, minWidthOf(look.minWidths, "payload", payloadMinWidth), true)
             : ColumnDef(c.id, c.title, minWidthOf(look.minWidths, columnMinWidthKey(look.formatId, c.id), columnMinWidth));
-        TextColumn column = c.kind == ColumnKind.Level ? new LevelColumn(def, palette, look.measurer) : new TextColumn(def, palette, look.measurer);
+        TextColumn column = c.kind == ColumnKind.Level ? new LevelColumn(def, palette, look.measurer)
+            : c.byLevel ? new LevelInkColumn(def, palette, look.measurer) : new TextColumn(def, palette, look.measurer);
         // the numbers and texts of the columns stand at their right side, a level in the middle, the Payload at its left;
         // the titles are in the middle but the Payload's
         column.style.cell.halign = c.kind == ColumnKind.Level ? Halign.center : Halign.right;
@@ -106,6 +108,7 @@ TableColumn[] logColumns(const(ColumnInfo)[] columns, LogColumnLook look = LogCo
             column.style.wrap = look.wrapPayload;
         }
         column.style.group.halign = Halign.center; // the head of a group of rows (the date) stands in the middle of its plate
+        column.style.group.font = LogFont.groupHead; // bold, the titles of the header keep their own font
         if (c.kind == ColumnKind.Time)
             column.parts = timeParts;
         made ~= column;
@@ -130,7 +133,7 @@ Column!LogRow[] documentColumns(const(ColumnInfo)[] infos, immutable TimeZone zo
     foreach (i; 0 .. infos.length)
     {
         columns[2 + i].text = formatColumnText(infos, i, zone);
-        if (infos[i].kind == ColumnKind.Level)
+        if (infos[i].kind == ColumnKind.Level || infos[i].byLevel)
             columns[2 + i].extra = marks;
     }
     columns[$ - 1].fragments = payloadFragments; // what the search found shows in the Payload, the last column
@@ -207,7 +210,7 @@ final class DocumentRows : RowSource!LogRow
         if (!_hearing)
         {
             _hearing = true;
-            _sessionHandle = _session.subscribeViews(_docId, ViewListener(&viewShown, &columnsChanged));
+            _sessionHandle = _session.subscribeViews(_docId, ViewListener(&viewShown, &columnsChanged, &rulesChanged));
         }
         return _listeners.add(listener);
     }
@@ -222,11 +225,24 @@ final class DocumentRows : RowSource!LogRow
         }
     }
 
+    // A view of the document was shown anew: this view's own grows or is replaced; the search view shown anew marks other rows of the
+    // main view found (`DocumentItem.found`, the matches of the chips), which look another way
     private void viewShown(bool search, ViewVersion shown)
     {
         ModelChange change;
-        if (search == _search && _tracker.next(shown, count(), change))
-            tell(change);
+        if (search == _search)
+        {
+            if (_tracker.next(shown, count(), change))
+                tell(change);
+        }
+        else if (search)
+            tell(ModelChange(ModelChange.Kind.looks));
+    }
+
+    // The rule a row matches with a color may be another one: the rows look another way
+    private void rulesChanged()
+    {
+        tell(ModelChange(ModelChange.Kind.looks));
     }
 
     private void columnsChanged()
@@ -283,14 +299,23 @@ final class DocumentColumns
         {
             _infos = now;
             _made = look;
-            _columns = documentColumns(now, _zone, look, (ref const LogRow row, ref Buffer!Fragment into) {
-                // what the chips of the search found in the payload of a row the search found (a row it did not find costs a test)
-                MatchBuffer found;
-                foreach (match; _session.matchesOf(_docId, row.item, found[]))
-                    into.put(Fragment(match.start, match.end, Extra(match.chip)));
-            });
+            _columns = documentColumns(now, _zone, look, &matchesOf);
         }
         return _columns;
+    }
+
+    // What the chips of the search found in the payload of a row the search found (a row it did not find costs a test), each in the
+    // color of its chip (`LogPalette.match`). A method, not a lambda in `get`: a lambda there would make `get`, called at every row,
+    // allocate its closure each time
+    private void matchesOf(ref const LogRow row, ref Buffer!Fragment into)
+    {
+        MatchBuffer found;
+        const matches = _session.matchesOf(_docId, row.item, found[]);
+        if (matches.length == 0)
+            return;
+        const colors = _session.searchColors(_docId);
+        foreach (match; matches)
+            into.put(Fragment(match.start, match.end, Extra(match.chip < colors.length ? colors[match.chip] : match.chip)));
     }
 
     // The color of the filter rule `rule` of the document
@@ -336,6 +361,25 @@ unittest
     auto defs = logColumns(infos);
     assert(cast(AnchorColumn) defs[0] && cast(IndexColumn) defs[1] && cast(LevelColumn) defs[3]);
     assert(cast(TextColumn) defs[2] && cast(TextColumn) defs[4]);
+}
+
+@("logColumns: a column colored by the level of its record (an HTTP status) draws its text in the color of the level, small and at the right")
+unittest
+{
+    import std.datetime.timezone : UTC;
+
+    ColumnInfo status = ColumnInfo("status", "Status", ColumnKind.Integer);
+    status.byLevel = true;
+    const ColumnInfo[] infos = [status, ColumnInfo("bytes", "Bytes", ColumnKind.Integer), ColumnInfo("payload", "Payload", ColumnKind.Payload)];
+    auto defs = logColumns(infos);
+    assert(cast(LevelInkColumn) defs[2], "the status is colored by the level");
+    assert(!cast(LevelInkColumn) defs[3], "a column that does not ask is not");
+    assert(styleOf(defs[2]).cell.halign == Halign.right && styleOf(defs[2]).cell.font == LogFont.aux, "a number as the others");
+    auto columns = documentColumns(infos, UTC());
+    LogRow row;
+    row.marks = LogMarks(LogLevel.Error);
+    assert(columns[2].extra !is null && marksOf(columns[2].extra(row)).level == LogLevel.Error, "its cell carries the level of the row");
+    assert(columns[3].extra is null);
 }
 
 @("logColumns: the anchor and the Index first, the last column of the format takes the rest")

@@ -268,7 +268,8 @@ final class FramePainter
         _painter.paintRowOver(canvas, row, picked.tableHasFocus);
     }
 
-    // The cells of a row of data: the middle, then the pinned strips over it
+    // The cells of a row of data: the middle, then the pinned strips over it; each area its backs, its text selected, its cells (the opaque
+    // row of a strip covers what the middle drew under it)
     private void paintRowCells(Canvas canvas, Entry* e, ref const RowContext row, ref const Placements p, ref const Panes panes,
         ref const Picked picked)
     {
@@ -277,12 +278,8 @@ final class FramePainter
         if (pinned)
             canvas.pushClip(clipped);
         paintCellBacks(canvas, e, row, p, panes, Pin.none);
-        if (pinned)
-            canvas.popClip();
         if (picked.hasText)
-            paintSelectedText(canvas, e, row, p, panes, picked.text, picked.tableHasFocus);
-        if (pinned)
-            canvas.pushClip(clipped);
+            paintSelectedText(canvas, e, row, p, panes, picked.text, Pin.none, picked.tableHasFocus);
         foreach (c; p.columns)
             if (c.area == Pin.none)
                 paintCellOf(canvas, e, row, c, panes, picked);
@@ -299,6 +296,8 @@ final class FramePainter
             strip.area = Rect(pane.x, row.area.y, pane.w, row.area.h);
             _painter.paintRow(canvas, strip, picked.tableHasFocus); // opaque: the middle goes under it
             paintCellBacks(canvas, e, row, p, panes, area);
+            if (picked.hasText)
+                paintSelectedText(canvas, e, row, p, panes, picked.text, area, picked.tableHasFocus);
             foreach (c; p.columns)
                 if (c.area == area)
                     paintCellOf(canvas, e, row, c, panes, picked);
@@ -346,13 +345,14 @@ final class FramePainter
         _painter.paintCell(canvas, ctx, tableHasFocus);
     }
 
+    // The text selected in the cells of the row that stand in `area`
     private void paintSelectedText(Canvas canvas, Entry* e, ref const RowContext row, ref const Placements p, ref const Panes panes, TextRange text,
-        bool tableHasFocus)
+        Pin area, bool tableHasFocus)
     {
         if (row.index < text.start.row || row.index > text.end.row)
             return; // the cells are not even looked at for a row the selection does not touch
         auto focused = _rows.focused(e, row, _store.columns.selectable(p), panes);
-        _rows.selectionRects(focused, text, row.index, (Rect area) { _painter.paintTextSelection(canvas, area, tableHasFocus); });
+        _rows.selectionRects(focused, text, row.index, area, (Rect r) { _painter.paintTextSelection(canvas, r, tableHasFocus); });
     }
 }
 
@@ -537,6 +537,22 @@ unittest
     foreach (call; calls)
         backs += call == "back";
     assert(backs == 1, "row 1 has no fragments: " ~ calls.to!string);
+}
+
+@("FramePainter: the text selected in a pinned column is drawn over the opaque row of its strip, that of the middle under the strip")
+unittest
+{
+    auto f = frameOf(10);
+    f.layout.setPin("n", Pin.left);
+    f.store.ensure();
+    const slots = [RowSlot(0, 0, 16)];
+    const p = f.store.places();
+    Picked picked;
+    picked.hasText = true;
+    picked.text = TextRange(Position(0, 0, 0), Position(0, 1, 2)); // the pinned cell stands first, then the text
+    f.painterOfFrame.paint(new RecordingCanvas, slots, p, picked);
+    assert(f.painter.calls[1 .. 10] == ["background", "row", "selected", "cell", "row", "selected", "cell", "over", "end"],
+        "each area: its back, its text selected, its cells: " ~ f.painter.calls.to!string);
 }
 
 @("FramePainter: the text selected is drawn on the rows it touches only")

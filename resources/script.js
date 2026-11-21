@@ -13,6 +13,7 @@ import { TabStrip, NEW_TAB_ID } from "tabs.js";
 import { PressFocus } from "press-focus.js";
 import * as backend from "backend.js";
 import * as platform from "platform.js";
+import { menuOpensByMouse, watchMenuInput } from "menu-gate.js";
 import { applyTheme } from "theme.js";
 import { showMenuBar } from "menu-bar.js";
 import { shortcutTextOf } from "menu-shortcuts.js";
@@ -373,8 +374,11 @@ function setupEvents() {
         recentFileCommand(li.getAttribute("command"), li.closest(".recent-file").getAttribute("path"));
     });
 
+    // Context menus open by the mouse only, not by the keyboard (menu-gate.js)
+    watchMenuInput(document);
     // Context menu of a document's tab (not the + one): Copy Path and Copy File Name, of its file
     document.on("contextmenu", `#tabs-container > .tab:not(#${NEW_TAB_ID})`, (evt, tab) => {
+        if (!menuOpensByMouse()) return true; // the Menu key, Shift+F10: no menu
         evt.source = Element.create(<menu class="context">
             <li class="copy-tab-path" docid={tab.id}>{tr("Copy Path")}</li>
             <li class="copy-tab-name" docid={tab.id}>{tr("Copy File Name")}</li>

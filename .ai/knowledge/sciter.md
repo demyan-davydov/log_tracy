@@ -77,10 +77,35 @@ agent can't drive it. In scapp a plain
   `SciterGraphicsAPI` (the order is checked by a unittest), every one `nothrow`. `RGBA` packs a, b, g, r from the
   top byte. A text layout (`TextLayout`, `textCreateForElementAndStyle`) takes the font, the size
   and the color from its style declaration (`font-size: 8pt; font-family: 'Courier New', ...;
-  color: #333`); `gDrawText` has no color, so a text of another color is another layout. Its
+  color: #333`); `gDrawText` has no color, so a text of another color is another layout. Not even
+  through the fill: `gFillColor` before `gDrawText` doesn't recolor a layout (it keeps the color
+  of its style), and a layout with no `color` in its style draws black, not in the fill color,
+  and its words stood wider apart (the JS `graphics.draw(text, {fill})` of the docs paints it
+  in a fill color; the C API can't: tried 2026-11-20, 6.0.5.5, macOS). The C API gives no
+  position of a character in a layout either (`textGetMetrics`: widths, height, lines only;
+  the JS `Graphics.Text` likewise: its widths, height, the metrics and the text of a line): a place
+  in a text is had by measuring the text before it, or by summing what was measured. Its
   coordinates of a `DRAW_CONTENT` are the element's own in dips (`params.area` is the content
-  box on the view). A layout costs ~20 KB of memory: 5000 cached ones were +100 MB of RSS, 600 are
-  +10 MB (`ui/log_table_behavior.d` keeps two generations). A layout wraps only by a `width: Npx` in its style: `textSetBox` alone leaves one line. Details and numbers:
+  box on the view). A layout is lazy: `textCreateForElementAndStyle` costs ~3.6 µs, the laying out is done at the
+  first `textGetMetrics` or `gDrawText` (~31 µs for 15 chars, ~52 µs for 95), a laid out one draws in ~1 µs,
+  `textRelease` ~2-3 µs; the style string costs nothing to speak of, and the same text in another layout is laid out
+  again (no shared cache). `gStateSave`/`gStateRestore` keep the line and fill colors, transform and clip, not a text's
+  color. There is no reading of the clip or of the area Sciter repaints; `imageCreate` + `gCreate` (or `imagePaint`)
+  give a graphics on an image; `gGetNativeDC` gives the native context on Windows only (Direct2D types; on macOS it
+  answers `GRAPHIN_FAILURE`). A partial paint is impossible: `SciterRefreshElementArea` with a small rect still has
+  Sciter redraw the whole window at the next frame, every painted element gets its `DRAW_CONTENT` (one nobody asked
+  too) on a cleared background, and what a handler leaves out is blank, not kept (tried 2026-11-21, 6.0.5.5, macOS:
+  the table drew only the strip of its bar, the rest of it came out empty). A frame costs the whole draw of every
+  painted table on the screen. A one-off refresh (`SciterRefreshElementArea`, `SciterUpdateElement`, JS
+  `requestPaint()`) draws the window twice, ~2 ms apart: Sciter's own render in its loop, then again when Core
+  Animation has the view's layer display (`NSViewBackingLayer display` → `notifyWindowPaint`). Frames of an animation
+  frame request come once each. Not caused by the handler (a handler that only fills does the same), nor by the layer
+  (CG, Skia raster alike); details in `docs/backlog.md`, "наведение перерисовывает всю таблицу".
+  Drawing the table into an image to blit it on the second pass doesn't pay: inside `DRAW_CONTENT` `gCreate` on an
+  image answers `GRAPHIN_NOTSUPPORTED`, `imagePaint` works and keeps text sharp at `gScale(2)`, but drawing into it
+  costs ~3x drawing on the screen (the image is rastered by the CPU, the screen's commands go to the GPU). Numbers and what the API lacks:
+  `docs/experiments/2026-11-21-text-layout-cost.md`. A layout costs ~20 KB of memory: 5000 cached ones were +100 MB of RSS, 600 are
+  +10 MB (`SciterTextCache` keeps two generations, `ui/sciter_table/generations`). A layout wraps only by a `width: Npx` in its style: `textSetBox` alone leaves one line. Details and numbers:
   `docs/experiments/2026-11-19-painted-rows-d.md`.
 - Sciter's own scroll bar (`overflow-y: scroll-indicator` on an element scrolling a spacer 1/shown of
   it high) doesn't fit the painted table: dropped after a try (2026-11-20, 6.0.5.5, macOS). The

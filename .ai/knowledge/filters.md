@@ -55,7 +55,11 @@
 
 - The search is a query of chips (`ui/search_chips`, `log_core/search_filter`; script side
   `resources/search-editor.js`, `search-query.js`, `search-editing.js`, `edit-history.js`).
-  Each chip has a match color (`resources/match-colors.*`).
+  Each chip has a match color (`resources/match-colors.*`), its own while the query is edited: it goes to the backend with
+  the chip (`"color"` in the JSON of `startChipSearch`, `queryFromJson`), not as the chip's place in the query.
+- What a chip finds is colored by its chip's color: `AppSession.searchColors` (kept per search by `SearchColors` in
+  `DocumentUi`) maps `MatchRange.chip` to it for the search the document runs, so the matches of an old search keep their
+  colors until the new search starts; the color is the `extra` of a match fragment (`DocumentColumns.matchesOf`).
 - `SearchFilter.matchRanges` gives what the chips found in the payload, `[[start, end, chip]]`
   in UTF-16 units; `AppSession.matchesOf` computes nothing for a row the search didn't find.
 - `std.regex` supports lookaheads `(?=…)`, `(?!…)`.

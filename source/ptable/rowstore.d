@@ -29,7 +29,7 @@ final class RowStore : ColumnClient
     private Painter _painter;
     private const(RowSlot)[] delegate() _window; // lays out the rows on the screen by the widths now and gives them (the table's)
     private double[] _titles; // what the title of each column needs, measured when the columns are read
-    private double[] _needs; // what the rows in the window need of each column (`measure`), kept to allocate once
+    private double[] _needs; // what the rows in the window need of each column, as `measure` measured them last: given again while they stand
     private size_t _fitFirst = size_t.max - 1, _fitCount; // the window the widths were fit to
     private bool _detached; // `detachHost`: the store left its host for a while
     private bool _fitDirty = true; // something the widths are fit to changed: the rows, the columns, a width set by the user, the fonts
@@ -45,7 +45,7 @@ final class RowStore : ColumnClient
         _painter = ports.painter;
         _space.restyle(_painter);
         _columns = new ColumnSet(layout);
-        _cache = new RowCache(model, layout, ports.memory.isNull ? mallocAllocator() : ports.memory);
+        _cache = new RowCache(model, ports.memory.isNull ? mallocAllocator() : ports.memory);
         host.attach(this);
     }
 
@@ -119,9 +119,13 @@ final class RowStore : ColumnClient
     /// The model told a change; true if what was picked in the text is no longer where it was
     bool modelChanged(const ModelChange change)
     {
+        if (change.kind == ModelChange.Kind.looks)
+            return false; // the texts and the heights are the same: what is known of the rows and the widths stays, the next pass reads them
         _fitDirty = true;
         final switch (change.kind)
         {
+        case ModelChange.Kind.looks:
+            assert(false);
         case ModelChange.Kind.everything:
         case ModelChange.Kind.columns:
             _columns.markStale();
@@ -222,23 +226,29 @@ final class RowStore : ColumnClient
     }
 
     /// The rows on the screen laid out by the widths of the host now, and what they and the titles need of each column of the host
-    /// (`ColumnClient`): a text out of sight no longer holds a column wide, a column no row measured (it wraps) needs its title only
+    /// (`ColumnClient`): a text out of sight no longer holds a column wide, a column no row measured (it wraps) needs its title only.
+    /// What a row needs does not depend on the widths: while the window shows the same rows and nothing they are fit to changed (another
+    /// table of the host scrolls, a round of the settling widened a column) the needs measured last are given again, no row is measured
     void measure(double[] needs)
     {
         const slots = _window !is null ? _window() : null;
         ensure();
-        _fitDirty = false;
-        _fitFirst = slots.length ? slots[0].index : size_t.max;
-        _fitCount = slots.length;
+        const first = slots.length ? slots[0].index : size_t.max;
         const columns = _columns.columns;
-        _needs.length = columns.length;
-        _needs[] = 0;
-        foreach (slot; slots)
+        if (_fitDirty || first != _fitFirst || slots.length != _fitCount || _needs.length != columns.length)
         {
-            auto e = entry(slot.index);
-            if (e.valid)
-                _cache.needs(*e, _needs);
+            _needs.length = columns.length;
+            _needs[] = 0;
+            foreach (slot; slots)
+            {
+                auto e = entry(slot.index);
+                if (e.valid)
+                    _cache.needs(*e, _needs);
+            }
         }
+        _fitDirty = false;
+        _fitFirst = first;
+        _fitCount = slots.length;
         foreach (i, column; columns)
         {
             const at = host.indexOf(column.def.id); // the host's columns are these (one list), unless another table read new ones first
@@ -419,6 +429,49 @@ unittest
     assert(store.fitStart(rows(5, 7)) is host.least, "the window moved: from the least widths");
     show(5, 7);
     assert(host.layout.width("n") < wide, "the column narrows to the rows now in it");
+}
+
+@("RowStore: a table of a host whose window and rows did not change since it was last measured gives what it needed then, measuring nothing")
+unittest
+{
+    import ptable.model : NumbersModel;
+    import ptable.testing : BoxColumn;
+
+    RowSlot[] rows(size_t first, size_t count)
+    {
+        RowSlot[] slots;
+        foreach (i; 0 .. count)
+            slots ~= RowSlot(first + i, i * 16.0, 16);
+        return slots;
+    }
+
+    auto host = new ColumnHost;
+    RowSlot[] windowA = rows(0, 7), windowB = rows(50, 7);
+    auto a = new RowStore(new NumbersModel(100), host, portsOf(new Painter), () => cast(const(RowSlot)[]) windowA);
+    auto b = new RowStore(new NumbersModel(100), host, portsOf(new Painter), () => cast(const(RowSlot)[]) windowB);
+    bool widthChanged;
+    a.resize(400, 200, widthChanged);
+    b.resize(400, 200, widthChanged);
+    a.ensure();
+    b.ensure();
+    host.settle(host.least);
+    const columnB = cast(BoxColumn) b.columns.columns[0];
+    const measured = columnB.measures;
+    foreach (step; 1 .. 10)
+    {
+        windowA = rows(step * 3, 7); // A scrolls, B stands
+        host.settle(a.fitStart(windowA));
+    }
+    assert(columnB.measures == measured, "B stood: what its rows need is known");
+    assert(host.layout.width("n") > 0);
+
+    windowB = rows(60, 7);
+    host.settle(host.least);
+    assert(columnB.measures > measured, "B moved: its rows are measured");
+    const moved = columnB.measures;
+    b.modelChanged(ModelChange(ModelChange.Kind.rows, 60, 67));
+    host.settle(host.least);
+    assert(columnB.measures > moved, "B's rows changed: measured again");
 }
 
 @("RowStore: a change of the layout says the pick is lost when the cells moved; a restyle and a width set by the user fit the widths anew")

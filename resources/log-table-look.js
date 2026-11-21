@@ -17,6 +17,7 @@ export const paletteVariables = {
     found: "bg-row-found",
     foundStripe: "bg-row-found-stripe",
     currentRow: "border-row-current",
+    currentRowInactive: "border-row-current-inactive",
     header: "bg-table-header",
     border: "border-color",
     textSelected: "bg-text-selected",

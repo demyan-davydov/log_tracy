@@ -47,6 +47,11 @@ Applies to every fix and feature, D and script alike.
 - The logic lives where it can be tested: Sciter-free D modules (`ui/app_session`,
   `ui/filter_commands`, the state machines) and Sciter-free script modules under `tests/js`.
 - Keep tests deterministic: control clocks, randomness and external effects.
+- An allocator a test counts with (`StatsCollector`) whose address goes to an object of the GC
+  (`allocatorObject(&stats)` given to a class, or to a struct inside one) is `static`, reset at
+  the start of the test: the object is finalized later, and its frees, counted in `stats`, would
+  write into the stack frame of whatever test runs then. Once it gave SIGBUS and wrong values in
+  other tests that came and went with the order of the tests.
 - DLT records for tests: `formats/dlt/testing_utils`. Tests never depend on `test_data/`: its
   logs are local, not in the repository. A whole log for a manual check or a benchmark:
   `node scripts/build.mjs gen-log` (same file for the same options and seed).
