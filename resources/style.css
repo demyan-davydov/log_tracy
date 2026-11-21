@@ -307,10 +307,16 @@ body > header {
     background: var(--bg-tab-hover);
 }
 
+/* A document's active tab takes the color of its table's header; the New Tab
+   has no table and stays on the page's color */
 .tab.active {
     color: var(--text-main);
-    background: var(--bg-tab-active);
+    background: var(--bg-table-header);
     border-color: var(--border-color);
+}
+
+#new-tab.active {
+    background: var(--bg-tab-active);
 }
 
 .tab .tab-name {
@@ -383,7 +389,7 @@ body > header {
 .tab.dragging {
     z-index: 10;
     color: var(--text-main);
-    background: var(--bg-tab-active);
+    background: var(--bg-table-header);
     border-color: var(--border-color);
     transition: none;
 }
