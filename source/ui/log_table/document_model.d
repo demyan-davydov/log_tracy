@@ -108,6 +108,7 @@ TableColumn[] logColumns(const(ColumnInfo)[] columns, LogColumnLook look = LogCo
             column.style.wrap = look.wrapPayload;
         }
         column.style.group.halign = Halign.center; // the head of a group of rows (the date) stands in the middle of its plate
+        column.style.group.font = LogFont.groupHead; // bold, the titles of the header keep their own font
         if (c.kind == ColumnKind.Time)
             column.parts = timeParts;
         made ~= column;

@@ -16,6 +16,7 @@ enum LogFont : FontId
     header, /// the titles: 10pt Courier New
     bodyBold, /// the louder levels
     sign, /// the sign of a refusal pressed on: the body font made big (19pt)
+    groupHead, /// the head of a group of rows (the date) on its plate: the header font made bold
 }
 
 /// The fonts by `LogFont`
@@ -25,6 +26,7 @@ immutable(FontSpec)[] logFonts = [
     FontSpec("'Courier New', Courier, monospace"w, 10, false, true),
     FontSpec("system-ui, 'Segoe UI', sans-serif"w, 10, true, false),
     FontSpec("system-ui, 'Segoe UI', sans-serif"w, 19, false, false),
+    FontSpec("'Courier New', Courier, monospace"w, 10, true, true),
 ];
 
 enum Color textInk = Color(0x33, 0x33, 0x33);
