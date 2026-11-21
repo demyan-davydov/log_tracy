@@ -47,25 +47,12 @@
     margin: 1dip 0;
 }
 
-/* The caret blinks as the one of a text field: half a period (530ms) on, half off.
-   It starts anew each time the caret appears in a gap (the class .caret). The blink
-   is of the opacity, not of the color. Suspected, not checked: Sciter keeps the last
-   value of an animation on the element after .caret is gone (chips selected), and a
-   color kept so painted the whole 5dip gap as a thick caret; an opacity kept on a gap
-   without a color shows nothing */
+/* The caret in a gap. It blinks by the script (SearchEditor.blinkCaret), not by a CSS
+   animation: Sciter redraws the whole window every frame of one (.ai/knowledge/sciter.md) */
 .chip-editor > .gap.caret {
-    width: 1.5dip;
+    width: 1dip;
     margin: 1dip 2dip;
     background: var(--caret-color);
-    animation: caret-blink 1060ms linear infinite;
-}
-
-@keyframes caret-blink {
-    0% { opacity: 1; }
-    49% { opacity: 1; }
-    50% { opacity: 0; }
-    99% { opacity: 0; }
-    100% { opacity: 1; }
 }
 
 .chip-editor > .placeholder {

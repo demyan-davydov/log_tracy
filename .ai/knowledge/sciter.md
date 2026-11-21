@@ -367,6 +367,14 @@ agent can't drive it. In scapp a plain
   the background of the row (its stripe shows through) and under the text.
 - `:empty` is not re-evaluated when a script changes `innerText`: set `style.display` from the
   script instead.
+- While any CSS animation runs, Sciter redraws the whole window every frame (~60 a second on a 60 Hz display),
+  the painted log tables with it, whatever the animation changes and however rarely: an opacity held by its
+  keyframes and switched twice a period, `linear` (6.0.5.5, macOS, 2026-11-21). Sciter knows no `step-end` (the
+  warning "keyframes: step-end not found"); `steps(2)` was not checked to be known either. `Element.animate(step,
+  {FPS: 2})` does the same: its step comes twice a second, the window is redrawn every frame meanwhile, even by a
+  step that changes nothing. An infinite one (the blinking caret of the search field) kept the app at ~35% of a
+  core and made the popups lag: no infinite animations. A blink by a timer (`Element.timer(500, ...)`, or an
+  interval of the script) costs 2 frames a switch, its ticks 499–508 ms apart (`SearchEditor.blinkCaret`).
 - A transition of `height` works on an inline style: set the element's own height in px, then
   `0px` in the next requestAnimationFrame, and it folds (the removed item of the search history,
   `SearchEditor.removeHistory`; checked by the user, 2026-11-21).

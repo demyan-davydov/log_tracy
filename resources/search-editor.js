@@ -23,6 +23,8 @@ const isMac = platform.isMac;
 
 // How long a query removed from the history takes to fold up (its transition in search-editor.css)
 const historyFoldMs = 200;
+// How long the caret in a gap is shown, then hidden (about as a text field's caret blinks)
+const caretBlinkMs = 500;
 let editorCount = 0; // gives each editor its id: its context menu carries it
 
 export class SearchEditor {
@@ -42,6 +44,7 @@ export class SearchEditor {
         this.historyButton = historyButton ?? null;
         this.removeFromHistory = removeHistory ?? (() => false);
         this.historyPopup = null; // {element, queries, current} while the history is shown
+        this.caretBlink = null; // {gap, hidden} of the caret blinking (blinkCaret)
         this.state = { chips: [], pos: { gap: 0 } };
         this.history = new EditHistory(); // the undo steps of the chips shown
         this.regexErrors = new Map(); // "matchCase\0pattern" -> error
@@ -103,6 +106,7 @@ export class SearchEditor {
     // handlers of the document
     destroy() {
         this.destroyed = true; // what is still posted (focusout, chip sync) does nothing
+        this.caretBlink = null; // its step stops
         this.closeHistory({ refocus: false });
         this.endDrag();
         for (const handler of Object.values(this.documentHandlers)) document.off(handler);
@@ -198,9 +202,30 @@ export class SearchEditor {
         this.root.$$(".chip").forEach((el, i) =>
             el.classList.toggle("selected", !!range && i >= range.from && i < range.to));
         const caretShown = focused && !range && pos.gap !== undefined;
-        this.root.$$(".gap").forEach((el, g) =>
-            el.classList.toggle("caret", caretShown && pos.gap === g));
+        const gaps = this.root.$$(".gap");
+        gaps.forEach((el, g) => el.classList.toggle("caret", caretShown && pos.gap === g));
+        this.blinkCaret(caretShown ? gaps[pos.gap] : null);
         this.root.classList.toggle("focused", focused);
+    }
+
+    // The caret in a gap blinks by a timer of the element (Element.timer), which shows
+    // or hides it every caretBlinkMs. Not by a CSS animation nor Element.animate: while
+    // either runs, Sciter redraws the whole window every frame, the log tables with it,
+    // even when nothing changes (~60 frames a second, ~30% of a core; a timer: 4 frames
+    // a second, its ticks 500 ± 8 ms apart). Each call starts the blink anew: the caret
+    // is shown at once after a move or a key.
+    blinkCaret(gap) {
+        const old = this.caretBlink;
+        if (old) old.gap.style.visibility = ""; // a caret elsewhere, or none, is never left hidden
+        this.caretBlink = gap ? { gap, hidden: false } : null;
+        const blink = this.caretBlink;
+        if (!blink) return;
+        gap.timer(caretBlinkMs, () => {
+            if (this.caretBlink !== blink) return false; // another blink took over, or none
+            blink.hidden = !blink.hidden;
+            gap.style.visibility = blink.hidden ? "hidden" : "";
+            return true; // ticks on
+        });
     }
 
     placeFocus() {
@@ -455,8 +480,11 @@ export class SearchEditor {
             else this.takeHistory(i);
             return true;
         });
+        // a move comes many times a second: only one onto another item marks it, and
+        // without scrolling (the item under the mouse is in view)
         button.on("mousemove", ".history-item", (evt, item) => {
-            this.markHistory(parseInt(item.getAttribute("data-query")));
+            const i = parseInt(item.getAttribute("data-query"));
+            if (i !== this.historyPopup?.current) this.markHistory(i, { scroll: false });
         });
         // Sciter hides the popup by itself on a press outside it or when the
         // application loses the focus (a tooltip of the button comes here too:
@@ -509,13 +537,17 @@ export class SearchEditor {
         return true;
     }
 
-    markHistory(i) {
+    // Marks the i-th item: only the item marked before and this one change
+    // @param scroll - bring it into view (the arrows; not the mouse, which is over it)
+    markHistory(i, { scroll = true } = {}) {
         const popup = this.historyPopup;
         if (!popup || i < 0) return;
         popup.current = i;
-        const items = popup.element.$$(".history-item");
-        items.forEach((item, k) => item.classList.toggle("current", k === i));
-        items[i]?.scrollIntoView();
+        popup.element.$(".history-item.current")?.classList.remove("current");
+        const item = popup.element.$(`.history-item[data-query="${i}"]`);
+        if (!item) return;
+        item.classList.add("current");
+        if (scroll) item.scrollIntoView();
     }
 
     showHistoryEmpty(element) {
