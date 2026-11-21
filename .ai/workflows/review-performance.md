@@ -12,7 +12,7 @@ of a gigabyte (tens of millions of records), and safe across the threads that ru
 ## The Threads
 
 - **UI thread:** the Sciter window and its script, `MainWindow`, `AppSession`, the rows of the
-  tables (`getMainViewItem` / `getSearchViewItem`, `writeRow`, rule matching, match ranges),
+  tables (the rows read from the document, the cells of their columns, rule matching, match ranges),
   `Document.dispatchEvents()` delivering the events of the indexing.
 - **Indexing thread:** one pass at a time in the `BackgroundSlot` of a `LogIndex`
   (`runPass`): its stages (offset, filter, search index) take turns, each over the range it
@@ -65,9 +65,8 @@ a reused buffer will do.
    budget; more per record is a decision to name.
 4. **Locks:** held briefly, never around a scan or a callback; one order where two are taken;
    no lock taken on the UI thread that a scan holds for long.
-5. **Script side of the table:** per-row DOM work in `virtual-dlt-view.js` and
-   `cell-format.js` stays O(cells of the row); no layout read inside a write loop (forces a
-   relayout per row); nothing re-rendered for every row on a change of one.
+5. **The table:** what it does per row and per frame (`ptable`, `ui/log_table`) stays O(the cells of the row on screen); it keeps no
+   content of a row between frames and makes no garbage in a steady frame (a test); a change of one row repaints that row only.
 6. **The cost is measured, not guessed,** when the change is on a hot path:
    `scripts/utils/bench_rows.d` (per-row work against decode), `scripts/utils/bench_index.d` (indexing),
    against `master` by `node scripts/build.mjs bench` (`--bench index`). A finding without a

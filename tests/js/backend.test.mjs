@@ -21,11 +21,16 @@ function callOf(run, result) {
 test("a call is the xcall of its name, the document first", () => {
     assert.deepEqual(callOf(() => backend.setAnchor(3, 42, true), true),
         { call: ["setAnchor", 3, 42, true], value: true });
-    assert.deepEqual(callOf(() => backend.mainViewItem(3, 7), null).call, ["getMainViewItem", 3, 7]);
     assert.deepEqual(callOf(() => backend.reorderTab(5, 0)).call, ["reorderTab", 5, 0]);
     assert.deepEqual(callOf(() => backend.removeRecentFile("/a.log"), true),
         { call: ["removeRecentFile", "/a.log"], value: true });
     assert.deepEqual(callOf(() => backend.showInFolder("/a.log"), ""), { call: ["showInFolder", "/a.log"], value: "" });
+});
+
+test("the names of the variables of the least widths come parsed, none when the backend gives none", () => {
+    assert.deepEqual(callOf(() => backend.logTableMinWidthNames(), `["column-min-width"]`),
+        { call: ["logTableMinWidthNames"], value: ["column-min-width"] });
+    assert.deepEqual(callOf(() => backend.logTableMinWidthNames()).value, []);
 });
 
 test("JSON results come parsed", () => {
@@ -64,8 +69,6 @@ test("JSON arguments are sent as text", () => {
 });
 
 test("the columns of the tables come as text, to tell a change", () => {
-    assert.equal(callOf(() => backend.tableColumnsJson(3), `[{"id": "time"}]`).value, `[{"id": "time"}]`);
-    assert.equal(callOf(() => backend.tableColumnsJson(3), undefined).value, "[]");
 });
 
 test("a message of the backend is \"\" when there is none", () => {

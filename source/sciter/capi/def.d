@@ -177,7 +177,8 @@ struct SCN_ATTACH_BEHAVIOR
     HELEMENT element; /**< [in] target DOM element handle*/
     LPCSTR behaviorName; /**< [in] zero terminated string, string appears as value of CSS behavior:"???" attribute.*/
 
-    ElementEventProc* elementProc; /**< [out] pointer to ElementEventProc function.*/
+    // not `ElementEventProc*`: the C type is a function, the D alias is already a pointer to one
+    ElementEventProc elementProc; /**< [out] pointer to ElementEventProc function.*/
     void* elementTag; /**< [out] tag value, passed as is into pointer ElementEventProc function.*/
 
 }

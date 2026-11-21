@@ -64,6 +64,16 @@ final class DocumentFilters
         return _matcher is null ? RuleId.init : _matcher.firstMatch(item);
     }
 
+    //! @returns the color "#rrggbb" of the rule `id`, empty if it has none (or there is no such rule)
+    string colorOf(RuleId id) const
+    {
+        foreach (ref s; _sets)
+            foreach (ref rule; s.rules)
+                if (rule.id == id)
+                    return isRuleColor(rule.color) ? rule.color : "";
+        return "";
+    }
+
     //! @returns true if the log has columns to filter by
     bool canFilter() const
     {

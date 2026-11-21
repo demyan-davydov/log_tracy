@@ -1,5 +1,6 @@
 // The calls of the backend: one function per xcall of MainWindow.handleEvent
-// (source/ui/main_window.d), each done by AppSession (source/ui/app_session.d).
+// (source/ui/main_window.d), each done by AppSession (source/ui/app_session.d), but those of the
+// log tables, which MainWindow does itself for now (.ai/knowledge/architecture.md, Script ↔ Backend).
 // The id of the document comes first in the calls of a document. JSON results
 // come parsed, with the value of "nothing" when the backend gives none; the
 // functions named ...Json give the text as it is. Messages for the user are ""
@@ -76,23 +77,22 @@ export const switchTab = docId => xcall("switchTab", docId);
 export const closeTab = docId => xcall("closeTab", docId);
 export const reorderTab = (docId, index) => xcall("reorderTab", docId, index);
 
+// The log table, drawn by D (log-table-view.js, ui/log_table_behavior.d): a call to the table of the number its element carries
+// (the attribute `table`), null if there is none (not attached yet, or no more)
+export const logTableCall = (tableId, method, ...args) => Window.this.xcall("logTableCall", tableId, method, ...args);
+// What is the application's, not a table's: the look of every table, and whether the rows of all of them are one line high
+export const logTableSetLook = json => Window.this.xcall("logTableSetLook", json);
+export const logTableMinWidthNames = () => parsed(Window.this.xcall("logTableMinWidthNames"), []);
+export const logTableSingleLine = on => Window.this.xcall("logTableSingleLine", on);
+
 // ── The views ────────────────────────────────────────────────────────────────
 
-// A row of a view (see rowLayout in cell-format.js), null if there is no such
-// row. Called for every row rendered: straight to xcall, no wrapper
-export const mainViewItem = (docId, index) => Window.this.xcall("getMainViewItem", docId, index);
-export const searchViewItem = (docId, index) => Window.this.xcall("getSearchViewItem", docId, index);
-export const mainViewCount = docId => Window.this.xcall("getMainViewCount", docId);
-export const searchViewCount = docId => Window.this.xcall("getSearchViewCount", docId);
 // The row of the main / search view that shows message `messageIndex`, null if none does
 export const mainViewPosition = (docId, messageIndex) => xcall("getMainViewPosition", docId, messageIndex);
 export const searchViewPosition = (docId, messageIndex) => xcall("getSearchViewPosition", docId, messageIndex);
 // The row of the main view Go to Message lands on for message `messageIndex`: its own,
 // or of the first message after it shown, else the last row; null for an empty view
 export const mainViewNearestPosition = (docId, messageIndex) => xcall("getMainViewNearestPosition", docId, messageIndex);
-// The columns the tables of the document show, as JSON text ("[]": none): the
-// text tells whether they changed
-export const tableColumnsJson = docId => xcall("getTableColumns", docId) || "[]";
 // All the columns of the document (the rules may test any of them)
 export const columns = docId => parsed(xcall("getColumns", docId), []);
 // Sets or clears the anchor of a message: { refused, max, full, pending, rows },

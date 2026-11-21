@@ -26,8 +26,9 @@ The traps that cost most, whatever the task (the rest in `.ai/rules/` and
 `.ai/knowledge/sciter.md`):
 
 - Pass a `LogMessage` by `ref`, never `out`: `out` leaks its buffer on every decode.
-- Never hide a log table itself with `display: none`: its cells stay 1px wide for good.
-  Status views cover it (`.status-view.overlay`).
+- Never hide a log table itself with `display: none`: the tables of a document share one column
+  host, and a table told 0 wide narrows the other's columns. Status views cover it
+  (`.status-view.overlay`).
 - Per-row work of a log table is hot: keep it cheap, measure before optimizing.
 - `std.datetime`'s `valid!"days"` halts the process on a month outside 1..12: check the month.
 - Sciter: `attributes["x"] = null` writes "null" (use `removeAttribute`); `Element.append`
@@ -89,6 +90,7 @@ A package imports only the packages to its left (unittests may import more):
 ```
 utils  ←  log_core  ←  formats  ←  domain  ←  ui  ←  app.d
 utils  ←  sciter  ←  ui
+ptable  ←  ptable_text  ←  ui     (ptable imports only std: a package of its own; ptable_text, the text columns, only ptable and std)
 ```
 
 The script reaches the backend only through `resources/backend.js` (one function per xcall,

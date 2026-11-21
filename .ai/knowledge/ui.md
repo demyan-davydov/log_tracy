@@ -51,83 +51,52 @@ behaviour: `.ai/knowledge/sciter.md`.
   Events). A panel remembers its focus by `focus`/`focusin`, not in `hide()`: the press has moved it to
   the strip by then.
 - The calls of a document's views, filters and search take its id first
-  (`backend.mainViewItem(docId, index)`, ...); only the menu and Settings use the active
+  (`backend.mainViewPosition(docId, message)`, ...); only the menu and Settings use the active
   document.
 - The panel has one splitter, between the main table and the bottom panel (no side panel
   since the filters moved to the Filters page). Its size follows from the panel shown before
   and is written with the rest of `getAppState()` (`AppSettings.searchPanelHeight`; the
   mapping is `resources/panel-sizes.js`), not on each move of the splitter, and the first panel
   starts with it.
-- What a table does on a change of its view is `resources/pane-state.js` (`tableStep`:
-  reload, or grow in place while the view of the same `dataVersion` gets more rows); the
-  flows of its search and rule commands are `resources/pane-commands.js`.
-- A table grows in place by `VirtualList.grow()` (`virtual-select.js`, the decision in
-  `growStep` of `list-navigation.js`): only `vlist.itemsAfter` changes, the rows on screen are
-  not rendered again. `componentUpdate()` on a changed count clears and renders the rows:
-  not for a view being filled. A ready view that grows (a file being written) may be
-  followed to its end instead: `followEndStep` (`pane-state.js`) decides by what
-  `VirtualDltTBody.endState()` tells before the growth, `followEnd()` scrolls to the end
-  (and keeps the current row the last), without telling the other table (`rowChosen`).
+- The log table is the native behavior `log-table` (`ui/log_table_behavior`, over `ptable`): the panel puts one in a slot for each view
+  (`LogTableView` in `resources/log-table-view.js`, which writes on the element what it shows, `doc`, `search` and `table`, the number the script talks to it by,
+  `logTableCall(tableId, method, ...)`, `ui/table_script`). It hears the views of its document itself (a new content version starts at the top,
+  rows added to the same one are appended, a table at its end follows it, rule 30), so the script tells it nothing of a reload or a growth.
+  What the script does with the views is `resources/pane-state.js` (`tableStep`: which status or table a view shows, the progress under it) and
+  `resources/pane-commands.js` (the flows of its search and rule commands).
+- The row the user selects in one table is shown in the other (rule 28): D tells the row chosen (`logTableRowChosen`, with `delayed` for a drag and
+  the keys), `SelectionFollower` (`row-selection.js`) waits where it must, `jumpStep` decides where to scroll, `scrollTo` and the quiet
+  `pickRow` do it (`ViewTable.showMessage`). Go to Message is `MainViewTable.goToMessage`.
 - A document opened anew in its tab (Retry, a file truncated or of a format its first bytes
   tell: the backend's `onDocumentReopened`) resets the tab by `DocumentPane.reopened()`. The progress and Cancel of a filter or a search filling a table
   are in the strip under it (`.view-progress`, `showProgress` of `status-view.js`).
 
 ## Table Columns
 
-- The table columns and the row cells (`ui/table_rows`: `writeRow` over a cell writer,
-  `main_window` writes them as Sciter values; the value of each column, by its kind, is read
-  by `log_core/column_values`) are built from the format's `ColumnInfo` schema
-  as the user's layout of that format arranges it (`log_core/column_layout`,
-  `AppSettings.columnLayouts` by format id, edited in the Table section of Settings):
-  `backend.tableColumnsJson(docId)`, arranged once per format and variant (`ui/table_columns`).
-- Index (not a format column) stays first and Payload last; the others can be moved and
-  hidden. A layout is one per format id, for all its variants.
-- Dragging to reorder (tabs, columns in Settings) shares `resources/drag-strip.js` (the
-  elements: shifts, classes, marker) over `resources/drag-order.js` (the math).
-- How a column looks (its width) is up to `resources/table.css`, not the format: a header has
-  the classes `col-<column id>` and `col-<format id>-<column id>` (`columnClass` in
-  `resources/cell-format.js`; the columns JSON names the format), Index is `col-index`.
+- The columns of the log table come from the format's `ColumnInfo` schema as the user's layout of that format arranges it
+  (`log_core/column_layout`, `AppSettings.columnLayouts` by format id, edited in the Table section of Settings, `ui/columns_json`): the
+  table makes them in `ui/log_table/document_model` (`DocumentColumns`) and hears when they change. The value of each column, by its
+  kind, is read by `log_core/column_values` (`ui/row_cells`).
+- Index (not a format column) stays first and Payload last; the others can be moved and hidden. A layout is one per format id, for all
+  its variants.
+- Dragging to reorder (tabs, columns in Settings) shares `resources/drag-strip.js` (the elements: shifts, classes, marker) over
+  `resources/drag-order.js` (the math).
+- How a column looks (its width, its ink) is the column's style in the table (`ptable_text/columnstyle`, the look `ui/log_table/log_look`
+  from the CSS variables of the theme, `resources/log-table-look.js`), not the format.
 
 ## Table Rows
 
-- A row is: anchored, rule id, view index, message index, level, found, then one cell per
-  column (`rowLayout` in `resources/cell-format.js`), then one more cell after the columns:
-  what the chips of the search found in the payload, `[[start, end, chip]]` in UTF-16 units,
-  shown in the chips' match colors in both tables; null for a row the search didn't find.
-  - Found: the current search found the record (`DocumentItem.found`; an anchor the search
-    doesn't match is listed in the results but not found); the row gets `row-found` by it,
-    its background is `--bg-row-found` / `--bg-row-found-stripe` (`table.css`, rule 27 of
-    `.ai/rules/ux.md`), its matches are shown in the chips' colors; the main view looks the record up in the search index.
+- A row is read from the document when the table draws it (`DocumentRows`: the message, the marks of found, anchored, its level and the
+  color of its rule), cell by cell by the columns; nothing of it is kept for the next frame.
+  - Found: the current search found the record (`DocumentItem.found`; an anchor the search doesn't match is listed in the results but not
+    found); its background is `--bg-row-found` / `--bg-row-found-stripe` (rule 27 of `.ai/rules/ux.md`), its matches are in the chips' own colors (`.ai/knowledge/filters.md`, Search).
   - The rule id: see `.ai/knowledge/filters.md`.
-  - A time cell is `[microseconds, TimeKind]`: shown by the kind of the record, not of the
-    column.
-  - Hex cells are formatted by the backend: 64-bit values don't fit a script number.
-  - The level colors the cells of columns with `ColumnInfo.byLevel` (an HTTP status shown as
-    it is).
-  - How a cell shows its value is `resources/cell-format.js`.
-  - The Index shows its thousands apart (`groupDigits`): empty `i.digit-gap` elements
-    between the digits, no character in the text, so the selection's offsets and the
-    copied text stay the plain number.
-- Text is selected across cells and rows by the table itself, not by Sciter (no `selectable`
-  in a log table: Sciter can't select over a virtual-list): a plain drag selects text, a plain
-  click selects the row, Shift/Cmd work on rows. The selection is positions (row, cell,
-  character, from the cell's `rangeFromPoint`), painted when a row renders and copied from the
-  backend's rows; its logic is `resources/text-selection.js` (story:
-  `docs/stories/selectable-cells.md`). Row selection: `resources/row-selection.js` (the keys: `onkeydown` of `VirtualDltTBody`,
-  Shift+arrows/Home/End extend from the anchor).
-- Rendering a row is hot: see `.ai/rules/ui.md`.
-- A log table sizes its sliding window to its height (`VirtualDltTBody.fitWindow`,
-  `windowSize`, by the lowest of its rows and header): each half of the window holds the
-  rows it can show and three quarters more (5 rows more at least), no fewer than 20 rows in all:
-  the window is three screens at least, since a swipe's scroll makes Sciter pump a chunk of two
-  screens, and a smaller window flips between two positions (list-navigation.js).
-  Sciter fills a list with half its window: a smaller half leaves a gap under the rows. It
-  is refitted when it renders, and by the table itself (`watchSize`) when it is resized or
-  its font size changes (`sizechange` of the tbody and the thead, only when a height
-  changed); a window that grew is filled (`VirtualList.fill`): rows after the last one, rows
-  before the first one only at the end of the rows with room under it. Sciter's own window of 160 rows made a jump ~3× slower.
-- Every navigation of a list goes through `VirtualList.navigateTo` (`navigationStep`): a
-  row past the rows the list counts crashes Sciter, "end" is the last row by number.
+  - A time cell shows the time by the kind of the record, not of the column. Hex cells are formatted by the backend.
+  - The level colors the cells of columns with `ColumnInfo.byLevel` (an HTTP status shown as it is).
+  - The Index shows its thousands apart by the width of its own text.
+- Text is selected across cells and rows by the table (`ptable`), not by Sciter: a plain drag selects text, a plain click selects the row,
+  Shift/Cmd work on rows (rule 29). Positions are (row, cell, caret).
+- Drawing a row is hot: see `.ai/rules/ui.md`; the table keeps no content of a row from one frame to the next.
 
 ## Menu
 
@@ -146,8 +115,8 @@ behaviour: `.ai/knowledge/sciter.md`.
 - Tabs: `tabs.js`, `drag-strip.js`, `drag-order.js`
 - One document's panel: `document-pane.js`, `view-table.js`, `filter-panel.js`,
   `search-bar.js`, `status-view.js`, `pane-state.js`, `pane-commands.js`, `panel-sizes.js`
-- The log table: `virtual-dlt-view.js`, `cell-format.js`, `table.css`, `row-selection.js`,
-  `text-selection.js`, `list-navigation.js`, `rule-colors.js`
+- The log table: `log-table-view.js` (the table of a view), `log-table-look.js`, `log-table-gesture.js`, `table.css`, `row-selection.js`,
+  `rule-colors.js`
 - Search: `search-editor.js`, `search-query.js`, `search-editing.js`, `edit-history.js`,
   `match-colors.js`, `match-colors.css`, `search-editor.css`
 - Filters and the rule editor: `rule-editor.htm`, `rule-form.js`
@@ -161,7 +130,7 @@ behaviour: `.ai/knowledge/sciter.md`.
 - File Info page: `file-info.js` (the rows; the FIBEX row of a DLT log: what decodes it, a
   read going on or why one failed, Load File / Load Folder / Unload), rendered by
   `DocumentPane.updateFileInfo`, refreshed by `onFileInfoChanged`
-- Notices: `notice.js`; dropdown lists: `virtual-select.js`
+- Notices: `notice.js`
 - Menu bar (Windows/Linux): `menu-bar.js`, `menu-bar.css`, `menu-shortcuts.js`
 - Theme and window frame: `theme.js`, `theme-light.css`, `theme-dark.css`, `window-frame.js`,
   `osx-frame.css`, `win-frame.css`

@@ -8,8 +8,8 @@ typography) in `docs/ui-guidelines.md`.
 
 ## Red Flag: Heavy Work per Table Row
 
-Anything done per row of a log table (`getMainViewItem` / `getSearchViewItem`, `writeRow`,
-rule matching, match ranges, the script's row rendering) is hot: a fast scroll renders very
+Anything done per row of a log table (reading the row from the document, the cells of its columns,
+rule matching, match ranges, drawing) is hot: a fast scroll renders very
 many rows. Keep it cheap:
 
 - skip work entirely when nothing needs it (no matcher, no search: null, not computed);
@@ -21,8 +21,11 @@ Measure before and after optimizing (`scripts/utils/bench_rows.d`, `docs/perform
 
 ## Red Flag: Hiding a Log Table
 
-Never hide a log table itself with `display: none`: one hidden before it was ever laid out
-keeps its cells 1px wide for good. Status views cover it instead (`.status-view.overlay`).
+Never hide a log table itself with `display: none`. The tables of a document share one column host
+(`ptable/columnhost`), whose room of the columns is the least width its tables tell: a hidden table
+told 0 wide narrows the columns of the other one. Status views cover a table instead
+(`.status-view.overlay`); the table under a status stays in its host and keeps taking part in the
+fitting of the widths (taking it out by `Table.detach` is in `docs/backlog.md`).
 
 ## Red Flag: Restyling Existing UI Unasked
 
@@ -44,5 +47,4 @@ mentioned, not applied.
 
 ## Text Selection in Tables
 
-No `selectable` in a log table: Sciter can't select over a virtual-list. The table selects text
-itself (`resources/text-selection.js`).
+No `selectable` in a log table: it is drawn by D, which selects text itself (`ptable`: `selection`, `rowhits`).

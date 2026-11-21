@@ -13,8 +13,8 @@ public import sciter.capi.def;
 public import sciter.capi.dom;
 public import sciter.capi.request;
 public import sciter.capi.om;
+public import sciter.capi.graphics : SciterGraphicsAPI;
 
-struct SciterGraphicsAPI;
 struct SCITER_X_MSG;
 alias proc_ptr_t = void function();
 
@@ -166,7 +166,7 @@ struct SciterAPI_T
 
     ) SciterHttpRequest; // 89
 
-    extern (C) SCDOM_RESULT function(HELEMENT he, POINT scrollPos, RECT viewRect, SIZE contentSize) SciterGetScrollInfo; // 90
+    extern (C) SCDOM_RESULT function(HELEMENT he, POINT* scrollPos, RECT* viewRect, SIZE* contentSize) SciterGetScrollInfo; // 90
     extern (C) SCDOM_RESULT function(HELEMENT he, POINT scrollPos, SBOOL smooth) SciterSetScrollPos; // 91
     extern (C) SCDOM_RESULT function(HELEMENT he, INT* pMinWidth, INT* pMaxWidth) SciterGetElementIntrinsicWidths; // 92
     extern (C) SCDOM_RESULT function(HELEMENT he, INT forWidth, INT* pHeight) SciterGetElementIntrinsicHeight; // 93
@@ -257,7 +257,7 @@ struct SciterAPI_T
     extern (C) void* function(HWINDOW hwnd) SciterGetCallbackParam; // 165
     extern (C) UINT_PTR function(HWINDOW hwnd, UINT_PTR wparam, UINT_PTR lparam, UINT timeoutms) SciterPostCallback; // 166
 
-    extern (C) void* function() GetSciterGraphicsAPI; // 167
+    extern (C) void* function() nothrow GetSciterGraphicsAPI; // 167
     extern (C) void* function() GetSciterRequestAPI; // 168
 
     version (WINDOWS)

@@ -15,7 +15,7 @@ test("the rules are checked for every change, docs only too", () => {
 
 test("performance and threads: the indexing, the formats, the filters, the hot rows", () => {
     for (const path of ["source/domain/log_index.d", "source/formats/dlt/parser.d",
-        "source/log_core/rule_filter.d", "source/utils/parallel_scan.d", "source/ui/table_rows.d",
+        "source/log_core/rule_filter.d", "source/utils/parallel_scan.d", "source/ui/main_window.d",
         "source/ui/main_window.d", "source/ui/app_session.d", "scripts/utils/bench_rows.d"])
         assert.deepEqual(lensesFor([path]), ["rules", "performance"], path);
 });
@@ -27,8 +27,8 @@ test("UX: what the user sees and does", () => {
 });
 
 test("the log table in the script is both hot and seen", () => {
-    for (const path of ["resources/table.css", "resources/text-selection.js", "resources/virtual-dlt-view.js",
-        "resources/cell-format.js", "resources/row-selection.js", "resources/rule-colors.js"])
+    for (const path of ["resources/table.css", "resources/log-table-view.js", "resources/log-table-look.js",
+        "resources/log-table-gesture.js", "resources/row-selection.js", "resources/rule-colors.js"])
         assert.deepEqual(lensesFor([path]), ["rules", "performance", "ux"], path);
 });
 

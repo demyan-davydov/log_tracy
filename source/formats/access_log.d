@@ -99,8 +99,8 @@ private static immutable ColumnInfo[] commonColumns = [
     ColumnInfo("user", "User", ColumnKind.Text, AccessLogField.User),
     ColumnInfo("method", "Method", ColumnKind.Text, AccessLogField.Method),
     // The status as it is, its cell colored by the level it gives
-    ColumnInfo("status", "Status", ColumnKind.Integer, AccessLogField.Status, TimeKind.None, 0, null, true),
-    ColumnInfo("bytes", "Bytes", ColumnKind.Integer, AccessLogField.Bytes),
+    ColumnInfo("status", "Status", ColumnKind.Integer, AccessLogField.Status, TimeKind.None, 0, null, true, hint: "HTTP status"),
+    ColumnInfo("bytes", "Bytes", ColumnKind.Integer, AccessLogField.Bytes, hint: "Response size, bytes"),
     ColumnInfo("payload", "Request", ColumnKind.Payload),
 ];
 

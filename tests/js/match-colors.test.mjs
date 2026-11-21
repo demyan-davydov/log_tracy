@@ -24,3 +24,12 @@ test("matchColorClass: the colors repeat", () => {
     assert.equal(matchColorClass(matchColorCount + 3), "match-color-3");
     assert.equal(matchColorClass(-1), `match-color-${matchColorCount - 1}`);
 });
+
+test("the painter in D has as many chip colors as the stylesheet, and the colors of the light theme", () => {
+    const painter = resource("../source/ui/log_table/log_look.d");
+    assert.equal(Number(painter.match(/enum size_t matchColorCount = (\d+);/)[1]), matchColorCount);
+    const body = painter.match(/Color\[matchColorCount\] match = \[([\s\S]*?)\];/)[1];
+    const defaults = [...body.matchAll(/Color\(0x(\w\w), 0x(\w\w), 0x(\w\w)\)/g)].map(m => `#${m[1]}${m[2]}${m[3]}`);
+    const light = [...resource("theme-light.css").matchAll(/--match-color-\d+:\s*(#\w+);/g)].map(m => m[1]);
+    assert.deepEqual(defaults, light);
+});

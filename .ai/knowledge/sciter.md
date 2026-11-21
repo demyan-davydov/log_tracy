@@ -63,6 +63,63 @@ agent can't drive it. In scapp a plain
   `new Graphics.Image(w, h, element)` with `element.state.box("dimension", "border")` (the
   border is in it; a closed popup gives an empty image). The debug channel's `shot` does so.
 
+- A native behavior of CSS `behavior: name` reaches the host callback as `SC_ATTACH_BEHAVIOR`
+  (`SciterWindow.createBehavior` answers it; a handler Sciter holds by a bare pointer is kept from
+  the GC by `SciterEventHandler.hold`). In `SCN_ATTACH_BEHAVIOR` `elementProc` is the function
+  pointer itself: the C type `ElementEventProc*` is a pointer to a function, the D alias is
+  already one (the struct had a pointer to it: a wrong layout, fixed before first use). A handler attached so gets
+  `HANDLE_DRAW`, mouse, key and focus events, but `element.xcall(name)` of the script never
+  reaches its `HANDLE_SCRIPTING_METHOD_CALL`: Sciter answers "unknown name" and only asks the
+  object model (`HANDLE_SOM`, cmd 0). The script calls the window instead
+  (`Window.this.xcall("logTableCall", method, ...)`, `ui/main_window` hands it to
+  `LogTableBehavior.script`). 6.0.5.5, macOS (2026-11-19).
+- The graphics API (`graphicsApi()`, `sciter-x-graphics.h`) has 72 functions in the table
+  `SciterGraphicsAPI` (the order is checked by a unittest), every one `nothrow`. `RGBA` packs a, b, g, r from the
+  top byte. A text layout (`TextLayout`, `textCreateForElementAndStyle`) takes the font, the size
+  and the color from its style declaration (`font-size: 8pt; font-family: 'Courier New', ...;
+  color: #333`); `gDrawText` has no color, so a text of another color is another layout. Not even
+  through the fill: `gFillColor` before `gDrawText` doesn't recolor a layout (it keeps the color
+  of its style), and a layout with no `color` in its style draws black, not in the fill color,
+  and its words stood wider apart (the JS `graphics.draw(text, {fill})` of the docs paints it
+  in a fill color; the C API can't: tried 2026-11-20, 6.0.5.5, macOS). The C API gives no
+  position of a character in a layout either (`textGetMetrics`: widths, height, lines only;
+  the JS `Graphics.Text` likewise: its widths, height, the metrics and the text of a line): a place
+  in a text is had by measuring the text before it, or by summing what was measured. Its
+  coordinates of a `DRAW_CONTENT` are the element's own in dips (`params.area` is the content
+  box on the view). A layout is lazy: `textCreateForElementAndStyle` costs ~3.6 µs, the laying out is done at the
+  first `textGetMetrics` or `gDrawText` (~31 µs for 15 chars, ~52 µs for 95), a laid out one draws in ~1 µs,
+  `textRelease` ~2-3 µs; the style string costs nothing to speak of, and the same text in another layout is laid out
+  again (no shared cache). `gStateSave`/`gStateRestore` keep the line and fill colors, transform and clip, not a text's
+  color. There is no reading of the clip or of the area Sciter repaints; `imageCreate` + `gCreate` (or `imagePaint`)
+  give a graphics on an image; `gGetNativeDC` gives the native context on Windows only (Direct2D types; on macOS it
+  answers `GRAPHIN_FAILURE`). A partial paint is impossible: `SciterRefreshElementArea` with a small rect still has
+  Sciter redraw the whole window at the next frame, every painted element gets its `DRAW_CONTENT` (one nobody asked
+  too) on a cleared background, and what a handler leaves out is blank, not kept (tried 2026-11-21, 6.0.5.5, macOS:
+  the table drew only the strip of its bar, the rest of it came out empty). A frame costs the whole draw of every
+  painted table on the screen. A one-off refresh (`SciterRefreshElementArea`, `SciterUpdateElement`, JS
+  `requestPaint()`) draws the window twice, ~2 ms apart: Sciter's own render in its loop, then again when Core
+  Animation has the view's layer display (`NSViewBackingLayer display` → `notifyWindowPaint`). Frames of an animation
+  frame request come once each. Not caused by the handler (a handler that only fills does the same), nor by the layer
+  (CG, Skia raster alike); details in `docs/backlog.md`, "наведение перерисовывает всю таблицу".
+  Drawing the table into an image to blit it on the second pass doesn't pay: inside `DRAW_CONTENT` `gCreate` on an
+  image answers `GRAPHIN_NOTSUPPORTED`, `imagePaint` works and keeps text sharp at `gScale(2)`, but drawing into it
+  costs ~3x drawing on the screen (the image is rastered by the CPU, the screen's commands go to the GPU). Numbers and what the API lacks:
+  `docs/experiments/2026-11-21-text-layout-cost.md`. A layout costs ~20 KB of memory: 5000 cached ones were +100 MB of RSS, 600 are
+  +10 MB (`SciterTextCache` keeps two generations, `ui/sciter_table/generations`). A layout wraps only by a `width: Npx` in its style: `textSetBox` alone leaves one line. Details and numbers:
+  `docs/experiments/2026-11-19-painted-rows-d.md`.
+- Sciter's own scroll bar (`overflow-y: scroll-indicator` on an element scrolling a spacer 1/shown of
+  it high) doesn't fit the painted table: dropped after a try (2026-11-20, 6.0.5.5, macOS). The
+  indicator covers its whole element (a child placed under the header for it); a child over the
+  rows takes their mouse; it shows only over itself or while Sciter scrolls it, not on a
+  `SciterSetScrollPos` without `smooth`, and a smooth one runs ~800 px at most; a press on the
+  track pages (`SCROLL_PAGE_PLUS` and `SCROLL_PAGE_MINUS`, no place of the press); the drag is lost outside the
+  window; `SciterGetScrollInfo` tells a content size of 0; a position set right after the
+  spacer's height is clamped by the old height until the layout; the scroll events of a child
+  don't bubble to the table (`SciterAttachEventHandler` on the child gets them), and a move of
+  the position comes as cmd 14 (not in the SDK's enum) with no axis. Changing a style while
+  the table paints (its `scrolled` is told during the paint) makes a paint of every paint: the
+  window hung while a log was read. The table draws its own bars (`ptable/scrollbar`).
+
 ## Events of the System
 
 - `SciterProcX` with `SXM_MOUSE`/`SXM_KEY` is for Sciter Lite (no window of its own): a real
@@ -87,7 +144,7 @@ agent can't drive it. In scapp a plain
   (`["a", <i/>, "b"]` gives `<i></i>`); a fragment keeps both: `content(<>{pieces}</>)`.
 - Don't keep state as properties of elements (`row.view = ...`): on rows reused as slots such
   properties went missing after a while (2026-11-15; an element held by the script kept them,
-  the cause wasn't pinned down). Keep it in JS, by the element's place (`elementIndex`).
+  the cause wasn't pinned down). Keep it in JS, by the element's place (elementIndex).
 - `el.attributes["x"] = null` sets the text "null"; use `removeAttribute` / `setAttribute`.
 - Any `classList` call (`add`, `remove`, `toggle`, even `contains`) on an element taken out of
   the DOM with `remove()` segfaults (6.0.5.5, 2026-11-15; `JS_GetPropertyInternal`). An element
@@ -98,12 +155,16 @@ agent can't drive it. In scapp a plain
   `input.value`.
 - `style.variables({name: null})` doesn't remove a variable: `var(name, default)` then doesn't
   fall back; set the default value explicitly.
-- `componentUpdate()` doesn't render synchronously: it posts `render()`. Anything posted right
-  after it runs before the render and before what `render()` posts itself (e.g. VirtualList's
-  `navigate("start")`), so scroll targets are passed into render
-  (`VirtualList.navigateTarget`), not posted next to `componentUpdate`.
+- componentUpdate() doesn't render synchronously: it posts `render()`. Anything posted right
+  after it runs before the render and before what `render()` posts itself, so what depends on
+  the render (a scroll target) is passed into render, not posted next to componentUpdate.
 - An element needs `tabindex="0"` (not -1) to take the focus from `state.focus = true`;
   otherwise the focus lands on an ancestor.
+- Focus stays on an element inside a pane hidden by `display: none` (or `visibility`): move it
+  on a switch.
+- `element.rangeFromPoint(x, y)` (x, y in the element's inner box) works on a non-selectable
+  element too: it gives the character **under** the point (right of the text: length − 1), on
+  the line under `y`; an empty element gives a node outside it.
 - `Clipboard.readText()` returns the text with a trailing NUL (`\u0000`): strip it.
 - Changing `src` of an existing `<style>` doesn't reload it. A `<style src>` created at run
   time does apply, but asynchronously: what is styled meanwhile computes without it, and when
@@ -139,10 +200,10 @@ agent can't drive it. In scapp a plain
 - Mouse capture (`state.capture`) on an element recreated in the same mousedown went together
   with a segfault on tab drag; capture isn't needed for dragging: document-level
   `mousemove` / `mouseup` work.
-- A `selectable` cell consumes the mouse press and release itself: neither `mousedown` nor
-  `mouseup` bubbles to the tbody, and `addEventListener(..., {capture: true})` doesn't help. A
+- A `selectable` element consumes the mouse press and release itself: neither `mousedown` nor
+  `mouseup` bubbles to its parent, and `addEventListener(..., {capture: true})` doesn't help. A
   class handler in the sinking phase works: `["on ^mousedown"]` / `["on ^mouseup"]`
-  (`^` = sinking); not consuming it leaves the cell its text selection.
+  (`^` = sinking); not consuming it leaves the element its text selection.
 - **Don't move the focus inside a mousedown handler, and don't let a press drop it to nothing.**
   A press on a non-focusable element (a tab) drops the focus to nothing before any handler
   runs (sinking phase included) and drops again a focus the handler set. A focus set to the
@@ -169,14 +230,22 @@ agent can't drive it. In scapp a plain
 - `sizechange` reaches an element subscribed with `on("sizechange", ...)`; an
   `["on sizechange"]` method of its class is never called (an element bound by CSS
   `prototype:`: neither `this()` nor field initializers run either).
+- `style.variable(name)` of a length (6.0.5.5, 2026-11-18) answers an object: its text is as written (`9pt`), its
+  `units` the unit, and `Number()` of it is its size in dips whatever the unit (9pt → 12, 12px → 12, 1.5em → 20 in the
+  element's font, 3mm → 11.3); a bare number answers a number. The log table takes every size in dips, so the script
+  passes `Number()` of a length as it is (resources/log-table-look.js). A variable defined by `var()` of one declared
+  further down in the same rule answers the resolved value.
+- While the window is resized by its edge (macOS, 6.0.5.5, 2026-11-18), `sizechange` comes once the resize ends: an
+  element a script places by it lags behind. An element anchored by CSS to the edges of a positioned container
+  (`position: absolute; left: 0; top: 0; right: 0; bottom: 0`) follows at once (resources/log-table.js).
 - The wheel and the trackpad on macOS (6.0.5.5, 2026-11-15):
   - A mouse wheel comes as `wheel` in pixels (deltaMode 0), accelerated by the system: 12,
     112, 461, … up to ~1000 px an event every ~15 ms while it spins, single ones of 20 000
-    px. Apply them once a frame (`requestAnimationFrame`), never one by one with a layout
+    px. Apply them once a frame (requestAnimationFrame), never one by one with a layout
     each: the queue grows and the window hangs. A native scroll moves less than the deltas.
     Frames heavy enough (20–35 ms) hold the input back, and macOS sends the wheel in lumps
     (20 000–30 000 px every ~300 ms): keep the way pending to about a screen, drop the surplus.
-  - `requestAnimationFrame` callbacks come 5–36 ms apart, not at the screen's rate: a scroll
+  - requestAnimationFrame callbacks come 5–36 ms apart, not at the screen's rate: a scroll
     stepped by the raw time between frames jerks; even the step out (a mean period, the lag
     caught up a little each frame).
   - A trackpad comes as gestures, and only to an element that asks: on `gesturestart` call
@@ -188,6 +257,18 @@ agent can't drive it. In scapp a plain
     Sciter animates only an element with a native scroll of its own (`scrollanimationstart`
     / `end`, ~1 s). An element scrolled by script makes its own inertia.
   - `overflow: hidden-scroll` scrolls by the wheel and the trackpad without a scrollbar.
+  - `SciterRequestAnimationFrameEvent(he, code, 0)` (6.0.5.5, macOS, 2026-11-18): the element gets the
+    behavior event `code` at the next animation frame, and again every frame for as long as its handler
+    returns true. Never ask again from that handler: each ask adds a chain of frames, they come back to back
+    inside `view::do_animation` and the window hangs (`ui/sciter_table/frame_request`, `LogTableBehavior`).
+  - A mouse wheel that spins freely (macOS, 2026-11-18) sends ~1100 px every ~16 ms for seconds; a trackpad pan's
+    `gesturepan` of 10–40 px comes between them. The log table glides each wheel step over frames itself, does not
+    count the wheel while the fingers move, and a spin begun before them does not break their coast (`ptable/scrollmotion`).
+  - A touch of the trackpad without a move (a tap to stop the rows, macOS, 2026-11-18) comes as `gesturestart` and a
+    `gesturepan` with zero deltas, then `gestureswipe` + `gestureend` on the release; no other event. A wheel that spins
+    freely (a mouse) goes on sending steps through it: the table drops them (`wheelStale`) until the wheel is quiet.
+  - The end of a pan comes as `gestureswipe` and `gestureend` together, with zero deltas, right after the
+    last `gesturepan` (often of 0): a release to coast from.
 
 ## Popups, Tooltips, Menus
 
@@ -255,33 +336,16 @@ agent can't drive it. In scapp a plain
 - An element with `overflow-x: hidden` still scrolls by `scrollTo` (and reports
   `scrollWidth`), but keeps its `scrollLeft` when its content gets narrower: the content stays
   shifted out of sight (`auto` brings it back); clamp it yourself.
-- The cost of a change of a table row (6.0.5.5, 2026-11-16, 13 cells): any attribute of a `tr`
-  changed (a class too, one no CSS rule names too) restyles the row and all its cells, ~0.5 ms
-  a row; the same value written again costs nothing. A text of a cell is ~10 µs. Keep the
-  attributes of the rows as they are; what changes with the row's number goes into painting.
-- Where a row goes in a table (6.0.5.5, 2026-11-16, 30–34 rows of 13 cells): `append` of a row
-  of the table itself (moved from the top to the end) or a row removed from anywhere is cheap,
-  ~1 ms for 4 rows. A row inserted anywhere but at the end (`insertBefore` the first, the
-  second, the middle one; a row of the table too) re-lays the whole table out, ~14 ms
-  (~0.45 ms a row), one row or four, fixed widths of the columns or not, wrapped or
-  single-line; `:nth-child` rules are no part of it. A row taken out of the DOM and inserted
-  again, even at the end, is styled anew with its cells: ~14 ms for 4. Blocks of
-  `flow: horizontal` instead of a table pay for an insertion at the top too (~8 ms).
 - `element.paintBackground = gfx => ...` draws under the element's content, but the element's
   own CSS background is painted over it: give the element none and paint it too. `gfx` is in
   the element's box, in px as `getBoundingClientRect`; `element.style.variable("name")` gives a
   CSS variable for `gfx.fillStyle`; `requestPaint()` asks for it again. What it paints is not
-  clipped to the element's box (a rect above a `tbody` painted over the table's header): cut
-  it yourself.
+  clipped to the element's box: cut it yourself.
 - `:nth-child` styles are not updated for the siblings that stay when an element is prepended
   or removed (6.0.5.5): `matches(":nth-child(even)")` gives the new answer, the applied style
-  is the old one. The rows virtual-list keeps while scrolling had wrong stripes
-  (`:nth-child(even)`, `table.css`) at every odd shift of its window. Any change of the
-  document restyles them: a class toggled on the `tbody` (`VirtualList.restyleRows`, posted
-  from `oncontentrequired`: virtual-list removes the rows past its window after it returns),
-  an attribute set on each row (`followAnchor` sets `view-index`). So a check of this bug
-  must not write into the page (a status text heals it): the repro writes to the window
-  caption.
+  is the old one. Any change of the document restyles them (a class toggled on the parent,
+  an attribute set on each sibling), so a check of this bug must not write into the page (a
+  status text heals it).
 - A block is centred in its parent by `margin: 0 *` (flex units); `margin: 0 auto` leaves it
   at the left. Vertical `*` margins take all the free height: a block after it (an `:after`)
   goes down to the bottom of the cell.
@@ -361,83 +425,7 @@ agent can't drive it. In scapp a plain
   room for an absolute child sticking out (the buttons of a filter chip).
 - To diagnose a layout bug, compare `el.state.box("xywh","border","parent")` between a working
   and a broken element instead of guessing.
-
-## Virtual Lists and the Log Table
-
-- **Never hide a log table itself.** A `<table>` with a virtual-list tbody hidden by
-  `display: none` before it was ever laid out keeps its cells at x=0, 1px wide, for good.
-  Hidden ancestors are harmless, so is hiding a table already laid out. Show status views over
-  it (`.status-view.overlay`).
-- Rows appended to the data of a virtual-list need no render: assigning `vlist.itemsAfter`
-  (6.0.5.5) grows the scrollbar range, keeps the rendered rows, the first visible item and the
-  scroll, and the list asks for the new rows when scrolled to them. A list whose window ends
-  at its last row with room left doesn't ask: append the rows (`VirtualList.grow`).
-  The same for a row counted by `itemsAfter` while the rendered ones just fill the table
-  (an anchor in the search list): the wheel scrolls nothing, only the scrollbar does. Render
-  such a row up to the window (`followAnchor`), not up to the height of the list. A row
-  inserted by hand that makes the rendered ones overflow the list leaves the wheel dead too
-  (the scrollbar works, a resize heals it): `followAnchor` leaves that insertion to a render
-  while the rows fit the list.
-  A list scrolled somewhere that was edited by hand shows a gap under its rows (rows removed)
-  or has its rows pushed (a row inserted above the first on screen): `settle` of
-  `VirtualDltTBody` puts it right: at once after the first edit of a frame (no blink: the
-  layout is read synchronously and is current), and once more in the frame, after the rest of
-  its edits (an edit each doesn't read the layout each: hundreds of anchors at open).
-- A virtual-list hidden (`display: none`, or `visibility`) and shown again keeps its rows, first
-  visible item and pixel offset, even after a resize while hidden; a hidden list requests no
-  rows. Focus stays on an element inside a hidden pane: move it on a switch.
-- `vlist.navigateTo(n)` puts row n at the top only when n is outside the sliding window or
-  above the screen; below the screen but inside the window it lands at the bottom; on screen
-  it doesn't scroll. `VirtualList.navigateToTop` navigates past n first
-  (n + slidingWindowSize), then to n (`resources/list-navigation.js`).
-- A virtual-list scrolls animated with `scrollTo({ top, behavior: "smooth" })` and
-  `vlist.advanceTo(n)` (~250 ms, eased); `vlist.scrollBy` and `vlist.navigateTo` are instant
-  (6.0.5.5). A smooth scroll renders no rows: it stops at the last rendered one; it goes past
-  the last row of the list (clamp to `scrollHeight - clientHeight`); in the frame of an
-  instant `scrollTo` it overshoots by that one. `VirtualList.smoothAnimateTo` jumps first,
-  then animates the last rows of the way (`approachStep`).
-- When rows change height (a class toggle, a smaller font) the scroll position stays in pixels
-  and may be past the end. Layout isn't redone until the next frame, not even in a `post`ed
-  call; inside `requestAnimationFrame(...)` the geometry is new and `navigateTo` works.
-  `vlist.firstVisibleItem` is kept while hidden.
-- 6.0.5.5: a far jump (scrollbar drag) asks `where=±1` with a far `start` and drops the old
-  rows itself (6.0.3.12 asks `where=0`). It first renders ~half a window of rows around the
-  old place, then a whole window at the new one, and lays every new row out (styles, the
-  widths of the table): about 1 ms a row of a log table, nearly all of a jump; our script
-  is ~6 %. So the window is sized to the list (`vlist.slidingWindowSize`, read-write, 160 by
-  default; `windowSize` of `resources/list-navigation.js`, `VirtualDltTBody.fitWindow`).
-  Dragging the thumb to an end of a list of ~85M+ rows segfaults inside Sciter
-  (`vlist_ctl::move_buffer_to`), reproduced with the SDK sample alone.
-- Sciter fills a list (a new view, a jump) with half its window, a couple of rows less, and
-  asks for no more until it scrolls: a window grown after (a higher list, a smaller font)
-  leaves a gap under the rows. `VirtualList.fill` renders the rows itself (`fillStep`).
-  Rows prepended with `itemsBefore` lowered push the rows on screen down, the end of the
-  list too: navigate to the last row again.
-- A window smaller than the rows on screen segfaults on a jump (`vlist_ctl::move_buffer_to`),
-  and so does `navigateTo(n)` with `n >= vlist.itemsTotal` while rows are rendered, whatever
-  the window (`advanceTo` past it returns null). `itemsTotal` lags behind `totalItems()`
-  while a view grows; an empty list navigated past it lands on its last known row. Navigate
-  through `VirtualList.navigateTo` (`navigationStep`: counts the rows first, keeps the target
-  within them), never `vlist.navigateTo` or `vlist.navigate`.
-- `vlist.navigateTo("end")` asks for a row per pixel of the list's height (483 rows for a
-  list 483px high), whatever `slidingWindowSize`, and keeps them: ~0.5 s on a tall list.
-  `navigateTo(last row)` puts the last row at the bottom just the same with a window of rows
-  (`safeTarget` does it). `navigateTo("start")` asks for a window.
-- `sizechange` reaches a virtual-list subscribed with `on("sizechange", ...)`; an
-  `["on sizechange"]` method of its class is never called. A `thead` gets it when the font
-  size of its table changes (its row follows the font), before the next frame.
-- The `outline` of a row of a scrolled virtual-list is painted `scrollTop` lower than the row
-  (6.0.5.5), a frame over another row; frame a row with `box-shadow: inset ...` instead.
-- Text selection: `behavior: virtual-list` blocks drag selection of text whatever carries
-  `selectable`; only `selectable` per cell works, inside one cell. Selection over a
-  virtual-list is ours, in JS (`resources/text-selection.js`).
-- `element.rangeFromPoint(x, y)` (x, y in the element's inner box) works on a non-selectable
-  cell too: it gives the character **under** the point (right of the text: length − 1), on the
-  line under `y`; an empty cell gives a node outside it.
-- No frozen columns in CSS (6.0.5.5, tried 2026-11-13 on the log table with single-line
-  rows, which the `table` itself scrolls sideways): the attributes `fixedcols` and
-  `fixedrows` (their names are in the library) change nothing, on a plain table too, and
-  `position: sticky` is unknown (`style.position` stays null). A cell with
-  `position: relative` moves twice its `left` (`left: 100dip` → 200dip), and
-  `transform: translate(...)` doesn't move a cell at all. Pinning the anchor and Index
-  columns would take a scroll handler shifting them: dropped as not worth it.
+- No frozen columns of a `<table>` in CSS (6.0.5.5, 2026-11-13): the attributes `fixedcols` and
+  `fixedrows` (their names are in the library) change nothing, and `position: sticky` is
+  unknown (`style.position` stays null). A cell with `position: relative` moves twice its
+  `left` (`left: 100dip` → 200dip), and `transform: translate(...)` doesn't move a cell at all.

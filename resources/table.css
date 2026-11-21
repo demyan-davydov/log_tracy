@@ -1,68 +1,104 @@
 /* Table Styles */
 
-.log-table {
+/* The room a log table fills in a panel (document-pane.js), and the table: an element of the native behavior `log-table`
+   (source/ui/log_table_behavior.d) that draws the rows itself. Its CSS variables are those the script reads for its look
+   (resources/log-table-look.js) */
+.log-table-slot {
     display: block;
     width: *;
     height: *;
-    border-collapse: collapse;
+}
+
+.log-table-view {
+    --group-pad-top: 4.5pt; /* 6dip */
+    --group-pad-bottom: 0; /* the plate reaches the bottom of the margin and covers the line there (the outline of a group) */
+    /* the room left of the text of the Payload column and of its title */
+    --payload-pad-left: 4pt; /* 5.33dip */
+    /* the room around the rows, always there (none for now: set one to have it); left and right the same for the tables of a
+       document (their column host's) */
+    --rows-margin-top: 0;
+    --rows-margin-bottom: 0;
+    --rows-margin-left: 0;
+    --rows-margin-right: 0;
+    /* The least widths of the columns, of their content as min-width in CSS: the paddings of the cells and the line between the columns
+       come on top. --column-min-width for a column no variable names, one for the columns every table has (-anchor, -index, -payload)
+       and one for each column of a format by its ids (--column-min-width-dlt-time; the formats and their columns are in source/formats,
+       a name D does not know fails a test of source/ui/log_table/column_widths.d). Where
+       the variants of a format differ (the time of a CAN trace), that of the narrowest. A width is in em of the font of the table (the
+       font-size below, the text at 100%; a comment beside a value gives it in dips), so it follows the font: the script tells D the dips,
+       D multiplies them by the size of the text the user chose */
+    font-size: 12.5pt;
+    --column-min-width: 1.5em; /* 25dip */
+    --column-min-width-anchor: 1.25em; /* 20dip */
+    --column-min-width-index: 2.5em; /* 40dip */
+    --column-min-width-payload: 3.5em; /* 58dip: it takes the rest of the room, a few characters are enough */
+    /* DLT */
+    --column-min-width-dlt-time: 5em;
+    --column-min-width-dlt-timestamp: 4.25em;
+    --column-min-width-dlt-counter: 2.5em;
+    --column-min-width-dlt-ecu: 2.5em;
+    --column-min-width-dlt-app: 2.5em;
+    --column-min-width-dlt-ctx: 2.5em;
+    --column-min-width-dlt-session: 2.5em;
+    --column-min-width-dlt-type: 2.5em;
+    --column-min-width-dlt-level: 2.75em;
+    --column-min-width-dlt-msgid: 2.5em;
+    /* Android logcat */
+    --column-min-width-logcat-time: 3.5em; /* 60dip */
+    --column-min-width-logcat-tag: 3.5em; /* 60dip */
+    --column-min-width-logcat-pid: 3em; /* 50dip */
+    --column-min-width-logcat-tid: 3em; /* 50dip */
+    --column-min-width-logcat-level: 3.5em; /* 60dip */
+    /* Syslog */
+    --column-min-width-syslog-time: 3.5em; /* 60dip */
+    --column-min-width-syslog-host: 4.75em; /* 80dip */
+    --column-min-width-syslog-app: 3.5em; /* 60dip */
+    --column-min-width-syslog-pid: 3em; /* 50dip */
+    --column-min-width-syslog-level: 3.5em; /* 60dip */
+    --column-min-width-syslog-msgid: 3.5em; /* 60dip */
+    --column-min-width-syslog-data: 4.25em; /* 70dip */
+    /* Kernel log (dmesg) */
+    --column-min-width-dmesg-time: 3.5em; /* 60dip */
+    --column-min-width-dmesg-level: 3.5em; /* 60dip */
+    --column-min-width-dmesg-facility: 3.5em; /* 60dip */
+    --column-min-width-dmesg-seq: 4.25em; /* 70dip */
+    /* Web server access log */
+    --column-min-width-access-log-time: 4.25em; /* 70dip */
+    --column-min-width-access-log-client: 3.5em; /* 60dip */
+    --column-min-width-access-log-user: 3.5em; /* 60dip */
+    --column-min-width-access-log-method: 3.5em; /* 60dip */
+    --column-min-width-access-log-status: 3em; /* 50dip */
+    --column-min-width-access-log-bytes: 4.25em; /* 70dip */
+    --column-min-width-access-log-referer: 3em; /* 50dip */
+    --column-min-width-access-log-agent: 3em; /* 50dip */
+    /* CAN traces */
+    --column-min-width-candump-time: 3em; /* 50dip */
+    --column-min-width-candump-channel: 2.5em; /* 40dip */
+    --column-min-width-candump-id: 2.5em; /* 40dip */
+    --column-min-width-candump-dlc: 2.5em; /* 40dip */
+    --column-min-width-candump-type: 3em; /* 50dip */
+    --column-min-width-vector-asc-time: 3em; /* 50dip */
+    --column-min-width-vector-asc-channel: 2.5em; /* 40dip */
+    --column-min-width-vector-asc-id: 2.5em; /* 40dip */
+    --column-min-width-vector-asc-dir: 2.5em; /* 40dip */
+    --column-min-width-vector-asc-dlc: 2.5em; /* 40dip */
+    --column-min-width-vector-asc-type: 3em; /* 50dip */
+    display: block;
+    width: *;
+    height: *;
     background: var(--bg-table);
     color: var(--text-main);
-    table-layout: fixed;
-    flow: table;
-    overflow-y: auto;
-    overflow-x: auto;
+    behavior: log-table;
 }
 
-.log-table tbody {
-    display: block;
-    behavior: virtual-list;
-    overflow-y: auto;
-    overflow-x: auto;
-    width: *;
-    height: *;
-}
-
-/* Payload column: break long lines */
-.log-table td:last-child {
-    word-break: break-all;
-}
-
-/* tr/td must be explicit blocks — display:table-row inside display:block has no layout box */
-.log-table>tbody>tr {
-    display: table-row;
-    width: *;
-}
-
-.log-table>tbody>tr>td {
-    display: table-cell;
-}
-
-
-.log-table.main-view>tbody {
-    prototype: VirtualMainViewTBody;
-}
-
-.log-table.search-view>tbody {
-    prototype: VirtualSearchViewTBody;
-}
-
-/*
-#log-list scrollbar[orientation="vertical"] slider {
-    min-height: 80dip;
-    background-color: red;
-}
-*/
-
-/* The header of a log table; .column-header-row and .column-header give the
-   same look to the columns of Settings, which imitate it */
-.log-table>thead>tr,
+/* The columns of Settings imitate the header of the log table: .column-header-row and .column-header give them its look (the log table draws its
+   own header, source/ui/log_table/painter.d) */
 .column-header-row {
     cursor: default;
     font-family: 'Courier New', Courier, monospace;
     background-color: var(--bg-table-header);
 }
 
-.log-table th,
 .column-header {
     cursor: default;
     padding: 2dip 3dip;
@@ -71,286 +107,7 @@
     border-right: 1dip solid var(--border-color);
 }
 
-.log-table>tbody>tr {
-    background-color: var(--bg-row);
-}
-
-.log-table>tbody>tr:nth-child(even) {
-    background-color: var(--bg-row-stripe);
-}
-
-/* The rows the search found (in the main view and in the search results; a
-   row listed there only by its anchor is not): the row and the stripe a bit
-   darker, so the stripes still show. The selection stays above them. */
-.log-table>tbody>tr[row-found="true"][row-selected="false"] {
-    background-color: var(--bg-row-found);
-}
-
-.log-table>tbody>tr:nth-child(even)[row-found="true"][row-selected="false"] {
-    background-color: var(--bg-row-found-stripe);
-}
-
-.log-table>tbody>tr>td:first-child {
-    font-family: 'Courier New', Courier, monospace;
-    font-size: 100%;
-    text-align: center;
-    cursor: pointer;
-}
-
-.log-table>tbody>tr[rule-color="true"]>td:nth-child(1) {
-    background: var(--rule-color);
-}
-
-/* The color of the filter rule a record matches: set on the row, shown on its Index cell only (the second one, after
-   the anchor), fading out from the left edge; the
-   background of the row shows through. Sciter takes var() in a gradient only
-   in `background`, not in `background-image`. */
-.log-table>tbody>tr[rule-color="true"]>td:nth-child(2) {
-    background: linear-gradient(90deg, var(--rule-color), transparent 25%);
-    background-position: 1dip 0;
-}
-
-/* Anchor column: the mark of an anchored message, an anchor in a grey circle,
-   a faint anchor on hover. The mark is always there and only shown or hidden:
-   an anchor set or cleared then repaints the cell only, adding content would
-   lay the table out again and make the rows below blink. It appears growing
-   from its centre while its colors come up, and collapses back: a transform
-   and colors, since Sciter ignores opacity and visibility on a :before. Sizes
-   in em: the mark follows the font size of the table. */
-.log-table>tbody>tr>td.anchor:before {
-    /* A block in the middle of the cell */
-    display: block;
-    text-align: center;
-    vertical-align: bottom;
-    width: 15dip; /* the size of the anchor's circle */
-    height: 15dip;
-    line-height: 15dip;
-    margin: 0 *;
-    transform: scale(0);
-
-    transition: transform ease-in 200ms, 
-        color ease-in 200ms, 
-        background-color ease-in 200ms, 
-        border ease-in 200ms;
-}
-
-.log-table>tbody>tr[has-anchor="false"]>td.anchor:hover:before {
-    background-color: transparent;
-    border-radius: 50%;
-    color: var(--anchor-faint);
-}
-
-.log-table>tbody>tr[has-anchor="true"]>td.anchor:before {
-    content: "⚓";
-    /* Sciter centres a block by * (flex) margins, not auto; not across: the
-       cell centres its content */
-    border-radius: 50%;
-    /* not an outline: that of a row of a scrolled virtual-list is painted over the header */
-    box-shadow: inset 0 0 0 1dip var(--anchor-border-color);
-    transform: scale(1);
-    color: var(--text-main);
-    background-color: var(--bg-anchor);
-}
-
-/* No room for another anchor (document-pane.js): an empty cell shows on hover
-   that none can be set, clicking it shows why. Only the hovered cell changes
-   its content. */
-.log-table.anchors-full>tbody>tr[has-anchor="false"]>td.anchor:hover:before {
-    content: "⊘";
-    transform: scale(1);
-    color: var(--anchor-refused);
-    font-size: 190%;
-    transition: transform x-back-out 250ms;
-}
-
-.log-table.anchors-full>tbody>tr[has-anchor="false"]>td.anchor:active:before {
-    transform: scale(0.8);
-}
-
-/* Auxiliary columns (index, time, IDs...): see renderCell() in virtual-dlt-view.js */
-.log-table>tbody>tr>td.aux {
-    font-family: 'Courier New', Courier, monospace;
-    font-size: 80%;
-    text-align: right;
-}
-
-/* The gap between the thousands of the Index (groupDigits in cell-format.js):
-   an empty element, so the selected and the copied text stay the number */
-.log-table>tbody>tr>td>i.digit-gap {
-    display: inline-block; /* an inline one, empty, has no width */
-    width: 0.35em;
-    /* the height of the digits' line, from its top: a selected gap is painted
-       as the digits around it (empty, it has none; at the baseline it hangs
-       below them) */
-    height: 1.15em;
-    vertical-align: top;
-}
-
-.log-table>tbody>tr {
-    -user-select: none;
-}
-
-.log-table>tbody>tr>td {
-    -user-select: none;
-    cursor: text;
-    padding: 1dip 2dip;
-    border-right: 1dip solid var(--border-color);
-}
-
-/* Auxiliary columns (all but Payload): the value on one line, never cut, so a
-   value wider than its column widens it (the minimums are below).
-   Payload wraps to stay readable whole. */
-.log-table>tbody>tr>td:not(:last-child) {
-    white-space: nowrap;
-}
-
-/* The titles of the columns are centered, but that of Payload */
-.log-table>thead>tr>th {
-    text-align: center;
-}
-
-.log-table>thead>tr>th.payload {
-    text-align: left;
-}
-
-/* Force Payload column to take remaining space */
-.log-table>thead>tr>th.payload,
-.log-table>tbody>tr>td:last-child {
-    width: 100%;
-    padding-left: 4pt;
-}
-
-/* The minimum widths of the columns, without their padding and border: they
-   keep the layout from changing often; a wider value or title widens its column.
-   A column is found by the classes of its header: col-<column id>, the same
-   column of every format (col-time), and col-<format id>-<column id>, that of
-   one format (col-dlt-timestamp), see columnClass in cell-format.js; the
-   Payload column is also "payload", the service columns are col-anchor and
-   col-index. Where the variants of a format differ (the time of a CAN trace),
-   the minimum is that of the narrowest. */
-
-.log-table th.col-anchor { min-width: 20dip; }
-.log-table th.col-index { min-width: 40dip; }
-
-/* DLT */
-.log-table th.col-dlt-time { min-width: 60dip; }
-.log-table th.col-dlt-timestamp { min-width: 70dip; }
-.log-table th.col-dlt-counter { min-width: 45dip; }
-.log-table th.col-dlt-ecu,
-.log-table th.col-dlt-app,
-.log-table th.col-dlt-ctx,
-.log-table th.col-dlt-type,
-.log-table th.col-dlt-level { min-width: 50dip; }
-.log-table th.col-dlt-session { min-width: 70dip; }
-.log-table th.col-dlt-msgid { min-width: 50dip; }
-
-/* Android logcat */
-.log-table th.col-logcat-time,
-.log-table th.col-logcat-tag { min-width: 60dip; }
-.log-table th.col-logcat-pid,
-.log-table th.col-logcat-tid { min-width: 50dip; }
-.log-table th.col-logcat-level { min-width: 60dip; }
-
-/* Syslog */
-.log-table th.col-syslog-time { min-width: 60dip; }
-.log-table th.col-syslog-host { min-width: 80dip; }
-.log-table th.col-syslog-app { min-width: 60dip; }
-.log-table th.col-syslog-pid { min-width: 50dip; }
-.log-table th.col-syslog-level,
-.log-table th.col-syslog-msgid { min-width: 60dip; }
-.log-table th.col-syslog-data { min-width: 70dip; }
-
-/* Kernel log (dmesg) */
-.log-table th.col-dmesg-time { min-width: 60dip; }
-.log-table th.col-dmesg-level,
-.log-table th.col-dmesg-facility { min-width: 60dip; }
-.log-table th.col-dmesg-seq { min-width: 70dip; }
-
-/* Web server access log */
-.log-table th.col-access-log-time { min-width: 70dip; }
-.log-table th.col-access-log-client { min-width: 60dip; }
-.log-table th.col-access-log-user,
-.log-table th.col-access-log-method { min-width: 60dip; }
-.log-table th.col-access-log-status { min-width: 50dip; }
-.log-table th.col-access-log-bytes { min-width: 70dip; }
-.log-table th.col-access-log-referer,
-.log-table th.col-access-log-agent { min-width: 50dip; }
-
-/* CAN traces */
-.log-table th.col-candump-time,
-.log-table th.col-vector-asc-time { min-width: 50dip; }
-.log-table th.col-candump-channel,
-.log-table th.col-vector-asc-channel { min-width: 40dip; }
-.log-table th.col-candump-id,
-.log-table th.col-vector-asc-id { min-width: 40dip; }
-.log-table th.col-candump-dir,
-.log-table th.col-vector-asc-dir,
-.log-table th.col-candump-dlc,
-.log-table th.col-vector-asc-dlc { min-width: 40dip; }
-.log-table th.col-candump-type,
-.log-table th.col-vector-asc-type { min-width: 50dip; }
-
-.level {
-    text-align: center;
-}
-
-.level-fatal {
-    font-weight: bold;
-}
-
-/* Fatal: the color behind the text only, not the whole cell */
-.level-fatal>span.level-mark {
-    color: var(--log-fatal-text);
-    background-color: var(--log-fatal-bg);
-    display: inline-block;
-    border-radius: 3dip;
-    padding: 0 4dip;
-}
-
-.level-error {
-    color: var(--log-error);
-    font-weight: bold;
-}
-
-.level-warn {
-    color: var(--log-warn);
-    font-weight: bold;
-}
-
-.level-info {
-    color: var(--log-info);
-}
-
-.level-debug,
-.level-verbose {
-    color: var(--log-debug);
-}
-
-/* Selection: the selected rows have the theme's blue (the same while the table
-   isn't focused, its own variable stays to set apart), the current row (keyboard focus) a frame, duller while the
-   table isn't focused. The theme's colors, not the system's: they don't
-   change with the OS settings */
-.log-table>tbody>tr[row-selected="true"] {
-    background-color: var(--bg-row-selected-inactive);
-    color: var(--text-row-selected);
-}
-
-.log-table>tbody:focus>tr[row-selected="true"] {
-    background-color: var(--bg-row-selected);
-}
-
-/* box-shadow, not outline: Sciter paints the outline of a row of a scrolled
-   virtual-list scrollTop lower (.ai/knowledge/sciter.md) */
-.log-table>tbody>tr[row-current="true"] {
-    box-shadow: inset 0 0 0 1dip var(--border-row-current-inactive);
-}
-
-.log-table>tbody:focus>tr[row-current="true"] {
-    box-shadow: inset 0 0 0 1dip var(--border-row-current);
-}
-
-/* A notice by an element (the clipboard limit over the table, a refused
-   anchor right of its cell), see notice.js */
+/* A notice by an element (a refused anchor right of its cell), see notice.js */
 popup.notice {
     background-color: var(--bg-header);
     color: var(--text-main);
@@ -369,50 +126,4 @@ popup.notice.right {
     padding: 3dip 9dip;
     margin-left: 3dip;
     popup-animation: popup-animation(type:slide, axis:horizontal, heading:start-to-end, duration:200ms);
-}
-
-/* What a search chip found in the payload of a row the search found: the chip's
-   match color behind the text (match-colors.css), see matchPieces */
-.log-table td>span.match {
-    border-radius: 2dip;
-    /* the text of the theme, not the row's: a selected row has light text, the
-       match colors are pale, and what was found must stay readable */
-    color: var(--text-main);
-}
-
-/* Text the user selected across the cells and rows (text-selection.js, see
-   cellContent): over the match colors too; the text of the theme, as above.
-   A gap of the Index between selected digits too (i.digit-gap) */
-.log-table td>span.text-selected,
-.log-table td>span.level-mark span.text-selected,
-.log-table td>i.text-selected {
-    background-color: var(--bg-text-selected);
-    color: var(--text-main);
-}
-
-/* In a selected row the text keeps the row's color (white in the dark theme), the
-   selection doesn't dim it */
-.log-table>tbody>tr[row-selected="true"] td>span.text-selected,
-.log-table>tbody>tr[row-selected="true"] td>span.level-mark span.text-selected,
-.log-table>tbody>tr[row-selected="true"] td>i.text-selected {
-    color: var(--text-row-selected);
-}
-
-/* Single-line rows (Settings, applySingleLineRows in document-pane.js): every
-   row is exactly one line high, whatever its payload, so the virtual list
-   gets rows of one height. The line height is set on the row in units of the
-   table's font, so the cells of the smaller auxiliary font inherit the same
-   absolute line; the auxiliary cells are on one line anyway and never cut
-   (see above), the Payload cell is given exactly one line and its text goes
-   on to the right uncut: the column is as wide as the longest payload of the
-   rows rendered, the table scrolls sideways to it (the width follows the rows
-   rendered as the list scrolls). */
-.log-table.single-line>tbody>tr {
-    line-height: 1.25em;
-}
-
-.log-table.single-line>tbody>tr>td:last-child {
-    height: 1.25em;
-    white-space: nowrap;
-    word-break: normal;
 }

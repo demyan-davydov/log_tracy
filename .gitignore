@@ -19,5 +19,6 @@ docs/experiments/*
 .vscode
 ai-spec.md
 
-# logs kept at hand for debugging
+# logs kept at hand for debugging, and the samples of every format
 *.dlt
+/test_data/

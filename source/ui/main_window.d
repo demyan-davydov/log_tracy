@@ -3,41 +3,47 @@
 //! the log tables as Sciter values.
 module ui.main_window;
 
+import sciter.event_handler : SciterEventHandler;
 import sciter.window;
 import sciter.value;
 import sciter.capi.types;
 import sciter.capi.behavior;
 
 import domain.document_id : DocumentId;
-import domain.document_item : DocumentItem;
-import log_core.log_format : ColumnInfo;
-import log_core.log_message : TimeKind;
 import ui.app_menu : MenuItem, MenuPlatform;
 import ui.main_menu_loader : retitleAppMenu;
 import utils.ui_text : UiText;
-import log_core.rule_filter : RuleId;
-import log_core.search_filter : MatchBuffer, MatchRange;
 import ui.app_resources : appResourceOfUrl, appResourceUrl, builtInCatalogs;
 import ui.app_session : AppSession;
 import ui.app_settings : toJSON;
 import ui.filter_commands : DocumentFilters;
-import ui.table_rows : columnsJson, rowLength, writeRow;
+import ui.log_table.log_tables : LogTables, TableAttributes, tableAttributesOf;
+import sciter.element : attributeOf;
+import ui.log_table.log_table : TableSource;
+import ui.script_queue : ScriptQueue;
+import ui.log_table_behavior : LogTableBehavior, logTableBehavior, runScript, TableHooks;
+import ui.table_script : TableControl;
+import ui.columns_json : columnsJson;
 
 import std.algorithm : startsWith;
 import std.array : empty;
 import std.conv : to;
-import std.json : JSONValue;
 import std.stdio : writeln;
 import std.string : fromStringz;
 import std.utf : toUTF8, toUTF16;
 
+/// How many times one idle round tells the script what was queued, the script's answers queuing more
+private enum maxScriptRounds = 4;
+
 /// The window: the bridge between the script and the session. A call of the
 /// script (xcall) is read from its Sciter values, done by the AppSession and
-/// answered; what the script is to be told goes from onIdle(), never from
-/// inside a call (see AppSession).
+/// answered; what the script is to be told, by the session or by a log table,
+/// goes from onIdle(), never from inside a call (see AppSession, ui/script_queue).
 class MainWindow : SciterWindow
 {
     private AppSession _session;
+    private LogTables _tables; // the log tables: what the script asks of them is done there, the window converts the values
+    private ScriptQueue _tableCalls; // what the tables tell the script, sent by onIdle()
 
     /// The files of the interface are built in (`this://app/...`), for the dialogs too
     override protected immutable(ubyte)[] onLoadData(string uri)
@@ -46,6 +52,24 @@ class MainWindow : SciterWindow
         if (data is null && uri.startsWith(appResourceUrl))
             writeln("No file of the interface is built in at ", uri);
         return data;
+    }
+
+    // The native behaviors of CSS `behavior: ...`: the log table (ui/log_table_behavior)
+    override protected SciterEventHandler createBehavior(string name, HELEMENT he)
+    {
+        if (name != logTableBehavior)
+            return null;
+        // the element says what it shows: the script wrote it on it (resources/log-table-view.js)
+        TableAttributes shown;
+        if (!tableAttributesOf(attributeOf(he, "doc"), attributeOf(he, "search"), attributeOf(he, "table"), shown))
+        {
+            writeln("A log table without its document, view or number: not drawn");
+            return null;
+        }
+        const id = shown.id;
+        auto source = TableSource(_session, _session.findDocument(shown.doc), shown.search, _tables.hostOf(shown.doc), _tables.singleLine);
+        return new LogTableBehavior(source, _tables.look,
+            TableHooks(id, (TableControl control) { _tables.attached(id, control); }, &_tables.detached, &_tableCalls.put), he);
     }
 
     /// The menu bar of the window on `platform`, in the language of the interface
@@ -61,6 +85,9 @@ class MainWindow : SciterWindow
     this(AppSession session, bool sciterDebugMode = false)
     {
         _session = session;
+        _tableCalls = new ScriptQueue;
+        _tables = new LogTables;
+        _session.subscribeDocumentClosed((DocumentId docId) { _tables.documentClosed(cast(int) docId.toInt()); });
         _session.useTranslations(builtInCatalogs());
 
         import sciter.capi.def;
@@ -215,39 +242,39 @@ class MainWindow : SciterWindow
             _session.reorderTab(param!int(0), param!int(1));
             return true;
 
+        case "logTableCall":
+            // logTableCall(tableId, method, args...): a call to the table drawn by D (ui/log_table_behavior) of that number (the attribute `table` of its element); null if
+            // there is none (not attached yet, or no more)
+            {
+                auto table = params.argc >= 2 ? _tables.table(param!int(0)) : null;
+                if (table is null)
+                    resultView.set(SciterValue.makeNull());
+                else
+                    runScript(table, param!string(1), params.argv + 2, params.argc - 2, &params.result);
+            }
+            return true;
+        case "logTableSetLook":
+            // logTableSetLook(json): the look of the application: every log table has it, one that is not attached yet too
+            if (params.argc >= 1)
+                _tables.setLook(param!string(0));
+            return true;
+        case "logTableMinWidthNames":
+            // logTableMinWidthNames() -> the names of the CSS variables of the least widths of the columns, as a JSON array (ui/log_table/column_widths)
+            answer(_tables.minWidthNames());
+            return true;
+        case "logTableSingleLine":
+            // logTableSingleLine(on): the rows of the painted tables are one line high (the setting of the application): every table now, the next ones from the start
+            _tables.singleLine(param!bool(0));
+            return true;
+
         // ── The views ───────────────────────────────────────────────────────
-        case "getMainViewCount":
-        case "getSearchViewCount":
-            // get<Main|Search>ViewCount(docId)
-            auto doc = _session.doc(docParam());
-            auto view = method == "getMainViewCount" ? doc.mainView : doc.searchView;
-            resultView = cast(int) view.itemsCount();
-            return true;
-        case "getMainViewItem":
-        case "getSearchViewItem":
-            // get<Main|Search>ViewItem(docId, index): null if there is no such
-            // row (any more): the view changed, the file is lost
-            const docId = docParam();
-            auto doc = _session.doc(docId);
-            const bool search = method == "getSearchViewItem";
-            const int index = param!int(1);
-            DocumentItem docItem;
-            MatchBuffer fragments;
-            if (!(search ? doc.searchView : doc.mainView).fetchItem(index, docItem))
-                resultView.set(SciterValue.makeNull());
-            else
-                // the fragments the chips found, after the cells
-                resultView.set(asSciterRow(index, docItem, _session.tableColumns(doc),
-                    _session.ruleOf(docId, docItem), _session.matchesOf(docId, docItem, fragments[])));
-            return true;
         case "getMainViewNearestPosition":
         case "getMainViewPosition":
         case "getSearchViewPosition":
             // get<Main|Search>ViewPosition(docId, messageIndex) -> its row in
             // that view, null if the view doesn't show it; getMainViewNearestPosition:
             // the row Go to Message lands on (AppSession.nearestMainViewPosition),
-            // null for an empty view. The row sends message indexes as doubles
-            // (see asSciterRow)
+            // null for an empty view. The script sends message indexes as doubles
             double msgIndex = -1;
             if (params.argc > 1)
             {
@@ -272,11 +299,6 @@ class MainWindow : SciterWindow
             // test any of them), [] if there is none
             auto document = _session.doc(docParam());
             answer(columnsJson(document.columns, document.formatInfo.id));
-            return true;
-        case "getTableColumns":
-            // getTableColumns(docId): the columns the tables of the document show
-            auto document = _session.doc(docParam());
-            answer(columnsJson(_session.tableColumns(document), document.formatInfo.id));
             return true;
         case "setAnchor":
             // setAnchor(docId, messageIndex, value) -> {"refused", "max", "full", "pending", "rows"}: AppSession.setAnchor
@@ -424,16 +446,27 @@ class MainWindow : SciterWindow
     void onIdle()
     {
         //fixMacTitlebarBackground();
-        _session.dispatchEvents();
-        const calls = _session.takeScriptCalls();
-        if (_session.closing)
-            return; // the view is being torn down: calling the script would crash
-        foreach (call; calls)
+        // What the script does when told may queue more (a click on an anchor sets it, the document tells the anchor
+        // applied): the rounds go on till nothing is left, a few at most, so that it comes now and not with the next
+        // event of the loop. What is left after them goes with the next idle round.
+        foreach (round; 0 .. maxScriptRounds)
         {
-            if (call.json is null)
-                callScript(call.name, call.docId);
-            else
-                callScript(call.name, call.docId, call.json.toUTF16());
+            const tableCalls = _tableCalls.take();
+            _session.dispatchEvents();
+            const calls = _session.takeScriptCalls();
+            if (_session.closing)
+                return; // the view is being torn down: calling the script would crash
+            if (tableCalls.empty && calls.empty)
+                break;
+            foreach (call; tableCalls)
+                callScript(call.name, call.text);
+            foreach (call; calls)
+            {
+                if (call.json is null)
+                    callScript(call.name, call.docId);
+                else
+                    callScript(call.name, call.docId, call.json.toUTF16());
+            }
         }
         if (_session.settingsDue)
             _session.saveSettings(appStateOfScript());
@@ -450,55 +483,4 @@ class MainWindow : SciterWindow
             return "{}";
         }
     }
-}
-
-/// The cells of a row as Sciter values (see ui.table_rows.writeRow)
-private struct SciterCells
-{
-    SciterValue row;
-    AsArrayView cells;
-
-    this(size_t length)
-    {
-        row = SciterValue.makeArrayWithSize(length);
-        cells = AsArrayView(row);
-    }
-
-    void nothing(size_t cell)
-    {
-        SciterValue none = SciterValue.makeNull();
-        cells.opIndex(cell, none);
-    }
-
-    void boolean(size_t cell, bool value) { cells.opIndex(cell, value); }
-    void integer(size_t cell, int value) { cells.opIndex(cell, value); }
-    void number(size_t cell, double value) { cells.opIndex(cell, value); }
-    void text(size_t cell, const(wchar)[] value) { cells.opIndex(cell, value); }
-
-    void time(size_t cell, double microseconds, TimeKind kind)
-    {
-        SciterValue time = SciterValue.makeArray(microseconds, cast(int) kind);
-        cells.opIndex(cell, time);
-    }
-
-    void matches(size_t cell, const(MatchRange)[] ranges)
-    {
-        SciterValue list = SciterValue.makeArrayWithSize(ranges.length);
-        auto view = AsArrayView(list);
-        foreach (i, const ref m; ranges)
-        {
-            SciterValue fragment = SciterValue.makeArray(cast(int) m.start, cast(int) m.end, cast(int) m.chip);
-            view.opIndex(i, fragment);
-        }
-        cells.opIndex(cell, list);
-    }
-}
-
-/// A row of the log table as a Sciter array, see ui.table_rows.writeRow
-SciterValue asSciterRow(int index, ref const(DocumentItem) item, const(ColumnInfo)[] columns,
-    RuleId rule, const(MatchRange)[] matches)
-{
-    auto cells = SciterCells(rowLength(columns.length));
-    writeRow(cells, index, item.message, item.anchored, item.found, item.realIndex, columns, rule, matches);
-    return cells.row;
 }

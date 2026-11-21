@@ -123,3 +123,26 @@ public SciterAPI_T* sciterApi() nothrow @nogc
         ~ "the GC, most likely (a SciterValue or a SciterWindow left to the GC after main)");
     return instance.api;
 }
+
+/// The graphics API of the loaded Sciter (sciter-x-graphics.h): drawing and text layouts of
+/// a native behavior
+public SciterGraphicsAPI* graphicsApi() nothrow @nogc
+{
+    static __gshared SciterGraphicsAPI* table;
+    if (table is null)
+        table = cast(SciterGraphicsAPI*) sciterApi().GetSciterGraphicsAPI();
+    return table;
+}
+
+@("graphicsApi: the table is the one of the header: a color comes out as the header says")
+unittest
+{
+    import sciter.capi.graphics : graphicsApiOrder;
+
+    assert(graphicsApi() !is null);
+    // SC_COLOR is a, b, g, r from the top byte (sciter-x-graphics.h); a function out of place
+    // in the table would answer something else
+    assert(graphicsApi().RGBA(0x11, 0x22, 0x33, 0x44) == 0x44_33_22_11);
+    assert(graphicsApi().RGBA(1, 2, 3, 255) == 0xFF_03_02_01);
+    static assert(graphicsApiOrder[8] == "RGBA");
+}

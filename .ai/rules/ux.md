@@ -127,6 +127,8 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     keyboard in that document's panel (its table, or what had the focus there) once the button
     is released, as opening a file does; never nowhere. A switch shows the panel at once, the
     focus follows the release: it must not slow the switch down (`press-focus.js`).
+47. **Context menus open by the mouse only.** A right click (Control+click on macOS) opens a
+    context menu; the keyboard (the Menu key, Shift+F10) opens none, anywhere (`menu-gate.js`).
 
 ## Log Table
 
@@ -135,38 +137,52 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     no ellipsis; their widths are minimums so the layout is recalculated rarely. An exception
     to rule 10. The font size setting scales the font only. Settings → Table → "Single-line
     rows" (off by default) makes every row one line high, Payload not wrapped and not cut: it
-    runs on to the right and the table scrolls sideways (chosen over an ellipsis).
+    runs on to the right and the table scrolls sideways (chosen over an ellipsis). The one
+    exception: a line wider than the widest column (`maxFitWidth`, 100 000 px; a record of 64 KB
+    can be ~4 times wider) is cut and ends in `…` at the right side of its cell; selecting,
+    copying and searching still take the whole record.
 27. **Rule colors mark, they don't paint.** A record matching a filter rule with a color is not
-    painted whole: only its Index cell shows the color, a gradient from the left edge fading
-    out at about a third of the cell; the row's own background (stripes, selection) stays.
+    painted whole: its anchor cell is filled with the color, solid, on a selected row too, and its
+    Index cell shows it as a gradient from the left edge fading out at about a third of the cell;
+    the rest of the row keeps its own background (stripes, selection).
     A row the search found, in both tables, has a background a bit darker than its stripe
     (lighter in the dark theme), slightly warm (more so in the dark theme), so the stripes still show; the text keeps its
     contrast (no layer over it), the selection stays above it, its matches are in the colors
     of their chips.
+    The level cell keeps the color of its level on a selected row too, and a Fatal one its
+    badge (a rounded plate behind the text).
 28. **The other table follows the selected row.** A row selected in the main or the search
     table is shown in the other one if it has that message: selected there, scrolled only if
-    not already on screen (near the top then; the far part of the way is jumped over, the last
-    half screen or so scrolls animated, so the eye sees which way the rows went; Go to Message
-    scrolls the same way). Multiple
-    selection: the last
-    clicked/dragged-to/arrowed row. A click follows at once; a drag and the arrow keys only
+    not already wholly on screen: a row from below comes in with about 24 dips of room under it,
+    one from above with the same over it, a row that does not fit the window with that room goes
+    to the top of the window, one taller than the window that covers it stays, one taller than
+    the window that comes from above (only its bottom seen) ends at the bottom of the window
+    (the far part of the way is jumped over, the last screen or so scrolls animated, so the eye
+    sees which way the rows went; Go to Message and the keys bring a row into view the same
+    way). Multiple selection: the last clicked/dragged-to/arrowed row. A click follows at once; a drag and the arrow keys only
     after the row rests 500 ms. The keyboard focus stays in the table where the user selects.
 29. **Text is selected across cells and rows.** A plain drag in any cell (not the anchor)
     selects text from the press to the mouse, across cells and rows, auto-scrolling at the
     edges; a plain click selects the row; Shift/Cmd click and drag work on rows. A double click
     selects a word, a triple click the whole text of its cell; Escape clears the text first,
     then the rows; Cmd+C copies the selected text if any, else the rows (cells by tabs, rows by
-    new lines); the row context menu offers "Copy" while text is selected, and "Copy Row".
+    new lines); Cmd+A (Ctrl+A elsewhere) picks all rows without scrolling and lets go of the text;
+    the row context menu offers "Copy" while text is selected, "Copy Cell" and "Copy Row" (a
+    right click on a row not picked picks it, on one picked keeps the rows; the text stays).
     Selected text is painted over the match colors (`--bg-text-selected`).
-30. **A file being written grows, the table at its end follows it.** Every open file is
-    followed (no switch): the lines written to it come into the table by themselves. A table
-    whose last row is wholly on screen, with no current row or the last one current, follows
-    the end as `tail -f` does, the current row staying the last (rows chosen up to the last
-    stay chosen: only a single current row moves with the end); a table scrolled up, or with
-    a row above the last chosen, stays where it is. The other table doesn't follow these
-    moves. Only rows of a file being written are
-    followed: a table a load, a filter or a search fills stays at its top. A line cut by the
-    end of the file is shown once the file is quiet for a second; a file emptied by a
+30. **A table follows its end only when the user asks.** While the vertical scroll bar is shown, a
+    badge "A" stands under it (in the corner where the bars meet when both are there). A click on it
+    turns following on, and so does the thumb dragged onto the badge and held there for a moment: the
+    table goes to its end and keeps its last row in view whatever comes (a file being written, a load,
+    a filter or a search filling it), as a terminal does; the thumb is pinned to the bottom, takes the
+    color of the badge and runs down into it, the A at its bottom, and the bar stays wide away from
+    the mouse. A second click turns it off. A drag of the pinned thumb
+    up comes off only past a small distance, then follows the mouse and following ends; scrolling
+    away from the end (the wheel, the bar, the keys, a jump) ends it too. Reaching the end by
+    scrolling (End, the wheel, the bar) does not turn it on, and a new list (another filter or search,
+    a file opened anew), however short, starts at its top and not following: a load never starts it
+    by chance. The selection has nothing to do with it. The other table doesn't follow these moves. A
+    line cut by the end of the file is shown once the file is quiet for a second; a file emptied by a
     rotation is opened anew in its tab.
 
 ## Search
@@ -271,3 +287,17 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     and a red line under its set's chips says why (rule name: error). New Filter and Load Filter
     are in the page's toolbar. In a narrow window the chips shrink to the row, a long name
     cut; a switch toggled keeps the focus.
+45. **Cells of a tall row stay in view.** When the Payload makes a row taller than the text of
+    the other cells, the text of every other column (the anchor, the Index, the columns of the
+    format; their marks with it) stays aligned in the part of its cell on the screen while the
+    row is cut by the top or the bottom of the rows, never out of its cell's paddings. The
+    Payload does not move.
+46. **Scroll bars of the log tables.** Both (down the rows and, with single-line rows, sideways)
+    behave the same and lie over the edge of the rows, taking no room from them. Either can be
+    turned off. A bar is not shown while there is nothing to scroll that way; otherwise it is
+    shown at rest too, as a thin strip at the edge. The mouse over its hover area at the edge
+    widens it to the thickness of that area and shows its track, semi-transparent, under the
+    thumb (only then); the bar down the rows of a table that follows its end stays wide (rule 30).
+    Its thumb is taken by the mouse and dragged anywhere, held outside the window too; a press on
+    its track puts the thumb there at once. How it comes, goes and widens is made smooth last
+    (the user, 2026-11-20).

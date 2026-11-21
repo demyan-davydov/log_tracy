@@ -6,15 +6,14 @@
 // (display: none keeps the rows, the scroll, the selection and the editor as
 // they are). A hidden panel touches none of its elements but remembers what
 // changed: show() brings it up to date. This module puts the parts together
-// and keeps what the two tables (view-table.js) share: their columns, look
-// and anchors, and how each follows the other.
+// and keeps what the two tables (view-table.js, the log table of D) share:
+// their anchors, and how each follows the other.
 
 import * as backend from "backend.js";
 import * as platform from "platform.js";
 import { allFiles, fileFilter } from "file-types.js";
 import { anchorRefusalText } from "pane-commands.js";
 import { SelectionFollower } from "row-selection.js";
-import { rowLookStep, keptRowStep, searchViewKey } from "pane-state.js";
 import { tr, trc } from "i18n/i18n.js";
 import { translateTree } from "i18n/dom.js";
 import { fileInfoRows } from "file-info.js";
@@ -37,9 +36,8 @@ function renderPane(splitters) {
         <section class="main-content">
             <div class="tab-content">
                 {/* Status views over the table, see .status-view.overlay in
-                    tab-content.css. The table itself is never hidden: one
-                    hidden before it was ever laid out keeps the cells of
-                    its rows 1px wide for good (Sciter). */}
+                    tab-content.css. The table fills its slot: the log table of
+                    D is put in it when the panel is made (view-table.js). */}
                 <div class="status-view overlay main-status" tabindex="0" style="display:none;">
                     <div class="status-body">
                         <div class="status-title"></div>
@@ -57,16 +55,7 @@ function renderPane(splitters) {
                         </div>
                     </div>
                 </div>
-                <table class="log-table main-view" fixed-layout="true">
-                    <thead>
-                        <tr>
-                            <th class="col-anchor">⚓</th>
-                            <th class="col-index">Index</th>
-                            <th class="payload">Payload</th>
-                        </tr>
-                    </thead>
-                    <tbody />
-                </table>
+                <div class="log-table-slot main-view" />
                 {/* The progress of what fills the table while it shows rows
                     (status-view.js showProgress), under it: no row is covered */}
                 <div class="view-progress main-progress" style="display:none;">
@@ -101,16 +90,7 @@ function renderPane(splitters) {
                             <div class="status-detail"></div>
                         </div>
                     </div>
-                    <table class="log-table search-view" fixed-layout="true">
-                        <thead>
-                            <tr>
-                                <th class="col-anchor">⚓</th>
-                                <th class="col-index">Index</th>
-                                <th class="payload">Payload</th>
-                            </tr>
-                        </thead>
-                        <tbody />
-                    </table>
+                    <div class="log-table-slot search-view" />
                     {/* The progress of what fills the table while it shows rows
                         (status-view.js showProgress), under it: no row is covered */}
                     <div class="view-progress search-progress" style="display:none;">
@@ -172,22 +152,9 @@ export class DocumentPane {
         this.host = host;
         this.visible = false;
         this.jumps = []; // the history of Go to Message, the newest first: kept while the tab is open
-        this.foundShownFor = null; // the search view (searchViewKey) the main rows show the found rows of
-        this.appliedColumns = null; // JSON of the columns the tables show
         this.lastFocus = null; // focused in the panel last (focusin): it gets the keys again when shown
         this.textsStale = false; // the language changed while hidden: rendered again on show
-        // What an anchor left to do while hidden, done on show: table -> "rebuild" (it
-        // moved its rows) or "repaint" (its rows show the anchor)
-        this.staleTables = new Map();
         this.bottomPage = "search"; // the page of the bottom panel shown (data-page)
-        // How the rows look (Settings): { fontSize (%), singleLine }, as asked
-        // and as the tables have it (null: not yet), see applyRowLook()
-        this.rowLook = { fontSize: host.tableFontSize(), singleLine: host.singleLineRows() };
-        this.appliedRowLook = null;
-        // The first rows on screen to scroll back to after the look changed, by
-        // table (ViewTable): { top } (see keptRowStep), see applyRowLook()
-        this.keptRows = new Map();
-        this.keptRowsFrame = false; // a frame is asked to scroll to them
         this.destroyed = false;
 
         container.append(renderPane(splitters));
@@ -197,34 +164,25 @@ export class DocumentPane {
         // The views shown by the machines of the document (onMainViewChanged,
         // onSearchViewChanged) are theirs, see view-table.js
         const $ = selector => this.root.$(selector);
-        this.main = new MainViewTable(docId, { table: $("table.main-view"), status: $(".main-status"),
+        this.main = new MainViewTable(docId, { table: $(".log-table-slot.main-view"), status: $(".main-status"),
             progress: $(".main-progress"), lost: $(".source-lost"),
             cancelled: () => this.filterPanel.showResult("") });
-        this.search = new SearchViewTable(docId, { table: $("table.search-view"), status: $(".search-status"),
+        this.search = new SearchViewTable(docId, { table: $(".log-table-slot.search-view"), status: $(".search-status"),
             progress: $(".search-progress") });
-        // A row the user selects in one table is shown in the other (followSelection,
-        // the "rowchosen" events of the tables)
-        this.follower = new SelectionFollower(list => this.followSelection(list));
-        this.applyRowLook();
+        // A row the user selects in one table is shown in the other (followSelection): D tells the row chosen (`logTableRowChosen`)
+        this.follower = new SelectionFollower(table => this.followSelection(table));
+        for (const table of this.tables) table.logTable.rowChosen = (id, delayed) => this.rowChosen(table, delayed);
 
         this.filterPanel = new FilterPanel(this.root.$(".filter-page"), docId, {
             theme: () => host.theme(),
-            setRuleColors: colors => { for (const list of this.lists) list.ruleColors = colors; },
-            refreshRows: () => this.refreshRuleColors(),
             setActive: active => this.markFiltersTab(active),
         });
-        this.searchBar = new SearchBar(this.root.$(".search-bar"), docId, {
-            setMatchColors: colors => { for (const list of this.lists) list.matchColors = colors; },
-        });
+        this.searchBar = new SearchBar(this.root.$(".search-bar"), docId);
         this.bind();
     }
 
     get tables() {
         return [this.main, this.search];
-    }
-
-    get lists() {
-        return this.tables.map(table => table.list);
     }
 
     // The machines of the document show other views (a snapshot of the
@@ -264,8 +222,6 @@ export class DocumentPane {
     show(splitters) {
         this.root.style.display = "";
         this.visible = true;
-        this.applyRowLook(); // changed in Settings while hidden
-        this.scrollToKeptRows(); // of a hidden page or panel, see applyRowLook()
         if (splitters) {
             this.root.frameset.state = splitters.rowsState;
             if (splitters.bottomPage) this.selectBottomPage(splitters.bottomPage); // refresh() fills it
@@ -274,15 +230,6 @@ export class DocumentPane {
             this.textsStale = false;
             this.filterPanel.invalidate();
         }
-        for (const [table, todo] of this.staleTables) { // of an anchor applied while hidden
-            if (todo === "repaint") {
-                table.list.refreshVisibleRows();
-                continue;
-            }
-            table.list.resetSelection();
-            table.list.componentUpdate();
-        }
-        this.staleTables.clear();
         this.refresh();
         this.takeKeys();
     }
@@ -312,9 +259,9 @@ export class DocumentPane {
     // if it shows its rows, otherwise the search editor if its page is shown,
     // otherwise the status view covering the main table
     defaultFocus() {
-        if (this.shows(this.main)) return this.main.list;
+        if (this.shows(this.main)) return this.main.logTable.element;
         if (this.bottomPage === "search") return this.root.$(".chip-search");
-        return this.main.shownCover() ?? this.main.list;
+        return this.main.shownCover() ?? this.main.logTable.element;
     }
 
     // True if `element` is on a page of the bottom panel that isn't shown
@@ -356,25 +303,19 @@ export class DocumentPane {
 
     // The document is closed
     destroy() {
-        this.destroyed = true; // a frame asked by applyRowLook() leaves the lists alone
+        this.destroyed = true;
         this.follower.cancel();
-        this.keptRows.clear();
+        for (const table of this.tables) table.logTable.destroy();
         this.searchBar.destroy();
         this.root.remove();
     }
 
     // Brings what is shown up to date with the document
     refresh() {
-        // The rules first: the rows the columns re-render refer to them. The colors
-        // of the rules and of the chips reach the tables only from the parts
-        // (setRuleColors, setMatchColors), when they change
         this.filterPanel.ensureRendered();
-        // The columns before the rows: a reload of a view renders them with these
-        const changed = this.setColumns();
         this.updateMainView();
         this.updateSearchView();
         this.updateFileInfo();
-        if (changed) this.renderShownRows();
     }
 
     // ---- the bottom panel ----
@@ -416,7 +357,6 @@ export class DocumentPane {
         }
         this.bottomPage = name;
         if (this.visible && this.inHiddenPage(document.$(":focus"))) this.defaultFocus().state.focus = true;
-        this.scrollToKeptRows(); // of the list of this page, see applyRowLook()
         return true;
     }
 
@@ -490,94 +430,6 @@ export class DocumentPane {
         if (error) showNotice(button, error);
     }
 
-    // The font size of the tables (Settings), % of the normal one
-    applyFontSize(percent) {
-        this.rowLook = { ...this.rowLook, fontSize: percent };
-        this.applyRowLook();
-    }
-
-    // Single-line rows (Settings): see .log-table.single-line in table.css
-    applySingleLineRows(on) {
-        this.rowLook = { ...this.rowLook, singleLine: on };
-        this.applyRowLook();
-    }
-
-    // Gives the tables the look of the rows asked (rowLook); a hidden panel
-    // gets it when shown (see rowLookStep). Rows of another height move the
-    // content under the scroll position of a list, which is in pixels: rows
-    // that got lower leave it past the end, with no row on screen. So the first
-    // row on screen before the change is scrolled back to the top after it
-    // (scrollToKeptRows), at the next frame: until then Sciter hasn't laid the
-    // rows out anew (not even in a posted call) and a navigation would go by
-    // the old geometry. A list whose row is kept already (a change before that
-    // frame, a list of a hidden page) keeps it: its geometry is the old one.
-    applyRowLook() {
-        const look = this.rowLook;
-        const step = rowLookStep(this.appliedRowLook, look, this.visible);
-        if (!step.apply) return;
-        if (step.keep)
-            for (const table of this.tables)
-                if (this.shows(table) && !this.keptRows.has(table))
-                    this.keptRows.set(table, { top: table.list.firstVisibleIndex() });
-        for (const { table } of this.tables) {
-            table.style.fontSize = `${look.fontSize}%`;
-            table.classList.toggle("single-line", look.singleLine);
-        }
-        this.appliedRowLook = { ...look };
-        this.scrollToKeptRows();
-    }
-
-    // Scrolls the lists shown to the rows applyRowLook() kept, at the next
-    // frame; a list of a hidden page or panel keeps its row until it is shown,
-    // a table under a status view until it shows rows again (updateMainView, updateSearchView)
-    scrollToKeptRows() {
-        if (this.keptRowsFrame || this.keptRows.size === 0) return;
-        this.keptRowsFrame = true;
-        requestAnimationFrame(() => {
-            this.keptRowsFrame = false;
-            if (this.destroyed || !this.visible) return; // show() asks again
-            for (const [table, kept] of this.keptRows) {
-                const list = table.list;
-                if (this.inHiddenPage(list)) continue; // selectBottomPage() asks again
-                const step = keptRowStep(kept, table.shown, list.totalItems());
-                if (step.wait) continue; // updateMainView(), updateSearchView() ask again
-                this.keptRows.delete(table);
-                if (step.target === null) continue;
-                list.navigateTarget = step.target; // by the render componentUpdate() posts, see VirtualList
-                list.componentUpdate();
-            }
-        });
-    }
-
-    // The layouts of the columns changed (Settings): the tables show them
-    // when the panel is shown
-    columnsChanged() {
-        this.appliedColumns = null;
-        if (this.visible && this.setColumns()) this.renderShownRows();
-    }
-
-    // The columns of the tables follow the format of the document, as the
-    // layout of the format in Settings arranges them: sets them (the header
-    // and what the rows are rendered with) when they change.
-    // @returns true if they changed
-    setColumns() {
-        const json = backend.tableColumnsJson(this.docId);
-        if (json === "[]" || json === this.appliedColumns) return false; // none yet, or unchanged
-        this.appliedColumns = json;
-        const columns = JSON.parse(json);
-        for (const list of this.lists) list.setColumns(columns);
-        return true;
-    }
-
-    // Renders the rows on screen again (e.g. with new columns). A table under
-    // a status view renders its rows when the view shows them again.
-    renderShownRows() {
-        for (const { list } of this.tables.filter(table => this.shows(table))) {
-            list.componentUpdate();
-            list.refreshVisibleRows();
-        }
-    }
-
     // True if the rows of `table` (a ViewTable) are on screen: the panel is
     // shown and no status view covers it
     shows(table) {
@@ -588,25 +440,13 @@ export class DocumentPane {
 
     // Shows the main view as its machine shows it, see ViewTable.update()
     updateMainView() {
-        const step = this.main.update();
-        if (!step?.table) return;
-        // reloaded main rows show what the search found now: not refreshed again for it
-        if (step.reload) this.foundShownFor = searchViewKey(this.search.view);
-        this.scrollToKeptRows(); // kept while a status view covered the table, see applyRowLook()
+        this.main.update();
     }
 
-    // Shows the search view likewise. The rows of the main view show what the
-    // search found: more of them while it runs, other ones after a new search
-    // or none after a reset. Only when the search view changed since they
-    // were shown, not on every show of the panel.
+    // Shows the search view likewise. The rows of the main view show what the search found: D draws them again when the search view
+    // is shown anew (ui/log_table/document_model.d, DocumentRows), the script tells it nothing
     updateSearchView() {
-        const step = this.search.update();
-        if (step.table) this.scrollToKeptRows();
-        const key = searchViewKey(this.search.view);
-        if (key !== this.foundShownFor && this.shows(this.main)) {
-            this.main.list.refreshVisibleRows();
-            this.foundShownFor = key;
-        }
+        this.search.update();
     }
 
     // The message index of the current row of the main table, null if none:
@@ -617,14 +457,21 @@ export class DocumentPane {
 
     // Go to Message, see MainViewTable.goToMessage()
     goToMessage(index) {
-        if (this.main.goToMessage(index)) this.jumps = rememberJump(this.jumps, index);
+        if (!this.main.goToMessage(index)) return;
+        this.jumps = rememberJump(this.jumps, index);
+        this.follower.changed(this.main, false); // the search table follows it as a click
     }
 
-    // Shows the row selected in the table of `list` (followedRow) in the other
-    // one, if that one has its message, also while a load, a filter or a
-    // search fills either of them. The keyboard stays in `list`.
-    followSelection(list) {
-        const [from, to] = list === this.main.list ? [this.main, this.search] : [this.search, this.main];
+    // A row the user selected in `table` (a ViewTable): the other table follows it at once (a click) or when it rests (a drag, the keys).
+    // Posted by D: it may come after hide() cancelled the follower, not into a hidden panel
+    rowChosen(table, delayed) {
+        if (this.visible && !this.destroyed) this.follower.changed(table, delayed);
+    }
+
+    // Shows the row selected in `from` in the other table, if that one has its message, also while a load, a filter or a search fills either
+    // of them. The keyboard stays in `from`.
+    followSelection(from) {
+        const to = from === this.main ? this.search : this.main;
         // its rows are being replaced; a load, a filter or a search filling them is followed
         if (!from.showsRowsOfView()) return;
         const index = from.followedMessage();
@@ -633,38 +480,11 @@ export class DocumentPane {
 
     // ---- the rows: rule colors and anchors ----
 
-    // The rows on screen refer to the rules again: a change of a rule may change
-    // the rule with a color a row matches without filtering the view again
-    refreshRuleColors() {
-        for (const table of this.tables) if (this.shows(table)) table.list.refreshVisibleRows();
-    }
-
     // Follows the rows an anchor changed (backend: { message, anchored, main,
-    // search }): a table whose view gained or lost the row of the message
-    // edits its rows in place, so the rows on screen stay where they are; the
-    // other one repaints its rows, the row shows the new anchor
-    // A hidden panel does it when shown (its rows can't be measured now): it
-    // rebuilds the list of such a table, the other one keeps its rows and selection
+    // search }): each table reads the row of the message again, also a hidden
+    // one (it has the rows kept and draws when shown)
     followAnchorRows(rows) {
-        for (const [table, changed] of [[this.main, rows.main], [this.search, rows.search]]) {
-            const list = table.list;
-            if (!this.visible) {
-                if (changed || !this.staleTables.has(table)) this.staleTables.set(table, changed ? "rebuild" : "repaint");
-                continue;
-            }
-            if (!changed) {
-                list.refreshVisibleRows();
-                continue;
-            }
-            list.resetSelection(); // the selected positions show other rows now
-            if (!list.followAnchor(rows.message, rows.anchored)) list.componentUpdate();
-        }
-    }
-
-    // No room for another anchor (`full`): the empty anchor cells of both
-    // tables show on hover that none can be set (anchors-full in table.css)
-    markAnchorsFull(full) {
-        for (const table of this.root.$$("table.log-table")) table.classList.toggle("anchors-full", full);
+        for (const table of this.tables) table.logTable.anchorApplied(rows);
     }
 
     // ---- events of the elements of the panel ----
@@ -681,28 +501,6 @@ export class DocumentPane {
         const keysCame = evt => { if (isInside(evt.target, root)) this.lastFocus = evt.target; };
         root.on("focus", keysCame);
         root.on("focusin", keysCame);
-
-        // Anchor column: toggles the anchor of the message in both views. Refused
-        // by the backend at the anchor limit or for a file that is gone: a notice
-        // by the cell says why. At the limit the tables are marked anchors-full:
-        // their empty anchor cells show on hover that no anchor can be set. Taken
-        // while a load, a filter or a search runs, the views list it a moment
-        // later (onAnchorApplied): the rows on screen show the anchor at once.
-        on("click", "table.log-table td.anchor", (evt, cell) => {
-            const index = Number(cell.getAttribute("msg-index"));
-            const anchored = cell.parentElement.getAttribute("has-anchor") === "true";
-            const answer = backend.setAnchor(this.docId, index, !anchored);
-            this.markAnchorsFull(answer.full);
-            if (answer.refused) showNotice(cell, anchorRefusalText(answer), { at: "right", ms: 2500, untilLeave: true });
-            else if (answer.rows) this.followAnchorRows(answer.rows);
-            else for (const list of this.lists) list.refreshVisibleRows();
-            return true; // don't change the row selection
-        });
-
-        // Posted: it may come after hide() cancelled the follower, not into a hidden panel
-        on("rowchosen", "table.log-table > tbody", (evt, list) => {
-            if (this.visible && !this.destroyed) this.follower.changed(list, evt.data?.delayed === true);
-        });
 
         on("click", ".btn-lost-close", () => this.host.closeTab(this.docId));
 
@@ -741,9 +539,7 @@ export class DocumentPane {
     // a new document with the same id. Its first rows start at the top, its filters are
     // restored (no message of a command before), it has no search and no anchors yet
     reopened() {
-        this.markAnchorsFull(false);
         for (const table of this.tables) table.reset();
-        this.appliedColumns = null;
         this.searchBar.reset();
         this.filterPanel.reopened();
         this.host.refreshTabs(); // the reopened document starts loading

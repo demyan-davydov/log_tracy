@@ -465,17 +465,17 @@ struct RuleId
 {
     private uint _id; // 0: no rule
 
-    this(uint id) pure nothrow @nogc
+    this(uint id) pure nothrow @nogc @safe
     {
         _id = id;
     }
 
-    bool isValid() const pure nothrow @nogc
+    bool isValid() const pure nothrow @nogc @safe
     {
         return _id != 0;
     }
 
-    uint toInt() const pure nothrow @nogc
+    uint toInt() const pure nothrow @nogc @safe
     {
         return _id;
     }

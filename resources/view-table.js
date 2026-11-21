@@ -5,12 +5,13 @@
 // the focus the covers take from it. ViewTable is what both tables share;
 // MainViewTable and SearchViewTable add what only one of them has. How the
 // two tables follow each other is the panel's (document-pane.js). The table
-// itself is never hidden: status views cover it (see renderPane).
+// itself is never hidden: status views cover it (see renderPane). The table
+// is the log table of D (log-table-view.js): it hears the views of the
+// document itself, so what the rows show, reload and grow is not told to it.
 
 import * as backend from "backend.js";
-import { rowLayout } from "cell-format.js";
-import { followedRow } from "row-selection.js";
-import { noTable, tableStep, jumpStep, showsRowsOf, followEndStep } from "pane-state.js";
+import { LogTableView } from "log-table-view.js";
+import { noTable, tableStep, jumpStep, showsRowsOf } from "pane-state.js";
 import { mainViewStatus, searchViewStatus, showProgress, showStatus } from "status-view.js";
 
 // True if `element` is `root` or inside it (and still in the document)
@@ -19,32 +20,16 @@ function isInside(element, root) {
     return false;
 }
 
-// Reloads the rows of `list` after its data changed. scrollTo: null keeps the
-// scroll position, "start" scrolls to the top, a number scrolls to that row
-function reloadList(list, scrollTo = null) {
-    // From the top: other content, maybe still being filled. The rows of before
-    // go now, not with the render componentUpdate() posts: the table may be
-    // uncovered already, and would show them until then
-    if (scrollTo === "start") {
-        list.clear();
-        list.scrollTo(0, 0);
-    }
-    // Carried out by the render that componentUpdate() posts, see VirtualList.navigateTarget
-    if (scrollTo !== null) list.navigateTarget = scrollTo;
-    list.componentUpdate();
-    list.refreshVisibleRows(); // the rows may show other messages now
-}
-
 export class ViewTable {
     // @param docId - the document whose rows the table shows
-    // @param elements - { table, status (the status view over it),
+    // @param elements - { table (the slot the log table fills), status (the status view over it),
     //   progress (the strip under it) }
     // @param statusTexts - mainViewStatus or searchViewStatus (status-view.js)
-    constructor(docId, { table, status, progress }, statusTexts) {
+    // @param search - false: the main view of the document, true: its search view
+    constructor(docId, { table, status, progress }, statusTexts, search) {
         this.docId = docId;
         this.table = table;
-        this.list = table.$("tbody");
-        this.list.docId = docId; // the rows it asks the backend for are those of this document
+        this.logTable = new LogTableView(docId, search, table);
         this.statusView = status;
         this.progress = progress;
         this.statusTexts = statusTexts;
@@ -111,12 +96,11 @@ export class ViewTable {
         const step = tableStep(this.shown, vm);
         this.shown = step.shown;
         const cover = step.table ? null : this.coverFor(vm);
-        this.running = this.showRunning(step.running ? vm : null, cover ?? this.list);
+        this.running = this.showRunning(step.running ? vm : null, cover ?? this.logTable.element);
         this.status = cover === this.statusView ? vm : null;
         for (const view of this.covers) view.style.display = view === cover ? "block" : "none";
         this.takeFocus(cover);
-        if (step.table) this.reloadRows(step, vm);
-        else this.fillCover(cover, vm);
+        if (!step.table) this.fillCover(cover, vm);
         return step;
     }
 
@@ -146,7 +130,7 @@ export class ViewTable {
     // it, tabbed to or pressed) goes to the table too: the view is hidden, the
     // keys would go nowhere.
     takeFocus(cover) {
-        const list = this.list;
+        const list = this.logTable.element;
         const focused = document.$(":focus");
         if (cover) {
             if (!isInside(focused, list)) return;
@@ -159,46 +143,22 @@ export class ViewTable {
         if (this.covers.some(view => isInside(focused, view)) || (taken && !focused)) list.state.focus = true;
     }
 
-    reloadRows(step, vm) {
-        const list = this.list;
-        if (step.resetSelection) list.resetSelection(); // the rows are other messages now
-        if (step.reload) reloadList(list, step.reload === "start" ? "start" : null);
-        else if (step.grow) this.growRows(vm);
-    }
-
-    // More rows of the same content: the ones on screen stay, unless the table was at the
-    // end of a ready view, which it follows then (a file being written, followEndStep)
-    growRows(vm) {
-        const list = this.list;
-        const before = list.endState();
-        list.grow();
-        const follow = followEndStep(vm, before);
-        if (follow) list.followEnd(follow.moveCurrent);
-    }
-
-    // True if the rows on screen are of the content of the view (showsRowsOf):
-    // not covered by a status, not the rows of a content being replaced
+    // True if the rows on screen are of the content of the view (showsRowsOf): not covered by a status, not the rows of a content being replaced
     showsRowsOfView() {
         return showsRowsOf(this.shown, this.view);
     }
 
-    // The message index of the row of the table the other one follows
-    // (followedRow), null if none
+    // The message index of the row of the table the other one follows, null if none
     followedMessage() {
-        const row = followedRow(this.list.selection);
-        const index = row === null ? NaN : Number(this.list.itemAt(row)?.[rowLayout.messageIndex]);
-        return Number.isFinite(index) ? index : null;
+        return this.logTable.followedMessage();
     }
 
-    // Shows the row of message `index` if the view has it: selected, near the
-    // top unless it is on screen (jumpStep). The keyboard stays where it is.
-    // Also while a load, a filter or a search fills it: the rows found so far.
-    // By the view of the machine, not currentView(): a search view before any
-    // search has no rows to look the message up in.
+    // Shows the row of message `index` if the view has it: selected, brought into view by the table when it is not (jumpStep). The keyboard stays where it is.
+    // Also while a load, a filter or a search fills it: the rows found so far. By the view of the machine, not currentView(): a search view before
+    // any search has no rows to look the message up in.
     showMessage(index) {
-        const step = jumpStep(this.shown, this.view, () => this.positionOf(index),
-            { visibleRange: this.list.wholeRowsRange(), visibleRows: this.list.visibleRowCount() });
-        if (step) this.list.showRow(step);
+        const step = jumpStep(this.shown, this.view, () => this.positionOf(index));
+        if (step) this.logTable.showRow(step);
     }
 }
 
@@ -208,7 +168,7 @@ export class MainViewTable extends ViewTable {
     // @param elements - as ViewTable, lost: the view of the lost file, cancelled(): the panel
     //   shows the boxes of the filters anew (a cancel puts them back)
     constructor(docId, elements) {
-        super(docId, elements, mainViewStatus);
+        super(docId, elements, mainViewStatus, false);
         this.lostView = elements.lost;
         this.path = ""; // of the file, shown by the lost view
         this.cancelled = elements.cancelled;
@@ -247,19 +207,14 @@ export class MainViewTable extends ViewTable {
         this.cancelled(); // the filter boxes changed
     }
 
-    // Go to Message: the row of message `index`, or of the first one after it
-    // the table shows (hidden by the filters), else its last row: selected,
-    // the keyboard in the table, near the top unless it is on screen
-    // (jumpStep); the search table follows it as a click. Nothing while the
-    // table shows no rows (a status view covers it). @returns true if it went
+    // Go to Message: the row of message `index`, or of the first one after it the table shows (hidden by the filters), else its last row: selected,
+    // the keyboard in the table, brought into view when it is not (jumpStep); the search table follows it as a click (the panel's).
+    // Nothing while the table shows no rows (a status view covers it). @returns true if it went
     goToMessage(index) {
-        const list = this.list;
-        const step = jumpStep(this.shown, this.currentView(), () => backend.mainViewNearestPosition(this.docId, index),
-            { visibleRange: list.wholeRowsRange(), visibleRows: list.visibleRowCount() });
+        const step = jumpStep(this.shown, this.currentView(), () => backend.mainViewNearestPosition(this.docId, index));
         if (!step) return false;
-        list.showRow(step);
-        list.state.focus = true;
-        list.rowChosen(false);
+        this.logTable.showRow(step);
+        this.logTable.element.state.focus = true;
         return true;
     }
 }
@@ -268,7 +223,7 @@ export class MainViewTable extends ViewTable {
 // ready and empty.
 export class SearchViewTable extends ViewTable {
     constructor(docId, elements) {
-        super(docId, elements, searchViewStatus);
+        super(docId, elements, searchViewStatus, true);
     }
 
     currentView() {

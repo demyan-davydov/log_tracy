@@ -10,6 +10,7 @@ import std.sumtype : match;
 import log_core.log_message : LogMessage;
 import log_core.rule_filter : RuleId;
 import ui.filter_commands : DocumentFilters;
+import ui.search_chips : SearchColors;
 import ui.main_view_fsm;
 import ui.search_view_fsm;
 
@@ -30,6 +31,7 @@ final class DocumentUi : MainViewSink, MainViewCommands, SearchViewSink, SearchV
     bool searchViewChanged;
     bool attachmentsChanged; // the files sent in the log changed since it was last told to JS
     bool fileInfoChanged; // its descriptions or format choice changed since it was last told to JS
+    SearchColors searchColors; // the match colors of the chips of each search of the document (ui/search_chips)
 
     this(DocumentStore documents, DocumentId docId)
     {
@@ -64,6 +66,12 @@ final class DocumentUi : MainViewSink, MainViewCommands, SearchViewSink, SearchV
     RuleId ruleOf(scope ref const(LogMessage!wchar) message) const
     {
         return _filters is null ? RuleId.init : _filters.ruleOf(message);
+    }
+
+    /// The color "#rrggbb" of a rule, empty if it has none
+    string ruleColorOf(RuleId id) const
+    {
+        return _filters is null ? "" : _filters.colorOf(id);
     }
 
     /// Returns: true if a running filter was asked to stop

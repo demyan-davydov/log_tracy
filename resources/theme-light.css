@@ -58,21 +58,24 @@
     /* Log table: the rows, the header, every second row */
     --bg-table: #fff;
     --bg-table-header: bisque;
+    /* a group of rows in the log table (a day): its margin, its lines, the plate of its head */
+    --bg-group: var(--bg-row);
+    --bg-group-plate: var(--bg-table-header);
+    --group-line-color: var(--border-color);
+    --text-group-plate: var(--text-main);
     --bg-row: #ffffff;
     --bg-row-stripe: #f4f4f4;
     /* The rows the search found, in both tables: the row and the stripe a bit
        darker and warmer (morph: sepia), see table.css */
     --bg-row-found: morph(var(--bg-row), darken:12%, sepia:20%);
     --bg-row-found-stripe: morph(var(--bg-row-stripe), darken:12%, sepia:20%);
-    /* Text selected in the cells of a log table (text-selection.js), on any row */
+    /* Text selected in the cells of a log table (the log table, ptable/selection), on any row */
     --bg-text-selected: #7fdc94;
-    /* Selected rows of a log table: while the table is focused, while it isn't
-       (a paler blue), their text; the frame of the current row */
+    /* Selected rows of a log table, their text; the frame of the current row */
     --bg-row-selected: #b0d2f8;
-    --bg-row-selected-inactive: #b0d2f8;
     --text-row-selected: #000;
     --border-row-current: #3b82d6;
-    --border-row-current-inactive: #8aa4c2;
+    --border-row-current-inactive: #8aa4c2; /* while the table has not the focus */
     /* The anchor mark (table.css): its circle, the faint one on hover, the one
        of an anchor that can't be set (the limit) */
     --bg-anchor: #d6d6d6;

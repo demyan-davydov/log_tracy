@@ -27,6 +27,7 @@ import ui.document_tabs : DocumentTabs;
 import ui.document_ui : DocumentUi;
 import ui.filter_commands : DocumentFilters;
 import ui.table_columns : TableColumns;
+import ui.view_listeners : versionOf, ViewListener, ViewListeners, ViewVersion;
 import ui.translations : Catalog, CatalogFile, parseCatalog, Translation, findTranslations,
     catalogLanguagesJson = languagesJson, catalogTranslationJson = translationJson;
 import ui.main_view_fsm : toJson;
@@ -73,6 +74,8 @@ final class AppSession
     private SettingsWriter _write;
     private FileShower _showInFolder;
     private ScriptCall[] _scriptCalls; // queued for the idle loop
+    private void delegate(DocumentId)[] _documentClosed; // told when the tab of a document goes
+    private ViewListeners _viewListeners; // the painted tables, each hearing the views of its document
     private DocumentId[] _reopen; // to be opened anew after the dispatch (ReopenWanted)
     // When each document began to open, until its load completes: the console tells
     // how long the whole load took (a load that never completes tells nothing)
@@ -157,12 +160,14 @@ final class AppSession
             if (ui.mainViewChanged)
             {
                 ui.mainViewChanged = false;
+                tellViewShown(docId, false, versionOf(ui.mainViewShown));
                 _scriptCalls ~= ScriptCall("onMainViewChanged", idOf(docId),
                     toJson(ui.mainViewShown, &textForUser).toString());
             }
             if (ui.searchViewChanged)
             {
                 ui.searchViewChanged = false;
+                tellViewShown(docId, true, versionOf(ui.searchViewShown));
                 _scriptCalls ~= ScriptCall("onSearchViewChanged", idOf(docId),
                     toJson(ui.searchViewShown, &textForUser).toString());
             }
@@ -180,6 +185,29 @@ final class AppSession
         auto calls = _scriptCalls;
         _scriptCalls = null;
         return calls;
+    }
+
+    /// The tables drawn by D hear the views of `docId` at the moment the script is told of them (and not
+    /// through the script), and a change of the columns of any document. Returns the handle for `unsubscribeViews`.
+    size_t subscribeViews(DocumentId docId, ViewListener listener)
+    {
+        return _viewListeners.subscribe(docId, listener);
+    }
+
+    /// ditto
+    void unsubscribeViews(size_t handle)
+    {
+        _viewListeners.unsubscribe(handle);
+    }
+
+    private void tellViewShown(DocumentId docId, bool search, ViewVersion shown)
+    {
+        _viewListeners.viewShown(docId, search, shown);
+    }
+
+    private void tellColumnsChanged()
+    {
+        _viewListeners.columnsChanged();
     }
 
     /// Returns: true if the settings changed and are to be written now
@@ -260,7 +288,20 @@ final class AppSession
         {
             _tabs.remove(docId);
             releaseTabHold(docId);
+            tellDocumentClosed(docId);
         }
+    }
+
+    /// `listener` is told when the tab of a document goes (what was kept for it, such as its tables' columns, is no longer wanted)
+    void subscribeDocumentClosed(void delegate(DocumentId) listener)
+    {
+        _documentClosed ~= listener;
+    }
+
+    private void tellDocumentClosed(DocumentId docId)
+    {
+        foreach (listener; _documentClosed)
+            listener(docId);
     }
 
     // ── The documents ────────────────────────────────────────────────────────
@@ -481,6 +522,13 @@ final class AppSession
         return ui is null ? RuleId.init : ui.ruleOf(item.message);
     }
 
+    /// The color "#rrggbb" of the filter rule `rule` of the document, empty if it has none
+    string ruleColor(DocumentId docId, RuleId rule)
+    {
+        auto ui = _documentUis.get(docId, null);
+        return ui is null ? "" : ui.ruleColorOf(rule);
+    }
+
     /// The row of view (the search view if `searchView`, else the main one) of
     /// the document that shows the message `messageIndex` (a script number:
     /// negative when the script has none)
@@ -524,6 +572,15 @@ final class AppSession
         // null for another filter (none of the chips' searches)
         auto search = cast(const(SearchFilter)) _documents.doc(docId).searchFilter;
         return search is null ? null : search.matchRanges(item.message(), buffer);
+    }
+
+    /// The match colors of the chips of the search the document runs (the one `matchesOf` gives the matches of, not a query that
+    /// hasn't started yet), by the place of a chip (`MatchRange.chip`): its own color, as the search editor shows it (null: none
+    /// told, a chip is colored by its place)
+    const(uint)[] searchColors(DocumentId docId)
+    {
+        auto ui = _documentUis.get(docId, null);
+        return ui is null ? null : ui.searchColors.of(_documents.doc(docId).searchFilter);
     }
 
     /// Sets or clears the anchor of a message.
@@ -606,17 +663,21 @@ final class AppSession
     {
         import log_core.search_filter : SearchFilter;
         import std.stdio : writeln;
-        import ui.search_chips : chipsFromJson;
+        import ui.search_chips : queryFromJson;
 
         writeln("startChipSearch request: ", chipsJson);
         try
         {
             // An invalid regex throws here, before any background work starts
-            const chips = chipsFromJson(chipsJson);
+            auto query = queryFromJson(chipsJson);
+            const chips = query.chips;
             auto filter = SearchFilter.fromChips(chips);
             if (!docId.isValid)
                 return _catalog.translate(uiText("the document is not open"));
-            _documents.doc(docId).applySearchFilter(filter); // null clears the search
+            auto doc = _documents.doc(docId);
+            doc.applySearchFilter(filter); // null clears the search
+            if (auto ui = _documentUis.get(docId, null))
+                ui.searchColors.told(filter, query.colors, doc.searchFilter); // the search that runs keeps its own till the new starts
             // the history of the file, remembered as its filters are (the
             // latest query again changes nothing)
             if (filter !is null)
@@ -812,6 +873,7 @@ final class AppSession
             if (auto path = sourcePathOf(docId))
                 _settings.recentFiles = withFilters(_settings.recentFiles, path, filters.saved());
             settingsChanged();
+            _viewListeners.rulesChanged(docId); // a row may match another rule now, of another color, though the view is not filtered again
         }
         return message;
     }
@@ -917,6 +979,7 @@ final class AppSession
     {
         _settings.columnLayouts = withColumnLayouts(_settings.columnLayouts, json);
         _tableColumns.reset(); // arranged again
+        tellColumnsChanged();
         settingsChanged();
     }
 
@@ -1048,6 +1111,7 @@ final class AppSession
         _loadStarted.remove(docId);
         if (_tabs.remove(docId))
             releaseTabHold(docId);
+        tellDocumentClosed(docId);
         if (path.length)
         {
             _settings.recentFiles = withFilesUsed(_settings.recentFiles, [path], nowMs());
@@ -1304,6 +1368,26 @@ unittest
     assert(f.session.takeScriptCalls().length == 0, "taken once");
 }
 
+@("AppSession: the listeners of the views hear the views of their document and the columns, until they unsubscribe")
+unittest
+{
+    auto f = Fixture.make();
+    const id = f.session.openFile(testPath("/logs/a.log")).docId;
+    const other = f.session.openFile(testPath("/logs/b.log")).docId;
+    bool[] heard; // search?
+    int columns;
+    const handle = f.session.subscribeViews(id, ViewListener((bool search, ViewVersion v) { heard ~= search; }, () { ++columns; }));
+    f.session.dispatchEvents();
+    f.session.takeScriptCalls();
+    assert(heard.length >= 2 && heard.canFind(false) && heard.canFind(true), "both views of the document");
+    const n = heard.length;
+    f.session.setColumnLayouts("{}");
+    assert(columns == 1);
+    f.session.unsubscribeViews(handle);
+    f.session.setColumnLayouts("{}");
+    assert(columns == 1 && heard.length == n);
+}
+
 @("AppSession: a file that can't be opened is listed with the reason, the script is told nothing")
 unittest
 {
@@ -1411,6 +1495,21 @@ unittest
 
     f.store.release(agent);
     assert(!f.store.isOpen(id), "closed by its last holder");
+}
+
+@("AppSession: the tab of a document going is told to everyone who subscribed, by closing it and by closing all")
+unittest
+{
+    auto f = Fixture.make();
+    DocumentId[] gone, alsoGone;
+    f.session.subscribeDocumentClosed((DocumentId docId) { gone ~= docId; });
+    f.session.subscribeDocumentClosed((DocumentId docId) { alsoGone ~= docId; });
+    const a = f.session.openFile(testPath("/logs/a.log")).docId;
+    const b = f.session.openFile(testPath("/logs/b.log")).docId;
+    f.session.closeTab(cast(int) a.toInt());
+    assert(gone == [a] && alsoGone == [a]);
+    f.session.closeAll();
+    assert(gone == [a, b] && alsoGone == [a, b]);
 }
 
 @("AppSession: another holder releasing its hold twice leaves the tab its document")
@@ -1790,6 +1889,24 @@ unittest
     const id = f.session.openFile(testPath("/logs/a.log")).docId;
     assert(f.session.filterCommand(id, (DocumentFilters filters) => filters.newSet()) == "");
     assert(savedFilters(f.session.settings.recentFiles, testPath("/logs/a.log")).length == 1);
+}
+
+@("AppSession: a filter command that changes the sets is told to the listeners of the document's views, one that changes nothing is not")
+unittest
+{
+    auto f = Fixture.make();
+    const id = f.session.openFile(testPath("/logs/a.log")).docId;
+    const other = f.session.openFile(testPath("/logs/b.log")).docId;
+    int rules, otherRules;
+    ViewListener listener, otherListener;
+    listener.rulesChanged = () { ++rules; };
+    otherListener.rulesChanged = () { ++otherRules; };
+    f.session.subscribeViews(id, listener);
+    f.session.subscribeViews(other, otherListener);
+    f.session.filterCommand(id, (DocumentFilters filters) => filters.newSet());
+    assert(rules == 1 && otherRules == 0, "the rows of the document may match another rule");
+    f.session.filterCommand(id, (DocumentFilters filters) => filters.remove(7));
+    assert(rules == 1, "a refused command changed nothing");
 }
 
 @("AppSession: a filter command that changes the sets is kept even when it has a note (what was lost)")

@@ -81,9 +81,10 @@ Adding a format, step by step: `.ai/workflows/add-format.md`.
   reads the descriptions (`loadFibex`, `Fibex.find`); a `DltFormat` created with a `Fibex`
   decodes non-verbose messages by it (`parser.decodeByFibex`); a `Fibex` is `immutable`
   once read (`docs/stories/fibex.md`).
-- Real logs for trying things are kept locally in `test_data/`, not in the repository (`*.dlt`
-  is ignored): a fresh clone has none. Tests build their records instead; a whole log (big,
-  broken on purpose) is written by the generator (below).
+- `test_data/` is ignored by git: real logs kept at hand and local samples of every format,
+  FIBEX and filter files (its README says what each is): a fresh clone has none. Tests build
+  their records instead; a whole log (big, broken on purpose) is written by the generator
+  (below).
 
 ## The Log Generator
 

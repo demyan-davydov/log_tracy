@@ -258,8 +258,8 @@ builds it itself, and `start --release` drives a release, for what only a releas
 
 ```sh
 node scripts/utils/app.mjs start --open ~/logs/trace.dlt     # builds, starts a copy in build/app, keeps it running
-node scripts/utils/app.mjs wait "document.$('table tbody tr') != null" --timeout 15
-node scripts/utils/app.mjs eval "document.$('table tbody tr')" # {tag, class, text, box} of the element
+node scripts/utils/app.mjs wait "document.$('.log-table-view') != null" --timeout 15  # the table of the log is there, its rows may still load
+node scripts/utils/app.mjs eval "document.$('.log-table-view')" # {tag, class, text, box} of the element
 node scripts/utils/app.mjs shot build/x.png                   # the window rendered by Sciter
 node scripts/utils/app.mjs hover ".btn-chip-history"          # the mouse over an element (or "x y"), macOS
 node scripts/utils/app.mjs key "Cmd+A"                        # a key in the focused element, macOS

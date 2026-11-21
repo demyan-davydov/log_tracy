@@ -20,6 +20,7 @@ export const allowed = new Map([
     ["MouseEvent", "an API of the platform"],
     ["getComputedStyle", "an API of the platform"],
     ["CGEvent", "an API of the platform"],
+    ["notifyWindowPaint", "a function inside Sciter, seen in a sample of its stack"],
     [".edit.selectRange/selectionStart/insertText", "an API of Sciter"],
 ]);
 

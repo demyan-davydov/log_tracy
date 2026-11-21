@@ -86,6 +86,24 @@
         .column-cell.payload > .column-header,
         .column-cell.payload > .visibility { border-right: none; }
         .column-cell > .column-header { display: block; }
+        /* The least width of a column (in em: the font of the strip), wider as its texts ask.
+           A child of a width, not a min-width: Sciter leaves a min-width out of the
+           max-content of #column-list, and the cells ran over Payload */
+        .column-cell > .least-width { width: 3em; height: 0; }
+        /* But for Payload: the headers centered, the samples at the right, as numbers are */
+        .column-cell:not(.payload) > .column-header { text-align: center; }
+        .column-cell:not(.payload) > .sample { text-align: right; }
+        /* A value like a real one, under the checkbox, in the font of the log table */
+        .column-cell > .sample {
+            border-top: 1dip solid var(--border-color); /* a row of its own, under the checkboxes */
+            padding: 2dip 3dip;
+            white-space: nowrap;
+            font-family: 'Courier New', Courier, monospace;
+            color: var(--text-label);
+            border-right: 1dip solid var(--border-color);
+        }
+        .column-cell.payload > .sample { border-right: none; }
+        .column-cell.hidden-column > .sample { opacity: 0.4; }
         .column-cell > .visibility {
             flow: horizontal;
             font-size: 1rem; /* the checkbox keeps its size whatever the font of the headers */
@@ -220,6 +238,18 @@
 
         // ── Columns ──────────────────────────────────────────────────────────
 
+        // A short value like a real one under each header, by the id of the
+        // column (the same id means the same kind of value in every format).
+        // The time is a word: a real one would stretch the strip
+        const SAMPLES = {
+            time: "date time", timestamp: "12.3456", counter: "42", ecu: "ECU1", app: "NAV",
+            ctx: "UI", session: "1", type: "LOG", level: "info", msgid: "100",
+            pid: "1234", tid: "1250", tag: "Wifi", facility: "kern", seq: "1024",
+            client: "10.0.0.1", user: "-", method: "GET", status: "200", bytes: "512",
+            referer: "-", agent: "curl/8.0", channel: "1", id: "1A0", dir: "Rx", dlc: "8",
+            host: "server", data: "-",
+        };
+
         // The formats with columns to arrange, edited here until Save
         let formats = params.columns?.formats || [];
         const currentFormat = params.columns?.current || ""; // of the active document
@@ -242,6 +272,8 @@
                 list.append(<div class={c.visible ? "column-cell movable" : "column-cell movable hidden-column"} index={String(i)}>
                     <div class="column-header-row column-header">{c.title}</div>
                     <div class="visibility"><input type="checkbox" /></div>
+                    <div class="sample">{SAMPLES[c.id] || ""}</div>
+                    <div class="least-width"></div>
                 </div>);
                 list.lastElementChild.$("input").value = c.visible; // not by the attribute: see AGENTS.md
             });
@@ -502,11 +534,14 @@
                         <div class="column-cell fixed" data-tr-title="Always first">
                             <div class="column-header-row column-header">Index</div>
                             <div class="visibility"><input type="checkbox" checked disabled /></div>
+                            <div class="sample">1</div>
+                            <div class="least-width"></div>
                         </div>
                         <div id="column-list"></div>
                         <div class="column-cell fixed payload" data-tr-title="Always last">
                             <div class="column-header-row column-header" id="last-column-title">Payload</div>
                             <div class="visibility"><input type="checkbox" checked disabled /></div>
+                            <div class="sample">message text</div>
                         </div>
                     </div></div>
                     <div class="hint" data-tr="The columns of the log tables, the same for every log of a format. Drag a header to move its column, untick it to hide the column."></div>

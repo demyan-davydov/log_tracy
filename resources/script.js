@@ -1,5 +1,5 @@
 import { $ } from "@sciter";
-import { VirtualDltTBody, VirtualMainViewTBody, VirtualSearchViewTBody, moveTableDrag, endTableDrag } from "virtual-dlt-view.js";
+import { logTableLookChanged } from "log-table-view.js";
 import { plusShown, failureReason } from "new-tab.js";
 import {
     initialWindow, workspaceChanged, newTabRequested, newTabPressed, newTabClosed, documentPressed,
@@ -13,6 +13,7 @@ import { TabStrip, NEW_TAB_ID } from "tabs.js";
 import { PressFocus } from "press-focus.js";
 import * as backend from "backend.js";
 import * as platform from "platform.js";
+import { menuOpensByMouse, watchMenuInput } from "menu-gate.js";
 import { applyTheme } from "theme.js";
 import { showMenuBar } from "menu-bar.js";
 import { shortcutTextOf } from "menu-shortcuts.js";
@@ -24,38 +25,6 @@ import { showNotice } from "notice.js";
 import { restorableFrame } from "window-frame.js";
 import { panelSizesOf, splittersOf } from "panel-sizes.js";
 
-// The table whose context menu is open: "Copy" copies its selected text,
-// "Copy Row" its selected rows
-let contextList = null;
-
-// The most text copying from a log table (Copy, Copy Row, Cmd+C) puts on the
-// clipboard, in characters (16 MB of ASCII)
-const copyLimit = 16 * 1024 * 1024;
-
-// The context menu opens on `row`: the selection of its table is what Copy Row
-// copies, a row outside it becomes the only selected one
-function contextRowClicked(row) {
-    const list = row.parentElement;
-    const viewIndex = list.viewIndexOf?.(row);
-    if (viewIndex === null || viewIndex === undefined) return;
-    contextList = list;
-    list.selection.contextClick(viewIndex);
-    list.updateRowStates();
-}
-
-// Copies from `list` (a log table tbody) what `read(list, limit)` gives: its
-// copyText or selectedRowsText; past the limit only the first rows, and a
-// notice says so
-function copyFromTable(list, read) {
-    const { text, copied, total, truncated } = read(list, copyLimit);
-    if (copied > 0) platform.copyText(text);
-    if (truncated)
-        showNotice(list, tr("Copied {copied} of {total} rows: the clipboard limit is 16 MB", { copied, total }));
-}
-
-globalThis.VirtualDltTBody = VirtualDltTBody;
-globalThis.VirtualMainViewTBody = VirtualMainViewTBody;
-globalThis.VirtualSearchViewTBody = VirtualSearchViewTBody;
 
 let currentTheme = "light";
 let currentLanguage = ""; // the setting: a BCP 47 tag, "": the language of the system
@@ -75,11 +44,6 @@ document.on("ready", function () {
     initApp();
 });
 
-function stopScroll(element) {
-    const currentScroll = element.scrollTop;
-    element.scrollTo({ top: currentScroll, behavior: "instant" });
-}
-
 // Save UI state while the window and DOM are still fully alive.
 // Must not be done from native BEHAVIOR_DETACH: calling scripts during view teardown crashes Sciter.
 platform.onWindowCloseRequest(() => {
@@ -93,32 +57,6 @@ platform.onWindowCloseRequest(() => {
 // The frame is written once the user is done with it: a Quit that can't ask
 // the script any more (the Dock, logging out) or a crash keeps it
 platform.onWindowFrameChanged(() => backend.windowFrameChanged());
-
-platform.onWindowClose(() => {
-    console.log("Closing Window...");
-
-    // Stop the inertial scroll: jump to the current position without animation
-    for (const pane of panes.values()) for (const list of pane.lists) stopList(list);
-
-    console.log("Window is closing, resources released");
-});
-
-function stopList(logList) {
-    stopScroll(logList);
-    logList.style.behavior = "none";
-    logList.state.disabled = true;
-    logList.itemAt = null;
-    logList.totalItems = 0;
-
-    //logList.vlist.itemsTotal = 0;
-
-    logList.onScroll = null;
-    logList.onVisualChange = null;
-
-    //logList.stopTimers();
-
-    logList.remove(); // remove from DOM
-}
 
 function initApp() {
     let settings = null;
@@ -305,6 +243,8 @@ function openFile(path) {
 function setTheme(theme) {
     applyTheme(theme);
     currentTheme = theme;
+    // the table drawn by D reads the colors of the theme once its styles are applied
+    setTimeout(() => logTableLookChanged(tableFontSize), 0);
     console.log("Theme set to:", theme);
 }
 
@@ -343,7 +283,8 @@ function setLanguage(setting) {
 // auxiliary ones are as wide as their values, which stay on one line
 function setTableFontSize(percent) {
     tableFontSize = percent;
-    for (const pane of panes.values()) pane.applyFontSize(percent);
+    globalThis.logTableFontSize = percent; // for a table that starts later
+    setTimeout(() => logTableLookChanged(percent), 0);
     console.log("Table font size set to:", percent);
 }
 
@@ -351,7 +292,7 @@ function setTableFontSize(percent) {
 // edge of the table) or lets the payload wrap
 function setSingleLineRows(on) {
     singleLineRows = on;
-    for (const pane of panes.values()) pane.applySingleLineRows(on);
+    backend.logTableSingleLine(on); // D keeps it for every table, those that start later too
 }
 
 
@@ -369,8 +310,7 @@ function openSettingsAction(section = "appearance") {
     if (result.tableFontSize) setTableFontSize(result.tableFontSize);
     if (typeof result.singleLineRows === "boolean") setSingleLineRows(result.singleLineRows);
     if (result.columnLayouts) {
-        backend.setColumnLayouts(result.columnLayouts);
-        for (const pane of panes.values()) pane.columnsChanged(); // as arranged now
+        backend.setColumnLayouts(result.columnLayouts); // the log tables hear of it from the backend
     }
 }
 
@@ -434,28 +374,11 @@ function setupEvents() {
         recentFileCommand(li.getAttribute("command"), li.closest(".recent-file").getAttribute("path"));
     });
 
-    // Context menu of a log row: "Copy" while text is selected in its table,
-    // "Copy Row". A right click on a row outside the selection selects only
-    // that row first; the text selected stays.
-    document.on("contextmenu", "table.log-table tbody > tr", (evt, row) => {
-        contextList = null; // not the table of a menu before: an empty row sets none
-        contextRowClicked(row);
-        evt.source = Element.create(<menu class="context">
-            {contextList?.hasTextSelected() ? <li class="copy-text">{tr("Copy")}</li> : []}
-            <li class="copy-row">{tr("Copy Row")}</li>
-        </menu>);
-        return true;
-    });
-    // Context menu of a table header: Customize Table, Settings on its Table section, which
-    // opens on the format of the active document, the one the table shows
-    document.on("contextmenu", "table.log-table > thead", evt => {
-        evt.source = Element.create(<menu class="context">
-            <li class="column-settings">{tr("Customize Table...")}</li>
-        </menu>);
-        return true;
-    });
+    // Context menus open by the mouse only, not by the keyboard (menu-gate.js)
+    watchMenuInput(document);
     // Context menu of a document's tab (not the + one): Copy Path and Copy File Name, of its file
     document.on("contextmenu", `#tabs-container > .tab:not(#${NEW_TAB_ID})`, (evt, tab) => {
+        if (!menuOpensByMouse()) return true; // the Menu key, Shift+F10: no menu
         evt.source = Element.create(<menu class="context">
             <li class="copy-tab-path" docid={tab.id}>{tr("Copy Path")}</li>
             <li class="copy-tab-name" docid={tab.id}>{tr("Copy File Name")}</li>
@@ -468,18 +391,6 @@ function setupEvents() {
         if (text) platform.copyText(text);
     });
     document.on("click", "menu.context > li.column-settings", () => openSettingsAction("table"));
-    document.on("click", "menu.context > li.copy-row, menu.context > li.copy-text", (evt, item) => {
-        const copyText = item.classList.contains("copy-text");
-        if (contextList) copyFromTable(contextList, (list, limit) => copyText ? list.copyText(limit) : list.selectedRowsText(limit));
-        contextList = null;
-    });
-    // Cmd+C (Ctrl+C) in a table, see VirtualDltTBody.onkeydown
-    document.on("copyrows", "table.log-table > tbody", (evt, list) => copyFromTable(list, (list, limit) => list.copyText(limit)));
-
-    // Not consumed: the tab strip follows them too (tabs.js)
-    document.on("mousemove", evt => { moveTableDrag(evt); });
-    document.on("mouseup", () => { endTableDrag(); });
-
 }
 
 // The menu of the window, as the backend describes it: its shortcut texts are
@@ -717,7 +628,6 @@ globalThis.onDocumentOpened = function (docId) {
 globalThis.getAppState = function () {
     // Left out (the saved one kept) while the window isn't shown normally
     const windowRect = platform.windowFrame() ?? undefined;
-    const list = panes.get(activeDocId(win))?.main.list; // shown or under the New Tab
     // Of the panel shown, or as the last one shown left them: written with the
     // rest, not on each move of a splitter
     // Not measured on a minimized window: its panels have no size then
@@ -728,7 +638,6 @@ globalThis.getAppState = function () {
         tableFontSize,
         singleLineRows,
         language: currentLanguage,
-        ...sizes,
-        scrollPosition: list ? (list.state.scrollPos || 0) : 0
+        ...sizes
     });
 }
