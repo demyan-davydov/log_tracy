@@ -2,6 +2,15 @@
 //! tests/js/anchor-click.test.mjs. The click says which message and whether it is anchored now; the answer of `setAnchor` is
 //! { refused, pending, rows: { message, anchored, main, search } | null }.
 
+// Whether a table's pointer event (`LogTableView.onPointer`) is a click on an anchor cell: a click on a cell of the anchor column with
+// its message (D tells no click on a row that is gone since the press; an event without one is not taken)
+export function isAnchorClick(event) {
+    return event.type === "click" && event.kind === "cell" && event.column === anchorColumnId && event.id !== undefined;
+}
+
+// The id of the anchor column, as D names it (ui/log_table/log_columns.d anchorColumnId)
+export const anchorColumnId = "anchor";
+
 // What the tables are told after `setAnchor` answered `answer` to a click `click` ({ id, anchored, rect }): `rows` for
 // `onAnchorApplied`, or nothing: a refusal changed nothing, and an anchor that is pending is told when the pass applies it.
 // A row that stayed in both views (`rows` null) is read again where it stands. A refusal has a `notice` to show by the cell

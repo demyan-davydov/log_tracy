@@ -10,7 +10,7 @@ import ptable.columnhost : ColumnHost;
 import ptable.ports;
 import ptable.rowpicks : Pick;
 import ptable.scrollbar : Orientation, ScrollBar;
-import ptable.table : Table, TableEvents, TablePorts;
+import ptable.table : PointerMessage, Table, TableEvents, TablePorts;
 import ptable.viewport : ScrollMetrics;
 
 import std.algorithm.comparison : max;
@@ -27,7 +27,6 @@ final class ScrolledTable
 
     private double _width = 0, _height = 0;
     private bool _acrossShown; // the columns did not fit at the last paint: the bar at the bottom is shown
-    private bool _tablePressed; // a press of the table's own is on (a selection dragged): the bars do not widen under it
     private bool _footPressed; // a press on the badge or in the corner is on: its release is nobody's
     private bool _dwelling; // the thumb is dragged with the mouse on the badge: following is turned on after `dwellMs`
     private double _dwellSince = double.nan; // the frame the dwell began at (the host's clock), NaN until the first frame after the mouse came
@@ -42,7 +41,7 @@ final class ScrolledTable
         table.events.invalidate = () { if (events.invalidate !is null) events.invalidate(); };
         table.events.invalidateArea = (Rect area) { if (events.invalidateArea !is null) events.invalidateArea(area); else if (events.invalidate !is null) events.invalidate(); };
         table.events.rowSelected = (size_t item, ulong id, bool delayed) { if (events.rowSelected !is null) events.rowSelected(item, id, delayed); };
-        table.events.cellClicked = (size_t item, size_t column) { if (events.cellClicked !is null) events.cellClicked(item, column); };
+        table.events.pointer = (in PointerMessage m) { if (events.pointer !is null) events.pointer(m); };
         table.events.capture = (bool on) { if (events.capture !is null) events.capture(on); };
         table.events.needFrame = () { if (events.needFrame !is null) events.needFrame(); };
         table.events.copyCut = (size_t copied, size_t total) { if (events.copyCut !is null) events.copyCut(copied, total); };
@@ -268,7 +267,6 @@ final class ScrolledTable
             _footPressed = true;
             return true; // the corner is nobody's: the press is taken, nothing happens
         }
-        _tablePressed = true; // until the release the mouse is the table's: no bar widens under it
         return table.mouseDown(x, y, mode);
     }
 
@@ -297,14 +295,12 @@ final class ScrolledTable
             _footPressed = false;
             return true;
         }
-        _tablePressed = false;
         return table.mouseUp(x, y, timestampMs);
     }
 
     /// The window lost the mouse or the focus with a button down: a press of the table is over
     void cancelPress()
     {
-        _tablePressed = false;
         _footPressed = false;
         stopDwell();
         table.cancelPress();
@@ -315,9 +311,9 @@ final class ScrolledTable
     {
         const at = placesNow;
         table.hoverAt(at.onBar(x, y) ? double.nan : x, y);
-        bar.hover(!_tablePressed && (at.onVertical(x, y) || at.onBadge(x, y))); // the badge is lit with the bar
+        bar.hover(!table.pressed && (at.onVertical(x, y) || at.onBadge(x, y))); // the badge is lit with the bar; no bar widens under a press of the table
         if (across !is null)
-            across.hover(!_tablePressed && at.onBelow(x, y));
+            across.hover(!table.pressed && at.onBelow(x, y));
     }
 }
 
@@ -569,6 +565,35 @@ unittest
         scrolled.tick(now);
     scrolled.paint(canvas);
     assert(look.wide == 1, "released: the mouse over the strip widens it");
+}
+
+@("ScrolledTable: a drag of the table's own cancelled by a reset of the rows lets the bar widen again, with no release ever coming")
+unittest
+{
+    import ptable.scrollbar : ScrollBarPainter;
+
+    static class Wide : ScrollBarPainter
+    {
+        double wide = -1;
+        override void paint(Canvas canvas, Rect strip, Rect track, Rect thumb, double wide, Orientation orientation = Orientation.vertical)
+        {
+            this.wide = wide;
+        }
+    }
+
+    auto look = new Wide;
+    auto table = new Table(new NumbersModel(1000), new ColumnHost, portsOf(new Painter));
+    auto scrolled = new ScrolledTable(table, new ScrollBar(look));
+    scrolled.resize(410, 121);
+    auto canvas = new RecordingCanvas;
+    scrolled.paint(canvas);
+    scrolled.mouseDown(100, 21 + 3); // a press on the rows, then the rows are other ones: the press is cancelled, the release is lost
+    table.forgetPicks();
+    scrolled.mouseOver(405, 21 + 50);
+    foreach (now; [0.0, 100, 200, 300])
+        scrolled.tick(now);
+    scrolled.paint(canvas);
+    assert(look.wide == 1, "the mouse over the strip widens it");
 }
 
 @("ScrolledTable: a drag of the thumb ends when there is nothing to scroll anymore, the mouse and the scale let go")

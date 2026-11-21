@@ -25,10 +25,11 @@ import ui.log_table.log_table : LogTable, TableSource;
 import ui.log_table.marks : marksOf;
 import ui.log_table.log_look : LogLook;
 import ui.sciter_table.frame_request : FrameRequest;
-import ui.sciter_table.input : wheelIsAcross, cursorOf, isCopy, isOurEvent, isSelectAll, keyPickMode, pickMode, startsPickPress, tableKey, wheelPixels;
+import ui.sciter_table.input : endsPress, wheelIsAcross, cursorOf, isCopy, isOurEvent, isSelectAll, keyPickMode, pickMode, startsPickPress, tableKey, wheelPixels;
 
 import ui.sciter_table.sciter_host : SciterHost;
-import ui.table_messages : cellClickedJson, copyCutJson, currentRowJson, rowChosenJson;
+import ptable.table : PointerMessage;
+import ui.table_messages : copyCutJson, currentRowJson, pointerJson, readsOf, rowChosenJson;
 import ui.table_script : dispatch, ScriptArgs, ScriptResult, TableControl;
 
 import core.time : MonoTime;
@@ -112,7 +113,7 @@ final class LogTableBehavior : SciterEventHandler
         _log.events.invalidateArea = &_host.repaintArea;
         _log.events.capture = &_host.capture;
         _log.events.needFrame = &requestFrame;
-        _log.events.cellClicked = &cellClicked;
+        _log.events.pointer = &pointer;
         _log.events.rowSelected = &rowChosen;
         _log.events.copyCut = &copyCut;
     }
@@ -123,17 +124,25 @@ final class LogTableBehavior : SciterEventHandler
         _hooks.tell("logTableCopyCut", copyCutJson(_hooks.id, copied, total).toUTF16);
     }
 
-    // A click on a cell of a clickable column (the table picks nothing): the script knows what it is for
-    private void cellClicked(size_t item, size_t column)
+    // The mouse came over a title or a cell, left it or clicked it: the script knows what it is for (an anchor, a tooltip). What is read
+    // for it is `readsOf`'s; a click on a row that is gone since the press is nobody's
+    private void pointer(in PointerMessage event)
     {
         auto table = _log.table;
+        const target = event.target;
+        const reads = readsOf(event);
         ulong id;
-        if (!table.isClickable(column) || !table.rowId(item, id))
-            return; // a click on text is no business of the script, and a row that is gone since the press is nobody's click
+        bool anchored;
+        if (reads.row)
+        {
+            if (!table.rowId(target.row, id))
+                return;
+            anchored = marksOf(Extra(table.rowExtra(target.row))).anchored;
+        }
         Rect area;
-        const placed = table.cellRect(item, column, area); // where the cell is in the table, for what the script shows by it (a notice)
-        const anchored = marksOf(Extra(table.rowExtra(item))).anchored;
-        _hooks.tell("logTableCellClicked", cellClickedJson(_hooks.id, item, id, table.columnId(column), anchored, placed ? &area : null).toUTF16);
+        const placed = reads.place && table.targetRect(target, area); // for what the script shows by it (a notice, a tooltip)
+        _hooks.tell("logTableEvent", pointerJson(_hooks.id, event, table.columnId(target.column), reads.row ? &id : null, anchored,
+            placed ? &area : null).toUTF16);
     }
 
     // A row was selected by the user (the script follows it in the other table): which table, the item, the message, and whether it may move on
@@ -280,6 +289,8 @@ final class LogTableBehavior : SciterEventHandler
             _log.scrolled.mouseOver(x, y);
             return _log.scrolled.mouseMove(x, y) || hand; // a handled move keeps its cursor
         case MOUSE_EVENTS.MOUSE_UP:
+            if (!endsPress(params.button_state))
+                return false; // another button's release (a right click while the main one is held): the press goes on
             return _log.scrolled.mouseUp(x, y, nowMs()); // a click on a row cut at an edge brings it in by a glide
         case MOUSE_EVENTS.MOUSE_ENTER:
             return hand;
@@ -409,6 +420,7 @@ final class LogTableBehavior : SciterEventHandler
         wstring hitTest(double x, double y) { return _log.table.hitTest(x, y).toJson.toUTF16; }
 
         void contextPick(size_t row) { _log.table.contextPick(row); }
+        void hearOver(bool on) { _log.table.hostHearsOver(on); }
         void anchorApplied(size_t message, bool moved) { _log.anchorApplied(message, moved); }
         void updateRow(size_t item) { _log.table.updateRow(item); }
         void updateCell(size_t item, size_t column) { _log.table.updateCell(item, column); }

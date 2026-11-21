@@ -5,8 +5,6 @@
 //! (`TableSelection`) the rows go with. See docs/stories/painted-table.md.
 module ptable.rowpicker;
 
-import ptable.cellpress : CellPress;
-import ptable.hovercell : HoverCell;
 import ptable.rowpicks : Pick, RowPicks;
 import ptable.rowranges : RowRange, RowRanges;
 import ptable.tableselection : TableSelection;
@@ -28,8 +26,6 @@ final class RowPicker
     private bool _rowDragging; // the press picked a row, a drag from it goes over rows
     private TableSelection _text; // the text selected, the press, the copy
     private PickPorts _ports;
-    private CellPress _cell; // a press on a cell of a clickable column: it picks nothing
-    private HoverCell _hover; // the cell under the mouse
 
     this(TableSelection text, PickPorts ports)
     {
@@ -41,18 +37,6 @@ final class RowPicker
     inout(TableSelection) text() inout
     {
         return _text;
-    }
-
-    /// The press on a cell of a clickable column that is on
-    ref CellPress cellPress() return
-    {
-        return _cell;
-    }
-
-    /// The cell under the mouse
-    ref HoverCell hover() return
-    {
-        return _hover;
     }
 
     /// The current row if it is picked, else -1: what the other table follows

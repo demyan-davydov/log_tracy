@@ -17,7 +17,7 @@ version (unittest)
 import ptable.layout : Pin, Placement, Placements;
 import ptable.painter : CellContext, Painter, RowContext, RowState;
 import ptable.ports : Rect;
-import ptable.regions : Panes, cellIn, panesOf, seenOf;
+import ptable.regions : Panes, cellIn, panesOf, seenOf, titleIn;
 import ptable.rowcache : Entry, RowCache;
 import ptable.rowlayout : RowSlot;
 import ptable.tablespace : TableSpace;
@@ -97,7 +97,7 @@ final class RowView
         ctx.column = _env.columns.column(c.defIndex);
         ctx.columnIndex = c.defIndex;
         ctx.data = _env.columns.titlePtr(c.defIndex);
-        ctx.area = cellIn(c, space.regions.header, 0);
+        ctx.area = titleIn(c, space.regions);
         ctx.clip = ctx.area;
         ctx.isHeader = true; // the column places its title in the area itself
         return ctx;

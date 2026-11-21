@@ -15,6 +15,8 @@ import ptable.layout;
 import ptable.lookchange : LookChange;
 import ptable.navigation;
 import ptable.pointer;
+public import ptable.pointerdispatch : PointerAction, PointerMessage, PointerTarget, TargetKind;
+import ptable.tablepointer : Capture, TablePointer;
 import ptable.hitregion : Area, areaAt;
 import ptable.rowcopy;
 import ptable.framepainter : FramePainter, Picked;
@@ -69,9 +71,10 @@ struct TableEvents
     /// A row was selected (a click, the keys, a drag over rows): the item and its id. `delayed`: a drag or a step of the keys moved it and it may
     /// move on, whoever follows it waits for it to rest (a click and a selection asked for are not)
     void delegate(size_t item, ulong rowId, bool delayed) rowSelected;
-    /// A click (a press and a release without a drag) in a cell: the item and the column of the model. What it
-    /// means (an anchor, a link) is the application's
-    void delegate(size_t item, size_t column) cellClicked;
+    /// The mouse came over a thing of the table (a title, a cell), left it, or clicked it (a press and a release on it without a drag).
+    /// A leave and an enter only when the mouse came to another thing (moved, or the rows moved under it: told after the paint). What it
+    /// means (an anchor, a link, a tooltip) is the application's
+    void delegate(in PointerMessage message) pointer;
     /// A drag or a press needs the mouse even outside the table: the host captures it
     void delegate(bool on) capture;
     /// What a scroll bar shows changed (a scroll, another count): the host's bar is told it after a paint
@@ -134,6 +137,7 @@ final class Table
     private bool _detached; // `detach`: the table left its host for a while
     private size_t _fitRounds; // the rounds the settling of the widths of the last layout took, 0 if it settled none (a statistic)
     private RowPicker _picker; // the rows picked and how the input picks them, the text selected, the press and the copy
+    private TablePointer _mouse; // where the mouse is, what it is over, the press and what the host is to hear of them
     private ScrollMotion _motion; // the scrolls on the host's frames: a drag past the rows, the wheel's step, the coast
     private bool _passOfTick; // the tick of this frame began the pass and read its rows: the paint that follows draws them
 
@@ -147,6 +151,7 @@ final class Table
         auto rows = new RowView(RowEnv(_store.columns, _store.space, _store.cache.memos));
         _frame = new FramePainter(ports.painter, _store, rows, _store.space);
         _hits = new RowHits(_store, _viewport, rows);
+        _mouse = new TablePointer;
         _store.listen((const ModelChange change) { modelChanged(change); }, (const LayoutChange change) { layoutChanged(change); });
     }
 
@@ -227,8 +232,8 @@ final class Table
     /// The cell under the mouse looks another way (what the painter decides by the world outside the table): only its place is painted again
     void updateHover()
     {
-        if (_picker.hover.row >= 0)
-            updateCell(cast(size_t) _picker.hover.row, _picker.hover.column);
+        if (_mouse.overRow >= 0)
+            updateCell(cast(size_t) _mouse.overRow, _mouse.over.column);
     }
 
     /// The row `item` looks another way (its state, not its data: that is the model's `ModelChange.rows`): only its place is painted again.
@@ -262,6 +267,27 @@ final class Table
                 return true;
             }
         return false;
+    }
+
+    /// Where the thing `target` is (a title, a cell), in the table's coordinates; false for nothing, a row not on the screen, a column not shown
+    bool targetRect(PointerTarget target, out Rect area)
+    {
+        final switch (target.kind)
+        {
+        case TargetKind.none:
+            return false;
+        case TargetKind.cell:
+            return cellRect(target.row, target.column, area);
+        case TargetKind.header:
+            layoutIfNeeded();
+            foreach (c; places().columns)
+                if (c.defIndex == target.column)
+                {
+                    area = titleIn(c, _store.space.regions); // as the painter places a title
+                    return true;
+                }
+            return false;
+        }
     }
 
     // Where the row `item` is in the table's coordinates; false if it is not on the screen
@@ -305,7 +331,7 @@ final class Table
             _viewport.dropPending();
             _viewport.scrollToRow(0, 0);
             _newList = true;
-            forgetPicks(); // the same numbers are other rows now: nothing stays picked (nobody is told: nothing was picked for them)
+            forgetPicks(); // the same numbers are other rows now: nothing stays picked (the host hears only a press cancelled, a leave of the mouse)
         }
         invalidate();
     }
@@ -717,8 +743,8 @@ final class Table
         followStep();
         refreshHover(); // the rows may have moved under a mouse that did not
         const p = places();
-        const picked = Picked(_picker.rows, _picker.currentRow, _picker.text.hasText, _picker.text.range, _picker.hover.row, _picker.hover.column,
-            _picker.cellPress.row, _picker.cellPress.column, _tableHasFocus);
+        const picked = Picked(_picker.rows, _picker.currentRow, _picker.text.hasText, _picker.text.range, _mouse.overRow,
+            _mouse.over.column, _mouse.heldRow, _mouse.heldColumn, _tableHasFocus);
         _frame.paint(canvas, _viewport.slots, p, picked);
         if (p.scrollX != _store.layout.scrollX)
             _store.layout.setScrollX(p.scrollX); // the scroll the columns have after the clamp: the layout keeps it, it does not run ahead
@@ -736,6 +762,7 @@ final class Table
             if (events.scrolledX !is null)
                 events.scrolledX(across);
         }
+        tellPointer(); // the rows may have moved under the mouse
     }
 
     // The table follows the end of its rows as a terminal does (`EndFollow`): where the rows stand now, if the table did not put them there, is a move
@@ -876,28 +903,24 @@ final class Table
     {
         layoutIfNeeded();
         TableHit hit;
-        hit.columnIndex = _store.columns.columnAt(places(), x);
+        hit.columnIndex = _store.columns.columnAt(places(), x); // the column under x, of a free point too
         hit.column = _store.columns.idOf(hit.columnIndex);
         hit.hasText = _picker.text.hasText;
-        final switch (areaAt(_store.space.regions, x, y))
+        const target = targetAt(x, y); // the titles and the cells as the mouse finds them
+        final switch (target.kind)
         {
-        case Area.header:
+        case TargetKind.header:
             hit.kind = HitKind.header;
             break;
-        case Area.footer:
-            hit.kind = HitKind.footer;
+        case TargetKind.cell:
+            hit.kind = HitKind.cell;
+            hit.row = target.row;
+            hit.picked = _picker.isSelected(hit.row);
+            hit.onText = _hits.textAt(x, y, _picker.rows, hit.text.offset, hit.text.word);
             break;
-        case Area.around:
-            hit.kind = HitKind.free;
-            break;
-        case Area.rows:
-            hit.kind = HitKind.free;
-            if (_hits.realRowAt(y, hit.row))
-            {
-                hit.kind = HitKind.cell;
-                hit.picked = _picker.isSelected(hit.row);
-                hit.onText = _hits.textAt(x, y, _picker.rows, hit.text.offset, hit.text.word);
-            }
+        case TargetKind.none: // the parts that are no thing of the mouse: the footer, a header with no columns, free room
+            const area = areaAt(_store.space.regions, x, y);
+            hit.kind = area == Area.footer ? HitKind.footer : area == Area.header ? HitKind.header : HitKind.free;
             break;
         }
         return hit;
@@ -908,25 +931,77 @@ final class Table
     void hoverAt(double x, double y)
     {
         layoutIfNeeded();
-        _picker.hover.x = x;
-        _picker.hover.y = y;
-        const before = _picker.hover.row;
-        if (refreshHover())
+        _mouse.at(x, y);
+        const before = _mouse.over;
+        refreshHover();
+        hoverMoved(before);
+        tellPointer();
+    }
+
+    // The thing under the mouse was `before`: if it is another one now (a cell of the same row too: a cell has a hover of its own), the
+    // row the mouse left and the one it came to are painted again
+    private void hoverMoved(PointerTarget before)
+    {
+        if (_mouse.over == before)
+            return;
+        const was = before.kind == TargetKind.cell ? cast(long) before.row : -1, now = _mouse.overRow;
+        if (was >= 0 && was != now)
+            updateRow(cast(size_t) was);
+        if (now >= 0)
+            updateRow(cast(size_t) now);
+    }
+
+    /// A press of the table is on (any press of it, until the release or a cancel): the host holds the mouse
+    bool pressed() const
+    {
+        return _mouse.pressed;
+    }
+
+    /// Whether the host hears the enters and leaves of the mouse (someone of it listens to them; they come at every frame of a scroll under
+    /// the mouse): the presses, releases, clicks and cancels it hears always
+    void hostHearsOver(bool on)
+    {
+        _mouse.hostHearsOver(on);
+    }
+
+    // The thing under the mouse where it was last seen: asked again after the rows moved under it. True if it is another thing
+    private bool refreshHover()
+    {
+        return _mouse.moveTo(targetAt(_mouse.x, _mouse.y));
+    }
+
+    // The host takes or lets go of the mouse as the input said, and hears what the mouse did
+    private void captured(Capture change)
+    {
+        if (change != Capture.same)
+            capture(change == Capture.take);
+        tellPointer();
+    }
+
+    // The thing of the table at the point (x, y): a title, a cell of a real row, or none (NaN: out of the table)
+    private PointerTarget targetAt(double x, double y)
+    {
+        if (x != x || y != y)
+            return PointerTarget.init;
+        size_t row;
+        switch (areaAt(_store.space.regions, x, y))
         {
-            if (before >= 0)
-                updateRow(cast(size_t) before); // the row the mouse left and the one it came to
-            if (_picker.hover.row >= 0 && _picker.hover.row != before)
-                updateRow(cast(size_t) _picker.hover.row);
+        case Area.header:
+            return _store.columns.length == 0 ? PointerTarget.init : PointerTarget.header(_store.columns.columnAt(places(), x));
+        case Area.rows:
+            return _hits.realRowAt(y, row) ? PointerTarget.cell(row, _store.columns.columnAt(places(), x)) : PointerTarget.init;
+        default:
+            return PointerTarget.init;
         }
     }
 
-    // The cell under the mouse where it was last seen: asked again after the rows moved under it. True if it is another cell
-    private bool refreshHover()
+    // The host hears what the mouse did since it was last told: after a move, a press, a release, and after a paint (the rows moved under it)
+    private void tellPointer()
     {
-        const x = _picker.hover.x, y = _picker.hover.y;
-        size_t row;
-        const over = x == x && y == y && areaAt(_store.space.regions, x, y) == Area.rows && _hits.realRowAt(y, row);
-        return over ? _picker.hover.set(row, _store.columns.columnAt(places(), x)) : _picker.hover.clear();
+        if (events.pointer !is null)
+            _mouse.tell(events.pointer); // the host's own delegate: no closure made for each telling
+        else
+            _mouse.tell(null);
     }
 
     /// The stable id the model gave the row `item` (`RowData.id`); false if the row is not there (the rows changed since the click)
@@ -939,19 +1014,19 @@ final class Table
         return true;
     }
 
-    /// Whether the cells of the column `defIndex` of the model are for a click (`ColumnDef.clickable`)
-    bool isClickable(size_t defIndex)
-    {
-        return defIndex < _store.columns.length && _store.columns.def(defIndex).clickable;
-    }
-
-    /// The rows are other ones (a row came into the view or left it): nothing is picked, selected or hovered any more
+    /// The rows are other ones (a row came into the view or left it): nothing is picked, selected or hovered any more, a press is cancelled
+    /// (the table's and the host's: it was on rows that are gone); the next paint asks what is under the mouse now
     void forgetPicks()
     {
         setSelection(false);
         _picker.selectRow(-1, Pick.replace);
-        _picker.hover.clear();
-        _picker.hover.x = _picker.hover.y = double.nan;
+        // the press was on rows that are gone: the mouse first, so the host hears it cancelled and the mouse over nothing (not the old row
+        // again) until the next paint asks what is under the point now; then the table's own press
+        const pressedRow = _mouse.heldRow, pressedColumn = _mouse.heldColumn;
+        captured(_mouse.reset());
+        if (pressedRow >= 0)
+            updateCell(cast(size_t) pressedRow, pressedColumn);
+        cancelTextPress();
     }
 
     /// What the model attached to the row `item` (`Extra.bits`), 0 for a row that is not there
@@ -979,10 +1054,12 @@ final class Table
     // The point is on a cell of a real row in a clickable column: the row and the column of the model
     private bool clickableCellAt(double x, double y, out size_t row, out size_t column)
     {
-        if (areaAt(_store.space.regions, x, y) != Area.rows || !_hits.realRowAt(y, row))
+        const t = targetAt(x, y);
+        if (t.kind != TargetKind.cell || t.column >= _store.columns.length || !_store.columns.def(t.column).clickable)
             return false;
-        column = _store.columns.columnAt(places(), x);
-        return column < _store.columns.length && _store.columns.def(column).clickable;
+        row = t.row;
+        column = t.column;
+        return true;
     }
 
     /// A click for a context menu on the row: if it is picked the rows stay, else it becomes the only one (the text selected
@@ -1155,22 +1232,28 @@ final class Table
             layout();
             invalidate();
         }
+        _mouse.at(x, y);
+        const hovered = _mouse.over; // a press where no move came before moves the hover there
+        scope (exit)
+            hoverMoved(hovered);
         if (y < _store.space.regions.rows.y)
+        {
+            captured(_mouse.press(targetAt(x, y), false)); // a title: a click of the host, nothing of the rows
             return true;
+        }
         size_t cellRow, cellColumn;
         if (clickableCellAt(x, y, cellRow, cellColumn))
         {
-            _picker.cellPress.begin(cellRow, cellColumn); // picks nothing and selects nothing: the host gets the click
-            capture(true);
+            captured(_mouse.press(PointerTarget.cell(cellRow, cellColumn), true)); // picks nothing and selects nothing: the host gets the click
             updateCell(cellRow, cellColumn); // the cell shows that it is pressed
             return true;
         }
+        captured(_mouse.press(targetAt(x, y), false));
         setSelection(false);
         Position at;
         const has = positionAt(x, y, at);
         _picker.text.pressBegin(x, y, has, at, _store.columns.columnAt(places(), x));
         _picker.press(y, mode); // a mode picks the row at the press, a drag from it goes over rows
-        capture(true);
         return true;
     }
 
@@ -1247,37 +1330,34 @@ final class Table
     /// The window lost the mouse or the focus with a button down: the press is over, with no click and no scroll
     void cancelPress()
     {
-        if (_picker.cellPress.active)
-        {
-            const pressedRow = _picker.cellPress.row, pressedColumn = _picker.cellPress.column;
-            _picker.cellPress.cancel();
-            capture(false);
-            if (pressedRow >= 0)
-                updateCell(cast(size_t) pressedRow, pressedColumn);
-        }
+        const pressedRow = _mouse.heldRow, pressedColumn = _mouse.heldColumn;
+        captured(_mouse.cancel());
+        if (pressedRow >= 0)
+            updateCell(cast(size_t) pressedRow, pressedColumn);
+        cancelTextPress();
+    }
+
+    // The table's own press (a text or a row drag) is over with no click and no scroll
+    private void cancelTextPress()
+    {
         if (!_picker.text.pressed)
             return;
         _picker.text.pressCancel();
         _picker.endPress();
         _motion.dragStop();
-        capture(false);
     }
 
     /// The button went up at `timestampMs` (the clock of `tick`): a click on a row cut at an edge brings it in by a glide on
     /// the frames of the host; without the time it is moved now
     bool mouseUp(double x, double y, double timestampMs = double.nan)
     {
-        if (_picker.cellPress.active)
+        const target = targetAt(x, y); // before the click glides the row in
+        _mouse.at(x, y);
+        if (_mouse.cellHeld)
         {
-            size_t row, column;
-            const over = clickableCellAt(x, y, row, column);
-            capture(false);
-            const pressedRow = _picker.cellPress.row, pressedColumn = _picker.cellPress.column;
-            const click = _picker.cellPress.end(over, row, column);
-            if (pressedRow >= 0)
-                updateCell(cast(size_t) pressedRow, pressedColumn); // and that it is not any more
-            if (click && events.cellClicked !is null)
-                events.cellClicked(row, column);
+            const pressedRow = _mouse.heldRow, pressedColumn = _mouse.heldColumn;
+            captured(_mouse.release(target, false));
+            updateCell(cast(size_t) pressedRow, pressedColumn); // and that it is not any more
             return true;
         }
         const rowDrag = _picker.rowDrag; // a press with a mode picked its row when it began
@@ -1285,17 +1365,18 @@ final class Table
         _picker.endPress();
         _motion.dragStop();
         if (!release.wasPressed)
-            return false;
-        capture(false);
-        if (release.click)
         {
-            if (!rowDrag)
-            {
-                _motion.stop();
-                _picker.click(release.position.row, timestampMs);
-            }
-            if (events.cellClicked !is null)
-                events.cellClicked(release.position.row, release.column);
+            if (_mouse.pressed)
+                captured(_mouse.release(target, false)); // a title clicked
+            else
+                hoverAt(x, y); // a release of no press (another press, one cancelled): only the mouse is there
+            return false;
+        }
+        captured(_mouse.release(target, !release.click));
+        if (release.click && !rowDrag)
+        {
+            _motion.stop();
+            _picker.click(release.position.row, timestampMs);
         }
         return true;
     }
@@ -1554,7 +1635,13 @@ unittest
     table.resize(400, 200);
     table.paint(f.canvas);
     size_t clickedRow = size_t.max, clickedColumn = size_t.max;
-    table.events.cellClicked = (size_t item, size_t column) { clickedRow = item; clickedColumn = column; };
+    table.events.pointer = (in PointerMessage e) {
+        if (e.action == PointerAction.click)
+        {
+            clickedRow = e.target.row;
+            clickedColumn = e.target.column;
+        }
+    };
     const y = 21 + 16 * 2 + 3; // the third row
     assert(table.mouseDown(5, y) && table.mouseUp(5, y));
     assert(clickedRow == 2 && clickedColumn == 0 && table.selectedCount == 0 && !table.hasTextSelected, "a click, no row picked");
@@ -1584,6 +1671,161 @@ unittest
     assert(areas.length == 5 && areas[4] == Rect(0, 37, 400, 16), "over the header: the row is let go of");
     f.table.hoverAt(double.nan, double.nan);
     assert(areas.length == 5, "the mouse left: nothing to let go of");
+}
+
+@("Table: the mouse coming to a title or a cell, or leaving it, is told as a leave and an enter, once for each change")
+unittest
+{
+    auto f = make(5, 400, 200);
+    f.table.paint(f.canvas);
+    f.table.hostHearsOver(true);
+    PointerMessage[] told;
+    f.table.events.pointer = (in PointerMessage e) { told ~= e; };
+    alias enter = (PointerTarget t) => PointerMessage(PointerAction.enter, t);
+    alias leave = (PointerTarget t) => PointerMessage(PointerAction.leave, t);
+    f.table.hoverAt(5, 5);
+    assert(told == [enter(PointerTarget.header(0))], "the title of the first column");
+    f.table.hoverAt(8, 6);
+    assert(told.length == 1, "the same title: no news");
+    f.table.hoverAt(395, 5);
+    assert(told[1 .. $] == [leave(PointerTarget.header(0)), enter(PointerTarget.header(1))], "the title of the second column");
+    f.table.hoverAt(395, 21 + 3);
+    assert(told[3 .. $] == [leave(PointerTarget.header(1)), enter(PointerTarget.cell(0, 1))], "down to a cell");
+    f.table.hoverAt(395, 150);
+    assert(told[5 .. $] == [leave(PointerTarget.cell(0, 1))], "below the rows: nothing is entered");
+    f.table.hoverAt(5, 21 + 16 + 3);
+    f.table.hoverAt(double.nan, double.nan);
+    assert(told[6 .. $] == [enter(PointerTarget.cell(1, 0)), leave(PointerTarget.cell(1, 0))], "out of the table");
+}
+
+@("Table: the rows moving under a mouse that stays are told after the paint: the cell left and the one come to")
+unittest
+{
+    auto f = make(100);
+    f.table.paint(f.canvas);
+    f.table.hostHearsOver(true);
+    PointerMessage[] told;
+    f.table.events.pointer = (in PointerMessage e) { told ~= e; };
+    f.table.hoverAt(5, 21 + 3);
+    told = null;
+    f.table.scrollTo(10);
+    assert(told.length == 0, "nothing before the paint");
+    f.table.paint(f.canvas);
+    assert(told.length == 2 && told[0] == PointerMessage(PointerAction.leave, PointerTarget.cell(0, 0))
+        && told[1].action == PointerAction.enter && told[1].target.kind == TargetKind.cell && told[1].target.row != 0, "another row under it");
+}
+
+@("Table: a press and a release on a title is a click on it, on another title or after leaving it is not")
+unittest
+{
+    auto f = make(5, 400, 200);
+    f.table.paint(f.canvas);
+    PointerTarget[] clicked;
+    f.table.events.pointer = (in PointerMessage e) { if (e.action == PointerAction.click) clicked ~= e.target; };
+    f.table.mouseDown(395, 5);
+    f.table.mouseUp(395, 6);
+    assert(clicked == [PointerTarget.header(1)]);
+    f.table.mouseDown(395, 5);
+    f.table.mouseUp(5, 5);
+    assert(clicked.length == 1, "released over another title");
+    assert(f.table.selectedCount == 0, "a title picks no row");
+}
+
+@("Table: a press on a title takes the mouse until the release, so a release outside the table ends it and no later release clicks it")
+unittest
+{
+    auto f = make(5, 400, 200);
+    f.table.paint(f.canvas);
+    bool[] captured;
+    f.table.events.capture = (bool on) { captured ~= on; };
+    PointerTarget[] clicked;
+    f.table.events.pointer = (in PointerMessage e) { if (e.action == PointerAction.click) clicked ~= e.target; };
+    f.table.mouseDown(395, 5);
+    assert(captured == [true], "the press takes the mouse");
+    f.table.mouseUp(395, 500); // released far below the table: the table hears it, having the mouse
+    assert(captured == [true, false] && clicked.length == 0, "the release lets it go, no click");
+    f.table.mouseUp(395, 5); // a release with no press of its own (another button)
+    assert(clicked.length == 0, "no press is left to click");
+}
+
+@("Table: the host holds what the mouse was over while a button is down: a leave at the press, the thing under the mouse after the release")
+unittest
+{
+    import std.conv : to;
+
+    auto f = make(5, 400, 200);
+    f.table.paint(f.canvas);
+    f.table.hostHearsOver(true);
+    string[] told;
+    f.table.events.pointer = (in PointerMessage m) { told ~= m.action.to!string ~ " " ~ m.target.kind.to!string ~ m.target.row.to!string; };
+    const y = 21 + 16 + 3; // the second row
+    f.table.hoverAt(5, y);
+    f.table.mouseDown(5, y);
+    assert(told == ["enter cell1", "down cell1", "leave cell1"]);
+    told = null;
+    f.table.hoverAt(5, y + 16); // a drag over the rows: the host hears nothing of the rows passed
+    f.table.mouseMove(5, y + 16);
+    assert(told.length == 0, "nothing while the button is down");
+    f.table.mouseUp(5, y + 16);
+    assert(told == ["up cell2", "enter cell2"], "released over another row: no click, the row under the mouse at last");
+    told = null;
+    f.table.cancelPress();
+    assert(told.length == 0, "no press to cancel: nothing");
+    f.table.mouseDown(5, y + 16);
+    f.table.cancelPress();
+    assert(told == ["down cell2", "leave cell2", "cancel cell2", "enter cell2"], "a cancel, then the row under the mouse again");
+}
+
+@("Table: the rows reset while a cell holds the press: the press is cancelled, the mouse let go, and its release clicks nothing")
+unittest
+{
+    auto f = make(5, 400, 200);
+    auto table = new Table(new ClickableModel(5), new ColumnHost(f.layout), portsOf(new Painter, f.clipboard));
+    table.resize(400, 200);
+    table.paint(f.canvas);
+    string[] told;
+    bool[] captured;
+    table.events.pointer = (in PointerMessage m) { told ~= m.action.to!string; };
+    table.events.capture = (bool on) { captured ~= on; };
+    table.hostHearsOver(true);
+    const y = 21 + 16 * 2 + 3;
+    table.mouseDown(5, y);
+    table.forgetPicks();
+    table.paint(f.canvas);
+    assert(captured == [true, false]);
+    assert(told == ["enter", "down", "leave", "cancel", "enter"],
+        "the press cancelled with no enter of the row that is gone, then the paint tells what is under the mouse now");
+    told = null;
+    table.mouseUp(5, y);
+    assert(told.length == 0, "no click on the row that is another one now");
+}
+
+@("Table: a click with no move of the mouse leaves it over the thing clicked: the next paint tells no leave")
+unittest
+{
+    auto f = make(5, 400, 200);
+    f.table.paint(f.canvas);
+    f.table.hostHearsOver(true);
+    string[] told;
+    f.table.events.pointer = (in PointerMessage m) { told ~= m.action.to!string; };
+    const y = 21 + 16 + 3;
+    f.table.mouseDown(5, y); // no move came before: the press says where the mouse is
+    f.table.mouseUp(5, y);
+    f.table.paint(f.canvas);
+    assert(told == ["enter", "down", "leave", "up", "click", "enter"], "the paint after asks what is under the same point");
+}
+
+@("Table: targetRect is where a title or a cell stands, a title as wide as the cells of its column; nothing and a row off the screen have none")
+unittest
+{
+    auto f = make(100);
+    f.table.paint(f.canvas);
+    Rect title, cell;
+    assert(f.table.targetRect(PointerTarget.header(1), title) && f.table.targetRect(PointerTarget.cell(2, 1), cell));
+    assert(title.y == 0 && title.h == 21 && title.x == cell.x && title.w == cell.w, "the header, over its column");
+    assert(cell.y == 21 + 16 * 2);
+    assert(!f.table.targetRect(PointerTarget.init, title), "nothing");
+    assert(!f.table.targetRect(PointerTarget.cell(90, 1), cell), "off the screen");
 }
 
 @("Table: updateHover paints again the cell under the mouse only, none with the mouse elsewhere")
@@ -1793,7 +2035,13 @@ unittest
     auto f = make(100);
     f.table.paint(f.canvas);
     size_t clickedItem = size_t.max, clickedColumn = size_t.max;
-    f.table.events.cellClicked = (size_t item, size_t column) { clickedItem = item; clickedColumn = column; };
+    f.table.events.pointer = (in PointerMessage e) {
+        if (e.action == PointerAction.click && e.target.kind == TargetKind.cell)
+        {
+            clickedItem = e.target.row;
+            clickedColumn = e.target.column;
+        }
+    };
     f.table.mouseDown(5, 21 + 16 + 3);
     f.table.mouseUp(5, 21 + 16 + 3);
     assert(clickedItem == 1 && clickedColumn == 0, "the first column of the model");
@@ -2006,6 +2254,21 @@ unittest
     const before = GC.stats().allocatedInCurrentThread;
     scrollAround(100);
     assert(GC.stats().allocatedInCurrentThread == before, "a frame allocated from the garbage collector");
+    // the mouse over the rows, the host hearing what it is over: the rows move under it at every frame
+    size_t heard;
+    table.events.pointer = (in PointerMessage m) { heard++; };
+    table.hostHearsOver(true);
+    table.hoverAt(30, 40);
+    scrollAround(30);
+    const over = GC.stats().allocatedInCurrentThread;
+    scrollAround(100);
+    foreach (i; 0 .. 100) // the mouse moves over the rows and the titles, a frame after each move
+    {
+        table.hoverAt(30 + i % 7 * 40, i % 5 ? 30 + i % 60 : 5);
+        table.paint(canvas);
+    }
+    assert(heard > 0, "the host heard the rows moving under the mouse");
+    assert(GC.stats().allocatedInCurrentThread == over, "the mouse over the rows allocated from the garbage collector");
 }
 
 @("Table: all the memory of the rows comes from the allocator the host gave and goes back to it on dispose")

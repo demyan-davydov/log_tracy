@@ -99,6 +99,25 @@ behaviour: `.ai/knowledge/sciter.md`.
 - Text is selected across cells and rows by the table (`ptable`), not by Sciter: a plain drag selects text, a plain click selects the row,
   Shift/Cmd work on rows (rule 29). Positions are (row, cell, caret).
 - Drawing a row is hot: see `.ai/rules/ui.md`; the table keeps no content of a row from one frame to the next.
+- The mouse of a table is one unit, `ptable/tablepointer` (`TablePointer`): where the mouse was last seen, the dispatcher of what it
+  did to the titles and the cells (`ptable/pointerdispatch`, `PointerDispatch`), whether a clickable cell holds the press, what the host is
+  still to hear. The table hit-tests (`Table.targetAt`, the one hit test of the titles and the cells: `clickableCellAt` is it and a column's
+  `ColumnDef.clickable`, `Table.hitTest` of the menus builds on it), decides who owns a press and whether it became a drag (`TableSelection`), and feeds it: a move from
+  `Table.hoverAt` and from the paint (the rows moved under a still mouse: the thing under the point kept), a press, a release, a cancel;
+  it answers when the host takes or lets go of the mouse (`Capture`): any press holds it until the release or a cancel. A reset of the
+  rows (`Table.forgetPicks`) cancels the press and leaves the mouse over nothing until the next paint asks again. The dispatcher's
+  listeners either hold (a leave at the press, nothing until the release, then the thing under the mouse again) or track
+  (`ListenerWants.track`); one listener's wants change nothing of what the others hear. The host holds: `TableEvents.pointer`, told
+  after the input that made it (a move, a press, a release, a cancel, a reset of the rows) or the paint; an enter and the leave of the
+  same thing not yet told cancel out; a press on nothing holds the mouse but is told nothing of; it hears the enters and leaves only
+  when it asks (`Table.hostHearsOver`, the
+  script's `LogTableView.onPointer(handler, { over: true })` through `hearOver`: they come at every frame of a scroll under the mouse).
+  `ui/log_table_behavior` sends `logTableEvent` (`ui/table_messages`: `readsOf` says what is read for it, `pointerJson`) and the script
+  hands it to the handlers of the view; the anchor's click is one of them (`isAnchorClick`). A release of another button alone ends no
+  press (`endsPress`). The table's own work with the mouse (selecting text and rows, the drag past the rows, double and triple clicks by
+  `selectAt`) is not a listener: it is the table's, and goes on whatever a handler does. The scroll bars of `ScrolledTable` take their
+  presses before the table: those are no presses of the dispatcher; whether the table is pressed is `Table.pressed` (no bar widens under it). A new thing (a mark, a part of a cell) is a new `TargetKind` and
+  `Table.targetAt`/`targetRect` of it; a drag of a thing (a column by its title) would be a listener of the table's own that tracks.
 
 ## Menu
 

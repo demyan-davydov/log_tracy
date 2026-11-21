@@ -156,6 +156,13 @@ Rect rowLineOf(Rect row, double rowBorder) pure nothrow @nogc @safe
     return Rect(row.x, row.bottom - line, row.w, line);
 }
 
+/// The title of the column placed at `c`: its cell in the header, which has no line under it. Where the painter draws it and where the
+/// host is told it is (`Table.targetRect`)
+Rect titleIn(ref const Placement c, ref const Regions regions) pure nothrow @nogc @safe
+{
+    return cellIn(c, regions.header, 0);
+}
+
 @("cellIn, columnLineOf, rowLineOf: a cell, the line beside it and the line under its row share the room of the row, never overlap")
 unittest
 {
