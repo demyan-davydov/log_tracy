@@ -145,6 +145,24 @@ export function selectTo(state, anchor, g) {
     return { chips: state.chips, pos: { gap: g }, anchor };
 }
 
+// Chip `i` selected whole, as chips are selected (a triple click on it): the
+// caret goes to the gap after it. An empty chip the caret leaves is removed;
+// the empty chip itself is only left.
+export function selectChip(state, i) {
+    const moved = moveTo(state, { gap: i + 1 });
+    if (moved.chips === state.chips) return { chips: state.chips, pos: { gap: i + 1 }, anchor: i };
+    const removed = state.pos.chip;
+    if (removed === i) return { chips: moved.chips, pos: { gap: i } };
+    const at = removed < i ? i - 1 : i;
+    return { chips: moved.chips, pos: { gap: at + 1 }, anchor: at };
+}
+
+// A double click in gap `g` (the caret already there): the chip left of it is
+// selected whole; left of the first chip there is none, the state stays
+export function selectChipLeftOf(state, g) {
+    return g > 0 ? selectChip(state, g - 1) : state;
+}
+
 export function selectAll(state) {
     return { chips: state.chips, pos: { gap: state.chips.length }, anchor: 0 };
 }
@@ -157,6 +175,23 @@ export function deleteSelection(state) {
         chips: [...state.chips.slice(0, range.from), ...state.chips.slice(range.to)],
         pos: { gap: range.from },
     };
+}
+
+// The text of chip `i` from `from` to `to` replaced by `text` (a paste or a cut
+// inside the chip); the caret goes after the new text
+export function replaceInChip(state, i, from, to, text) {
+    const chips = [...state.chips];
+    const old = chips[i].text;
+    chips[i] = { ...chips[i], text: old.slice(0, from) + text + old.slice(to) };
+    return { chips, pos: { chip: i, offset: from + text.length } };
+}
+
+// Which items of the editor's context menu are enabled: Cut and Copy with chips
+// selected, or text selected in the chip the caret is in (`textSelected`), Paste
+// with text on the clipboard, Select All with any chip
+export function contextMenuItems(state, textSelected, clipboardHasText) {
+    const some = selection(state) !== null || (!isGap(state.pos) && textSelected);
+    return { cut: some, copy: some, paste: clipboardHasText, selectAll: state.chips.length > 0 };
 }
 
 // Pasted chips: at the caret in a gap (instead of the selection), after the chip

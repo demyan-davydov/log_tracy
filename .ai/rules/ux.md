@@ -202,6 +202,14 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     classes `match-color-N` in `resources/match-colors.css`, `matchColorCount` in
     `match-colors.js`; a test checks all three agree). Search chips and their matches use them.
     Regex chips are in a monospace font.
+48. **The search field has a context menu.** A right click in it offers Cut, Copy, Paste and
+    Select All, doing what their keys do: Cut and Copy take the chips selected or the text
+    selected in a chip, Paste makes chips of a query; an item with nothing to act on is
+    disabled. The right click moves neither the caret nor the selection.
+49. **Double and triple clicks in the search field select chips.** A double click between chips
+    selects the chip left of it whole (none before the first chip); in a chip it selects a word
+    of its text. A triple click on a chip selects that chip whole, as chips are selected (not its
+    text: the text selection goes); between chips it selects every chip.
 
 ## Filters
 

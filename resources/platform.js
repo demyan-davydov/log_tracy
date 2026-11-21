@@ -86,3 +86,5 @@ export const onWindowFrameChanged = handler => Window.this.on("replacementend", 
 export const copyText = text => Clipboard.writeText(text);
 // The text on the clipboard, "" if none (Sciter ends it with NUL characters)
 export const clipboardText = () => (Clipboard.readText() ?? "").replace(/\0+$/, "");
+// Whether the clipboard holds text, without reading it
+export const clipboardHasText = () => Clipboard.has("text");

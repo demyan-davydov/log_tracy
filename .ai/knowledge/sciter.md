@@ -307,6 +307,13 @@ agent can't drive it. In scapp a plain
   can't be found with `$$()`; give them a `prototype:` class (registered on `globalThis`) to
   track them, close with `popup.state.popup = false`. `path-ellipsis` cuts in the middle only
   text with `/`.
+- Suspected, not checked with a real press (6.0.5.5, 2026-11-21): the mouse events of a context
+  menu (`evt.source` of "contextmenu") go through the element the menu was asked for and its
+  ancestors, so a capturing `mousedown` listener there that takes the press kills the item's
+  "click" (the items of the search field's menu did nothing; its editor now lets presses on a
+  `menu` pass: `resources/search-editor.js`, `ownMouseEvent`). An event made
+  by the script (dispatched) has no `target` in a capturing listener: a mouse handler can't be tried so,
+  and the debug channel can't press a button (`sendMouseMove`).
 - Popups (`owner.popup(el, {anchorAt, popupAt})`) are "mouse modal": Sciter closes them on a
   press outside or when the app loses focus. `popupdismissing` comes to the popup element;
   `popupdismissed` comes to the **owner**, never to the popup. Don't remove the popup element

@@ -6,6 +6,7 @@ import { makeChip } from "../../resources/search-query.js";
 import {
     moveCaret, moveTo, typeInGap, deleteInGap, searchChips,
     sameQuery, assignColors, historyIndex, selection, extendCaret, selectChipsFrom, selectTo, selectAll, selectedChips, insertChips,
+    contextMenuItems, replaceInChip, selectChip, selectChipLeftOf,
 } from "../../resources/search-editing.js";
 
 const text = (t, matchCase = false) => makeChip(t, { matchCase });
@@ -215,4 +216,54 @@ test("historyIndex: the arrows go through the queries and stop at the ends", () 
     assert.equal(historyIndex(2, 3, "up"), 1);
     assert.equal(historyIndex(0, 3, "up"), 0);
     assert.equal(historyIndex(-1, 0, "down"), -1, "an empty history");
+});
+
+// ---- the context menu ----
+
+test("contextMenuItems: Cut and Copy need selected chips or text selected in the chip", () => {
+    const none = { cut: false, copy: false, paste: true, selectAll: true };
+    const some = { cut: true, copy: true, paste: true, selectAll: true };
+    assert.deepEqual(contextMenuItems({ chips: ab, pos: gap(1) }, false, true), none);
+    assert.deepEqual(contextMenuItems({ chips: ab, pos: gap(2), anchor: 0 }, false, true), some);
+    assert.deepEqual(contextMenuItems({ chips: ab, pos: at(0, 1) }, false, true), none);
+    assert.deepEqual(contextMenuItems({ chips: ab, pos: at(0, 1) }, true, true), some);
+    assert.deepEqual(contextMenuItems({ chips: ab, pos: gap(1) }, true, true), none, "text selected in no chip counts for nothing");
+});
+
+test("contextMenuItems: Paste needs text on the clipboard, Select All a chip", () => {
+    assert.deepEqual(contextMenuItems({ chips: [], pos: gap(0) }, false, false),
+        { cut: false, copy: false, paste: false, selectAll: false });
+    assert.equal(contextMenuItems({ chips: [text("")], pos: at(0, 0) }, false, true).selectAll, true);
+});
+
+test("replaceInChip: the range of the chip's text replaced, the caret after the new text", () => {
+    const state = { chips: ab, pos: at(1, 1) };
+    assert.deepEqual(replaceInChip(state, 1, 0, 1, "xy"), { chips: [text("ab"), text("xyd")], pos: at(1, 2) });
+    assert.deepEqual(replaceInChip(state, 0, 1, 2, ""), { chips: [text("a"), text("cd")], pos: at(0, 1) });
+    assert.deepEqual(replaceInChip({ chips: [regex("a+")], pos: at(0, 2) }, 0, 2, 2, "b").chips, [regex("a+b")], "the kind of the chip stays");
+});
+
+// ---- the triple click ----
+
+test("selectChip: the chip is selected whole, as chips are, the caret after it", () => {
+    assert.deepEqual(selectChip({ chips: ab, pos: at(0, 1) }, 0), { chips: ab, pos: gap(1), anchor: 0 });
+    assert.deepEqual(selectChip({ chips: ab, pos: gap(0) }, 1), { chips: ab, pos: gap(2), anchor: 1 });
+});
+
+test("selectChip: an empty chip the caret leaves is removed, the indices follow", () => {
+    const withEmpty = [text(""), text("ab"), text("cd")];
+    assert.deepEqual(selectChip({ chips: withEmpty, pos: at(0, 0) }, 2), { chips: ab, pos: gap(2), anchor: 1 });
+    assert.deepEqual(selectChip({ chips: withEmpty, pos: at(0, 0) }, 0), { chips: ab, pos: gap(0) }, "the empty chip itself: only left");
+});
+
+// ---- the double click ----
+
+test("selectChipLeftOf: a double click in a gap selects the chip left of it", () => {
+    assert.deepEqual(selectChipLeftOf({ chips: ab, pos: gap(2) }, 2), { chips: ab, pos: gap(2), anchor: 1 });
+    assert.deepEqual(selectChipLeftOf({ chips: ab, pos: gap(1) }, 1), { chips: ab, pos: gap(1), anchor: 0 });
+});
+
+test("selectChipLeftOf: no chip left of the first gap, the state stays", () => {
+    const state = { chips: ab, pos: gap(0) };
+    assert.equal(selectChipLeftOf(state, 0), state);
 });

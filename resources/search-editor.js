@@ -7,16 +7,20 @@
 
 import * as platform from "platform.js";
 import { tr } from "i18n/i18n.js";
+import { menuOpensByMouse } from "menu-gate.js";
 import { translateTree } from "i18n/dom.js";
 import {
     moveCaret, moveTo, typeInGap, deleteInGap, searchChips,
     sameQuery, assignColors, historyIndex, selection, extendCaret, selectChipsFrom, selectTo, selectAll, selectedChips, deleteSelection, insertChips,
+    contextMenuItems, replaceInChip, selectChip, selectChipLeftOf,
 } from "search-editing.js";
 import { formatQuery, parseQuery, makeChip, pastedText } from "search-query.js";
 import { EditHistory } from "edit-history.js";
 import { matchColorCount, matchColorClass } from "match-colors.js";
 
 const isMac = platform.isMac;
+
+let editorCount = 0; // gives each editor its id: its context menu carries it
 
 export class SearchEditor {
     // @param root - the editor element (focusable: tabindex="0")
@@ -97,6 +101,7 @@ export class SearchEditor {
         this.closeHistory({ refocus: false });
         this.endDrag();
         for (const handler of Object.values(this.documentHandlers)) document.off(handler);
+        document.off(this.contextMenuClick);
     }
 
     // ---- state and rendering ----
@@ -223,6 +228,8 @@ export class SearchEditor {
         // The mouse too: a chip edit would start selecting its text under a drag
         // begun outside it, and would take Shift+click for its own
         sinking("mousedown", evt => this.onMouseDown(evt));
+        sinking("dblclick", evt => this.onDoubleClick(evt));
+        sinking("tripleclick", evt => this.onTripleClick(evt));
         sinking("mousemove", evt => {
             if (!this.drag) return false;
             this.onMouseMove(evt);
@@ -236,6 +243,7 @@ export class SearchEditor {
             mouseup: () => this.endDrag(),
         };
         for (const [name, handler] of Object.entries(this.documentHandlers)) document.on(name, handler);
+        this.bindContextMenu();
         root.on("focusin", () => this.markState());
         root.on("focusout", () => {
             // posted: the focus may be moving to another chip of this editor
@@ -545,6 +553,72 @@ export class SearchEditor {
         return true;
     }
 
+    // The context menu of the editor (a chip's edit has none of its own): Cut, Copy,
+    // Paste and Select All, as their keys do. A right click moves neither the caret
+    // nor the selection. Its items are heard on the document, where the clicks of a
+    // menu come; each editor takes only the items of the menu with its id.
+    bindContextMenu() {
+        this.id = String(++editorCount);
+        this.pressSelection = null; // the text selected in the chip when the press of a context click came
+        this.root.on("contextmenu", evt => {
+            const press = this.pressSelection;
+            this.pressSelection = null;
+            if (!menuOpensByMouse()) return true; // the Menu key, Shift+F10: no menu (menu-gate.js)
+            this.closeHistory({ refocus: false });
+            // the chip's edit may have moved its caret on the press: its selection comes back
+            if (press && this.state.pos.chip === press.chip) {
+                const edit = this.chipEdit(press.chip);
+                if (edit) {
+                    edit.state.focus = true;
+                    edit.edit.selectRange(press.from, press.to);
+                }
+            }
+            const synced = this.syncedState();
+            const items = contextMenuItems(synced, this.chipTextSelection(synced) !== null, platform.clipboardHasText());
+            const item = (command, label) => items[command]
+                ? <li command={command}>{label}</li>
+                : <li command={command} disabled>{label}</li>;
+            evt.source = Element.create(<menu class="context search-context" editor={this.id}>
+                {item("cut", tr("Cut"))}
+                {item("copy", tr("Copy"))}
+                {item("paste", tr("Paste"))}
+                <hr />
+                {item("selectAll", tr("Select All"))}
+            </menu>);
+            return true;
+        });
+        this.contextMenuClick = (evt, li) => {
+            if (this.destroyed || li.parentElement?.getAttribute("editor") !== this.id || li.hasAttribute("disabled")) return;
+            switch (li.getAttribute("command")) {
+                case "cut": this.menuCopy(true); break;
+                case "copy": this.menuCopy(false); break;
+                case "paste": this.paste(); break;
+                case "selectAll": this.selectAllKey(); break;
+            }
+        };
+        document.on("click", "menu.search-context > li[command]", this.contextMenuClick);
+    }
+
+    // {chip, from, to} of the text selected in the chip the caret is in, null if none
+    chipTextSelection(synced) {
+        if (synced.pos.gap !== undefined) return null;
+        const edit = this.chipEdit(synced.pos.chip)?.edit;
+        if (!edit || edit.selectionStart === edit.selectionEnd) return null;
+        return { chip: synced.pos.chip, from: Math.min(edit.selectionStart, edit.selectionEnd), to: Math.max(edit.selectionStart, edit.selectionEnd) };
+    }
+
+    // Cut and Copy of the menu: the selected chips as the keys copy them, or the
+    // text selected in the chip (the keys leave that to the edit)
+    menuCopy(cut) {
+        const synced = this.syncedState();
+        const range = this.chipTextSelection(synced);
+        if (!range) return this.copy(cut);
+        const i = synced.pos.chip;
+        platform.copyText(synced.chips[i].text.slice(range.from, range.to));
+        if (cut) this.go(replaceInChip(synced, i, range.from, range.to, ""));
+        return true;
+    }
+
     // Cmd/Ctrl+C, Cmd/Ctrl+X of the selected chips, in the text form of a query.
     // Inside a chip the edit copies its own text.
     copy(cut) {
@@ -573,11 +647,8 @@ export class SearchEditor {
             const i = synced.pos.chip;
             const text = pastedText(raw, synced.chips[i]); // a regex chip isn't cut
             const edit = this.chipEdit(i).edit;
-            const from = edit.selectionStart, to = edit.selectionEnd;
-            const old = synced.chips[i].text;
-            const next = [...synced.chips];
-            next[i] = { ...next[i], text: old.slice(0, from) + text + old.slice(to) };
-            this.go({ chips: next, pos: { chip: i, offset: from + text.length } });
+            const from = Math.min(edit.selectionStart, edit.selectionEnd), to = Math.max(edit.selectionStart, edit.selectionEnd);
+            this.go(replaceInChip(synced, i, from, to, text));
             return true;
         }
         const text = pastedText(raw); // a new chip is a text one
@@ -606,8 +677,25 @@ export class SearchEditor {
         return true;
     }
 
+    // Whether a mouse event is of the editor's own content: a press on an item of a
+    // menu (the context menu, owned by an element inside the editor) comes through
+    // the editor too, and is the menu's
+    ownMouseEvent(evt) {
+        const target = evt.target;
+        return this.isInside(target) && !target.closest?.("menu");
+    }
+
     onMouseDown(evt) {
-        if (evt.button !== 0 && evt.button !== undefined) return false;
+        if (!this.ownMouseEvent(evt)) return false;
+        // A context click (another button, Control+click on macOS) moves neither the
+        // caret nor the chips selected: the menu acts on the selection as it is. The
+        // press is not consumed (the menu comes of it), so the chip's edit may move its
+        // caret: the text selected in it is kept for the menu to bring back.
+        const contextPress = (evt.button !== 0 && evt.button !== undefined) || (isMac() && evt.ctrlKey);
+        if (contextPress) {
+            this.pressSelection = this.chipTextSelection(this.syncedState());
+            return false;
+        }
         const target = evt.target;
         const toggle = target.closest?.(".chip-toggle");
         if (toggle) {
@@ -658,6 +746,55 @@ export class SearchEditor {
         this.drag = { anchor: next.pos.gap };
         this.go(next);
         this.captureDrag();
+        return true;
+    }
+
+    // A double click (Sciter sends it instead of the second press): in a gap it
+    // selects the chip left of it whole; in a chip the edit selects a word itself.
+    // With Shift it is a second Shift+click, which extends the selection as it is.
+    onDoubleClick(evt) {
+        if (!this.ownMouseEvent(evt)) return false;
+        if (evt.button !== 0 && evt.button !== undefined) return false;
+        if (this.toggleAt(evt)) return true;
+        if (evt.shiftKey) return this.onMouseDown(evt);
+        if (evt.target.closest?.(".chip")) return false;
+        this.endDrag();
+        this.textAnchor = null;
+        const synced = this.syncedState();
+        if (synced.pos.gap === undefined) return false; // the first press put the caret in the gap
+        this.go(selectChipLeftOf(synced, synced.pos.gap));
+        return true;
+    }
+
+    // A toggle of a chip (Regex, Case) under a second or third press: it switches
+    // again, as a press does (a quick double click on it switches twice)
+    toggleAt(evt) {
+        const toggle = evt.target.closest?.(".chip-toggle");
+        if (!toggle) return false;
+        this.toggle(this.chipIndexOf(toggle), toggle.classList.contains("chip-regex") ? "isRegex" : "matchCase");
+        return true;
+    }
+
+    // A triple click (Sciter sends it instead of the third press): on a chip it
+    // selects the chip whole, as chips are selected, and lets go of its text; in a
+    // gap it selects every chip
+    onTripleClick(evt) {
+        if (!this.ownMouseEvent(evt)) return false;
+        if (evt.button !== 0 && evt.button !== undefined) return false;
+        if (this.toggleAt(evt)) return true;
+        this.endDrag();
+        this.textAnchor = null;
+        this.entryText = null;
+        const synced = this.syncedState();
+        const chipEl = evt.target.closest?.(".chip");
+        if (chipEl) {
+            const i = this.chipIndexOf(chipEl);
+            this.chipEdit(i)?.edit.selectRange();
+            this.go(selectChip(synced, i));
+            return true;
+        }
+        if (synced.pos.gap === undefined) this.chipEdit(synced.pos.chip)?.edit.selectRange();
+        this.go(selectAll(moveTo(synced, { gap: synced.pos.gap ?? synced.pos.chip + 1 })));
         return true;
     }
 
