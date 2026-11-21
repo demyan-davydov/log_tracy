@@ -86,7 +86,13 @@ agent can't drive it. In scapp a plain
   the JS `Graphics.Text` likewise: its widths, height, the metrics and the text of a line): a place
   in a text is had by measuring the text before it, or by summing what was measured. Its
   coordinates of a `DRAW_CONTENT` are the element's own in dips (`params.area` is the content
-  box on the view). A layout costs ~20 KB of memory: 5000 cached ones were +100 MB of RSS, 600 are
+  box on the view). A layout is lazy: `textCreateForElementAndStyle` costs ~3.6 µs, the laying out is done at the
+  first `textGetMetrics` or `gDrawText` (~31 µs for 15 chars, ~52 µs for 95), a laid out one draws in ~1 µs,
+  `textRelease` ~2-3 µs; the style string costs nothing to speak of, and the same text in another layout is laid out
+  again (no shared cache). `gStateSave`/`gStateRestore` keep the line and fill colors, transform and clip, not a text's
+  color. There is no reading of the clip or of the area Sciter repaints; `imageCreate` + `gCreate` (or `imagePaint`)
+  give a graphics on an image; `gGetNativeDC` (not tried) gives the native context. Numbers and what the API lacks:
+  `docs/experiments/2026-11-21-text-layout-cost.md`. A layout costs ~20 KB of memory: 5000 cached ones were +100 MB of RSS, 600 are
   +10 MB (`SciterTextCache` keeps two generations, `ui/sciter_table/generations`). A layout wraps only by a `width: Npx` in its style: `textSetBox` alone leaves one line. Details and numbers:
   `docs/experiments/2026-11-19-painted-rows-d.md`.
 - Sciter's own scroll bar (`overflow-y: scroll-indicator` on an element scrolling a spacer 1/shown of
