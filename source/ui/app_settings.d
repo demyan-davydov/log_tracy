@@ -103,7 +103,7 @@ ColumnLayouts columnLayoutsFromJson(const JSONValue json)
 ColumnLayouts withColumnLayouts(const ColumnLayouts layouts, const(char)[] json)
 {
     import formats.registry : formatColumns;
-    import log_core.column_layout : isDefaultLayout, movableIds;
+    import log_core.column_layout : defaultLayout, isDefaultLayout;
 
     ColumnLayouts result = copyOf(layouts);
     ColumnLayouts changed;
@@ -113,7 +113,7 @@ ColumnLayouts withColumnLayouts(const ColumnLayouts layouts, const(char)[] json)
         return result;
     foreach (formatId, layout; changed)
     {
-        if (isDefaultLayout(layout, movableIds(formatColumns(formatId))))
+        if (isDefaultLayout(layout, defaultLayout(formatColumns(formatId))))
             result.remove(formatId);
         else
             result[formatId] = layout;
@@ -129,19 +129,19 @@ ColumnLayouts withColumnLayouts(const ColumnLayouts layouts, const(char)[] json)
 string columnSettingsJson(const ColumnLayouts layouts, string currentFormat)
 {
     import formats.registry : formatColumns, formatInfos;
-    import log_core.column_layout : fullLayout, movableIds;
+    import log_core.column_layout : defaultLayout, fullLayout;
     import log_core.log_format : ColumnKind;
 
     JSONValue[] formats;
     foreach (info; formatInfos())
     {
         const columns = formatColumns(info.id);
-        const ids = movableIds(columns);
-        if (ids.length == 0)
+        const defaults = defaultLayout(columns);
+        if (defaults.length == 0)
             continue;
         const layout = info.id in layouts;
         JSONValue[] shown;
-        foreach (state; fullLayout(ids, layout is null ? null : *layout))
+        foreach (state; fullLayout(defaults, layout is null ? null : *layout))
         {
             const at = columns.countUntil!(c => c.id == state.id);
             if (at < 0)
@@ -155,7 +155,7 @@ string columnSettingsJson(const ColumnLayouts layouts, string currentFormat)
         formats ~= JSONValue([
             "id": JSONValue(info.id), "name": JSONValue(info.name),
             "payload": JSONValue(payload.empty ? "" : payload.front.title),
-            "defaults": JSONValue(ids), "columns": JSONValue(shown),
+            "defaults": JSONValue(defaults.map!(d => d.id).array), "columns": JSONValue(shown),
         ]);
     }
     return JSONValue(["current": JSONValue(currentFormat), "formats": JSONValue(formats)]).toString();
@@ -716,7 +716,7 @@ unittest
 {
     import formats.dlt.format : dltFormatInfo;
     import formats.registry : formatColumns;
-    import log_core.column_layout : movableIds;
+    import log_core.column_layout : defaultLayout;
 
     ColumnLayouts layouts;
     layouts["dlt"] = [ColumnState("level")];
@@ -726,7 +726,8 @@ unittest
     assert(changed == ["dlt": [ColumnState("app", false)], "logcat": [ColumnState("tag", false)]]);
     assert(layouts["dlt"] == [ColumnState("level")], "a copy");
 
-    auto defaults = movableIds(formatColumns(dltFormatInfo.id)).map!(id => JSONValue(["id": id])).array;
+    auto defaults = defaultLayout(formatColumns(dltFormatInfo.id))
+        .map!(d => JSONValue(["id": JSONValue(d.id), "visible": JSONValue(d.visible)])).array;
     changed = withColumnLayouts(layouts, `{"dlt": ` ~ JSONValue(defaults).toString() ~ `}`);
     assert("dlt" !in changed, "the default layout is no layout");
     assert(withColumnLayouts(layouts, "not json") == layouts);
@@ -759,6 +760,26 @@ unittest
         "a column the format doesn't have any more isn't listed");
     assert(columns[0]["title"].str == "Tag" && !columns[0]["visible"].boolean);
     assert(columns[1]["visible"].boolean);
+}
+
+@("columnSettingsJson: DLT without a layout hides the counter, the session and the message IDs")
+unittest
+{
+    import formats.dlt.format : dltFormatInfo;
+
+    auto j = parseJSON(columnSettingsJson(null, dltFormatInfo.id));
+    foreach (ref f; j["formats"].array)
+    {
+        if (f["id"].str != dltFormatInfo.id)
+            continue;
+        string[] hidden;
+        foreach (ref c; f["columns"].array)
+            if (!c["visible"].boolean)
+                hidden ~= c["id"].str;
+        assert(hidden == ["counter", "session", "msgid"], hidden.to!string);
+        return;
+    }
+    assert(false, "DLT is listed");
 }
 
 @("mergeAppStateFromScript: the window, theme and font size come from the script")

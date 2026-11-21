@@ -79,6 +79,8 @@ behaviour: `.ai/knowledge/sciter.md`.
   kind, is read by `log_core/column_values` (`ui/row_cells`).
 - Index (not a format column) stays first and Payload last; the others can be moved and hidden. A layout is one per format id, for all
   its variants.
+- Without a layout of the user a column is shown as its `ColumnInfo.shownByDefault` says (`defaultLayout`); so is a column a layout
+  doesn't know. A layout equal to that default is dropped on saving (`withColumnLayouts`), so the default must count the flag.
 - Dragging to reorder (tabs, columns in Settings) shares `resources/drag-strip.js` (the elements: shifts, classes, marker) over
   `resources/drag-order.js` (the math).
 - How a column looks (its width, its ink) is the column's style in the table (`ptable_text/columnstyle`, the look `ui/log_table/log_look`

@@ -35,6 +35,7 @@ struct ColumnInfo
     string[] labels; // Enum
     bool byLevel; // the cell is colored by the level of its record (an HTTP status)
     string hint; // the full name of a short title ("Session ID" of "sId"), not translated; "": the title says it all
+    bool shownByDefault = true; // shown in a table until the user's layout of the format says otherwise
 
     //! @returns true if the column shows a field, not the core
     bool isField() const pure nothrow @nogc @safe

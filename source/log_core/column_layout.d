@@ -44,34 +44,41 @@ string[] mergeOrder(const(string)[] base, const(string)[] extra)
     return result;
 }
 
-//! @brief The layout of the movable columns `ids` (in the order of the
-//! format) as `layout` arranges them: every one of `ids` once, in the order
-//! of the layout, those it doesn't know at their place by the format and
-//! shown. The ids of the layout that aren't in `ids` are kept: they are
-//! columns of another variant of the format.
-ColumnState[] fullLayout(const(string)[] ids, const(ColumnState)[] layout)
+//! @returns the layout of the movable columns as the format shows them without
+//! a layout of the user: in its order, each shown or not by `shownByDefault`
+ColumnState[] defaultLayout(const(ColumnInfo)[] columns)
+{
+    return columns.filter!(c => c.kind != ColumnKind.Payload)
+        .map!(c => ColumnState(c.id, c.shownByDefault)).array;
+}
+
+//! @brief The layout of the movable columns of a format (`defaults`, its
+//! defaultLayout) as `layout` arranges them: every one of them once, in the
+//! order of the layout, those it doesn't know at their place by the format
+//! and shown as `defaults` says. The ids of the layout that aren't in
+//! `defaults` are kept: they are columns of another variant of the format.
+ColumnState[] fullLayout(const(ColumnState)[] defaults, const(ColumnState)[] layout)
 {
     ColumnState[] known; // the layout without duplicates
     foreach (state; layout)
         if (!known.canFind!(k => k.id == state.id))
             known ~= state;
     ColumnState[] result;
-    foreach (id; mergeOrder(known.map!(k => k.id).array, ids))
+    foreach (id; mergeOrder(known.map!(k => k.id).array, defaults.map!(d => d.id).array))
     {
         const at = known.countUntil!(k => k.id == id);
-        result ~= at >= 0 ? known[at] : ColumnState(id);
+        result ~= at >= 0 ? known[at] : defaults[defaults.countUntil!(d => d.id == id)];
     }
     return result;
 }
 
 //! @brief The columns of the table for `columns` of a format: the movable
-//! ones as `layout` arranges and shows them, Payload last.
+//! ones as `layout` arranges and shows them (as the format shows them by
+//! default without one), Payload last.
 const(ColumnInfo)[] arrangeColumns(const(ColumnInfo)[] columns, const(ColumnState)[] layout)
 {
-    if (layout.length == 0)
-        return columns;
     const(ColumnInfo)[] result;
-    foreach (state; fullLayout(movableIds(columns), layout))
+    foreach (state; fullLayout(defaultLayout(columns), layout))
     {
         if (!state.visible)
             continue;
@@ -83,11 +90,11 @@ const(ColumnInfo)[] arrangeColumns(const(ColumnInfo)[] columns, const(ColumnStat
     return result;
 }
 
-//! @returns true if `layout` shows the movable columns `ids` as they are
-//! without a layout: in their order, all of them
-bool isDefaultLayout(const(ColumnState)[] layout, const(string)[] ids)
+//! @returns true if `layout` shows the movable columns of a format as they are
+//! without a layout: as `defaults` (its defaultLayout) has them
+bool isDefaultLayout(const(ColumnState)[] layout, const(ColumnState)[] defaults)
 {
-    return fullLayout(ids, layout) == fullLayout(ids, null);
+    return fullLayout(defaults, layout) == fullLayout(defaults, null);
 }
 
 version (unittest)
@@ -97,16 +104,60 @@ version (unittest)
         return ColumnInfo(id, id, kind);
     }
 
-    private const(ColumnInfo)[] sample()
+    //! @param hidden - the id of a column the format hides by default
+    private const(ColumnInfo)[] sample(string hidden = null)
     {
-        return [column("time", ColumnKind.Time), column("app"), column("ctx"),
+        auto columns = [column("time", ColumnKind.Time), column("app"), column("ctx"),
             column("level", ColumnKind.Level), column("payload", ColumnKind.Payload)];
+        foreach (ref c; columns)
+            c.shownByDefault = c.id != hidden;
+        return columns;
     }
 
     private const(string)[] ids(const(ColumnInfo)[] columns)
     {
         return columns.map!(c => c.id[]).array;
     }
+}
+
+@("defaultLayout: the movable columns in the order of the format, shown as it says")
+unittest
+{
+    const columns = sample("ctx");
+    assert(defaultLayout(columns) == [ColumnState("time"), ColumnState("app"), ColumnState("ctx", false),
+        ColumnState("level")]);
+}
+
+@("arrangeColumns: no layout hides the columns the format hides by default")
+unittest
+{
+    const columns = sample("app");
+    assert(ids(arrangeColumns(columns, null)) == ["time", "ctx", "level", "payload"]);
+}
+
+@("arrangeColumns: a column hidden by default is shown if the layout shows it")
+unittest
+{
+    const columns = sample("app");
+    const layout = [ColumnState("time"), ColumnState("app"), ColumnState("ctx"), ColumnState("level")];
+    assert(ids(arrangeColumns(columns, layout)) == ["time", "app", "ctx", "level", "payload"]);
+}
+
+@("arrangeColumns: a column the layout doesn't know is hidden if the format hides it by default")
+unittest
+{
+    const columns = sample("ctx");
+    const layout = [ColumnState("level"), ColumnState("time")];
+    assert(ids(arrangeColumns(columns, layout)) == ["level", "time", "app", "payload"]);
+}
+
+@("isDefaultLayout: a column hidden by default and shown by the layout is not the default")
+unittest
+{
+    const columns = sample("app");
+    const defaults = defaultLayout(columns);
+    assert(isDefaultLayout([ColumnState("time"), ColumnState("app", false)], defaults));
+    assert(!isDefaultLayout([ColumnState("time"), ColumnState("app")], defaults));
 }
 
 @("movableIds: every column but Payload")
@@ -171,21 +222,22 @@ unittest
     assert(columns[$ - 1].kind == ColumnKind.Payload);
 }
 
-@("fullLayout: every column once, in the order of the layout, unknown ones shown")
+@("fullLayout: every column once, in the order of the layout, unknown ones as by default")
 unittest
 {
     const layout = [ColumnState("level", false), ColumnState("tid"), ColumnState("app")];
-    assert(fullLayout(["time", "app", "ctx", "level"], layout) == [ColumnState("time"),
-        ColumnState("level", false), ColumnState("tid"), ColumnState("app"), ColumnState("ctx")]);
-    assert(fullLayout(["a", "b"], null) == [ColumnState("a"), ColumnState("b")]);
-    assert(fullLayout(["a"], [ColumnState("a", false), ColumnState("a")]) == [ColumnState("a", false)],
+    const defaults = [ColumnState("time"), ColumnState("app"), ColumnState("ctx", false), ColumnState("level")];
+    assert(fullLayout(defaults, layout) == [ColumnState("time"),
+        ColumnState("level", false), ColumnState("tid"), ColumnState("app"), ColumnState("ctx", false)]);
+    assert(fullLayout([ColumnState("a"), ColumnState("b", false)], null) == [ColumnState("a"), ColumnState("b", false)]);
+    assert(fullLayout([ColumnState("a")], [ColumnState("a", false), ColumnState("a")]) == [ColumnState("a", false)],
         "a duplicate in the layout is dropped");
 }
 
-@("isDefaultLayout: only the order of the format with all columns shown")
+@("isDefaultLayout: only the order of the format with its columns shown as by default")
 unittest
 {
-    const ids = ["time", "app"];
+    const ids = [ColumnState("time"), ColumnState("app")];
     assert(isDefaultLayout(null, ids));
     assert(isDefaultLayout([ColumnState("time"), ColumnState("app")], ids));
     assert(!isDefaultLayout([ColumnState("app"), ColumnState("time")], ids));
