@@ -71,7 +71,8 @@ ptable  ←  ptable_text  ←  ui
   `std.regex`), keys by name (`utils/keys`,
   whatever the system) and their codes of macOS (`utils/mac_keys`), Objective-C calls
   (`utils/objc`), the boundary of callbacks of foreign code (`utils/foreign_callback`), the
-  program's own log (`utils/app_log`), standard streams a program started without
+  program's own log (`utils/app_log`), the path of a `file://` URL of Sciter's dialogs
+  (`utils/file_url`), standard streams a program started without
   (`utils/std_streams`).
 - `log_core/`: what doesn't depend on a format (LogMessage, LogFormat, filters, ByteSource,
   column layout, the values of the columns of a record (`column_values`: the one place the

@@ -12,6 +12,7 @@ import sciter.capi.behavior;
 import domain.document_id : DocumentId;
 import ui.app_menu : MenuItem, MenuPlatform;
 import ui.main_menu_loader : retitleAppMenu;
+import utils.file_url : pathOfFileUrl;
 import utils.ui_text : UiText;
 import ui.app_resources : appResourceOfUrl, appResourceUrl, builtInCatalogs;
 import ui.app_session : AppSession;
@@ -219,7 +220,7 @@ class MainWindow : SciterWindow
             const path = param!string(0);
             if (path.empty)
                 return true;
-            const opened = _session.openFile(normalizePath(path));
+            const opened = _session.openFile(pathOfFileUrl(path));
             if (opened.docId.isValid)
                 resultView = cast(int) opened.docId.toInt();
             else
@@ -322,7 +323,7 @@ class MainWindow : SciterWindow
             return true;
         case "loadDescriptions":
             // loadDescriptions(docId, path) -> error message, "" if asked (read in the background)
-            answer(_session.loadDescriptions(docParam(), normalizePath(param!string(1))));
+            answer(_session.loadDescriptions(docParam(), pathOfFileUrl(param!string(1))));
             return true;
         case "unloadDescriptions":
             // unloadDescriptions(docId) -> error message, "" if dropped
@@ -334,7 +335,7 @@ class MainWindow : SciterWindow
             return true;
         case "saveAttachment":
             // saveAttachment(docId, id, path) -> error message, "" if saved
-            answer(_session.saveAttachment(docParam(), param!int(1), normalizePath(param!string(2))));
+            answer(_session.saveAttachment(docParam(), param!int(1), pathOfFileUrl(param!string(2))));
             return true;
         case "getSearchHistory":
             // getSearchHistory(docId) -> [[chips]] of the document, the latest first
@@ -366,13 +367,13 @@ class MainWindow : SciterWindow
             answer(filters is null ? `{"error":"","conditions":[]}` : filters.checkRule(param!string(1), &_session.textForUser).toString());
             return true;
         case "loadFilterFile":
-            answer(filterCommand(docParam(), f => f.loadFile(normalizePath(param!string(1)))));
+            answer(filterCommand(docParam(), f => f.loadFile(pathOfFileUrl(param!string(1)))));
             return true;
         case "newFilterSet":
             answer(filterCommand(docParam(), f => f.newSet(&_session.textForUser)));
             return true;
         case "exportFilterSet":
-            answer(filterCommand(docParam(), f => f.exportSet(param!int(1), normalizePath(param!string(2)))));
+            answer(filterCommand(docParam(), f => f.exportSet(param!int(1), pathOfFileUrl(param!string(2)))));
             return true;
         case "removeFilterSet":
             answer(filterCommand(docParam(), f => f.remove(param!int(1))));
@@ -408,21 +409,6 @@ class MainWindow : SciterWindow
         if (error.length)
             writeln("filter command: ", error);
         return error;
-    }
-
-    static string normalizePath(string path) pure
-    {
-        if (path.startsWith("file://"))
-        {
-            path = path[7 .. $];
-            if (path.startsWith("/"))
-                return path;
-            version (Windows)
-                if (path.length > 2 && path[1] == ':')
-                    return path;
-            return "/" ~ path;
-        }
-        return path;
     }
 
     /// Writes what is left of the settings and closes all tabs: their documents no one
