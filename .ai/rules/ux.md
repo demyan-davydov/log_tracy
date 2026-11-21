@@ -129,6 +129,9 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     focus follows the release: it must not slow the switch down (`press-focus.js`).
 47. **Context menus open by the mouse only.** A right click (Control+click on macOS) opens a
     context menu; the keyboard (the Menu key, Shift+F10) opens none, anywhere (`menu-gate.js`).
+    An item shows its key as the window's menu does (`⌘C`, `Ctrl+C`), but only when that key
+    always does what the item does: a key that does one item or another by the state shows on
+    neither.
 
 ## Log Table
 
@@ -167,7 +170,8 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     selects a word, a triple click the whole text of its cell; Escape clears the text first,
     then the rows; Cmd+C copies the selected text if any, else the rows (cells by tabs, rows by
     new lines); Cmd+A (Ctrl+A elsewhere) picks all rows without scrolling and lets go of the text;
-    the row context menu offers "Copy" while text is selected, "Copy Cell" and "Copy Row" (a
+    the row context menu offers "Copy" while text is selected (with its key: Cmd+C), "Copy
+    Cell" and "Copy Row" (a
     right click on a row not picked picks it, on one picked keeps the rows; the text stays).
     Selected text is painted over the match colors (`--bg-text-selected`).
 30. **A table follows its end only when the user asks.** While the vertical scroll bar is shown, a
@@ -205,7 +209,7 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
 48. **The search field has a context menu.** A right click in it offers Cut, Copy, Paste and
     Select All, doing what their keys do: Cut and Copy take the chips selected or the text
     selected in a chip, Paste makes chips of a query; an item with nothing to act on is
-    disabled. The right click moves neither the caret nor the selection.
+    disabled. Each item shows its key. The right click moves neither the caret nor the selection.
 49. **Double and triple clicks in the search field select chips.** A double click between chips
     selects the chip left of it whole (none before the first chip); in a chip it selects a word
     of its text. A triple click on a chip selects that chip whole, as chips are selected (not its

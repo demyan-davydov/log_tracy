@@ -3,7 +3,7 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { commandOfKey, shortcutsOf, shortcutTextOf, mnemonicParts, mnemonicOf } from "../../resources/menu-shortcuts.js";
+import { commandOfKey, shortcutsOf, shortcutTextOf, primaryShortcutText, mnemonicParts, mnemonicOf } from "../../resources/menu-shortcuts.js";
 
 const shortcuts = [
     { command: "file.open", code: "KeyO", ctrl: true, shift: false, alt: false },
@@ -104,4 +104,9 @@ test("a cyrillic mnemonic is the key of its letter on the russian layout, whatev
 test("a mnemonic of no known key is none", () => {
     assert.equal(mnemonicOf([{ label: "1st", mnemonic: 0, command: "a" }], key("Digit1"), false), -1);
     assert.equal(mnemonicOf([{ label: "Ω", mnemonic: 0, command: "a" }], key("KeyW"), false), -1);
+});
+
+test("primaryShortcutText: a key with the primary modifier as each platform shows it", () => {
+    assert.equal(primaryShortcutText("C", true), "⌘C");
+    assert.equal(primaryShortcutText("C", false), "Ctrl+C");
 });

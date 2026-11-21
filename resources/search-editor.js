@@ -8,6 +8,7 @@
 import * as platform from "platform.js";
 import { tr } from "i18n/i18n.js";
 import { menuOpensByMouse } from "menu-gate.js";
+import { primaryShortcutText } from "menu-shortcuts.js";
 import { translateTree } from "i18n/dom.js";
 import {
     moveCaret, moveTo, typeInGap, deleteInGap, searchChips,
@@ -575,15 +576,19 @@ export class SearchEditor {
             }
             const synced = this.syncedState();
             const items = contextMenuItems(synced, this.chipTextSelection(synced) !== null, platform.clipboardHasText());
-            const item = (command, label) => items[command]
-                ? <li command={command}>{label}</li>
-                : <li command={command} disabled>{label}</li>;
+            // each item shows its key, as the items of the window's menu do
+            const item = (command, label, key) => {
+                const content = [label, <span class="accesskey">{primaryShortcutText(key, isMac())}</span>];
+                return items[command]
+                    ? <li command={command}>{content}</li>
+                    : <li command={command} disabled>{content}</li>;
+            };
             evt.source = Element.create(<menu class="context search-context" editor={this.id}>
-                {item("cut", tr("Cut"))}
-                {item("copy", tr("Copy"))}
-                {item("paste", tr("Paste"))}
+                {item("cut", tr("Cut"), "X")}
+                {item("copy", tr("Copy"), "C")}
+                {item("paste", tr("Paste"), "V")}
                 <hr />
-                {item("selectAll", tr("Select All"))}
+                {item("selectAll", tr("Select All"), "A")}
             </menu>);
             return true;
         });

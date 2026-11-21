@@ -38,6 +38,13 @@ export function shortcutTextOf(menus, command) {
     return null;
 }
 
+// The text of `key` with the primary modifier ("⌘C" on macOS, "Ctrl+C" elsewhere), as the
+// backend writes the shortcuts of the window's menu (ui/app_menu `shortcutText`): for the
+// items of the context menus, which the window's menu doesn't hold
+export function primaryShortcutText(key, mac) {
+    return mac ? `⌘${key}` : `Ctrl+${key}`;
+}
+
 // A label with a mnemonic split around its letter: { before, key, after }, null
 // if it has none
 export function mnemonicParts(item) {

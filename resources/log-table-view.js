@@ -8,8 +8,9 @@ import { lockAxis, panAxis } from "log-table-gesture.js";
 import { anchorClickPlan, rowMoved } from "anchor-click.js";
 import { anchorRefusalText } from "pane-commands.js";
 import { showNotice, showNoticeAt } from "notice.js";
-import { copyText } from "platform.js";
+import { copyText, isMac } from "platform.js";
 import { menuOpensByMouse } from "menu-gate.js";
+import { primaryShortcutText } from "menu-shortcuts.js";
 import { tr } from "i18n/i18n.js";
 
 // The tables there are, by the number D gave each: what D tells the script (a click on an anchor, an item of a menu) names its table
@@ -108,7 +109,8 @@ export class LogTableView {
         // The context menu is the script's, the table only answers where the click was (`hitTest`, JSON: `kind` header / footer / cell /
         // free, `column` (id) and `index`, of a cell `row`, `picked` and `text` {offset, word} when the point is on characters; `hasText`:
         // some text is selected). A cell of a row that is not picked makes the row the picked one (`contextPick`). Every copy item carries
-        // its table and the address it copies from: the kind (0 the text, 1 the rows, 2 a cell), the row, the column's index.
+        // its table and the address it copies from: the kind (0 the text, 1 the rows, 2 a cell), the row, the column's index. Only Copy
+        // shows its key: Cmd/Ctrl+C copies the text while there is some, else the rows, so the key of Copy Row would come and go.
         // The event "contextmenu" has no position (x and y are 0): the press that makes it is the last "mousedown", in the element's own dip.
         let pressX = 0, pressY = 0;
         // A press takes the keys: the behavior handles the press itself, and then Sciter does not give the element the focus, so Cmd/Ctrl+C,
@@ -133,7 +135,9 @@ export class LogTableView {
             if (!hit.picked) this.call("contextPick", hit.row);
             const table = this.tableId;
             evt.source = Element.create(<menu class="context">
-                {hit.hasText ? <li class="log-table-copy" table={table} kind="0" row={hit.row} column={hit.index}>{tr("Copy")}</li> : []}
+                {hit.hasText ? <li class="log-table-copy" table={table} kind="0" row={hit.row} column={hit.index}>
+                    {tr("Copy")}<span class="accesskey">{primaryShortcutText("C", isMac())}</span>
+                </li> : []}
                 <li class="log-table-copy" table={table} kind="2" row={hit.row} column={hit.index}>{tr("Copy Cell")}</li>
                 <li class="log-table-copy" table={table} kind="1" row={hit.row} column={hit.index}>{tr("Copy Row")}</li>
             </menu>);
