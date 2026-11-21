@@ -100,7 +100,10 @@ agent can't drive it. In scapp a plain
   `requestPaint()`) draws the window twice, ~2 ms apart: Sciter's own render in its loop, then again when Core
   Animation has the view's layer display (`NSViewBackingLayer display` → `notifyWindowPaint`). Frames of an animation
   frame request come once each. Not caused by the handler (a handler that only fills does the same), nor by the layer
-  (CG, Skia raster alike); details in `docs/backlog.md`, "наведение перерисовывает всю таблицу". Numbers and what the API lacks:
+  (CG, Skia raster alike); details in `docs/backlog.md`, "наведение перерисовывает всю таблицу".
+  Drawing the table into an image to blit it on the second pass doesn't pay: inside `DRAW_CONTENT` `gCreate` on an
+  image answers `GRAPHIN_NOTSUPPORTED`, `imagePaint` works and keeps text sharp at `gScale(2)`, but drawing into it
+  costs ~3x drawing on the screen (the image is rastered by the CPU, the screen's commands go to the GPU). Numbers and what the API lacks:
   `docs/experiments/2026-11-21-text-layout-cost.md`. A layout costs ~20 KB of memory: 5000 cached ones were +100 MB of RSS, 600 are
   +10 MB (`SciterTextCache` keeps two generations, `ui/sciter_table/generations`). A layout wraps only by a `width: Npx` in its style: `textSetBox` alone leaves one line. Details and numbers:
   `docs/experiments/2026-11-19-painted-rows-d.md`.
