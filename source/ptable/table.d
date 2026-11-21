@@ -1124,7 +1124,8 @@ final class Table
     }
 
     /// The row `index` is shown: when it is not in view the rows move so that it stands with `revealMargin` pixels left on the side it came
-    /// from, or at the top of the window if it does not fit with them (see `RowViewport.revealPlan`). With the time of the host the rows glide
+    /// from, or at the top of the window if it does not fit with them; one taller than the window that came from above ends at the bottom of the
+    /// window (see `RowViewport.revealPlan`). With the time of the host the rows glide
     void reveal(size_t index, double timestampMs = double.nan)
     {
         _motion.stop();
@@ -2906,7 +2907,7 @@ unittest
     f.table.mouseDown(30, 21.0 + 2);
     f.table.mouseUp(30, 21.0 + 2);
     f.table.paint(f.canvas);
-    assert(f.table.firstVisible == CellPosition(2, 0, 0, 0), "cut at the top: it does not fit, its top comes to the top of the window");
+    assert(f.table.firstVisible == CellPosition(2, 0, -6, 0), "cut at the top: it does not fit, its bottom comes to the bottom of the window");
 }
 
 @("Table: with the time of the host a click on a row cut at an edge brings it in by a glide on the frames")

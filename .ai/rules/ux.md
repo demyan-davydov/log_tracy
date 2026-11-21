@@ -155,11 +155,11 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     table is shown in the other one if it has that message: selected there, scrolled only if
     not already wholly on screen: a row from below comes in with about 24 dips of room under it,
     one from above with the same over it, a row that does not fit the window with that room goes
-    to the top of the window, one taller than the window that covers it stays (the far part of the
-    way is jumped over, the last screen or so scrolls animated, so the eye sees which way the
-    rows went; Go to Message and the keys bring a row into view the same way). Multiple
-    selection: the last
-    clicked/dragged-to/arrowed row. A click follows at once; a drag and the arrow keys only
+    to the top of the window, one taller than the window that covers it stays, one taller than
+    the window that comes from above (only its bottom seen) ends at the bottom of the window
+    (the far part of the way is jumped over, the last screen or so scrolls animated, so the eye
+    sees which way the rows went; Go to Message and the keys bring a row into view the same
+    way). Multiple selection: the last clicked/dragged-to/arrowed row. A click follows at once; a drag and the arrow keys only
     after the row rests 500 ms. The keyboard focus stays in the table where the user selects.
 29. **Text is selected across cells and rows.** A plain drag in any cell (not the anchor)
     selects text from the press to the mouse, across cells and rows, auto-scrolling at the
