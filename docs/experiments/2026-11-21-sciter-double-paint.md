@@ -1,6 +1,6 @@
 # One requestPaint(), two paints of the whole window (Sciter 6.0.5.5, macOS)
 
-A report for the author of Sciter. The two repro pages, `double-paint.htm` and `clip.htm`, are at the end: save each
+A report for the author of Sciter. The repro pages, `double-paint.htm`, `clip.htm` and `changes.htm`, are at the end: save each
 as a file and open it in `scapp`.
 
 ## Environment
@@ -42,6 +42,21 @@ nothing asks to repaint does the same. The counts go to the window's caption, no
 In four runs out of four the caption says `asked painted 2, other painted 2`, and both boxes are entirely red on the
 screen: no pixel of green is left, so the second paint is not clipped to a smaller area. It repaints the whole content
 of every element, also of the one nobody asked. No blue: changing the caption causes no third paint.
+
+## Not only requestPaint()
+
+`changes.htm` has an element that paints itself and never asks for a paint. Each change below is made once, and the
+element's paints in the next 300 ms are counted; two runs:
+
+| Change | Run 1 | Run 2 |
+|---|---|---|
+| the element's own width (`style.width`) | 1, 1, 5 | 2, 1, 2 |
+| the text of another element | 5, 1, 1 | 2, 2, 2 |
+| the window's size (`Window.this.move`) | 2, 2, 1 | 2, 2, 2 |
+| `requestPaint()` of the element | 2, 2, 2 | 1, 2, 2 |
+
+Changes Sciter makes itself paint twice too, and a change of another element repaints this one, also twice. The 5s of
+the first run (the first changes after the window opened) are not explained.
 
 ## Where the two paints come from
 
@@ -201,6 +216,65 @@ one could reuse what the first rendered.
       Window.this.caption = `asked painted ${counts.asked}, other painted ${counts.other}`;
     }, 300);
   }, 1000);
+</script>
+</body>
+</html>
+```
+
+## changes.htm
+
+```html
+<html>
+<head>
+<title>changes</title>
+<style>
+  #box { width: 300px; height: 200px; background: #eee; margin: 8px; }
+  #label { margin: 8px; }
+</style>
+</head>
+<body>
+  <div #box></div>
+  <div #label>label</div>
+<script>
+  // The box paints itself but never asks for a paint: Sciter decides when. Each change below is made once, and the paints
+  // of the box during the next 300 ms are counted. The results go to the caption at the end.
+  const box = document.$("#box"), label = document.$("#label");
+  let paints = 0;
+  box.paintContent = function(gfx) {
+    ++paints;
+    gfx.fillStyle = "#c33";
+    gfx.fillRect(10, 10, 100, 50);
+  };
+
+  const changes = [
+    ["box width", () => box.style.width = (box.style.width == "320px" ? "300px" : "320px")],
+    ["box width", () => box.style.width = (box.style.width == "320px" ? "300px" : "320px")],
+    ["box width", () => box.style.width = (box.style.width == "320px" ? "300px" : "320px")],
+    ["label text", () => label.textContent = "label " + Date.now()],
+    ["label text", () => label.textContent = "label " + Date.now()],
+    ["label text", () => label.textContent = "label " + Date.now()],
+    ["window size", () => { const [x, y, w, h] = Window.this.box("xywh", "border", "screen"); Window.this.move(x, y, w + 20, h); }],
+    ["window size", () => { const [x, y, w, h] = Window.this.box("xywh", "border", "screen"); Window.this.move(x, y, w - 20, h); }],
+    ["window size", () => { const [x, y, w, h] = Window.this.box("xywh", "border", "screen"); Window.this.move(x, y, w + 20, h); }],
+    ["box requestPaint", () => box.requestPaint()],
+    ["box requestPaint", () => box.requestPaint()],
+    ["box requestPaint", () => box.requestPaint()],
+  ];
+  const results = [];
+  let i = -1;
+  function next() {
+    if (i >= 0)
+      results.push(`${changes[i][0]}: ${paints}`);
+    if (++i >= changes.length) {
+      label.style.whiteSpace = "pre";
+      label.textContent = results.join("\n"); // the last change: nothing is counted after it
+      return;
+    }
+    paints = 0;
+    changes[i][1]();
+    setTimeout(next, 300);
+  }
+  setTimeout(next, 1000);
 </script>
 </body>
 </html>
