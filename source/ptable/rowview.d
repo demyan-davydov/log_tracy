@@ -14,7 +14,7 @@ version (unittest)
 
     private immutable RowRanges noRows;
 }
-import ptable.layout : Placement, Placements;
+import ptable.layout : Pin, Placement, Placements;
 import ptable.painter : CellContext, Painter, RowContext, RowState;
 import ptable.ports : Rect;
 import ptable.regions : Panes, cellIn, panesOf, seenOf;
@@ -130,10 +130,10 @@ final class RowView
         return textPositionAt(focused, row, x, y, at);
     }
 
-    /// The rectangles `range` takes in the row `focused`
-    void selectionRects(ref FocusedRow focused, TextRange range, size_t row, scope void delegate(Rect) emit)
+    /// The rectangles `range` takes in the cells of the row `focused` that stand in `area`
+    void selectionRects(ref FocusedRow focused, TextRange range, size_t row, Pin area, scope void delegate(Rect) emit)
     {
-        .selectionRects(focused, range, row, emit);
+        .selectionRects(focused, range, row, emit, (size_t col) => focused.area(col) == area);
     }
 }
 
@@ -148,6 +148,7 @@ struct FocusedRow
 
     size_t length() { return _cells.length; }
     double right(size_t col) { return _cells[col].x + _cells[col].width; }
+    Pin area(size_t col) { return _cells[col].area; } /// the area the cell `col` stands in
     CellText cell(size_t col) { return _view.cellText(_entry, _row, _cells[col], _panes[_cells[col].area]); }
 }
 
