@@ -42,7 +42,7 @@ You need:
 
 ### Linux
 
-Checked by the CI on Ubuntu (`ubuntu-latest`), not yet by hand: tell what had to be done
+Checked by the CI on Ubuntu, x64 (`ubuntu-latest`) and arm64 (`ubuntu-24.04-arm`), not yet by hand: tell what had to be done
 differently.
 
 1. A C toolchain and GTK 3, which Sciter draws with. On Debian or Ubuntu:
@@ -227,7 +227,7 @@ git push origin v0.9.0
 ```
 
 The CI builds and tests the three systems as for any push and, once they pass, its `release`
-job publishes the release `v<version>` with the `.dmg`, the `.deb` and the Windows `.zip`,
+job publishes the release `v<version>` with the `.dmg`, the two `.deb` (x64 and arm64) and the Windows `.zip`,
 and the notes of the commits since the last one. It stops if the tag is not the version of
 `VERSION`. The README links to the latest release.
 

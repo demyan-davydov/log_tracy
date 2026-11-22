@@ -16,6 +16,8 @@ jobs:
             sciter: libs/macosx/libsciter.dylib.br
           - os: ubuntu-latest
             sciter: libs/linux/x64/libsciter.so.br
+          - os: ubuntu-24.04-arm
+            sciter: libs/linux/arm64/libsciter.so.br
           - os: windows-latest
             sciter: libs/windows/x64/sciter.dll.br
     runs-on: ${{ matrix.os }}
@@ -31,7 +33,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: .git/lfs
-          key: lfs-${{ runner.os }}-${{ hashFiles('.lfs-objects') }}
+          key: lfs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.lfs-objects') }}
 
       - uses: dlang-community/setup-dlang@v2
         with:
@@ -54,18 +56,19 @@ jobs:
       - name: Distribution
         run: node scripts/build.mjs dist
 
-      # packed here: an artifact is zipped without the executable bits of the files
+      # packed here: an artifact is zipped without the executable bits of the files. Named by
+      # the system and the architecture: Linux is built on x64 and arm64
       - name: Pack the distribution
         shell: bash
-        run: tar -czf log-tracy-${{ runner.os }}.tar.gz -C build/dist .
+        run: tar -czf log-tracy-${{ runner.os }}-${{ runner.arch }}.tar.gz -C build/dist .
       - uses: actions/upload-artifact@v4
         with:
-          name: log-tracy-${{ runner.os }}
-          path: log-tracy-${{ runner.os }}.tar.gz
+          name: log-tracy-${{ runner.os }}-${{ runner.arch }}
+          path: log-tracy-${{ runner.os }}-${{ runner.arch }}.tar.gz
       # the installers on their own: they keep what they install as it is, the zip harms nothing
       - uses: actions/upload-artifact@v4
         with:
-          name: log-tracy-${{ runner.os }}-installer
+          name: log-tracy-${{ runner.os }}-${{ runner.arch }}-installer
           path: |
             build/dist/macos/*.dmg
             build/dist/linux/*.deb
@@ -87,7 +90,7 @@ jobs:
           if-no-files-found: ignore
 
   # A tag v<VERSION> (git tag v0.9.0 && git push origin v0.9.0) publishes a release of GitHub
-  # with the installers of the three systems, once every build has passed. The tag must be
+  # with the installers of every system and architecture, once every build has passed. The tag must be
   # the version of the VERSION file
   release:
     needs: build
