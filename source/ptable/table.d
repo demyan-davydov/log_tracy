@@ -334,6 +334,8 @@ final class Table
     {
         _store.ensure();
         _viewport.height(_store.space.regions.rows.h);
+        const geometry = _store.space.fonts.geometry;
+        _viewport.margins(geometry.marginTop, geometry.marginBottom); // scrolled with the rows
         _viewport.count(_store.itemCount);
         _viewport.minHeight(_store.fallbackHeight); // no row is lower than an empty one
         _viewport.restorePlace(); // the heights are known now
@@ -486,13 +488,14 @@ final class Table
         invalidate();
     }
 
-    /// The first item and the part of it scrolled away
+    /// The first item and the part of it scrolled away, in the heights the viewport scrolls by: the first item's offset counts the margin
+    /// above it (`RowViewport.state`); not a place for `scrollToRow`, which takes the rows' own tops
     ViewState position() const
     {
         return _viewport.state;
     }
 
-    /// Where the rows lie in the table: the body less the margins around them
+    /// Where the rows lie in the table: the body less the margins at its sides (the ones above and under the rows are scrolled with them)
     Rect rowsArea()
     {
         _store.ensure(); // the regions, not a new pass
@@ -556,7 +559,8 @@ final class Table
         invalidate();
     }
 
-    /// The last row is the one at the bottom (the way "End" does). With the time of the host the rows glide, as `scrollToPosition` does
+    /// The last row is the one at the bottom, the margin under it in view (where End brings it too: `RowViewport.revealPlan`). With the time of the host the rows glide, as
+    /// `scrollToPosition` does
     void scrollToEnd(double timestampMs = double.nan)
     {
         _motion.stop();
@@ -566,11 +570,11 @@ final class Table
             return;
         auto at = firstVisible;
         at.row = count - 1;
-        at.dy = _store.space.regions.rows.h - _store.heightOf(count - 1);
+        at.dy = _viewport.endTop; // the margin under the last row is the viewport's
         scrollToPosition(at, timestampMs);
     }
 
-    /// The width and the height of the room the rows lie in (the table less the header and what is around the rows)
+    /// The width and the height of the room the rows lie in (the table less the header, the footer and the margins at the sides)
     Size size()
     {
         const rows = rowsArea();
@@ -719,7 +723,7 @@ final class Table
         const p = places();
         const picked = Picked(_picker.rows, _picker.currentRow, _picker.text.hasText, _picker.text.range, _picker.hover.row, _picker.hover.column,
             _picker.cellPress.row, _picker.cellPress.column, _tableHasFocus);
-        _frame.paint(canvas, _viewport.slots, p, picked);
+        _frame.paint(canvas, _viewport.slots, p, picked, _viewport.marginsInView);
         if (p.scrollX != _store.layout.scrollX)
             _store.layout.setScrollX(p.scrollX); // the scroll the columns have after the clamp: the layout keeps it, it does not run ahead
         const metrics = _viewport.metrics();
@@ -1804,7 +1808,7 @@ unittest
     assert(clickedItem == size_t.max, "a drag is not a click");
 }
 
-@("Table: the footer and the margins above and under the rows are painted by the painter, the rows lie between them")
+@("Table: the footer and the margins above and under the rows are painted by the painter, a margin where it is in view")
 unittest
 {
     static class Padded : Painter
@@ -1829,9 +1833,13 @@ unittest
     auto table = new Table(model, new ColumnHost, portsOf(painter));
     table.resize(400, 200);
     table.paint(new RecordingCanvas);
-    assert(painter.seen == ["above", "below", "footer"]);
-    // 200 - 21 header - 20 footer - 4 - 10 = 145 of rows: 10 rows of 16 (the last cut)
+    assert(painter.seen == ["above", "footer"], "at the start the margin above the first row, the one under the last is far");
+    // 200 - 21 header - 20 footer = 159 of rows, the first 4 under their top: 10 rows of 16 (the last cut)
     assert(table.stats.rowsOnScreen == 10);
+    painter.seen = null;
+    table.scrollToEnd();
+    table.paint(new RecordingCanvas);
+    assert(painter.seen == ["below", "footer"], "at the end the margin under the last row");
 }
 
 @("Table: a virtual item is not selected, the keys pass it")
@@ -2665,7 +2673,7 @@ unittest
     assert(main.rowsArea() == Rect(0, 21, 400, 100) && search.rowsArea() == Rect(0, 21, 400, 100));
 }
 
-@("Table: margins wider and higher than the table leave the rows no room: it paints, scrolls and is hit with none")
+@("Table: margins wider and higher than the table: the one above gives way to the first row, the ones at the sides leave the columns no room")
 unittest
 {
     class Spaced : Painter
@@ -2682,11 +2690,13 @@ unittest
     tall.resize(400, 121);
     auto canvas = new RecordingCanvas;
     tall.paint(canvas);
-    assert(tall.rowsArea().h == 0 && tall.stats.rowsOnScreen == 0);
+    assert(tall.rowsArea().h == 100 && tall.partlyVisibleRows == [0, 1], "the margin gives way: the first row at the bottom of the window");
+    Rect cell;
+    assert(tall.cellRect(0, 0, cell) && cell.bottom == 121);
+    assert(!tall.selectAt(50, 60, false), "no row to hit in the margin");
     tall.scrollBy(50);
     tall.scrollToEnd();
     tall.paint(canvas);
-    assert(!tall.selectAt(50, 60, false), "no row to hit");
 
     auto host = new ColumnHost;
     host.setMargins(SideMargins(300, 300));
@@ -2699,7 +2709,7 @@ unittest
     wide.selectAt(50, 30, false);
 }
 
-@("Table: the margins above and under the rows are always there, and the scroll counts them: the end of the rows stands over the bottom one")
+@("Table: the margins above and under the rows are scrolled with them: the window keeps the body's height, the end stands over the bottom one")
 unittest
 {
     class Spaced : Painter
@@ -2714,24 +2724,24 @@ unittest
     }
 
     auto table = new Table(new NumbersModel(100), new ColumnHost, portsOf(new Spaced));
-    table.resize(400, 121); // the rows 21 + 4 .. 121 - 10: 86 high, rows of 16
+    table.resize(400, 121); // the rows 21 .. 121: 100 high, rows of 16
     auto canvas = new RecordingCanvas;
     table.paint(canvas);
-    assert(table.rowsArea() == Rect(0, 25, 400, 86));
+    assert(table.rowsArea() == Rect(0, 21, 400, 100), "the margins take no room of the window");
     Rect cell;
-    assert(table.cellRect(0, 0, cell) && cell.y == 25, "the first row under the top margin");
-    assert(table.scrollMetrics.shown == 86.0 / 16 / 100, "the rows in 86 px, not in 100");
+    assert(table.cellRect(0, 0, cell) && cell.y == 25, "at the start the first row under the top margin");
+    table.scrollBy(4);
+    table.paint(canvas);
+    assert(table.cellRect(0, 0, cell) && cell.y == 21, "the margin scrolls away with the rows");
     table.scrollToEnd();
     table.paint(canvas);
     assert(table.cellRect(99, 0, cell) && cell.bottom == 111, "the last row ends where the bottom margin begins");
     table.scrollBy(50);
     table.paint(canvas);
     assert(table.cellRect(99, 0, cell) && cell.bottom == 111, "and no further");
-    table.reveal(0);
+    table.scrollBy(-5);
     table.paint(canvas);
-    table.reveal(99);
-    table.paint(canvas);
-    assert(table.cellRect(99, 0, cell) && cell.bottom <= 111, "a row brought into view comes over the bottom margin");
+    assert(table.cellRect(99, 0, cell) && cell.bottom == 116, "a scroll back moves the margin out first");
 }
 
 @("Table: the host is told the current row: at once for a click and a selection asked for, delayed for a drag over rows and for the keys")

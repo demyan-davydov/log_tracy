@@ -3,9 +3,12 @@
 //! stands (the first item and the part of it scrolled away); it says which items are on the screen and
 //! where, and what a scroll bar needs (`ScrollMetrics`, by `ptable.scrollscale`). It knows nothing of columns, cells,
 //! text or colors, and nothing of a scroll bar's looks: any bar, the host's own or a painted one, is driven through
-//! `metrics` and `scrollToFraction`. Pure. See docs/stories/painted-table.md.
+//! `metrics` and `scrollToFraction`. The room above the first item and under the last one (`margins`, `ptable.edgemargins`) is
+//! scrolled with them: inside, the first and the last item are that much taller (their padded heights, the state stands in them), what
+//! it tells outside are the items themselves. Pure. See docs/stories/painted-table.md.
 module ptable.viewport;
 
+import ptable.edgemargins : EdgeMargins, MarginsInView, marginsInViewOf = marginsInView;
 import ptable.rowlayout;
 import ptable.scrollscale : anchorFraction, anchorPlace, exactPixels, exactRows, pixelFraction, pixelSpan, pixelState, rowsShown;
 
@@ -73,8 +76,9 @@ final class RowViewport
     private HeightOf _heightOf, _estimate;
     private size_t _count;
     private double _height = 0;
-    private ViewState _state;
-    private RowSlot[] _slots;
+    private EdgeMargins _margins; // above the first item and under the last one
+    private ViewState _state; // in the padded heights: offset 0 of the first item is the top of the margin above it
+    private RowSlot[] _slots, _paddedSlots; // the items on the screen, and the same with the margins: what the scroll scale reads
     private double _pending = 0;
     private ScrollAnchor _anchor;
     private double _minHeight = 0;
@@ -95,6 +99,46 @@ final class RowViewport
     {
         _heightOf = heightOf;
         _estimate = estimate !is null ? estimate : heightOf;
+    }
+
+    /// The room above the first item and under the last one, scrolled with them: at the start the first item stands `top` under the top of the
+    /// window, at the end the last one `bottom` above its bottom; in a low window a margin gives way to its item (`EdgeMargins`)
+    void margins(double top, double bottom)
+    {
+        _margins = EdgeMargins(max(0.0, top), max(0.0, bottom));
+    }
+
+    // The height of the item `i` with the margins (the first one taller by the one above it, the last by the one under it): the heights the
+    // state stands in
+    private double padded(size_t i) nothrow
+    {
+        const own = _heightOf(i);
+        return own + _margins.around(i, _count, own, _height);
+    }
+
+    // The same by the estimate (`_estimate`)
+    private double paddedEstimate(size_t i) nothrow
+    {
+        const own = _estimate(i);
+        return own + _margins.around(i, _count, own, _height);
+    }
+
+    // The top of the item `i` less the top of its padded height: the margin above the first item
+    private double above(size_t i) nothrow
+    {
+        return i == 0 ? _margins.above(0, _heightOf(0), _height) : 0;
+    }
+
+    // The room under the item `i`: the margin under the last item
+    private double below(size_t i) nothrow
+    {
+        return _count > 0 && i == _count - 1 ? _margins.below(i, _count, _heightOf(i), _height) : 0;
+    }
+
+    /// The parts of the margins in the window, from its top, as `layout` last put the items
+    MarginsInView marginsInView() const
+    {
+        return marginsInViewOf(_paddedSlots, _slots, _count, _height);
     }
 
     /// The items in the list
@@ -125,7 +169,8 @@ final class RowViewport
         return _slots;
     }
 
-    /// The first item on the screen and the part of it scrolled away
+    /// The first item on the screen and the part of it scrolled away, in the padded heights: the first item's offset counts the margin above
+    /// it (0: the top of the margin at the top of the window)
     ViewState state() const
     {
         return _state;
@@ -157,7 +202,14 @@ final class RowViewport
     /// Puts the items on the screen from the state, settling it
     void layout()
     {
-        screenRows(_state, _slots, _height, _count, _heightOf);
+        screenRows(_state, _paddedSlots, _height, _count, &padded);
+        _slots.length = _paddedSlots.length;
+        assumeSafeAppend(_slots);
+        foreach (i, ref slot; _paddedSlots)
+        {
+            const top = above(slot.index);
+            _slots[i] = RowSlot(slot.index, slot.top + top, slot.height - top - below(slot.index));
+        }
     }
 
     /// Puts the items on the screen until what `changes` counts stops growing (an item seen changed the heights of the
@@ -210,10 +262,10 @@ final class RowViewport
         _anchor = ScrollAnchor.init;
         if (kept.row >= _count)
             return false;
-        double offset = kept.fraction * _heightOf(kept.row) - kept.at; // the part of the row scrolled away
+        double offset = above(kept.row) + kept.fraction * _heightOf(kept.row) - kept.at; // the part of the row scrolled away
         size_t first = kept.row;
         while (offset < 0 && first > 0) // the point is lower than the top of the window: rows above come first
-            offset += _heightOf(--first);
+            offset += padded(--first);
         _state = ViewState(first, max(0.0, offset));
         return true;
     }
@@ -233,7 +285,7 @@ final class RowViewport
     void scrollBy(double pixels, double fallbackHeight)
     {
         _anchor = ScrollAnchor.init;
-        _state = .scrollBy(_state, pixels, _height, _count, _heightOf, meanHeight(fallbackHeight));
+        _state = .scrollBy(_state, pixels, _height, _count, &padded, meanHeight(fallbackHeight));
     }
 
     /// The item `index` is the first one on the screen
@@ -243,7 +295,8 @@ final class RowViewport
         _state = ViewState(index, 0);
     }
 
-    /// How the item `index` is to be shown: whether it has to be, where it is to stand, and where it stands now. Shown already: wholly in the window, or
+    /// How the item `index` is to be shown: whether it has to be, where it is to stand, and where it stands now. The first and the last item come
+    /// with their margins (`margins`), at least. Shown already: wholly in the window (with those margins), or
     /// taller than the window and covering it (a second click on it does not scroll it). Else it is brought in with `margin` pixels left on the
     /// side it came from: under it if it came from below, above it if from above; one that does not fit the window with its margin is brought to
     /// the top of the window, except one taller than the window that came from above: its bottom is brought to the bottom of the window (the least
@@ -255,16 +308,18 @@ final class RowViewport
 
         const height = _heightOf(index);
         const top = topOf(index);
+        const over = above(index), under = below(index); // the first and the last item are shown with their margins
         if (!top.isNaN)
         {
-            if (top >= 0 && top + height <= _height)
+            if (top - over >= 0 && top + height + under <= _height)
                 return RevealPlan(false, 0, top);
             if (height > _height && top <= 0 && top + height >= _height)
                 return RevealPlan(false, 0, top);
         }
-        const above = top.isNaN ? (_slots.length > 0 && index < _slots[0].index) : top < 0;
-        const fits = height + margin <= _height;
-        const dy = fits ? (above ? margin : _height - margin - height) : (above && height > _height ? _height - height : 0);
+        const fromAbove = top.isNaN ? (_slots.length > 0 && index < _slots[0].index) : top - over < 0;
+        const room = max(margin, fromAbove ? over : under);
+        const fits = height + room <= _height;
+        const dy = fits ? (fromAbove ? room : _height - room - height) : (fromAbove && height > _height ? _height - height : 0);
         return RevealPlan(true, dy, top);
     }
 
@@ -301,14 +356,20 @@ final class RowViewport
         if (_count == 0)
             return dy;
         double below = 0; // the item and the ones after it, until they fill the window under dy
-        for (size_t i = index; i < _count && below < _height - dy; ++i)
+        size_t i = index;
+        for (; i < _count && below < _height - dy; ++i)
             below += _heightOf(i);
+        if (i == _count)
+            below += this.below(_count - 1); // the end: the margin under the last item
         if (below < _height - dy)
             dy = _height - below;
-        double above = 0; // the items before it, until they reach dy
-        for (size_t i = index; i > 0 && above < dy; --i)
-            above += _heightOf(i - 1);
-        return min(dy, above);
+        double rise = 0; // the items before it, until they reach dy
+        size_t j = index;
+        for (; j > 0 && rise < dy; --j)
+            rise += _heightOf(j - 1);
+        if (j == 0)
+            rise += above(0); // the start: the margin above the first item
+        return min(dy, rise);
     }
 
     /// Shows the item `index` by the least scroll if it is among the items on the screen, or not more than two screens off them
@@ -364,12 +425,12 @@ final class RowViewport
             return ScrollMetrics.init; // all of it in the window
         if (exact)
         {
-            const span = pixelSpan(_state, _count, _estimate);
+            const span = pixelSpan(_state, _count, &paddedEstimate);
             const fraction = atStart ? 0 : atEnd ? 1 : pixelFraction(span, _height);
             return ScrollMetrics(fraction, span.total > 0 ? min(1.0, _height / span.total) : 1);
         }
-        const fraction = atStart ? 0 : atEnd ? 1 : anchorFraction(_slots, _count, _height);
-        return ScrollMetrics(fraction, rowsShown(_slots, _count, _height));
+        const fraction = atStart ? 0 : atEnd ? 1 : anchorFraction(_paddedSlots, _count, _height);
+        return ScrollMetrics(fraction, rowsShown(_paddedSlots, _count, _height));
     }
 
     /// The window stands where a bar at `fraction` (0 .. 1) says: the point of the list at that fraction at that fraction
@@ -381,29 +442,42 @@ final class RowViewport
         if (exact)
         {
             _anchor = ScrollAnchor.init;
-            _state = pixelState(fraction, _count, _height, _estimate);
+            _state = pixelState(fraction, _count, _height, &paddedEstimate);
             return;
         }
-        const at = anchorPlace(fraction, _count, _height, _heightOf);
-        scrollToRow(at.row, at.dy);
+        const at = anchorPlace(fraction, _count, _height, &padded);
+        scrollToPadded(at.row, at.dy);
     }
 
-    /// Whether the end of the list is in view: the last item is shown whole at the end of the window (none, or all of them in it: also)
+    /// Whether the end of the list is in view: the last item is shown whole at the end of the window, with the margin under it (none, or all
+    /// of them in it: also)
     bool endInView() const
     {
         enum hair = 1e-6;
         if (_count == 0)
             return true;
-        return _slots.length > 0 && _slots[$ - 1].index == _count - 1 && _slots[$ - 1].top + _slots[$ - 1].height <= _height + hair;
+        return _paddedSlots.length > 0 && _paddedSlots[$ - 1].index == _count - 1
+            && _paddedSlots[$ - 1].top + _paddedSlots[$ - 1].height <= _height + hair;
     }
 
-    /// The window stands so that the bottom of the last item is the bottom of the window (a list shorter than the window at its top)
+    /// Where the top of the last item stands from the top of the window at the end of the list: its margin under it (a list shorter than the
+    /// window stands higher, at its top)
+    double endTop()
+    {
+        if (_count == 0)
+            return 0;
+        const last = _count - 1;
+        return _height - below(last) - _heightOf(last);
+    }
+
+    /// The window stands so that the bottom of the last item is the margin under it above the bottom of the window (a list shorter than the
+    /// window at its top)
     void scrollToEnd()
     {
         if (_count == 0)
             return;
         const last = _count - 1;
-        scrollToRow(last, _height - _heightOf(last));
+        scrollToPadded(last, _height - padded(last));
     }
 
     /// The top of the item `row` from the top of the window (negative: above it), NaN if it is more than two screens off the window: the heights
@@ -442,6 +516,13 @@ final class RowViewport
     /// it (a table that starts sooner stays at its start), one above it scrolls the item away
     void scrollToRow(size_t row, double dy)
     {
+        const last = _count > 0 ? _count - 1 : 0;
+        scrollToPadded(min(row, last), dy - above(min(row, last)));
+    }
+
+    // The window stands so that the top of the padded height of the item `row` is `dy` pixels from the top of the window
+    private void scrollToPadded(size_t row, double dy)
+    {
         _anchor = ScrollAnchor.init;
         const last = _count > 0 ? _count - 1 : 0;
         auto first = min(row, last);
@@ -453,7 +534,7 @@ final class RowViewport
         double need = dy;
         while (need > 0 && first > 0)
         {
-            const height = _heightOf(--first);
+            const height = padded(--first);
             if (height >= need)
             {
                 _state = ViewState(first, height - need);
@@ -989,4 +1070,138 @@ unittest
     view.count = 2; // 2 · 20 < 100: the anchor would move back
     assert(view.exact, "but not when the anchor would move the rows back");
     view.holdScale(false);
+}
+
+@("RowViewport.margins: the room above the first item and under the last one is scrolled with them: the window keeps its height")
+unittest
+{
+    auto view = new RowViewport(rowsOf(20));
+    view.count = 100;
+    view.height = 100;
+    view.margins(4, 24);
+    view.layout();
+    assert(view.slots[0] == RowSlot(0, 4, 20), "at the start the first item stands under the margin above it");
+    assert(view.metrics.fraction == 0);
+    view.scrollBy(3, 20);
+    view.layout();
+    assert(view.slots[0] == RowSlot(0, 1, 20), "the margin scrolls away with the item");
+    view.scrollBy(100_000, 20);
+    view.layout();
+    const last = view.slots[$ - 1];
+    assert(last.index == 99 && last.top + last.height == 100 - 24 && last.height == 20, "at the end the margin is under the last item");
+    assert(view.endInView && view.metrics.fraction == 1);
+    view.scrollBy(-10, 20);
+    view.layout();
+    assert(!view.endInView, "the last item at the bottom with its margin out of view: not the end yet");
+}
+
+@("RowViewport.margins: the end and a row asked for stand by the items, the margins around them")
+unittest
+{
+    auto view = new RowViewport(rowsOf(20));
+    view.count = 100;
+    view.height = 100;
+    view.margins(4, 24);
+    view.layout();
+    view.scrollToEnd();
+    view.layout();
+    assert(view.slots[$ - 1].top == 100 - 24 - 20 && view.endTop == 100 - 24 - 20, "the end: the last item above the margin under it");
+    view.scrollToRow(0, 10);
+    view.layout();
+    assert(view.slots[0].top == 4, "the first item no lower than the margin above it");
+    view.scrollToRow(5, 0);
+    view.layout();
+    assert(view.topOf(5) == 0 && view.topOf(0) == -100);
+    assert(view.reachableTop(0, 50) == 4 && view.reachableTop(99, 0) == 100 - 24 - 20, "the ends with their margins");
+}
+
+@("RowViewport.margins: a list shorter than the window stands at its top under the margin")
+unittest
+{
+    auto view = new RowViewport(rowsOf(20));
+    view.count = 2;
+    view.height = 100;
+    view.margins(4, 24);
+    view.layout();
+    assert(view.slots == [RowSlot(0, 4, 20), RowSlot(1, 24, 20)] && view.endInView);
+    assert(view.metrics == ScrollMetrics.init, "all of it in the window");
+}
+
+@("RowViewport.margins: a list scrolled by pixels counts the margins in what the bar shows")
+unittest
+{
+    auto view = new RowViewport(rowsOf(20));
+    view.minHeight = 20;
+    view.count = 10;
+    view.height = 100;
+    view.margins(4, 24);
+    view.layout();
+    assert(view.exact && view.metrics.shown == 100.0 / (200 + 4 + 24));
+}
+
+@("RowViewport.margins: the place kept on the first item is put back where it stood, the margin above it too")
+unittest
+{
+    auto view = new RowViewport(rowsOf(20));
+    view.count = 100;
+    view.height = 100;
+    view.margins(4, 24);
+    view.layout();
+    view.keepPlace();
+    assert(view.restorePlace());
+    view.layout();
+    assert(view.slots[0] == RowSlot(0, 4, 20), "not moved by the margin");
+}
+
+@("RowViewport.margins: in a low window a margin gives way to its item: at the end the last item stays wholly in view")
+unittest
+{
+    auto view = new RowViewport(rowsOf(40));
+    view.count = 100;
+    view.height = 50;
+    view.margins(4, 24);
+    view.scrollToEnd();
+    view.layout();
+    assert(view.slots[$ - 1] == RowSlot(99, 0, 40) && view.endInView, "10 of the margin under it: what the window leaves");
+    view.scrollBy(100_000, 40);
+    view.layout();
+    assert(view.slots[$ - 1].top == 0, "the wheel stops there too");
+}
+
+@("RowViewport.revealPlan: the first and the last item are brought in with their margins, though the margin asked is less")
+unittest
+{
+    auto view = new RowViewport(rowsOf(20));
+    view.count = 100;
+    view.height = 100;
+    view.margins(4, 24);
+    view.layout();
+    const end = view.revealPlan(99, 8);
+    assert(end.needed && end.dy == 100 - 24 - 20, "the last item over its margin, not over the 8 asked");
+    view.scrollToRow(99, 70); // the last item whole in the window, its margin cut by the bottom
+    view.layout();
+    assert(!view.endInView);
+    assert(view.reveal(99, 20));
+    view.layout();
+    assert(view.endInView && view.slots[$ - 1].top == 56, "brought to the end: its margin in view");
+    view.scrollToRow(0, 0); // the first item at the top, its margin above the window
+    view.layout();
+    const start = view.revealPlan(0, 0);
+    assert(start.needed && start.dy == 4);
+}
+
+@("RowViewport.marginsInView: the parts of the margins in the window, from its top")
+unittest
+{
+    import ptable.ports : Span;
+
+    auto view = new RowViewport(rowsOf(20));
+    view.count = 100;
+    view.height = 100;
+    view.margins(4, 24);
+    view.layout();
+    assert(view.marginsInView.top == Span(0, 4) && view.marginsInView.bottom.length == 0);
+    view.scrollToEnd();
+    view.layout();
+    assert(view.marginsInView.bottom == Span(76, 100) && view.marginsInView.top.length == 0);
 }

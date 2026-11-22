@@ -9,6 +9,7 @@ module ptable.framepainter;
 
 version (unittest) import ptable.testing : portsOf;
 import ptable.column : DrawState, HeaderState;
+import ptable.edgemargins : MarginsInView;
 import ptable.layout : Pin, Placement, Placements;
 import ptable.model : ItemKind;
 import ptable.painter : EmptyZone, GroupContext, Painter, RowContext;
@@ -67,17 +68,15 @@ final class FramePainter
         _painter.paintBackground(canvas, Rect(0, 0, _space.width, _space.height));
     }
 
-    /// Draws the table: the whole of it is (0, 0, width, height) of `canvas`
-    void paint(Canvas canvas, const(RowSlot)[] slots, ref const Placements p, ref const Picked picked)
+    /// Draws the table: the whole of it is (0, 0, width, height) of `canvas`; `margins`: the parts of the margins above the first row and under
+    /// the last one in the window on the rows (`RowViewport.marginsInView`)
+    void paint(Canvas canvas, const(RowSlot)[] slots, ref const Placements p, ref const Picked picked, MarginsInView margins = MarginsInView.init)
     {
         ++_frames;
         const regions = _space.regions;
         _painter.beginFrame(canvas, slots.length ? slots[0].index : 0, slots.length);
         _painter.paintBackground(canvas, Rect(0, 0, _space.width, _space.height));
-        if (regions.marginTop.h > 0)
-            _painter.paintEmpty(canvas, regions.marginTop, EmptyZone.marginTop);
-        if (regions.marginBottom.h > 0)
-            _painter.paintEmpty(canvas, regions.marginBottom, EmptyZone.marginBottom);
+        paintMargins(canvas, margins);
         if (regions.marginLeft.w > 0)
             _painter.paintEmpty(canvas, regions.marginLeft, EmptyZone.marginLeft);
         if (regions.marginRight.w > 0)
@@ -93,6 +92,16 @@ final class FramePainter
         paintPinnedShadows(canvas, p, panes);
         if (regions.footer.h > 0)
             _painter.paintFooter(canvas, regions.footer);
+    }
+
+    // The margins above the first row and under the last one, the parts of them in view: they are scrolled with the rows
+    private void paintMargins(Canvas canvas, MarginsInView margins)
+    {
+        const y = _space.regions.rows.y, width = _space.width;
+        if (margins.top.length > 0)
+            _painter.paintEmpty(canvas, Rect(0, y + margins.top.start, width, margins.top.length), EmptyZone.marginTop);
+        if (margins.bottom.length > 0)
+            _painter.paintEmpty(canvas, Rect(0, y + margins.bottom.start, width, margins.bottom.length), EmptyZone.marginBottom);
     }
 
     // The groups: the margins across the rows, with the heads that changed in the cells of their columns; then, over the

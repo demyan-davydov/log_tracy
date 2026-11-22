@@ -184,6 +184,20 @@ class LogPainter : Painter
         canvas.fillRect(area, _palette.row);
     }
 
+    // A mark in the middle of the margin under the last row, scrolled with it: `area` is the part of the margin in view, it starts at the
+    // bottom of the last row (the background under it is already the color of the rows)
+    override void paintEmpty(Canvas canvas, Rect area, EmptyZone zone)
+    {
+        if (zone != EmptyZone.marginBottom)
+            return;
+        enum double halfWidth = 20, radius = 2.5; // in dips, trials: half of the line, the dot on it
+        const cx = round(area.x + area.w / 2), cy = round(area.y + _look.spacing.rowsMarginBottom / 2);
+        canvas.pushClip(area);
+        canvas.fillRect(Rect(cx - halfWidth, cy, 2 * halfWidth, 1), _palette.border);
+        canvas.fillCircle(cx, cy + 0.5, radius, _palette.row, _palette.border);
+        canvas.popClip();
+    }
+
     override void paintHeader(Canvas canvas, Rect area)
     {
         canvas.fillRect(area, _palette.header);

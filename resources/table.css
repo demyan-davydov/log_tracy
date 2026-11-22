@@ -15,10 +15,10 @@
     /* the room left and right of the text of the Payload column and of its title */
     --payload-pad-left: 4pt; /* 5.33dip */
     --payload-pad-right: 5.25pt; /* 7dip */
-    /* the room around the rows, always there (none for now: set one to have it); left and right the same for the tables of a
-       document (their column host's) */
+    /* the room around the rows, always there (0: none); left and right the same for the tables of a document (their column
+       host's) */
     --rows-margin-top: 0;
-    --rows-margin-bottom: 0;
+    --rows-margin-bottom: 18pt; /* 24dip: room under the last row, the mark of the background is seen in it */
     --rows-margin-left: 0;
     --rows-margin-right: 0;
     /* The least widths of the columns, of their content as min-width in CSS: the paddings of the cells and the line between the columns

@@ -10,7 +10,7 @@ enum Area : ubyte
     header,
     footer,
     rows, /// where the rows lie (a row may still not be there: a margin of a group, below the last row)
-    around, /// the body outside the rows: the padding above and under them and the margins at the sides
+    around, /// the body outside the rows: the margins at their sides
 }
 
 /// The part of the table the point (x, y) is in; a point above the header is in it, one below the table in the footer or around the rows
@@ -34,7 +34,7 @@ unittest
     g.marginTop = 4;
     const r = regionsOf(400, 200, g, SideMargins(10, 0));
     assert(areaAt(r, 50, 5) == Area.header && areaAt(r, 50, -3) == Area.header);
-    assert(areaAt(r, 50, 21 + 2) == Area.around, "the margin above the rows");
+    assert(areaAt(r, 50, 21 + 2) == Area.rows, "the margin above the rows is scrolled with them: where they lie");
     assert(areaAt(r, 5, 100) == Area.around, "the margin at the left");
     assert(areaAt(r, 50, 100) == Area.rows);
     assert(areaAt(r, 50, 190) == Area.footer);

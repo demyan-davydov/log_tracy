@@ -56,8 +56,8 @@ struct TableGeometry
 {
     double headerHeight = 21; /// 0 or less: as high as the tallest title of the columns (`TableColumn.measureHeader`), so a font change moves it
     double footerHeight = 0; /// 0: no footer
-    /// Room above the first row and under the last one, always there (not scrolled), painted by `paintEmpty`; the margins left and right
-    /// are the column host's (`ColumnHost.setMargins`), the same for its tables
+    /// Room above the first row and under the last one, scrolled with the rows (the window on them keeps the height of the body), painted by
+    /// `paintEmpty` where it is in view; the margins left and right are the column host's (`ColumnHost.setMargins`), the same for its tables
     double marginTop = 0, marginBottom = 0;
     /// The plate of the heads above the first row of a group (rows grouped by the heads of a column, `CellPartsExtractor`),
     /// stuck over the titles for the rows on top; 0: none, the rows are not grouped; less than 0: as high as the header
@@ -78,8 +78,8 @@ struct TableGeometry
 /// A part of the table with no rows in it
 enum EmptyZone : ubyte
 {
-    marginTop, /// the table's margin above the rows (`TableGeometry.marginTop`), all of the width
-    marginBottom, /// the margin under the rows
+    marginTop, /// the table's margin above the first row (`TableGeometry.marginTop`), all of the width, the part of it in view
+    marginBottom, /// the margin under the last row
     beside, /// right of the last column when they do not fill the width
     marginLeft, /// the margin left of the rows (`ColumnHost.margins`), as high as the body
     marginRight, /// the margin right of the rows
