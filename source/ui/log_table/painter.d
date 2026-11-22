@@ -794,3 +794,45 @@ unittest
     column.draw(kept, cell, state);
     assert(kept.textX == 140 && kept.circleX == 145, "the middle of the part seen, the circle with it");
 }
+
+@("AnchorColumn: the anchor stands in the middle of its circle by its own width, not by the width of a text rounded up to a whole pixel")
+unittest
+{
+    import ptable.column : CellInput, DrawState;
+    import ptable.model : CellData;
+    import ptable.ports : Canvas, Color, FontId;
+    import ptable_text.measurer : FontMetrics;
+    import std.math : abs, ceil;
+
+    // As Sciter: a text is as wide as its glyphs, rounded up to a whole pixel; the anchor is 6.43 wide
+    static final class Ceiled : TextMeasurer
+    {
+        FontMetrics metrics(FontId font) { return FontMetrics(11, 3, 14); }
+        double width(FontId font, const(wchar)[] text) { return ceil(text.length * 6.43); }
+        int wrappedLines(FontId font, const(wchar)[] text, double width) { return -1; }
+    }
+
+    static final class Where : Canvas
+    {
+        double textX = double.nan, circleX = double.nan;
+        void fillRect(Rect area, Color color) {}
+        void drawText(FontId font, const(wchar)[] text, double x, double baseline, Color color) { textX = x; }
+        void drawParagraph(FontId font, const(wchar)[] text, double x, double top, double width, Color color) {}
+        void fillRoundRect(Rect area, double radius, Color color) { fillRect(area, color); }
+        void fillCircle(double cx, double cy, double radius, Color fill, Color line) { circleX = cx; }
+        void pushClip(Rect area) {}
+        void popClip() {}
+    }
+
+    auto column = new AnchorColumn(ColumnDef("anchor", "⚓", 24, false, false), defaultLogLook(), null, null, new Ceiled);
+    column.lookChanged();
+    LogMarks anchored;
+    anchored.anchored = true;
+    const data = CellData(""w, packMarks(anchored));
+    const cell = CellInput(0, 0, &data);
+    const area = Rect(0, 23, 22.6667, 19); // as the table has it at a text size of 93 %
+    auto canvas = new Where;
+    const state = DrawState(area, area);
+    column.draw(canvas, cell, state);
+    assert(abs(canvas.textX + 6.43 / 2 - canvas.circleX) < 0.05, "the middle of the glyph is the middle of the circle");
+}

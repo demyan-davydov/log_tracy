@@ -37,6 +37,11 @@ final class AnchorColumn : TextColumn
         _ruleColor = ruleColor;
     }
 
+    // The marks in runs: the width of one is that of the run over its length, rounded no more than to a pixel over all of it
+    private enum size_t markRun = 8;
+    private enum wstring anchorRun = "⚓⚓⚓⚓⚓⚓⚓⚓"w, refusedRun = "⊘⊘⊘⊘⊘⊘⊘⊘"w;
+    static assert(anchorRun.length == markRun && refusedRun.length == markRun);
+
     // The color of the filter rule the record matches fills the cell; an anchor is in a grey circle (the colors of the theme) in the middle of
     // it; the mouse over a cell with none shows a faint one with no circle, or the sign of a refusal when none can be set, and a big sign while
     // the button is down on it
@@ -66,17 +71,21 @@ final class AnchorColumn : TextColumn
         }
         if (!anchored && !state.hover)
             return;
+        // The width of the glyph is read off a run of it: the host rounds the width of a text up to a whole pixel (Sciter), which put the
+        // glyph up to a pixel left of the middle. The mark stands with its middle in the middle of the cell (of its circle), moved as the mark
+        // is when it is kept in view, not where the rounded alignment would start it
         const mark = full ? "⊘"w : "⚓"w;
-        const markWidth = widthOf(spot.font, mark);
-        const x = alignedAcross(markWidth, area, state.clip);
+        const markWidth = widthOf(spot.font, full ? refusedRun : anchorRun) / markRun;
+        const moved = alignedAcross(markWidth, area, state.clip) - alignedX(style.halign, area.x, area.w, markWidth, style.left(sidePad),
+            style.right(sidePad));
+        const middle = area.x + area.w / 2 + moved;
         if (anchored)
         {
-            // the middle of the cell, moved as the mark is when it is kept in view
-            const metrics = cellMetrics, moved = x - alignedX(style.halign, area.x, area.w, markWidth, style.left(sidePad), style.right(sidePad));
-            canvas.fillCircle(area.x + area.w / 2 + moved, spot.baseline + (metrics.descent - metrics.ascent) / 2, 7.5 * unit, palette.anchorFill,
-                palette.anchorLine);
+            const metrics = cellMetrics;
+            canvas.fillCircle(middle, spot.baseline + (metrics.descent - metrics.ascent) / 2, 7.5 * unit, palette.anchorFill, palette.anchorLine);
         }
-        canvas.drawText(spot.font, mark, x, spot.baseline, anchored ? inkOf(false) : full ? palette.anchorRefused : palette.anchorFaint);
+        canvas.drawText(spot.font, mark, middle - markWidth / 2, spot.baseline, anchored ? inkOf(false) : full ? palette.anchorRefused
+            : palette.anchorFaint);
     }
 }
 
