@@ -1186,3 +1186,60 @@ plaintext.filter-input span.number {
     background: #eee;
     border-radius: 3dip;
 }
+
+/* A slider (slider.js), drawn like a switch: a rounded track with a white
+   knob, the part left of the knob filled with the accent as a switch that is
+   on, marks under it, the value on its right. No transitions: with one on
+   `left` the knob stayed at the left end when the dialog opened The rail
+   is the path of the knob's middle: the track's padding and half a knob in
+   from each end, so the marks under it stand under the knob's middle */
+.slider {
+    flow: horizontal;
+    vertical-align: top;
+    border-spacing: 10dip;
+    outline: none;
+}
+.slider-body { flow: vertical; width: 300dip; }
+.slider-track {
+    box-sizing: border-box;
+    height: 20dip;
+    padding: 2dip;
+    border-radius: 10dip;
+    background: var(--border-color);
+    cursor: pointer;
+}
+.slider:focus .slider-track { outline: 2dip solid var(--border-focus) 1dip; }
+.slider-rail { position: relative; height: 16dip; margin: 0 8dip; }
+/* From the left end of the track to the knob's middle, then round past the knob
+   (width: the knob's place, set by the script; the paddings reach the ends) */
+.slider-fill {
+    position: absolute;
+    left: -10dip; top: -2dip;
+    box-sizing: content-box;
+    height: 20dip;
+    padding: 0 10dip;
+    border-radius: 10dip;
+    background: var(--btn-primary-bg);
+}
+.slider-knob {
+    position: absolute;
+    left: 0; top: 0;
+    width: 16dip; height: 16dip;
+    margin-left: -8dip; /* left: its middle, set by the script */
+    border-radius: 8dip;
+    background: white;
+    box-shadow: 0 1dip 2dip rgba(0, 0, 0, 0.25);
+}
+.slider-marks { position: relative; height: 2.2em; margin: 4dip 10dip 0; cursor: pointer; }
+.slider-mark {
+    position: absolute;
+    top: 0;
+    width: 40dip;
+    margin-left: -20dip; /* left: its middle, set by the script */
+    flow: vertical;
+    font-size: 0.85em;
+    color: var(--text-label);
+}
+.slider-tick { width: 1dip; height: 4dip; margin: 0 *; background: var(--text-label); }
+.slider-mark > span { margin: 2dip * 0; }
+.slider-value { min-width: 3.5em; line-height: 20dip; text-align: right; }

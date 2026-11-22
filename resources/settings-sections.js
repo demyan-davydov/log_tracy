@@ -9,14 +9,31 @@ export function initialSection(params, sections) {
     return sections.includes(params.section) ? params.section : "appearance";
 }
 
-// The font sizes of the log tables offered, in % of the normal font
-export const fontSizes = [80, 90, 100, 110, 125, 150, 175, 200];
+// The font size of the log tables, in % of the normal font: a slider of this range
+export const fontSizeRange = { min: 80, max: 200, step: 5 };
 
-// The options of the font size: { value, label, initial }, the size the
-// dialog opened with (100 when none) marked `initial`, shown in italics so the
-// user sees where they started; a size not in the list (settings edited by hand) is added in its place
-export function fontSizeOptions(initial) {
-    const start = Number.isInteger(initial) && initial > 0 ? initial : 100; // settings keep an int
-    const values = fontSizes.includes(start) ? fontSizes : [...fontSizes, start].sort((a, b) => a - b);
-    return values.map(value => ({ value, initial: value === start, label: `${value}%` }));
+// The size the dialog starts with: the setting, 100 when it has none or an
+// impossible one (settings keep an int)
+export function startFontSize(setting) {
+    return Number.isInteger(setting) && setting > 0 ? setting : 100;
+}
+
+// The marks of the slider: { value, label, className }, one at every step:
+// "major" every 20% with its label, "ten" every 10%, "step" between; the
+// normal size is also "normal", the size the dialog opened with "initial" so
+// the user sees where they started. A start off the step (settings edited by
+// hand) gets a mark of its own without a label
+export function fontSizeMarks(setting) {
+    const start = startFontSize(setting);
+    const { min, max, step } = fontSizeRange;
+    const marks = [];
+    for (let value = min; value <= max; value += step) {
+        const kind = value % 20 === 0 ? "major" : value % 10 === 0 ? "ten" : "step";
+        marks.push({
+            value, label: kind === "major" ? `${value}%` : "",
+            className: [kind, value === 100 ? "normal" : "", value === start ? "initial" : ""].filter(Boolean).join(" "),
+        });
+    }
+    if (!marks.some(m => m.value === start)) marks.push({ value: start, label: "", className: "initial" });
+    return marks;
 }

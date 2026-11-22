@@ -266,9 +266,11 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
 39. **Settings has sections.** The dialog lists its sections on the left like vertical tabs
     (Appearance: language, theme; Table: the font size first, then single-line rows, the
     monospace payload, then the columns); one
-    Save/Cancel for all. The font size applies at once to the column strip, which is the
-    preview; the size the dialog opened with is shown in italics in the list. At a large font
-    the checkboxes keep their size; the strip may grow wider than the dialog and scroll.
+    Save/Cancel for all. The font size is a slider drawn like a switch, by steps of 5% from
+    80% to 200%: a tick under every step, longer every 10%, a label every 20% (100% stronger;
+    the size the dialog opened with in italics, its tick accented); no snapping to the marks.
+    The column strip keeps the normal font: grown with the font size it got too big. The
+    strip may grow wider than the dialog and scroll.
 40. **Table columns are arranged per format.** For each format (by its id, all variants
     together) the user orders the columns and hides some; the layout is global for every log
     of that format. Index stays first and Payload last. Columns are reordered by dragging with

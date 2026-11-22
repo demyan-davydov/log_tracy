@@ -65,7 +65,7 @@
             background: var(--bg-main);
             white-space: nowrap;
         }
-        /* A large font makes the strip wider than the dialog: it scrolls, as
+        /* Many columns make the strip wider than the dialog: it scrolls, as
            the log table does, never cut; the room under it is for the
            scrollbar, which macOS draws over the content */
         #column-scroller {
@@ -108,7 +108,7 @@
         .column-cell.hidden-column > .sample { opacity: 0.4; }
         .column-cell > .visibility {
             flow: horizontal;
-            font-size: 1rem; /* the checkbox keeps its size whatever the font of the headers */
+            font-size: 1rem;
             padding: 4dip 0;
             border-right: 1dip solid var(--border-color);
         }
@@ -136,9 +136,15 @@
             z-index: 5; /* below the dragged column */
         }
 
-        /* The font size the dialog opened with: where the user started.
-           Sciter's own style of the options wins without !important */
-        select#table-font-size > popup > option.initial { font-style: italic !important; }
+        /* The marks of the font size: a tick at every step, longer every 10%,
+           longest with a label every 20%; the normal size stronger, the size the
+           dialog opened with in italics (where the user started), its tick accented */
+        #table-font-size .slider-mark.step > .slider-tick { height: 3dip; }
+        #table-font-size .slider-mark.ten > .slider-tick { height: 5dip; }
+        #table-font-size .slider-mark.major > .slider-tick { height: 7dip; }
+        #table-font-size .slider-mark.normal { color: var(--text-main); font-weight: 600; }
+        #table-font-size .slider-mark.initial { font-style: italic; }
+        #table-font-size .slider-mark.initial > .slider-tick { background: var(--btn-primary-bg); width: 2dip; }
 
         #columns-footer { flow: horizontal; vertical-align: middle; }
         #btn-reset-columns { margin-left: *; }
@@ -195,7 +201,8 @@
         import { toggleColumn, moveColumn, resetColumns, isDefaultLayout, layoutsOf, initialFormat, formatLabel } from "column-settings.js";
         import { setShift, pressItem, dragTo, drop, showDropMarker } from "drag-strip.js";
         import * as platform from "platform.js";
-        import { initialSection, fontSizeOptions } from "settings-sections.js";
+        import { initialSection, fontSizeRange, fontSizeMarks, startFontSize } from "settings-sections.js";
+        import { Slider } from "slider.js";
         import { applyTheme } from "theme.js";
         import { setCatalog, tr, trParts } from "i18n/i18n.js";
         import { translateTree } from "i18n/dom.js";
@@ -309,26 +316,18 @@
             return true;
         });
 
-        // The sizes offered, the one the dialog opened with in italics and chosen
-        function renderFontSizes() {
-            const select = $("select#table-font-size");
-            const options = fontSizeOptions(params.tableFontSize);
-            for (const { value, label, initial } of options) {
-                const option = document.createElement("option");
-                option.setAttribute("value", String(value)); // an <option> has no value of its own in Sciter
-                if (initial) option.classList.add("initial");
-                option.textContent = label;
-                select.append(option);
-            }
-            select.value = String(options.find(o => o.initial).value);
-        }
+        // The font size: a slider by the step of its range, the steps marked under it.
+        // It is not shown on the column strip: a large font made the strip too big
+        let fontSize = null;
 
-        // The strip has the font size of the log tables, as chosen above it
-        function applyTableFontSize() {
-            $("#column-strip").style.fontSize = `${$("select#table-font-size").value}%`;
+        function renderFontSize() {
+            fontSize = new Slider($("#table-font-size"), {
+                ...fontSizeRange,
+                value: startFontSize(params.tableFontSize),
+                marks: fontSizeMarks(params.tableFontSize),
+                format: value => `${value}%`,
+            });
         }
-
-        document.on("change", "select#table-font-size", applyTableFontSize);
 
         // ── Dragging a column ────────────────────────────────────────────────
         // As a tab is dragged (drag-strip.js), by its header. Index and Payload
@@ -460,8 +459,7 @@
             const theme = params.theme === "dark" ? "dark" : "light";
             if (theme === "dark") applyTheme("dark");
             $(`button.theme-option[value=${theme}]`).state.checked = true;
-            renderFontSizes();
-            applyTableFontSize();
+            renderFontSize();
             $("#single-line-rows").value = !!params.singleLineRows;
             $("#monospace-payload").value = !!params.monospacePayload;
             $("#monospace-payload-text").content(<span>{trParts("{monospace} font for the payload",
@@ -481,7 +479,7 @@
             platform.closeDialog({
                 theme: selectedTheme(),
                 language: $("select#language").value,
-                tableFontSize: parseInt($("select#table-font-size").value),
+                tableFontSize: fontSize.value,
                 singleLineRows: !!$("#single-line-rows").value,
                 monospacePayload: !!$("#monospace-payload").value,
                 columnLayouts: formats.length ? layoutsOf(formats) : null,
@@ -525,7 +523,7 @@
                 <div class="section-title" data-tr="Table"></div>
                 <div class="setting-group">
                     <label data-tr="Font size"></label>
-                    <select id="table-font-size"></select>
+                    <div id="table-font-size"></div>
                 </div>
                 <div class="setting-group">
                     <label class="check"><input type="checkbox" id="single-line-rows" /><span data-tr="Single-line rows"></span></label>

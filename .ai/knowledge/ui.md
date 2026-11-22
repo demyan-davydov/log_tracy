@@ -150,7 +150,9 @@ behaviour: `.ai/knowledge/sciter.md`.
   (`backend.searchHistory`, `backend.removeSearch`; `withSearch`/`withoutSearch` of
   `ui/recent_files`) is the popup of `SearchEditor.openHistory`
 - Filters and the rule editor: `rule-editor.htm`, `rule-form.js`
-- Settings: `settings.htm`, `settings-sections.js`, `column-settings.js`
+- Settings: `settings.htm`, `settings-sections.js`, `column-settings.js`; the font size is a `Slider`
+  (`slider.js`, the values in `slider-value.js`, the look `.slider` in `style.css`): a reusable
+  slider drawn like a switch, with marks under it
 - Go to Message (Navigation menu, Cmd+G / Ctrl+G): `go-to-message.htm`, `go-to-message.js`;
   the row it lands on (the nearest shown when filtered out) is
   `backend.mainViewNearestPosition`, `MainViewTable.goToMessage`

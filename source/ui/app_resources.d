@@ -68,6 +68,8 @@ private enum string[] builtIn = [
     "search-query.js",
     "settings-sections.js",
     "settings.htm",
+    "slider-value.js",
+    "slider.js",
     "status-view.js",
     "style.css",
     "tab-content.css",
