@@ -4,14 +4,16 @@
 
 import { SearchEditor } from "search-editor.js";
 import * as backend from "backend.js";
-import { noSearch, runSearch, searchPending } from "pane-commands.js";
+import { noSearch, runSearch, searchActive, searchPending } from "pane-commands.js";
 
 export class SearchBar {
     // @param root - the element of the bar (.search-bar of the search page), its events bound here
     // @param docId - the id of the document in the backend
-    constructor(root, docId) {
+    // @param setActive - setActive(active): whether a query is run (searchActive)
+    constructor(root, docId, setActive) {
         this.root = root;
         this.docId = docId;
+        this.setActive = setActive;
         this.search = noSearch; // the search the results were found by (pane-commands.js)
         this.editor = new SearchEditor(root.$(".chip-search"), {
             checkRegex: (pattern, matchCase) => backend.checkRegex(pattern, matchCase),
@@ -40,12 +42,14 @@ export class SearchBar {
         // Not by :empty, which Sciter doesn't re-evaluate when the text changes
         message.style.display = run.message ? "" : "none";
         this.updatePending();
+        this.setActive(searchActive(this.search));
     }
 
     // The document was reopened (Retry): it has no search yet
     reset() {
         this.search = noSearch;
         this.updatePending();
+        this.setActive(false);
     }
 
     // Marks the query as not searched yet when it differs from the search shown

@@ -4,7 +4,7 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { noSearch, runSearch, searchPending, editRule, anchorRefusalText, filterFilesToLoad, filterExportDialog }
+import { noSearch, runSearch, searchPending, searchActive, editRule, anchorRefusalText, filterFilesToLoad, filterExportDialog }
     from "../../resources/pane-commands.js";
 import { setCatalog } from "../../resources/i18n/i18n.js";
 
@@ -42,6 +42,16 @@ test("an error of the backend keeps the search committed before", () => {
 
 test("no chips clear the search: nothing is pending then", () => {
     assert.equal(searchPending(noSearch, []), false);
+});
+
+test("a search is active from a query run until an empty one, whatever it finds", () => {
+    assert.equal(searchActive(noSearch), false, "no search yet");
+    const run = runSearch(noSearch, chips, () => ["c0"], () => "", () => "");
+    assert.equal(searchActive(run.search), true, "a query run is active, found rows or not");
+    const failed = runSearch(run.search, [], () => [], () => "", () => "the document is not open");
+    assert.equal(searchActive(failed.search), true, "a refused query keeps the search before");
+    const cleared = runSearch(run.search, [], () => [], () => "", () => "");
+    assert.equal(searchActive(cleared.search), false, "an empty query clears it");
 });
 
 test("a rule the backend takes is applied once", () => {

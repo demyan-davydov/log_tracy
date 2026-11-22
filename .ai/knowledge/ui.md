@@ -24,7 +24,8 @@ behaviour: `.ai/knowledge/sciter.md`.
   Its parts: the filters, `FilterPanel` (`filter-panel.js`, chips on the Filters page,
   `.filter-page`; the tab's mark: `active` of `DocumentFilters.toJson`, decided by the
   backend with the predicates the view and the rows use),
-  the search bar, `SearchBar` (`search-bar.js`, on `.search-bar`), and its two tables,
+  the search bar, `SearchBar` (`search-bar.js`, on `.search-bar`; the tab's mark:
+  `searchActive` of `pane-commands.js`, a query run, whatever it found), and its two tables,
   `MainViewTable` and `SearchViewTable` (`view-table.js`): each a `ViewTable`, a table with
   the view of its machine, the status views covering it, the progress under it (its Cancel
   too) and the focus the covers take (`update()` over `tableStep`: the table when the view

@@ -601,24 +601,24 @@ frameset > splitter:active {
     color: var(--text-label);
 }
 
-/* The mark of the Filters tab: some rule works on the log (markFiltersTab).
-   A dot under the name, out of the flow so the tab keeps its width. Always
-   there: a faint grey of the focus color (so it follows the theme) while no
-   rule works, the focus color with a glow while one does */
+/* The mark of the tabs of Search and Filters (markTab): a query is run, some
+   rule works on the log. A dot under the name, out of the flow so the tab keeps
+   its width. Always there: a faint grey of the focus color (so it follows the
+   theme) while off, the focus color with a glow while on */
 .bottom-tab-mark {
     position: absolute;
     left: 50%;
     bottom: 3dip;
-    width: 4dip;
-    height: 4dip;
-    margin-left: -2dip; /* centred under the name */
+    width: 3dip;
+    height: 3dip;
+    margin-left: -1dip; /* centred under the name */
     border-radius: 2dip; /* half the size: round */
     transition: box-shadow ease-out 150ms, opacity linear 150ms;
 }
 
 .bottom-tab .bottom-tab-mark {
     background: morph(var(--border-focus), saturation:0%);
-    opacity: 0.4;
+    opacity: 0.3;
     box-shadow: 0dip 0dip 0dip 0dip var(--border-focus);
 }
 

@@ -123,10 +123,12 @@ function renderPane(splitters) {
             <div class="bottom-tabs">
                 {/* Collapses the panel to this strip, expands it again: its icon and title by renderCollapsed */}
                 <div class="btn-bottom-panel" />
+                {/* Its mark: a query is run (markTab) */}
                 <div class="bottom-tab active" data-page="search">
                     <span class="bottom-tab-name" data-tr="Search" data-tr-context="noun" />
+                    <span class="bottom-tab-mark" />
                 </div>
-                {/* Its mark: some rule works on the log (markFiltersTab) */}
+                {/* Its mark: some rule works on the log (markTab) */}
                 <div class="bottom-tab" data-page="filters">
                     <span class="tab-sep" />
                     <span class="bottom-tab-name" data-tr="Filters" />
@@ -189,9 +191,9 @@ export class DocumentPane {
 
         this.filterPanel = new FilterPanel(this.root.$(".filter-page"), docId, {
             theme: () => host.theme(),
-            setActive: active => this.markFiltersTab(active),
+            setActive: active => this.markTab("filters", active),
         });
-        this.searchBar = new SearchBar(this.root.$(".search-bar"), docId);
+        this.searchBar = new SearchBar(this.root.$(".search-bar"), docId, active => this.markTab("search", active));
         this.bind();
     }
 
@@ -430,9 +432,10 @@ export class DocumentPane {
         this.searchBar.editor.focusAtEnd();
     }
 
-    // Marks the tab of the Filters page with its mark while some rule works on the log
-    markFiltersTab(active) {
-        this.root.$(".bottom-tab[data-page=filters]").classList.toggle("marked", active);
+    // Lights the mark of the tab of the page `page`: a query is run (Search),
+    // some rule works on the log (Filters)
+    markTab(page, active) {
+        this.root.$(`.bottom-tab[data-page=${page}]`).classList.toggle("marked", active);
     }
 
     // Shows the page `name` of the bottom panel as it is and marks its tab.

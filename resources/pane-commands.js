@@ -33,6 +33,11 @@ export function searchPending(search, chips) {
     return JSON.stringify(chips) !== search.committed;
 }
 
+// Whether a query is run (the mark of the Search tab), whatever it found
+export function searchActive(search) {
+    return search.committed !== noSearch.committed;
+}
+
 // ── Rules ────────────────────────────────────────────────────────────────────
 
 // Edits a rule: open(values, error) shows the editor (-> what it closes with,
