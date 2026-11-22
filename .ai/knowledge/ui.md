@@ -138,6 +138,13 @@ behaviour: `.ai/knowledge/sciter.md`.
 - Menu bar (Windows/Linux): `menu-bar.js`, `menu-bar.css`, `menu-shortcuts.js`
 - Theme and window frame: `theme.js`, `theme-light.css`, `theme-dark.css`, `window-frame.js`,
   `osx-frame.css`, `win-frame.css`
+- Icons of the interface: `icons/*.svg`, the shape only (no `fill`/`stroke` of a color; a
+  stroked path says `fill="none"` and its `stroke-width`), built in like every file
+  (`ui/app_resources`). The CSS puts one on an element (`foreground-image: url(icons/x.svg)`;
+  the buttons by a class `icon-close`, `icon-edit`, `icon-export`, `icon-plus`,
+  `icon-chevron-down` of `style.css`) and colors it by `fill` or `stroke` with the variables of
+  the theme (`.ai/knowledge/sciter.md`: no currentColor). No glyphs as icons. The icons of the
+  program itself are `app-icons/` (not built in). The log table draws its marks as glyphs.
 - File dialogs' type filters: `file-types.js`; OS services: `platform.js`
 - Translations: `i18n/` (see `.ai/knowledge/i18n.md`)
 - Visual standards (spacing, radii, typography): `docs/ui-guidelines.md`

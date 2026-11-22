@@ -77,7 +77,7 @@ function renderPane(splitters) {
                 <div class="search-bar">
                     <div class="toolbar search-toolbar chip-search-toolbar">
                         <div class="chip-search chip-editor" tabindex="0"></div>
-                        <button class="btn-chip-history" data-tr-title="Search history (↓)">▾</button>
+                        <button class="btn-chip-history icon-chevron-down" data-tr-title="Search history (↓)"></button>
                         <button class="btn-chip-search" data-tr="Search" />
                     </div>
                     <div class="chip-search-message" style="display:none;"></div>
@@ -399,7 +399,7 @@ export class DocumentPane {
         // One line: the FIBEX (or "None", in italics), its × (unload: only with a FIBEX),
         // the chip "Load file | folder" that loads one. A note goes under it; a failed load with no FIBEX
         // keeps its × on the note, the only way to drop the note
-        const unload = <button class="link-button btn-fibex-unload" title={tr("Unload")}>×</button>;
+        const unload = <button class="link-button btn-fibex-unload icon-close" title={tr("Unload")}></button>;
         cell.append(<div class="descriptions-line">
             <span class={(d.muted ? "descriptions-path muted" : "descriptions-path") + (d.none ? " none" : "")}>{row.value}</span>
             {d.kind ? <span class="descriptions-kind">{d.kind}</span> : []}
@@ -416,7 +416,7 @@ export class DocumentPane {
         if (d.note) {
             cell.append(<div class={d.error ? "descriptions-note error" : "descriptions-note"}>
                 <span>{d.note}</span>
-                {d.canUnload && !d.hasPath ? <button class="link-button btn-fibex-unload" title={tr("Unload")}>×</button> : []}
+                {d.canUnload && !d.hasPath ? <button class="link-button btn-fibex-unload icon-close" title={tr("Unload")}></button> : []}
             </div>);
         }
         const refocus = focusedButton && cell.$("." + focusedButton.split(" ")[0]);

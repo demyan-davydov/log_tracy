@@ -202,9 +202,9 @@ function recentFileMenuButton(file) {
             ? <li command={command}>{labels[command]}</li>
             : <li command={command} disabled>{labels[command]}</li>);
     }
-    // A text, not :before, which ignores visibility (sciter-quirks)
+    // Its icon is its foreground (style.css), not a :before, which ignores visibility (sciter-quirks)
     // Out of the Tab order: it is hidden until the file is hovered
-    return <button type="menu" class="recent-file-menu" tabindex="-1">⋮
+    return <button type="menu" class="recent-file-menu" tabindex="-1">
         <menu class="popup">{items}</menu>
     </button>;
 }

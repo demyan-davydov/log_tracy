@@ -428,8 +428,22 @@ agent can't drive it. In scapp a plain
 - In a `flow: horizontal` row a child's own `vertical-align` (meant for its content) also
   places it in the row: `margin-bottom: *` keeps it at the top.
 - `text-shadow` is faint (no halo that keeps a white glyph seen on white) and a list of
-  shadows draws none; a glyph in a small box sits ~1px low. For a mark on any color draw a
-  vector icon: `foreground-image: icon(viewbox;d-path)` with `fill` and `stroke`.
+  shadows draws none; a glyph in a small box sits ~1px low. For a mark on any color draw an
+  icon of `resources/icons/` (below).
+- An SVG file as an image (`foreground-image: url(x.svg)`, `background-image`, `<img>`) takes
+  the `fill` and `stroke` of its element (a variable and `:hover` too), but only where the file
+  sets none: an attribute of the file wins over the CSS, `stroke-width` too. `currentColor`, in
+  the file or as `fill: currentcolor` in the CSS, is black, not the element's `color`: a state
+  that changes the color sets the fill or the stroke as well. Checked on 6.0.5.5: no `mask-image`
+  (a plain square of the background), no `<use href="sprite.svg#id">` (nothing drawn); an inline
+  `<svg>` in the DOM does take `currentColor`.
+- The native `imageLoad` (sciter-x-graphics.h) reads PNG but not SVG (`GRAPHIN_PANIC`, with or
+  without a size or an XML declaration); the image of the script made of the same bytes reads SVG. A
+  native behavior (the log table) can't draw an SVG file as an image: it draws glyphs, or a path
+  of its own (`pathMoveTo`... `gDrawPath`).
+- The layout of a text is as wide as its glyphs rounded up to a whole dip (`textGetMetrics`): a
+  single glyph centered by it stands up to a dip left of the middle. The width of a glyph is
+  read off a run of it (the anchor of `AnchorColumn`, the advance of a monospace font).
 - No `contrast-color()` and no CSS function of one's own: `morph()` only shifts a color
   (`darken`, `lighten`, `sepia`, `mix`...; Sciter's name for the old `tint()`). It takes a
   `var()` as its base, in a variable too: the found rows derive from the stripes this way. A

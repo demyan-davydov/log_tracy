@@ -86,7 +86,7 @@
         .kept-error.missing { color: var(--text-label); }
         .kept { flow: horizontal; vertical-align: middle; border-spacing: 8dip; }
         .kept > .text { width: *; font-family: monospace; }
-        .kept-remove { width: 16dip; text-align: center; border-radius: 8dip; cursor: pointer; color: var(--tab-close); }
+        .kept-remove { width: 16dip; height: 16dip; border-radius: 8dip; cursor: pointer; color: var(--tab-close); }
         .kept-remove:hover { background: var(--tab-close-hover); }
 
         .hint { font-size: 0.85em; color: var(--text-label); }
@@ -217,7 +217,7 @@
             kept.forEach((condition, i) => {
                 list.append(<div class="kept">
                     <span class="text">{describeCondition(condition)}</span>
-                    <span class="kept-remove" index={i} title={tr("Remove this condition")}>×</span>
+                    <span class="kept-remove icon-close" index={i} title={tr("Remove this condition")}></span>
                 </div>);
                 list.append(<div class="row-error kept-error" index={i}></div>);
             });

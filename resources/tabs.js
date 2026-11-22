@@ -134,7 +134,7 @@ export class TabStrip {
                 container.append(<div class="tab" id={doc.id}>
                     <span class="tab-sep"></span>
                     <span class="tab-name"></span>
-                    <span class="tab-close">×</span>
+                    <span class="tab-close icon-close"></span>
                     <span class="tab-progress"><span class="tab-progress-done"></span></span>
                 </div>);
                 if (newTabElement) container.insertBefore(container.lastElementChild, newTabElement);
@@ -175,7 +175,7 @@ export class TabStrip {
             container.append(<div class="tab" id={NEW_TAB_ID}>
                 <span class="tab-sep"></span>
                 <span class="tab-name" data-tr="New Tab"></span>
-                <span class="tab-close">×</span>
+                <span class="tab-close icon-close"></span>
             </div>);
             tab = container.lastElementChild;
             translateTree(tab);

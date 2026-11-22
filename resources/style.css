@@ -192,9 +192,12 @@ header {
     border: none;
     border-radius: 5dip;
     background: none;
-    color: var(--tab-close);
-    font-weight: 700;
-    text-align: center;
+    foreground-image: url(icons/more.svg);
+    foreground-repeat: no-repeat;
+    foreground-position: 50% 50%;
+    foreground-size: 12dip 12dip;
+    fill: var(--tab-close);
+    stroke: none;
     vertical-align: middle;
     visibility: hidden;
 }
@@ -335,9 +338,6 @@ body > header {
     height: 16dip;
     min-width: 16dip;
     margin: * 0 * 4dip; /* Sciter: flexible top/bottom margins center it */
-    line-height: 15dip;
-    text-align: center;
-    font-size: 11pt;
     border-radius: 8dip;
     color: var(--tab-close);
     transition: background-color linear 100ms;
@@ -354,7 +354,7 @@ body > header {
 }
 
 .tab .tab-close:hover {
-    color: var(--text-main);
+    stroke: var(--text-main);
     background: var(--tab-close-hover);
 }
 
@@ -401,9 +401,8 @@ body > header {
     height: 26dip;
     margin: 2dip 4dip 0 0;
     padding: 0;
-    line-height: 24dip;
-    text-align: center;
-    font-size: 14pt;
+    foreground-size: 14dip 14dip;
+    stroke: var(--tab-text);
     color: var(--tab-text);
     background: transparent;
     border: none;
@@ -439,6 +438,7 @@ body > header {
 
 #btn-add-tab:hover {
     color: var(--text-main);
+    stroke: var(--text-main);
     background: var(--bg-tab-hover);
 }
 
@@ -568,6 +568,36 @@ frameset > splitter:active {
     opacity: 1;
 }
 
+/* The icons of the buttons (resources/icons/): a file has the shape only, the stroke of
+   the button colors its lines. Sciter: an SVG image takes fill and stroke of its element,
+   but currentColor (in the file or in the CSS) is black, not the element's color: a state
+   that changes the color of a button sets its stroke too */
+.icon-close,
+.icon-edit,
+.icon-export,
+.icon-plus,
+.icon-chevron-down {
+    foreground-repeat: no-repeat;
+    foreground-position: 50% 50%;
+    foreground-size: 12dip 12dip;
+    stroke: var(--tab-close);
+}
+
+.icon-close { foreground-image: url(icons/close.svg); }
+.icon-edit { foreground-image: url(icons/edit.svg); }
+.icon-export { foreground-image: url(icons/export.svg); }
+.icon-plus { foreground-image: url(icons/plus.svg); }
+.icon-chevron-down { foreground-image: url(icons/chevron-down.svg); }
+
+/* The unload of a FIBEX: the cross in a box of a glyph, in the line of the text, in the
+   color of the links */
+.link-button.btn-fibex-unload {
+    width: 1em;
+    height: 1em;
+    vertical-align: middle;
+    stroke: var(--border-focus);
+}
+
 /* A button in the look of a link: a real button (focus, Enter, Space) whose
    whole look is its background, so it has none: the text in the accent color,
    underlined on hover */
@@ -684,7 +714,7 @@ frameset > splitter:active {
     box-sizing: border-box;
 }
 
-/* Its buttons (⤓, +, ×) only while the mouse is on the head, at their place
+/* Its buttons (export, add, remove) only while the mouse is on the head, at their place
    right of the name: the head keeps its width */
 .filter-set-head > .filter-button {
     visibility: hidden;
@@ -802,8 +832,9 @@ frameset > splitter:active {
     height: 15dip;
 }
 
-/* What a rule does: + include, − exclude, ◆ marker, a vector icon of Sciter
-   (its class, set by the script) in the color of the chip's text */
+/* What a rule does: + include, − exclude, ◆ marker, an icon (its class, set by
+   the script) in the color of the chip's text: set as the fill, the icon doesn't
+   take currentColor */
 .filter-kind {
     width: 11dip;
     height: 11dip;
@@ -811,37 +842,31 @@ frameset > splitter:active {
     foreground-repeat: no-repeat;
     foreground-position: 50% 50%;
     foreground-size: 11dip;
-    fill: currentcolor;
+    fill: var(--text-main);
     stroke: none;
 }
 
-.filter-kind.include { foreground-image: icon(0 0 12 12;M4.5 1.5h3v3h3v3h-3v3h-3v-3h-3v-3h3z); }
-.filter-kind.exclude { foreground-image: icon(0 0 12 12;M1.5 4.5h9v3h-9z); }
-.filter-kind.marker { foreground-image: icon(0 0 12 12;M6 1l5 5l-5 5l-5 -5z); }
+.filter-chip.colored .filter-kind { fill: var(--chip-text); }
 
-/* The buttons of a set (⤓ export, +, ×) and of a rule (✎, ×) */
+.filter-kind.include { foreground-image: url(icons/include.svg); }
+.filter-kind.exclude { foreground-image: url(icons/exclude.svg); }
+.filter-kind.marker { foreground-image: url(icons/marker.svg); }
+
+/* The buttons of a set (export, add, remove) and of a rule (edit, remove): their icons */
 .filter-button {
     width: 16dip; /* not min-width: Sciter leaves it out of the chip's max-content, cutting the name */
     height: 16dip;
     vertical-align: middle; /* in a head or a tab taller than the button: not at the top */
-    /* The glyphs (×, +, ✎) sit low in their line: a shorter line lifts them by
-       a dip (half of the difference); ⤓ sits high, a longer one lowers it */
-    line-height: 14dip;
-    text-align: center;
     border-radius: 8dip;
     color: var(--tab-close);
     cursor: pointer;
-}
-
-.filter-button.filter-export {
-    line-height: 18dip;
 }
 
 .filter-button:hover {
     background: var(--tab-close-hover);
 }
 
-/* The buttons of a rule (×, ✎): a tab on the left of the chip, its
+/* The buttons of a rule (remove, edit): a tab on the left of the chip, its
    continuation: of its height, in its hover color, with its border but no
    right one. Only while the mouse is on the chip or the tab (a child of the
    chip: its :hover holds). Out of the chip's width: the chips stay narrow; the
@@ -915,6 +940,7 @@ frameset > splitter:active {
 
 .filter-chip.colored .filter-chip-tab > .filter-button {
     color: inherit;
+    stroke: var(--chip-text);
 }
 
 /* The tab joins the chip: no rounding between them */

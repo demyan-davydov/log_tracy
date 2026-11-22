@@ -512,7 +512,7 @@ export class SearchEditor {
                             <span class={chip.isRegex ? "history-text regex" : "history-text"}>{chip.text}</span>
                         </span>)}
                 </div>
-                <span class="history-remove">×</span>
+                <span class="history-remove icon-close"></span>
             </div>);
         // under the editor, as wide as it, wherever the button is
         const [x, y, width, height] = this.root.state.box("xywh", "border", "window");
