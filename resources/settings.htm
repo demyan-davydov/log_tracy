@@ -3,11 +3,11 @@
 <!-- The Settings dialog, opened modal by openSettingsAction() in script.js.
      Its sections are listed on the left; Save applies all of them at once.
      Parameters: { section (shown first: "appearance", "table"), theme, tableFontSize,
-     singleLineRows, language (the setting, "": the
+     singleLineRows, monospacePayload, language (the setting, "": the
      system's), languages (of the translations, as getLanguages gives them),
      catalog (of the translations the texts are in, null: english), columns (as
      getColumnSettings gives them, see column-settings.js) }.
-     Closes with { theme, tableFontSize, singleLineRows, language, columnLayouts }, or null on
+     Closes with { theme, tableFontSize, singleLineRows, monospacePayload, language, columnLayouts }, or null on
      Cancel. -->
 
 <head>
@@ -50,6 +50,8 @@
         .setting-group select { width: 16em; }
         /* A checkbox setting: the box and its text on one line, the text not bold */
         .setting-group label.check { flow: horizontal; vertical-align: middle; border-spacing: 6dip; font-weight: normal; }
+        /* The word of the monospace font set in it: the font of the Payload when the setting is on (ui/log_table/log_look.d, monospaceFamily) */
+        .monospace-word { font-family: 'Courier New', Courier, monospace; }
 
         /* Columns: a strip of column headers as the log table shows them
            (table.css), Index first, the movable ones, Payload last taking the
@@ -195,7 +197,7 @@
         import * as platform from "platform.js";
         import { initialSection, fontSizeOptions } from "settings-sections.js";
         import { applyTheme } from "theme.js";
-        import { setCatalog, tr } from "i18n/i18n.js";
+        import { setCatalog, tr, trParts } from "i18n/i18n.js";
         import { translateTree } from "i18n/dom.js";
         import { languageOptions } from "i18n/languages.js";
 
@@ -461,6 +463,9 @@
             renderFontSizes();
             applyTableFontSize();
             $("#single-line-rows").value = !!params.singleLineRows;
+            $("#monospace-payload").value = !!params.monospacePayload;
+            $("#monospace-payload-text").content(<span>{trParts("{monospace} font for the payload",
+                { monospace: <span class="monospace-word">{tr("Monospace")}</span> })}</span>);
             if (formats.length) {
                 renderFormats();
                 renderColumns();
@@ -478,6 +483,7 @@
                 language: $("select#language").value,
                 tableFontSize: parseInt($("select#table-font-size").value),
                 singleLineRows: !!$("#single-line-rows").value,
+                monospacePayload: !!$("#monospace-payload").value,
                 columnLayouts: formats.length ? layoutsOf(formats) : null,
             });
         });
@@ -524,6 +530,9 @@
                 <div class="setting-group">
                     <label class="check"><input type="checkbox" id="single-line-rows" /><span data-tr="Single-line rows"></span></label>
                     <div class="hint" data-tr="Every row is one line high; a long payload goes on to the right, scroll the table sideways to read it."></div>
+                </div>
+                <div class="setting-group">
+                    <label class="check"><input type="checkbox" id="monospace-payload" /><span id="monospace-payload-text"></span></label>
                 </div>
                 <div id="columns-content" style="flow: vertical; border-spacing: 12dip;">
                     <div class="setting-group">

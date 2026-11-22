@@ -11,23 +11,32 @@ import ui.look : FontSpec, Look, TextLook;
 /// The fonts of the table (`FontId`s): the family and the size by role; a host turns them into its fonts
 enum LogFont : FontId
 {
-    body, /// the Payload and the levels: 10pt, the system's font
+    body, /// the levels: 10pt, the system's font
     aux, /// the other cells: 8pt Courier New
     header, /// the titles: 10pt Courier New
     bodyBold, /// the louder levels
     sign, /// the sign of a refusal pressed on: the body font made big (19pt)
     groupHead, /// the head of a group of rows (the date) on its plate: the header font made bold
+    payload, /// the Payload: the body font, or `monospacePayloadFont` when the settings ask for it
 }
+
+/// The families of the fonts: the system's for the body, the monospace one of the other columns (the Settings dialog sets the
+/// word of the monospace Payload in it too, resources/settings.htm `.monospace-word`)
+enum wstring bodyFamily = "system-ui, 'Segoe UI', sans-serif"w, monospaceFamily = "'Courier New', Courier, monospace"w;
 
 /// The fonts by `LogFont`
 immutable(FontSpec)[] logFonts = [
-    FontSpec("system-ui, 'Segoe UI', sans-serif"w, 10, false, false),
-    FontSpec("'Courier New', Courier, monospace"w, 8, false, true),
-    FontSpec("'Courier New', Courier, monospace"w, 10, false, true),
-    FontSpec("system-ui, 'Segoe UI', sans-serif"w, 10, true, false),
-    FontSpec("system-ui, 'Segoe UI', sans-serif"w, 19, false, false),
-    FontSpec("'Courier New', Courier, monospace"w, 10, true, true),
+    FontSpec(bodyFamily, 10, false, false),
+    FontSpec(monospaceFamily, 8, false, true),
+    FontSpec(monospaceFamily, 10, false, true),
+    FontSpec(bodyFamily, 10, true, false),
+    FontSpec(bodyFamily, 19, false, false),
+    FontSpec(monospaceFamily, 10, true, true),
+    FontSpec(bodyFamily, 10, false, false),
 ];
+
+/// The font of the Payload when the settings ask for a monospace one: the family of the other columns, at the size of the body font
+immutable FontSpec monospacePayloadFont = FontSpec(monospaceFamily, 10, false, true);
 
 enum Color textInk = Color(0x33, 0x33, 0x33);
 

@@ -141,7 +141,11 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     no ellipsis; their widths are minimums so the layout is recalculated rarely. An exception
     to rule 10. The font size setting scales the font only. Settings → Table → "Single-line
     rows" (off by default) makes every row one line high, Payload not wrapped and not cut: it
-    runs on to the right and the table scrolls sideways (chosen over an ellipsis). The one
+    runs on to the right and the table scrolls sideways (chosen over an ellipsis). Settings →
+    Table → "Monospace font for the payload" (off by default) sets Payload in the font of the
+    other columns at 10pt, scaled by the font size, at once; the levels keep the body font. Its
+    label has no negation and is all the setting shows: the word "Monospace" set in that
+    font, no sample plate, no hint. The one
     exception: a line wider than the widest column (`maxFitWidth`, 100 000 px; a record of 64 KB
     can be ~4 times wider) is cut and ends in `…` at the right side of its cell; selecting,
     copying and searching still take the whole record.
@@ -259,7 +263,8 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
 ## Settings
 
 39. **Settings has sections.** The dialog lists its sections on the left like vertical tabs
-    (Appearance: language, theme; Table: the font size first, then the columns); one
+    (Appearance: language, theme; Table: the font size first, then single-line rows, the
+    monospace payload, then the columns); one
     Save/Cancel for all. The font size applies at once to the column strip, which is the
     preview; the size the dialog opened with is shown in italics in the list. At a large font
     the checkboxes keep their size; the strip may grow wider than the dialog and scroll.

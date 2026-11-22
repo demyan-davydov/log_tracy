@@ -20,16 +20,17 @@ let lastTableId = 0; // the number of the last table made: every table has one o
 // The names of the CSS variables of the least widths of the columns, asked of D once
 let minWidthNames = null;
 
-// Tells D the colors of the theme and the scale of the text, which are the application's: every table has them (the CSS variables are
+// Tells D the colors of the theme and the scale and the fonts of the text, which are the application's: every table has them (the CSS variables are
 // read from a table of the log, hidden or not: `style.variable("bg-row")`, no `--`, gives every color as `#rrggbb`, a `morph()` or a named
 // one too; what does not read stays as it is in D). Called when the first table starts and by script.js when the theme or the font
-// size changes. The font size comes from script.js (`logTableFontSize`).
-export function logTableLookChanged(percent = globalThis.logTableFontSize ?? 100) {
+// size or the font of the Payload changes. Both come from script.js (`logTableFontSize`, `logTableMonospacePayload`).
+export function logTableLookChanged() {
     const view = views.values().next().value;
     if (!view) return;
     const style = view.element.style;
     minWidthNames ??= logTableMinWidthNames(); // the variables of the least widths of the columns, which D names by its formats
-    logTableSetLook(JSON.stringify(collectLook(name => style.variable(name), percent, minWidthNames)));
+    logTableSetLook(JSON.stringify(collectLook(name => style.variable(name), globalThis.logTableFontSize ?? 100,
+        minWidthNames, globalThis.logTableMonospacePayload === true)));
 }
 globalThis.logTableLookChanged = logTableLookChanged;
 

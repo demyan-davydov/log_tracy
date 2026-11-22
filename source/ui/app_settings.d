@@ -170,6 +170,7 @@ struct AppSettings
     string theme;
     int tableFontSize = 100; /// font size of the log tables, % of the normal one
     bool singleLineRows; /// every row of the log tables one line high, the payload cut
+    bool monospacePayload; /// the payload of the log tables in the monospace font of the other columns
     ColumnLayouts columnLayouts; /// the columns of the log tables, by format
     string language; /// of the interface: a BCP 47 tag ("ru", "x-pseudo"); "": the language of the system
     string searchPanelHeight; /// of the search (bottom) panel of the documents, as on exit ("250dip"); "": the script's own
@@ -185,6 +186,7 @@ struct AppSettings
         this.theme = rhs.theme;
         this.tableFontSize = rhs.tableFontSize;
         this.singleLineRows = rhs.singleLineRows;
+        this.monospacePayload = rhs.monospacePayload;
         this.columnLayouts = copyOf(rhs.columnLayouts);
         this.language = rhs.language;
         this.searchPanelHeight = rhs.searchPanelHeight;
@@ -200,6 +202,7 @@ struct AppSettings
         this.theme = rhs.theme;
         this.tableFontSize = rhs.tableFontSize;
         this.singleLineRows = rhs.singleLineRows;
+        this.monospacePayload = rhs.monospacePayload;
         this.columnLayouts = copyOf(rhs.columnLayouts);
         this.language = rhs.language;
         this.searchPanelHeight = rhs.searchPanelHeight;
@@ -215,6 +218,7 @@ struct AppSettings
             theme == rhs.theme &&
             tableFontSize == rhs.tableFontSize &&
             singleLineRows == rhs.singleLineRows &&
+            monospacePayload == rhs.monospacePayload &&
             columnLayouts == rhs.columnLayouts &&
             language == rhs.language &&
             searchPanelHeight == rhs.searchPanelHeight &&
@@ -230,6 +234,7 @@ struct AppSettings
         hash = hashOf(theme, hash);
         hash = hashOf(tableFontSize, hash);
         hash = hashOf(singleLineRows, hash);
+        hash = hashOf(monospacePayload, hash);
         hash = hashOf(language, hash);
         hash = hashOf(searchPanelHeight, hash);
         hash = hashOf(bottomPanelCollapsed, hash);
@@ -372,6 +377,7 @@ static JSONValue toJSON(in AppSettings settings)
     j.object["theme"] = JSONValue(settings.theme);
     j.object["tableFontSize"] = JSONValue(settings.tableFontSize);
     j.object["singleLineRows"] = JSONValue(settings.singleLineRows);
+    j.object["monospacePayload"] = JSONValue(settings.monospacePayload);
     j.object["language"] = JSONValue(settings.language);
     j.object["searchPanelHeight"] = JSONValue(settings.searchPanelHeight);
     j.object["bottomPanelCollapsed"] = JSONValue(settings.bottomPanelCollapsed);
@@ -466,7 +472,7 @@ AppSettings mergeAppStateFromScript(const AppSettings base, const(char)[] appSta
 
 /// Reads what both the settings file and the state of the script hold: the
 /// window rect, the theme, the font size of the tables, whether their rows are
-/// single-line, the language, the height of the search panel and whether it is collapsed. Keys `j`
+/// single-line, whether their payload is monospace, the language, the height of the search panel and whether it is collapsed. Keys `j`
 /// doesn't have leave their values in `settings` (a key it no longer knows, as
 /// the sidePanelWidth of the removed side panel, is ignored).
 private void readPreferences(in JSONValue j, ref AppSettings settings)
@@ -481,6 +487,9 @@ private void readPreferences(in JSONValue j, ref AppSettings settings)
     if (const singleLine = "singleLineRows" in j)
         if (singleLine.type == JSONType.true_ || singleLine.type == JSONType.false_)
             settings.singleLineRows = singleLine.boolean;
+    if (const monospace = "monospacePayload" in j)
+        if (monospace.type == JSONType.true_ || monospace.type == JSONType.false_)
+            settings.monospacePayload = monospace.boolean;
     if (const language = "language" in j)
         settings.language = language.type == JSONType.string ? language.str : "";
     if (const height = "searchPanelHeight" in j)
@@ -558,6 +567,49 @@ unittest
     base.singleLineRows = true;
     assert(mergeAppStateFromScript(base, `{"theme": "dark"}`).singleLineRows, "kept when not sent");
     assert(!mergeAppStateFromScript(base, `{"singleLineRows": false}`).singleLineRows);
+}
+
+@("settings: the monospace payload survives a save and a load, off by default")
+unittest
+{
+    const path = buildPath(tempDir(), "log_tracy_settings_monospace_payload_test.json");
+    scope (exit) if (exists(path)) remove(path);
+
+    AppSettings settings;
+    assert(!settings.monospacePayload);
+    saveSettings(settings, path);
+    assert(parseJSON(readText(path))["monospacePayload"].type == JSONType.false_, "written as a JSON bool");
+    settings.monospacePayload = true;
+    saveSettings(settings, path);
+    assert(loadSettings(path).monospacePayload);
+
+    std.file.write(path, `{"theme": "dark"}`);
+    assert(!loadSettings(path).monospacePayload, "settings without the key: off");
+    std.file.write(path, `{"theme": "dark", "monospacePayload": 1}`);
+    assert(!loadSettings(path).monospacePayload, "a value not a bool is ignored");
+}
+
+@("mergeAppStateFromScript: the monospace payload comes from the script, kept when not sent")
+unittest
+{
+    AppSettings base;
+    assert(mergeAppStateFromScript(base, `{"monospacePayload": true}`).monospacePayload);
+    base.monospacePayload = true;
+    assert(mergeAppStateFromScript(base, `{"theme": "dark"}`).monospacePayload);
+    assert(!mergeAppStateFromScript(base, `{"monospacePayload": false}`).monospacePayload);
+}
+
+@("AppSettings: the monospace payload is copied, compared and hashed")
+unittest
+{
+    AppSettings a;
+    a.monospacePayload = true;
+    const AppSettings b = a;
+    assert(b.monospacePayload);
+    AppSettings c;
+    assert(c != a && c.toHash != a.toHash);
+    c = b;
+    assert(c == a);
 }
 
 @("AppSettings: single-line rows are copied and compared")

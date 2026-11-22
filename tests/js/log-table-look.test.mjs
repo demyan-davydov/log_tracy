@@ -9,7 +9,13 @@ import { matchColorCount } from "../../resources/match-colors.js";
 test("the variables that have a value are collected by the names of the palette, with the scale of the text", () => {
     const values = { "bg-row": "#ffffff", "bg-row-stripe": " #f4f4f4 ", "bg-table-header": "bisque" };
     const look = collectLook(name => values[name], 125);
-    assert.deepEqual(look, { row: "#ffffff", stripe: "#f4f4f4", header: "bisque", scale: 1.25 });
+    assert.deepEqual(look, { row: "#ffffff", stripe: "#f4f4f4", header: "bisque", scale: 1.25, monospacePayload: false });
+});
+
+test("whether the Payload is monospace is always told, so that turning it off reaches D too", () => {
+    assert.equal(collectLook(() => undefined, 100, [], true).monospacePayload, true);
+    assert.equal(collectLook(() => undefined, 100, [], false).monospacePayload, false);
+    assert.equal(collectLook(() => undefined).monospacePayload, false, "off by default");
 });
 
 test("the least widths of the columns are read by the names the caller gives, by their keys, in dips", () => {
