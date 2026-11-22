@@ -237,7 +237,10 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     not inline in the panel. Edits apply and are remembered at once (no
     Save, no unsaved prompts); a set can be exported to a `.dlf`. "New
     Filter" creates an empty set without asking for a file and opens the editor of its first
-    rule. The DLT rule editor offers exactly the conditions a `.dlf` can hold.
+    rule. The DLT rule editor offers exactly the conditions a `.dlf` can hold. The levels of a
+    rule are a range slider drawn like the font size slider: verbose at the left, fatal at the
+    right, two knobs that may meet (one level) but not pass each other; the level of the left
+    knob is written above the track, of the right one under it, so they never cover each other.
 
 ## Recent Files
 
@@ -266,9 +269,11 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
 39. **Settings has sections.** The dialog lists its sections on the left like vertical tabs
     (Appearance: language, theme; Table: the font size first, then single-line rows, the
     monospace payload, then the columns); one
-    Save/Cancel for all. The font size applies at once to the column strip, which is the
-    preview; the size the dialog opened with is shown in italics in the list. At a large font
-    the checkboxes keep their size; the strip may grow wider than the dialog and scroll.
+    Save/Cancel for all. The font size is a slider drawn like a switch, by steps of 5% from
+    80% to 200%: a tick under every step, longer every 10%, a label every 20% (100% stronger;
+    the size the dialog opened with in italics, its tick accented); no snapping to the marks.
+    The column strip keeps the normal font: grown with the font size it got too big. The
+    strip may grow wider than the dialog and scroll.
 40. **Table columns are arranged per format.** For each format (by its id, all variants
     together) the user orders the columns and hides some; the layout is global for every log
     of that format. Index stays first and Payload last. Columns are reordered by dragging with

@@ -1,4 +1,4 @@
-// The conditions of a filter rule as the rows of the rule editor
+//! The conditions of a filter rule as the rows of the rule editor
 // (rule-editor.htm), apart from Sciter so they can be tested:
 // tests/js/rule-form.test.mjs.
 //
@@ -7,7 +7,7 @@
 // The editor has a row per column a condition can be put on, by its kind:
 //   Text, Payload  { on, check, value, ignoreCase }
 //   Integer, Hex   { on, from, to }      an empty "to": a single value; hex in a hex column
-//   Level          { on, from, to }      level names, fatal..verbose
+//   Level          { on, from, to }      level names, fatal..verbose (a range slider: levelRange)
 //   Enum           { on, value }         a label
 // The conditions a row can't show (on a column this log doesn't have, a
 // second one on a column) are kept as they are.
@@ -15,6 +15,25 @@ import { tr } from "./i18n/i18n.js";
 
 const editableKinds = new Set(["Text", "Payload", "Integer", "Hex", "Enum", "Level"]);
 export const levelNames = ["fatal", "error", "warn", "info", "debug", "verbose"];
+
+// The levels on the range slider of the editor, left to right: the least severe
+// at the left. A row's `from` is the more severe end (a filter's min: fatal is 1)
+const levelsLeftToRight = [...levelNames].reverse();
+
+// The knobs of the slider, [left, right], for the levels of a row
+export function levelRange(row) {
+    return [levelsLeftToRight.indexOf(row.to), levelsLeftToRight.indexOf(row.from)];
+}
+
+// The levels of a row, { from, to }, for the knobs of the slider
+export function levelsOfRange([left, right]) {
+    return { from: levelsLeftToRight[right], to: levelsLeftToRight[left] };
+}
+
+// The name of a level at a place of the slider
+export function levelAt(place) {
+    return levelsLeftToRight[place];
+}
 
 // The columns that get a row: times and durations can't be filtered by hand
 export function editableColumns(columns) {
