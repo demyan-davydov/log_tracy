@@ -23,8 +23,8 @@ Background: `.ai/knowledge/architecture.md` (Script ↔ Backend).
 
 ## A New File in resources/
 
-- Add it to the list of `ui/app_resources` (a unittest fails until it is); the icons are not
-  built in.
+- Add it to the list of `ui/app_resources` (a unittest fails until it is); the icons of the
+  program (`app-icons/`) are not built in.
 - Its texts follow `.ai/knowledge/i18n.md`; run `node scripts/utils/i18n-extract.mjs` to update the
   catalogs.
 - A pure module gets its tests in `tests/js/<name>.test.mjs`.

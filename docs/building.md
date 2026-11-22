@@ -212,7 +212,7 @@ Every other build (debug, `--release`) keeps them next to itself, as above.
   it runs where it is unpacked. The program is unsigned: Windows SmartScreen warns about it
   on the first start ("More info", then "Run anyway").
 
-The icons of the three systems are made of the logo, `resources/icons/logo.png` (a square of
+The icons of the three systems are made of the logo, `resources/app-icons/logo.png` (a square of
 1024 px), by `node scripts/utils/make-icons.mjs` on macOS (`sips`, `iconutil`): `app.icns` for the
 bundle, `app.ico` for Windows (16 to 256 px), `app.png` for Linux and `png/icon-<size>.png`
 of every size from 16 to 1024. Run it after the logo changes and commit what it writes.

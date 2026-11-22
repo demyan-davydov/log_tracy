@@ -135,8 +135,8 @@ The text code (wrapping, line layout, text hit tests, column styles) is in `ptab
   `TableHooks.tell`, the window queues it (`ui/script_queue`) and `onIdle()` sends it with the
   calls of the session, in a few rounds while the script's answers queue more.
 - The resources are built into the executable (`ui/app_resources`, string imports) and served
-  to Sciter at `this://app/<path>` (`SciterWindow.onLoadData`). The icons are not built in:
-  `resources/icons/`, made of its `logo.png` by `scripts/utils/make-icons.mjs`, are taken by `dist`.
+  to Sciter at `this://app/<path>` (`SciterWindow.onLoadData`). The icons of the program are not built in:
+  `resources/app-icons/`, made of its `logo.png` by `scripts/utils/make-icons.mjs`, are taken by `dist`.
 - The script's `console.log` goes to the program's log (`appLog` of `utils/app_log`, which never
   throws) as `info [script]: ...` lines (errors as `error [script]: ...`): stdout, next to the
   backend's `writeln`.

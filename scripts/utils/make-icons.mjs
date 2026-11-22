@@ -1,4 +1,4 @@
-// Makes the icons of the program from its logo, resources/icons/logo.png (square, 1024 px):
+// Makes the icons of the program from its logo, resources/app-icons/logo.png (square, 1024 px):
 // png/icon-<size>.png of every size, app.ico (Windows, built in by resources/app.rc),
 // app.icns (the macOS bundle) and app.png (Linux, the .deb). Run it on macOS after the logo
 // changes and commit what it writes: it resizes with sips and packs the .icns with iconutil.
@@ -57,7 +57,7 @@ function resize(source, size, out) {
 
 function main() {
     if (process.platform !== "darwin") throw new Error("the icons are made on macOS (sips, iconutil)");
-    const dir = resolve(fileURLToPath(new URL("../../resources/icons", import.meta.url)));
+    const dir = resolve(fileURLToPath(new URL("../../resources/app-icons", import.meta.url)));
     const logo = join(dir, "logo.png");
     const dimensions = runOrFail("sips", ["-g", "pixelWidth", "-g", "pixelHeight", logo]);
     const [width, height] = [/pixelWidth: (\d+)/, /pixelHeight: (\d+)/].map((r) => Number(dimensions.match(r)?.[1]));

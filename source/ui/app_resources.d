@@ -76,10 +76,10 @@ private enum string[] builtIn = [
 ];
 
 /// The files of resources/ the interface doesn't use: the Windows resource script and every file
-/// of icons/ (the logo and the icons made of it by scripts/utils/make-icons.mjs), taken by dist
+/// of app-icons/ (the logo and the icons made of it by scripts/utils/make-icons.mjs), taken by dist
 // debug-eval.js: evaluated by the debug channel (ui/debug_protocol), never served to the window
 private enum string[] notBuiltIn = ["app.rc", "debug-eval.js"];
-private enum notBuiltInFolder = "icons/";
+private enum notBuiltInFolder = "app-icons/";
 
 /// The file at `path` of resources/ ("main.htm", "i18n/i18n.js"), null if none is built in.
 immutable(ubyte)[] appResource(string path)
@@ -124,7 +124,7 @@ CatalogFile[] builtInCatalogs()
     return catalogs;
 }
 
-@("every file of resources/ is built in, but the icons")
+@("every file of resources/ is built in, but the icons of the program")
 unittest
 {
     import std.algorithm : canFind, filter, map, setSymmetricDifference, sort, startsWith;
@@ -151,7 +151,7 @@ unittest
     assert(appResource("main.htm") == cast(immutable(ubyte)[]) read("resources/main.htm"));
     assert(appResource("i18n/plural.js").length > 0);
     assert(appResource("no-such.js") is null);
-    assert(appResource("icons/app.icns") is null, "the icons are not built in");
+    assert(appResource("app-icons/app.icns") is null, "the icons of the program are not built in");
 }
 
 @("appResourceOfUrl: a file at this://app/, nothing at another address")
