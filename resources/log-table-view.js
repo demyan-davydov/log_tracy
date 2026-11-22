@@ -1,14 +1,17 @@
 //! The log table of a view of a document: an element with the native behavior `log-table` (source/ui/log_table_behavior.d) that draws
 //! the rows and handles the input; this script writes on its element what it shows (the attributes `doc`, `search` and `table`, the
-//! number the script talks to it by: D reads them when the behavior attaches), carries what Sciter does not give it (the gestures of the trackpad, the menus, the clipboard,
-//! the notices) and tells it the look of the application. A view of a panel (view-table.js) holds one `LogTableView`.
-import { setAnchor, logTableCall, logTableSetLook, logTableMinWidthNames } from "backend.js";
+//! number the script talks to it by, and `hears`, what its handlers hear of the mouse: D reads them when the behavior attaches), carries what Sciter does not give it (the gestures of the trackpad, the menus, the clipboard,
+//! the notices, the tips of the titles) and tells it the look of the application. A view of a panel (view-table.js) holds one `LogTableView`.
+import { columns, setAnchor, logTableCall, logTableSetLook, logTableMinWidthNames } from "backend.js";
 import { collectLook } from "log-table-look.js";
 import { lockAxis, panAxis } from "log-table-gesture.js";
 import { anchorClickPlan, isAnchorClick, rowMoved } from "anchor-click.js";
 import { anchorRefusalText } from "pane-commands.js";
 import { showNotice, showNoticeAt } from "notice.js";
-import { copyText, isMac } from "platform.js";
+import { popupAtRect } from "rect-popup.js";
+import { ColumnTip, hintsOf } from "column-tip.js";
+import { PointerHandlers } from "pointer-handlers.js";
+import { copyText, isMac, onWindowDeactivated, windowActive } from "platform.js";
 import { menuOpensByMouse } from "menu-gate.js";
 import { primaryShortcutText } from "menu-shortcuts.js";
 import { tr } from "i18n/i18n.js";
@@ -17,6 +20,12 @@ import { tr } from "i18n/i18n.js";
 const views = new Map();
 let lastTableId = 0; // the number of the last table made: every table has one of its own, from 1
 
+// The size of the header font of the table at 100% (LogFont.header of source/ui/log_table/log_look.d): the tip of a title has it
+const headerPoints = 10;
+
+// The font size of the tables in % of the normal one (Settings), as script.js keeps it
+const fontPercent = () => globalThis.logTableFontSize ?? 100;
+
 // The names of the CSS variables of the least widths of the columns, asked of D once
 let minWidthNames = null;
 
@@ -24,7 +33,7 @@ let minWidthNames = null;
 // read from a table of the log, hidden or not: `style.variable("bg-row")`, no `--`, gives every color as `#rrggbb`, a `morph()` or a named
 // one too; what does not read stays as it is in D). Called when the first table starts and by script.js when the theme or the font
 // size changes. The font size comes from script.js (`logTableFontSize`).
-export function logTableLookChanged(percent = globalThis.logTableFontSize ?? 100) {
+export function logTableLookChanged(percent = fontPercent()) {
     const view = views.values().next().value;
     if (!view) return;
     const style = view.element.style;
@@ -44,15 +53,17 @@ export class LogTableView {
         // what the table shows is on its element: the behavior reads it when it attaches (ui/main_window.d, createBehavior)
         this.element = Element.create(<div class="log-table-view" tabindex="0" doc={docId} search={search ? "1" : "0"}
             table={this.tableId} />);
-        this.pointerHandlers = [clickAnchor]; // what the mouse does to the titles and the cells: `onPointer`
+        this.pointerHandlers = new PointerHandlers([clickAnchor]); // what the mouse does to the titles and the cells: `onPointer`
         views.set(this.tableId, this);
         slot.append(this.element); // the behavior of CSS attaches here
         this.bindInput();
+        this.tip = this.makeTip();
         logTableLookChanged();
     }
 
     // The table is gone with its panel
     destroy() {
+        this.tip.dismiss();
         views.delete(this.tableId);
         this.element.remove();
     }
@@ -74,29 +85,23 @@ export class LogTableView {
     // `pointerJson`): `type` enter / leave / down / up / click / cancel, `kind` header / cell, `column` (id) and `index`, of a cell
     // `row`; a click on a cell has `id` (its message) and `anchored` (D tells no click on a row that is gone since the press); an enter,
     // a down, an up and a click have `rect` [x, y, w, h] in the element's own coordinates when known. Enters and leaves come only to a
-    // view one of whose handlers asked for them (`{ over: true }`): they come at every frame of a scroll under the mouse. They come only
+    // view one of whose handlers asked for them, of the kinds asked (`{ over: ["header"] }`, "cell" too): they come at every frame of a
+    // scroll under the mouse. They come only
     // when the mouse came to another thing (or the rows moved under it); a leave names the thing as it was entered, its row may be
     // another by now; when the rows are other ones a press is cancelled. While a button is down a handler hears nothing of the things
     // passed: a down, then a leave of the thing, then at the release an up, a click if it is the thing of the press with no drag, and an
     // enter of the thing under the mouse (a cancel instead of the up if the window lost the mouse). A double click is two clicks. What the
     // table does with the mouse itself (selecting, scrolling) is its own and goes on whatever a handler does
-    onPointer(handler, { over = false } = {}) {
-        this.pointerHandlers.push(handler);
-        if (over && !this.hearsOver) {
-            this.hearsOver = true;
-            this.call("hearOver", 1);
-        }
+    onPointer(handler, { over = [] } = {}) {
+        if (!this.pointerHandlers.add(handler, over)) return;
+        // the element keeps it for a table that attaches later (or again: ui/log_table/log_tables.d, `hearsOf`); one attached hears it now
+        this.element.setAttribute("hears", this.pointerHandlers.hears());
+        this.call("hearOver", ...this.pointerHandlers.flags());
     }
 
-    // A handler that fails is told in the log; the ones after it still hear the event
+    // An event of the mouse from D, to every handler (pointer-handlers.js)
     pointer(event) {
-        for (const handler of this.pointerHandlers) {
-            try {
-                handler(event, this);
-            } catch (e) {
-                console.log(`a pointer handler of the log table failed: ${e}`);
-            }
-        }
+        this.pointerHandlers.hand(event, this);
     }
 
     // The message index of the current row, the one the other table follows; null if none is picked (taken out of the picked ones, or cleared)
@@ -110,6 +115,29 @@ export class LogTableView {
     showRow(step) {
         this.call("reveal", step.position, 1);
         this.call("pickRow", step.position);
+    }
+
+    // The tip of a short title: the full name of its column (`hint` of the columns of the document, not translated), under the title
+    // as its continuation (popup.column-tip in table.css). It hides when the title may move from under it: a wheel or the fingers
+    // scroll the columns, a key is pressed, a menu opens, the window loses the focus, the table goes.
+    makeTip() {
+        let hints = null, close = null;
+        const tip = new ColumnTip({
+            hintOf: column => {
+                hints ??= hintsOf(columns(this.docId)); // null while the document is not open: asked again at the next title
+                return hints?.get(column);
+            },
+            show: (rect, text) => {
+                close = popupAtRect(this.element, rect, Element.create(<popup class="column-tip" style={`font-size: ${headerPoints * fontPercent() / 100}pt`}>{text}</popup>),
+                    { anchorAt: 1, popupAt: 7, onDismissed: () => tip.dismiss() }); // its top-left on the title's bottom-left
+            },
+            hide: () => { close?.(); close = null; },
+            active: windowActive,
+        });
+        this.onPointer((event) => tip.pointer(event), { over: ["header"] });
+        for (const name of ["^wheel", "^gesturepan", "^contextmenu", "^keydown"])
+            this.element.on(name, () => { tip.dismiss(); return false; });
+        return tip;
     }
 
     // ---- the input Sciter leaves to the script ----
@@ -175,6 +203,9 @@ export class LogTableView {
         });
     }
 }
+
+// A window in the background shows no tip
+onWindowDeactivated(() => { for (const view of views.values()) view.tip.dismiss(); });
 
 // A table tells the row the user selected (JSON: table, row, id of the message, delayed); the panel follows it in the other table
 globalThis.logTableRowChosen = json => {

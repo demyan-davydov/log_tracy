@@ -6,6 +6,7 @@
 module ui.table_script;
 
 import ptable.tablehit : CopyTarget;
+import ptable.tablepointer : OverKinds;
 import std.math : isNaN;
 
 /// The numbers of a call's arguments after its method; a value that is not a number is NaN
@@ -114,7 +115,7 @@ interface TableControl
     void updateRow(size_t item); /// only the place of the row `item` is painted again (for the checks; what an animation does)
     void updateCell(size_t item, size_t column); /// the same for a cell: the column of the model
     void contextPick(size_t row); /// the click for the menu was on this row: it keeps the rows picked, or is picked alone
-    void hearOver(bool on); /// the script hears the enters and leaves of the mouse too (a handler of the view listens to them)
+    void hearOver(OverKinds kinds); /// the script hears the mouse enter and leave the titles, the cells (a handler of the view listens)
 
     /// The measurements as JSON
     wstring stats();
@@ -158,7 +159,7 @@ bool dispatch(TableControl control, const(char)[] method, ScriptArgs args, out S
         control.contextPick(cast(size_t) args.number(0));
         return true;
     case "hearOver":
-        control.hearOver(args.number(0) != 0);
+        control.hearOver(OverKinds(args.number(0) != 0, args.number(1) != 0)); // headers, cells
         return true;
     default:
         version (DebugChannel)
@@ -306,7 +307,7 @@ version (unittest)
         void copy(CopyTarget target, size_t row, size_t column) { calls ~= "copy " ~ target.to!string ~ " " ~ row.to!string ~ " " ~ column.to!string; }
         wstring hitTest(double x, double y) { calls ~= "hitTest " ~ x.to!string ~ " " ~ y.to!string; return `{"row":1}`w; }
         void contextPick(size_t row) { calls ~= "contextPick " ~ row.to!string; }
-        void hearOver(bool on) { calls ~= "hearOver " ~ on.to!string; }
+        void hearOver(OverKinds kinds) { calls ~= "hearOver " ~ kinds.headers.to!string ~ " " ~ kinds.cells.to!string; }
         void updateRow(size_t item) { calls ~= "updateRow " ~ item.to!string; }
         void updateCell(size_t item, size_t column) { calls ~= "updateCell " ~ item.to!string ~ " " ~ column.to!string; }
         void anchorApplied(size_t message, bool moved) { calls ~= "anchorApplied " ~ message.to!string ~ " " ~ moved.to!string; }
@@ -332,13 +333,13 @@ unittest
     assert(dispatch(control, "copy", ScriptArgs(), result) && dispatch(control, "copy", ScriptArgs([2, 7, 3]), result));
     assert(dispatch(control, "hitTest", ScriptArgs([5, 6]), result) && result == ScriptResult.ofText(`{"row":1}`w));
     assert(dispatch(control, "contextPick", ScriptArgs([4]), result));
-    assert(dispatch(control, "hearOver", ScriptArgs([1]), result));
+    assert(dispatch(control, "hearOver", ScriptArgs([1, 0]), result));
     assert(dispatch(control, "updateRow", ScriptArgs([4]), result) && dispatch(control, "updateCell", ScriptArgs([4, 2]), result));
     assert(dispatch(control, "anchorApplied", ScriptArgs([9, 1]), result) && dispatch(control, "anchorApplied", ScriptArgs([8]), result));
     assert(dispatch(control, "copy", ScriptArgs([7, 1, 1]), result) && dispatch(control, "copy", ScriptArgs([2, -1, 1]), result), "no kind or row like that: known call, nothing copied");
     assert(control.calls == ["jump 500 true", "scrollBy -80 false", "render", "copyText true", "stats", "select [1, 2, 3, 4]",
         "pan -7.5 0", "pan 1 4", "panEnd", "copyText false",
-        "copy text 0 0", "copy cell 7 3", "hitTest 5 6", "contextPick 4", "hearOver true", "updateRow 4", "updateCell 4 2", "anchorApplied 9 true", "anchorApplied 8 false"]);
+        "copy text 0 0", "copy cell 7 3", "hitTest 5 6", "contextPick 4", "hearOver true false", "updateRow 4", "updateCell 4 2", "anchorApplied 9 true", "anchorApplied 8 false"]);
 }
 
 @("dispatch: view answers JSON, rowHeight text, scrollTo takes the cell and the offsets, smooth is off unless asked")

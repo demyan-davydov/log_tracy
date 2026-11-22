@@ -28,7 +28,7 @@ import ui.sciter_table.frame_request : FrameRequest;
 import ui.sciter_table.input : endsPress, wheelIsAcross, cursorOf, isCopy, isOurEvent, isSelectAll, keyPickMode, pickMode, startsPickPress, tableKey, wheelPixels;
 
 import ui.sciter_table.sciter_host : SciterHost;
-import ptable.table : PointerMessage;
+import ptable.table : OverKinds, PointerMessage;
 import ui.table_messages : copyCutJson, currentRowJson, pointerJson, readsOf, rowChosenJson;
 import ui.table_script : dispatch, ScriptArgs, ScriptResult, TableControl;
 
@@ -420,7 +420,7 @@ final class LogTableBehavior : SciterEventHandler
         wstring hitTest(double x, double y) { return _log.table.hitTest(x, y).toJson.toUTF16; }
 
         void contextPick(size_t row) { _log.table.contextPick(row); }
-        void hearOver(bool on) { _log.table.hostHearsOver(on); }
+        void hearOver(OverKinds kinds) { _log.table.hostHearsOver(kinds); }
         void anchorApplied(size_t message, bool moved) { _log.anchorApplied(message, moved); }
         void updateRow(size_t item) { _log.table.updateRow(item); }
         void updateCell(size_t item, size_t column) { _log.table.updateCell(item, column); }

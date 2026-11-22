@@ -51,6 +51,12 @@ export function windowFrame() {
     return { left, top, width, height };
 }
 
+// True while the window has the input focus (no popup is shown over a window in the background)
+export const windowActive = () => Window.this.isActive;
+
+// `handler()` is called when the window loses the input focus
+export const onWindowDeactivated = handler => Window.this.on("activate", evt => { if (evt.reason === 0) handler(); });
+
 // True while the window is minimized
 export const windowMinimized = () => Window.this.state === Window.WINDOW_MINIMIZED;
 

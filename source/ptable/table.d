@@ -16,6 +16,7 @@ import ptable.lookchange : LookChange;
 import ptable.navigation;
 import ptable.pointer;
 public import ptable.pointerdispatch : PointerAction, PointerMessage, PointerTarget, TargetKind;
+public import ptable.tablepointer : OverKinds;
 import ptable.tablepointer : Capture, TablePointer;
 import ptable.hitregion : Area, areaAt;
 import ptable.rowcopy;
@@ -269,25 +270,29 @@ final class Table
         return false;
     }
 
-    /// Where the thing `target` is (a title, a cell), in the table's coordinates; false for nothing, a row not on the screen, a column not shown
+    /// Where the thing `target` is seen (a title, a cell: the part not under a pinned column), in the table's coordinates; false for nothing,
+    /// a row not on the screen, a column not shown
     bool targetRect(PointerTarget target, out Rect area)
     {
-        final switch (target.kind)
-        {
-        case TargetKind.none:
+        if (target.kind == TargetKind.none)
             return false;
-        case TargetKind.cell:
-            return cellRect(target.row, target.column, area);
-        case TargetKind.header:
-            layoutIfNeeded();
-            foreach (c; places().columns)
-                if (c.defIndex == target.column)
+        layoutIfNeeded();
+        const p = places();
+        foreach (c; p.columns)
+            if (c.defIndex == target.column)
+            {
+                const regions = _store.space.regions;
+                if (target.kind == TargetKind.cell)
                 {
-                    area = titleIn(c, _store.space.regions); // as the painter places a title
-                    return true;
+                    if (!cellRect(target.row, target.column, area))
+                        return false;
+                    area = seenOf(area, panesOf(p, regions.rows)[c.area]);
                 }
-            return false;
-        }
+                else
+                    area = seenOf(titleIn(c, regions), panesOf(p, regions.header)[c.area]); // as the painter places a title
+                return true;
+            }
+        return false;
     }
 
     // Where the row `item` is in the table's coordinates; false if it is not on the screen
@@ -957,11 +962,11 @@ final class Table
         return _mouse.pressed;
     }
 
-    /// Whether the host hears the enters and leaves of the mouse (someone of it listens to them; they come at every frame of a scroll under
-    /// the mouse): the presses, releases, clicks and cancels it hears always
-    void hostHearsOver(bool on)
+    /// The kinds of things the host hears the mouse enter and leave (someone of it listens to them; they come at every frame of a scroll
+    /// under the mouse): the presses, releases, clicks and cancels it hears always
+    void hostHearsOver(OverKinds kinds)
     {
-        _mouse.hostHearsOver(on);
+        _mouse.hostHearsOver(kinds);
     }
 
     // The thing under the mouse where it was last seen: asked again after the rows moved under it. True if it is another thing
@@ -1678,7 +1683,7 @@ unittest
 {
     auto f = make(5, 400, 200);
     f.table.paint(f.canvas);
-    f.table.hostHearsOver(true);
+    f.table.hostHearsOver(OverKinds.all);
     PointerMessage[] told;
     f.table.events.pointer = (in PointerMessage e) { told ~= e; };
     alias enter = (PointerTarget t) => PointerMessage(PointerAction.enter, t);
@@ -1703,7 +1708,7 @@ unittest
 {
     auto f = make(100);
     f.table.paint(f.canvas);
-    f.table.hostHearsOver(true);
+    f.table.hostHearsOver(OverKinds.all);
     PointerMessage[] told;
     f.table.events.pointer = (in PointerMessage e) { told ~= e; };
     f.table.hoverAt(5, 21 + 3);
@@ -1755,7 +1760,7 @@ unittest
 
     auto f = make(5, 400, 200);
     f.table.paint(f.canvas);
-    f.table.hostHearsOver(true);
+    f.table.hostHearsOver(OverKinds.all);
     string[] told;
     f.table.events.pointer = (in PointerMessage m) { told ~= m.action.to!string ~ " " ~ m.target.kind.to!string ~ m.target.row.to!string; };
     const y = 21 + 16 + 3; // the second row
@@ -1787,7 +1792,7 @@ unittest
     bool[] captured;
     table.events.pointer = (in PointerMessage m) { told ~= m.action.to!string; };
     table.events.capture = (bool on) { captured ~= on; };
-    table.hostHearsOver(true);
+    table.hostHearsOver(OverKinds.all);
     const y = 21 + 16 * 2 + 3;
     table.mouseDown(5, y);
     table.forgetPicks();
@@ -1805,7 +1810,7 @@ unittest
 {
     auto f = make(5, 400, 200);
     f.table.paint(f.canvas);
-    f.table.hostHearsOver(true);
+    f.table.hostHearsOver(OverKinds.all);
     string[] told;
     f.table.events.pointer = (in PointerMessage m) { told ~= m.action.to!string; };
     const y = 21 + 16 + 3;
@@ -1826,6 +1831,22 @@ unittest
     assert(cell.y == 21 + 16 * 2);
     assert(!f.table.targetRect(PointerTarget.init, title), "nothing");
     assert(!f.table.targetRect(PointerTarget.cell(90, 1), cell), "off the screen");
+}
+
+@("Table: targetRect of a title or a cell gone partly under a pinned column is the part seen")
+unittest
+{
+    auto f = make(100);
+    f.layout.setWidth("text", 600);
+    f.layout.setPin("n", Pin.left);
+    f.table.paint(f.canvas);
+    f.table.scrollXBy(30);
+    f.table.paint(f.canvas);
+    Rect pinned, title, cell;
+    assert(f.table.targetRect(PointerTarget.header(0), pinned));
+    assert(f.table.targetRect(PointerTarget.header(1), title) && f.table.targetRect(PointerTarget.cell(2, 1), cell));
+    assert(title.x == pinned.x + pinned.w, "begins where the pinned column ends");
+    assert(cell.x == title.x && cell.w == title.w, "the cell likewise");
 }
 
 @("Table: updateHover paints again the cell under the mouse only, none with the mouse elsewhere")
@@ -2257,7 +2278,7 @@ unittest
     // the mouse over the rows, the host hearing what it is over: the rows move under it at every frame
     size_t heard;
     table.events.pointer = (in PointerMessage m) { heard++; };
-    table.hostHearsOver(true);
+    table.hostHearsOver(OverKinds.all);
     table.hoverAt(30, 40);
     scrollAround(30);
     const over = GC.stats().allocatedInCurrentThread;

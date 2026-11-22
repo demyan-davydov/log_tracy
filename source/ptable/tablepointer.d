@@ -16,6 +16,24 @@ enum Capture : ubyte
     letGo, /// the press is over: the host lets the mouse go
 }
 
+/// The kinds of things the host hears the mouse enter and leave (a handler of it listens to them)
+struct OverKinds
+{
+    bool headers, cells;
+
+    /// Both kinds
+    static OverKinds all() pure nothrow @nogc @safe
+    {
+        return OverKinds(true, true);
+    }
+
+    /// Whether the enters and leaves of a thing of `kind` are heard
+    bool has(TargetKind kind) const pure nothrow @nogc @safe
+    {
+        return kind == TargetKind.header ? headers : kind == TargetKind.cell && cells;
+    }
+}
+
 // A point of the table, NaN out of it
 private struct Point
 {
@@ -27,7 +45,7 @@ final class TablePointer
     private PointerDispatch _dispatch;
     private PointerMessage[] _told; // what the host is still to hear, reused
     private bool _cellHeld; // the press is on a cell that holds it
-    private bool _hostHearsOver; // the host hears the enters and leaves too, not only the presses, releases, clicks and cancels
+    private OverKinds _hostHears; // the things the host hears the enters and leaves of, besides the presses, releases, clicks and cancels
     private PointerTarget _hostOver; // what the host was told it is over: it hears no leave of a thing it never heard entered
     private Point _at; // where the mouse was last seen
 
@@ -37,11 +55,13 @@ final class TablePointer
         _told.reserve(8); // a frame keeps a few messages at most: none of them allocates
     }
 
-    /// Whether the host hears the enters and leaves (someone of it listens to them): they come at every frame of a scroll under the mouse
-    void hostHearsOver(bool on)
+    /// The kinds of things the host hears the mouse enter and leave (someone of it listens to them): they come at every frame of a
+    /// scroll under the mouse. What it was told it is over is kept while that kind is still heard, so it hears that left.
+    void hostHearsOver(OverKinds kinds)
     {
-        _hostHearsOver = on;
-        _hostOver = PointerTarget.init;
+        _hostHears = kinds;
+        if (!kinds.has(_hostOver.kind))
+            _hostOver = PointerTarget.init;
     }
 
     // ---- the point ----
@@ -167,7 +187,7 @@ final class TablePointer
     {
         if (m.action == PointerAction.enter || m.action == PointerAction.leave)
         {
-            if (!_hostHearsOver || (m.action == PointerAction.leave && m.target != _hostOver))
+            if (!_hostHears.has(m.target.kind) || (m.action == PointerAction.leave && m.target != _hostOver))
                 return;
             _hostOver = m.action == PointerAction.enter ? m.target : PointerTarget.init;
             if (m.action == PointerAction.leave && _told.length > 0 && _told[$ - 1].action == PointerAction.enter
@@ -232,7 +252,7 @@ unittest
     p.press(cell(1, 0), true);
     p.release(cell(1, 0), false);
     assert(told(p) == ["down cell1", "up cell1", "click cell1"], "no enter and leave unasked");
-    p.hostHearsOver(true);
+    p.hostHearsOver(OverKinds.all);
     p.moveTo(cell(2, 0));
     p.press(cell(2, 0), false);
     p.release(cell(2, 0), false);
@@ -244,7 +264,7 @@ unittest
 unittest
 {
     auto p = new TablePointer;
-    p.hostHearsOver(true);
+    p.hostHearsOver(OverKinds.all);
     p.at(10, 40);
     p.moveTo(cell(5, 0));
     p.press(cell(5, 0), true);
@@ -262,7 +282,7 @@ unittest
 unittest
 {
     auto p = new TablePointer;
-    p.hostHearsOver(true);
+    p.hostHearsOver(OverKinds.all);
     p.moveTo(cell(1, 0));
     p.moveTo(cell(2, 0));
     p.moveTo(cell(3, 0));
@@ -281,4 +301,40 @@ unittest
 {
     auto p = new TablePointer;
     assert(p.moveTo(cell(1, 0)) && !p.moveTo(cell(1, 0)) && p.moveTo(title(0)) && p.overRow == -1);
+}
+
+@("TablePointer: the host hears the enters and leaves of the kinds it asked for only")
+unittest
+{
+    auto p = new TablePointer;
+    p.hostHearsOver(OverKinds(true, false));
+    p.moveTo(cell(1, 0));
+    p.moveTo(title(2));
+    told(p);
+    p.moveTo(cell(1, 0));
+    assert(told(p) == ["leave header0"], "the cells are not heard");
+}
+
+@("TablePointer: asking for one more kind keeps what the host was told it is over, so it hears that left")
+unittest
+{
+    auto p = new TablePointer;
+    p.hostHearsOver(OverKinds(true, false));
+    p.moveTo(title(2));
+    assert(told(p) == ["enter header0"]);
+    p.hostHearsOver(OverKinds.all);
+    p.moveTo(cell(1, 0));
+    assert(told(p) == ["leave header0", "enter cell1"]);
+}
+
+@("TablePointer: a kind no longer heard is forgotten: the host hears no leave of it")
+unittest
+{
+    auto p = new TablePointer;
+    p.hostHearsOver(OverKinds.all);
+    p.moveTo(title(2));
+    told(p);
+    p.hostHearsOver(OverKinds(false, true));
+    p.moveTo(cell(1, 0));
+    assert(told(p) == ["enter cell1"]);
 }
