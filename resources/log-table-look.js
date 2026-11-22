@@ -1,7 +1,7 @@
 //! The look of the log table as the script collects it for D (`logTableSetLook(json)`): the colors of the
 //! theme's CSS variables by the names of the fields of the palette (source/ui/log_table/log_look.d, LogPalette), the
 //! lengths of the variables of `.log-table` in dips by the names of the fields of the spacing (LogSpacing) and the
-//! scale of the text. Pure: the value of a variable comes from the `read` function the caller gives, so this is
+//! scale and font of the text. Pure: the value of a variable comes from the `read` function the caller gives, so this is
 //! tested without Sciter (tests/js/log-table-look.test.mjs). D parses the colors (source/ui/log_table/look_json.d); a
 //! name the theme has no variable for, or whose value is empty, is left out and D keeps the color it has.
 
@@ -75,9 +75,11 @@ export const minWidthKey = name => {
     return name.startsWith(prefix + "-") && name.length > prefix.length + 1 ? name.slice(prefix.length + 1) : "";
 };
 
-// What `setLook` is told: { name: "css color", ..., spacing: { name: dips }, scale } for the variables that have a
-// value; `percent` is the font size of the tables in % of the normal one (Settings)
-export function collectLook(read, percent = 100, minWidthNames = []) {
+// What `setLook` is told: { name: "css color", ..., spacing: { name: dips }, scale, monospacePayload } for the variables
+// that have a value; `percent` is the font size of the tables in % of the normal one, `monospacePayload` whether the
+// Payload is in the monospace font of the levels (Settings, both). The monospace is always told: D keeps what
+// a look does not say, so leaving it out would never turn it off
+export function collectLook(read, percent = 100, minWidthNames = [], monospacePayload = false) {
     const look = {};
     for (const [name, variable] of Object.entries(paletteVariables)) {
         let value = "";
@@ -126,5 +128,6 @@ export function collectLook(read, percent = 100, minWidthNames = []) {
     if (Object.keys(minWidths).length) look.minWidths = minWidths;
     if (Object.keys(spacing).length) look.spacing = spacing;
     if (percent > 0) look.scale = percent / 100;
+    look.monospacePayload = monospacePayload === true;
     return look;
 }

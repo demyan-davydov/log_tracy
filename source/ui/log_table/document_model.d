@@ -96,13 +96,13 @@ TableColumn[] logColumns(const(ColumnInfo)[] columns, LogColumnLook look = LogCo
         // the numbers and texts of the columns stand at their right side, a level in the middle, the Payload at its left;
         // the titles are in the middle but the Payload's
         column.style.cell.halign = c.kind == ColumnKind.Level ? Halign.center : Halign.right;
-        column.style.cell.font = c.kind == ColumnKind.Level ? LogFont.body : LogFont.aux;
+        column.style.cell.font = c.kind == ColumnKind.Level ? LogFont.level : LogFont.aux;
         column.style.header.halign = Halign.center;
         column.style.cell.keepInViewY = !def.flex; // the Payload makes the row tall, the others stay in the part of it seen
         if (def.flex)
         {
             column.style.cell.halign = column.style.header.halign = Halign.left;
-            column.style.cell.font = LogFont.body;
+            column.style.cell.font = LogFont.payload; // the system's font or a monospace one, as the settings say (ui/log_table/look_json)
             // the text of the last column and its title start a bit further from its border
             column.style.cell.padLeft = column.style.header.padLeft = look.payloadPadLeft;
             column.style.cell.padRight = column.style.header.padRight = look.payloadPadRight;
@@ -521,12 +521,12 @@ unittest
         "the Payload text ends where the style says, the other columns leave it to the geometry");
 }
 
-@("logColumns: the numbers and the texts of the columns are set in the small font, the Payload and the levels in the body font")
+@("logColumns: the numbers and the texts of the columns are set in the small font, the levels and the Payload each in its own")
 unittest
 {
     const ColumnInfo[] infos = [ColumnInfo("time", "Time", ColumnKind.Time), ColumnInfo("level", "Level", ColumnKind.Level),
         ColumnInfo("payload", "Payload", ColumnKind.Payload)];
     auto defs = logColumns(infos);
     assert(styleOf(defs[0]).cell.font == LogFont.aux && styleOf(defs[1]).cell.font == LogFont.aux && styleOf(defs[2]).cell.font == LogFont.aux);
-    assert(styleOf(defs[3]).cell.font == LogFont.body && styleOf(defs[4]).cell.font == LogFont.body);
+    assert(styleOf(defs[3]).cell.font == LogFont.level && styleOf(defs[4]).cell.font == LogFont.payload);
 }

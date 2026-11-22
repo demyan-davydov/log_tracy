@@ -96,6 +96,7 @@
     "Match case": "Учитывать регистр",
     "May|month": "мая",
     "Message index": "Номер сообщения",
+    "Monospace": "Моноширинный",
     "Name": "Имя",
     "New Filter": "Новый фильтр",
     "New Filter...": "Новый фильтр...",
@@ -232,6 +233,7 @@
     "{file}: {notes}": "{file}: {notes}",
     "{format} (current file)": "{format} (текущий файл)",
     "{lines}\n{line}": "{lines}\n{line}",
+    "{monospace} font for the payload": "{monospace} шрифт для текста сообщений",
     "{n} anchor at most": {
       "one": "Максимум {n} якорь",
       "few": "Максимум {n} якоря",
