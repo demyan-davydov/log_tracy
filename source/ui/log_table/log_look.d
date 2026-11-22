@@ -159,6 +159,7 @@ struct LogSpacing
 {
     double groupPadTop = 6, groupPadBottom = 0;
     double payloadPadLeft = 5.33; /// the room left of the Payload text and of its title (4pt), the other columns have the text column's own 3
+    double payloadPadRight = 7; /// the room right of the Payload text and of its title (5.25pt), the other columns have the text column's own 3
     double[string] minWidths; /// the least widths of the columns in dips, by the keys of `ui.log_table.column_widths`, times the scale of the text
     /// The room above the first row and under the last one, always there (none by default)
     double rowsMarginTop = 0, rowsMarginBottom = 0;

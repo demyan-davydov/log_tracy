@@ -12,8 +12,9 @@
 .log-table-view {
     --group-pad-top: 4.5pt; /* 6dip */
     --group-pad-bottom: 0; /* the plate reaches the bottom of the margin and covers the line there (the outline of a group) */
-    /* the room left of the text of the Payload column and of its title */
+    /* the room left and right of the text of the Payload column and of its title */
     --payload-pad-left: 4pt; /* 5.33dip */
+    --payload-pad-right: 5.25pt; /* 7dip */
     /* the room around the rows, always there (none for now: set one to have it); left and right the same for the tables of a
        document (their column host's) */
     --rows-margin-top: 0;

@@ -41,11 +41,11 @@ import std.uni : toLower;
 /// since boot or none has no date
 immutable HeadedCellPartsExtractor timeParts = new immutable HeadedCellPartsExtractor(&firstSpace);
 
-/// What the look and the settings say of the columns of the log table: the room left of the Payload text (less than 0: the
-/// geometry's) and whether the Payload wraps (not in the single-line view)
+/// What the look and the settings say of the columns of the log table: the room left and right of the Payload text (less than 0:
+/// the geometry's) and whether the Payload wraps (not in the single-line view)
 struct LogColumnLook
 {
-    double payloadPadLeft = -1;
+    double payloadPadLeft = -1, payloadPadRight = -1;
     bool wrapPayload = true;
     LogLook look; /// the colors the columns that draw by themselves read; null: the default look
     bool delegate() anchorsFull; /// whether no room is left for another anchor: null, there is always room
@@ -105,6 +105,7 @@ TableColumn[] logColumns(const(ColumnInfo)[] columns, LogColumnLook look = LogCo
             column.style.cell.font = LogFont.body;
             // the text of the last column and its title start a bit further from its border
             column.style.cell.padLeft = column.style.header.padLeft = look.payloadPadLeft;
+            column.style.cell.padRight = column.style.header.padRight = look.payloadPadRight;
             column.style.wrap = look.wrapPayload;
         }
         column.style.group.halign = Halign.center; // the head of a group of rows (the date) stands in the middle of its plate
@@ -514,8 +515,10 @@ unittest
 unittest
 {
     const ColumnInfo[] infos = [ColumnInfo("time", "Time", ColumnKind.Time), ColumnInfo("payload", "Payload", ColumnKind.Payload)];
-    auto defs = logColumns(infos, LogColumnLook(5.33, false));
+    auto defs = logColumns(infos, LogColumnLook(5.33, 7, false));
     assert(styleOf(defs[1]).cell.padLeft < 0 && styleOf(defs[2]).cell.padLeft < 0 && styleOf(defs[3]).cell.padLeft == 5.33 && styleOf(defs[3]).header.padLeft == 5.33 && defs[3].def.flex && !styleOf(defs[3]).wrap && styleOf(defs[2]).wrap);
+    assert(styleOf(defs[1]).cell.padRight < 0 && styleOf(defs[2]).cell.padRight < 0 && styleOf(defs[3]).cell.padRight == 7 && styleOf(defs[3]).header.padRight == 7,
+        "the Payload text ends where the style says, the other columns leave it to the geometry");
 }
 
 @("logColumns: the numbers and the texts of the columns are set in the small font, the Payload and the levels in the body font")

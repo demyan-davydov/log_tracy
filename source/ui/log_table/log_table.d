@@ -74,7 +74,7 @@ final class LogTable
             if (_columnLookStale)
             {
                 // the columns only read the widths: the look's own, not a copy
-                columnLook = LogColumnLook(look.spacing.payloadPadLeft, !_singleLine, look, anchorsFull, measurer, null,
+                columnLook = LogColumnLook(look.spacing.payloadPadLeft, look.spacing.payloadPadRight, !_singleLine, look, anchorsFull, measurer, null,
                     cast(double[string]) look.spacing.minWidths);
                 _columnLookStale = false;
             }

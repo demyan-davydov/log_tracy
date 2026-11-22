@@ -46,6 +46,7 @@ export const spacingVariables = {
     groupPadTop: "group-pad-top",
     groupPadBottom: "group-pad-bottom",
     payloadPadLeft: "payload-pad-left",
+    payloadPadRight: "payload-pad-right",
     rowsMarginTop: "rows-margin-top",
     rowsMarginBottom: "rows-margin-bottom",
     rowsMarginLeft: "rows-margin-left",
