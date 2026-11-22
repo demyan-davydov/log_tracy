@@ -22,12 +22,16 @@ struct TableSpace
     private Regions _regions;
     private SideMargins _sides; // the margins left and right the regions were made with
     private bool _stale = true;
+    private bool _sized; // given a size by `resize` (a table never drawn has none: not 0)
 
     /// The fonts and the geometry the painter asked for (read only: `restyle` and `refresh` change them)
     ref const(TableFonts) fonts() const return nothrow { return _fonts; }
 
     double width() const nothrow { return _width; }
     double height() const nothrow { return _height; }
+
+    /// Whether the table was given a size (`resize`): before it, its width of 0 is no room, only not known yet
+    bool sized() const nothrow { return _sized; }
 
     /// The parts of the table's area: the header, the rows, the footer, the margins
     ref const(Regions) regions() const return nothrow { return _regions; }
@@ -36,6 +40,7 @@ struct TableSpace
     bool resize(double newWidth, double newHeight, out bool widthChanged)
     {
         widthChanged = newWidth != _width;
+        _sized = true;
         if (!widthChanged && newHeight == _height)
             return false;
         _width = newWidth;

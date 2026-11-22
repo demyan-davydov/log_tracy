@@ -44,7 +44,8 @@ ptable  ←  ptable_text  ←  ui
   (`ColumnLayout`: widths, visibility, pinning and the horizontal scroll by column id, given to all the
   tables of a column host; `placeColumns`), `ptable/columnhost` (`ColumnHost`: the columns the tables of one list share, one host per
   document (`LogTables.hostOf`): the definitions, the layout, the margins left and right of the rows (`setMargins`, the same for its tables), the room of the
-  columns (the least body its attached tables have less those margins: a wider one leaves its edge empty, none cuts a column), their places (`ColumnHost.places`), and `settle`, the fit
+  columns (the least body its attached tables have less those margins: a wider one leaves its edge empty, none cuts a column; a table
+  never sized, never drawn, tells none: `TableSpace.sized`), their places (`ColumnHost.places`), and `settle`, the fit
   of the widths to the rows of all its tables: each client (`ColumnClient`, the `RowStore` of a table) lays out its rows and tells what
   they need, a column takes the most, the clients lay out again while a width widens, one `LayoutChange.Kind.fit` at the end; a table
   settles only when its own window, rows or columns changed (`RowStore.fitStart`), never because of a fit of the host, so two tables

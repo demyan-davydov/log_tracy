@@ -104,7 +104,8 @@ final class RowStore : ColumnClient
         host.attach(this);
         _fitDirty = true;
         ensure();
-        host.resize(this, _space.regions.body.w);
+        if (_space.sized)
+            host.resize(this, _space.regions.body.w); // never sized (never drawn): no room to tell, the first resize tells it
     }
 
     /// The look changed (the metrics): the painter's geometry, the fonts and the columns are read again, and the widths are fit
@@ -167,8 +168,10 @@ final class RowStore : ColumnClient
             refreshColumns();
             regionsMade = _space.refresh(host.margins).regionsMade || regionsMade; // the header may have grown to the font of a title
         }
-        if (regionsMade && !_detached)
-            host.resize(this, _space.regions.body.w); // the room of the columns is the host's: the least body of its tables less its margins
+        // The room of the columns is the host's: the least body of its tables less its margins. A store never sized (a table never drawn,
+        // on a page not shown) tells none: its width of 0 would leave the columns of the other tables no room
+        if (regionsMade && !_detached && _space.sized)
+            host.resize(this, _space.regions.body.w);
         bool wantedChanged;
         const wanted = _columns.wanted(wantedChanged);
         if (wantedChanged)
@@ -522,6 +525,30 @@ unittest
     store.measure(needs);
     assert(needs[0] == 3 + 1 * 10 + 3, "the title N and its paddings");
     assert(needs[1] == 3 + 4 * 10 + 3, "the title of the flex column holds it as wide too");
+}
+
+@("RowStore: a store never sized tells its host no room, neither by ensure nor when attached again: it narrows no other table")
+unittest
+{
+    auto host = new ColumnHost;
+    auto shown = new RowStore(new NumbersModel(10), host, portsOf(new Painter));
+    bool widthChanged;
+    shown.resize(400, 200, widthChanged);
+    shown.ensure();
+    const room = host.width;
+    assert(room > 0, "the store shown tells its room");
+
+    // A table never drawn (on a page not shown): its size is none yet, not 0
+    auto hidden = new RowStore(new NumbersModel(10), host, portsOf(new Painter));
+    hidden.ensure();
+    assert(host.width == room, "ensure of a store never sized tells no room");
+    hidden.detachHost();
+    hidden.attachHost();
+    assert(host.width == room, "attached again before it was sized: no room told");
+
+    hidden.resize(300, 200, widthChanged);
+    hidden.ensure();
+    assert(host.width < room, "sized, its room counts");
 }
 
 @("RowStore: the host is told the least widths of the columns as a whole and the line between them the geometry of the painter gives")
