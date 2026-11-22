@@ -22,6 +22,7 @@ import { showNotice } from "notice.js";
 import { FilterPanel } from "filter-panel.js";
 import { SearchBar } from "search-bar.js";
 import { MainViewTable, SearchViewTable } from "view-table.js";
+import { activeTabOf, collapseStep } from "panel-sizes.js";
 
 // True if `element` is `root` or inside it (and still in the document)
 function isInside(element, root) {
@@ -70,8 +71,10 @@ function renderPane(splitters) {
         <splitter />
 
         {/* The bottom panel: pages over a strip of their tabs, below them.
-            One page is shown, the one of the active tab (data-page) */}
+            One page is shown, the one of the active tab (data-page); the
+            container of the pages is hidden while the panel is collapsed */}
         <section class="bottom-panel">
+            <div class="bottom-pages">
             <div class="bottom-page search-page" data-page="search">
                 {/* The search bar: search-bar.js */}
                 <div class="search-bar">
@@ -114,7 +117,10 @@ function renderPane(splitters) {
             </div>
             {/* Of the whole application, not of the document: empty for now */}
             <div class="bottom-page mcp-page" data-page="mcp" style="display:none;"></div>
+            </div>
             <div class="bottom-tabs">
+                {/* Collapses the panel to this strip, expands it again: its icon and title by renderCollapsed */}
+                <div class="btn-bottom-panel" />
                 <div class="bottom-tab active" data-page="search">
                     <span class="bottom-tab-name" data-tr="Search" data-tr-context="noun" />
                 </div>
@@ -141,10 +147,13 @@ function renderPane(splitters) {
 export class DocumentPane {
     // @param docId - the id of the document in the backend
     // @param container - the element the panel is appended to
-    // @param splitters - { rows } the splitter starts with
+    // @param splitters - { rows } the splitter starts with; collapsed: the bottom
+    //   panel starts collapsed, expanding to searchPanelHeight (panel-sizes.js)
     // @param host - what the panel asks of the window:
     //   closeTab(docId), refreshTabs(), theme() -> "light" | "dark",
     //   tableFontSize() -> % of the normal font of the tables,
+    //   shortcutText(command) -> the text of the shortcut of a menu command ("⌘J"),
+    //   bottomPanelChanged(shown) - the bottom panel was collapsed or expanded,
     //   focus(take) - take() gives the keys to the panel: now, or when the
     //     press on a tab that shows it ends (press-focus.js)
     constructor(docId, container, splitters, host) {
@@ -155,12 +164,15 @@ export class DocumentPane {
         this.lastFocus = null; // focused in the panel last (focusin): it gets the keys again when shown
         this.textsStale = false; // the language changed while hidden: rendered again on show
         this.bottomPage = "search"; // the page of the bottom panel shown (data-page)
+        this.collapsed = splitters.collapsed === true; // the bottom panel shows only its tabs
+        this.expandedHeight = splitters.searchPanelHeight ?? null; // what it expands to; null: as it was made
         this.destroyed = false;
 
         container.append(renderPane(splitters));
         this.root = container.lastElementChild;
         this.root.style.display = "none";
         translateTree(this.root); // the skeleton in the language now
+        this.renderCollapsed();
         // The views shown by the machines of the document (onMainViewChanged,
         // onSearchViewChanged) are theirs, see view-table.js
         const $ = selector => this.root.$(selector);
@@ -211,25 +223,31 @@ export class DocumentPane {
             return;
         }
         this.filterPanel.languageChanged();
+        this.renderCollapsed(); // the title of its button
         for (const table of this.tables) table.renderTexts();
         this.shownDescriptions = null; // its buttons in the new language too
         this.updateFileInfo();
     }
 
     // Shows the panel, up to date. `splitters` is the splitter of the panel
-    // shown before (rowsState: its frameset state, see hide())
-    // and the page of its bottom panel (bottomPage), null to keep its own.
+    // shown before (rowsState: its frameset state, see hide()), whether its
+    // bottom panel is collapsed and to what height it expands (collapsed,
+    // searchPanelHeight) and the page of its bottom panel (bottomPage), null to keep its own.
     show(splitters) {
         this.root.style.display = "";
         this.visible = true;
         if (splitters) {
             this.root.frameset.state = splitters.rowsState;
+            this.collapsed = splitters.collapsed === true;
+            this.expandedHeight = splitters.searchPanelHeight ?? this.expandedHeight;
             if (splitters.bottomPage) this.selectBottomPage(splitters.bottomPage); // refresh() fills it
         }
         if (this.textsStale) { // the language changed while hidden: refresh() renders it all
             this.textsStale = false;
             this.filterPanel.invalidate();
         }
+        this.renderCollapsed();
+        this.hostSearchTable();
         this.refresh();
         this.takeKeys();
     }
@@ -248,11 +266,17 @@ export class DocumentPane {
     }
 
     // True if no element from `element` up to the panel is hidden by its own
-    // display (pages of the bottom panel, status views)
+    // display (pages of the bottom panel, their container while the panel is
+    // collapsed, status views)
     isDisplayed(element) {
         for (let el = element; el && el !== this.root; el = el.parentElement)
             if (el.style.display === "none") return false;
         return true;
+    }
+
+    // True if the page `page` of the bottom panel isn't shown: not selected, or the panel collapsed
+    pageHidden(page) {
+        return !this.isDisplayed(page);
     }
 
     // What takes the keys when nothing in the panel has them: the main table
@@ -260,13 +284,14 @@ export class DocumentPane {
     // otherwise the status view covering the main table
     defaultFocus() {
         if (this.shows(this.main)) return this.main.logTable.element;
-        if (this.bottomPage === "search") return this.root.$(".chip-search");
+        if (!this.pageHidden(this.bottomPageElement("search"))) return this.root.$(".chip-search");
         return this.main.shownCover() ?? this.main.logTable.element;
     }
 
-    // True if `element` is on a page of the bottom panel that isn't shown
+    // True if `element` is on a page of the bottom panel that isn't shown (all
+    // of them while the panel is collapsed)
     inHiddenPage(element) {
-        return this.root.$$(".bottom-page").some(page => page.style.display === "none" && isInside(element, page));
+        return this.root.$$(".bottom-page").some(page => this.pageHidden(page) && isInside(element, page));
     }
 
     // Its splitter now: { rows } (a string, for a new panel) and its frameset
@@ -278,23 +303,28 @@ export class DocumentPane {
         };
     }
 
-    // The height of the search (bottom) panel as it is shown:
-    // { searchPanelHeight } ("230dip"). Only while the panel is shown: a hidden
-    // one has no size. Its content box: a frameset sizes that, without the
-    // padding and the borders.
-    panelSizes() {
-        const height = Math.round(this.root.$(".bottom-panel").state.box("height", "inner"));
-        return { searchPanelHeight: `${height}dip` };
+    // Its splitter now (splitterSizes()), whether its bottom panel is collapsed and
+    // its height: as measured, or, collapsed, the one it expands to (none known:
+    // panelSizesOf gives the default). Only while the panel is shown: a hidden one has no size
+    sizesNow() {
+        const height = this.collapsed ? this.expandedHeight ?? undefined : this.measuredHeight();
+        return { ...this.splitterSizes(), collapsed: this.collapsed, searchPanelHeight: height };
+    }
+
+    // The height of the bottom panel as it is shown ("230dip"): its content box,
+    // as a frameset sizes it, without the padding and the borders
+    measuredHeight() {
+        return `${Math.round(this.root.$(".bottom-panel").state.box("height", "inner"))}dip`;
     }
 
     // Hides the panel. @returns the size of its splitter for the next panel
-    // shown (splitterSizes(), panelSizes()) and the page of the bottom panel
+    // shown (sizesNow()) and the page of the bottom panel
     hide() {
         // A press on a tab has moved the focus to the strip already: lastFocus
         // keeps what focusin saw then
         const focused = document.$(":focus");
         if (isInside(focused, this.root)) this.lastFocus = focused;
-        const splitters = { ...this.splitterSizes(), ...this.panelSizes(), bottomPage: this.bottomPage };
+        const splitters = { ...this.sizesNow(), bottomPage: this.bottomPage };
         this.visible = false;
         this.follower.cancel(); // not into a hidden panel
         this.root.style.display = "none";
@@ -325,17 +355,74 @@ export class DocumentPane {
         return this.root.$$(".bottom-page").find(page => page.getAttribute("data-page") === name) ?? null;
     }
 
-    // Shows the page `name` of the bottom panel, up to date, and marks its tab
+    // Shows the page `name` of the bottom panel, up to date, and marks its tab;
+    // a collapsed panel is expanded
     showBottomPage(name) {
-        if (!this.selectBottomPage(name)) return;
+        if (!this.bottomPageElement(name)) return;
+        this.setBottomPanelCollapsed(false);
+        this.selectBottomPage(name);
         this.updateFileInfo();
+    }
+
+    // Collapses the bottom panel to the strip of its tabs (true) or expands it
+    // to the height it had (false). The focus leaves the pages it hides
+    setBottomPanelCollapsed(collapsed) {
+        if (!this.visible || this.destroyed) return;
+        const step = collapseStep(this, collapsed, collapsed ? this.measuredHeight() : null);
+        if (!step) return;
+        this.collapsed = step.collapsed;
+        this.expandedHeight = step.expandedHeight;
+        // The pages are shown before the panel gets its height back and hidden after it lost it (rowsFirst): a
+        // tall panel without its pages puts the strip of the tabs at its top
+        if (step.rowsFirst) this.root.frameset.state = step.rows;
+        this.renderCollapsed();
+        if (!step.rowsFirst) this.root.frameset.state = step.rows;
+        this.hostSearchTable();
+        if (collapsed && this.inHiddenPage(document.$(":focus"))) this.defaultFocus().state.focus = true;
+        this.host.bottomPanelChanged(!collapsed);
+    }
+
+    // The search table out of the column host while the panel is collapsed, back when it is expanded: not
+    // seen, it would narrow the columns of the main table (a pane made collapsed showed its rows blown up)
+    hostSearchTable() {
+        if (this.collapsed) this.search.logTable.detach();
+        else this.search.logTable.attach();
+    }
+
+    // The button and the menu command (View, Cmd+J / Ctrl+J)
+    toggleBottomPanel() {
+        this.setBottomPanelCollapsed(!this.collapsed);
+    }
+
+    // Shows whether the bottom panel is collapsed: the container of its pages
+    // hidden, the class of the panel (the CSS keeps the height of the strip and
+    // hides the splitter), no tab active while collapsed, the icon and the title
+    // of its button
+    renderCollapsed() {
+        this.root.classList.toggle("collapsed", this.collapsed); // the CSS: the height of the strip, the splitter
+        // The pages by the display of their container, as a page is hidden by its own (selectBottomPage): a class
+        // on the pane that hid them by the CSS left the panel laid out without them now and then once expanded
+        this.root.$(".bottom-pages").style.display = this.collapsed ? "none" : "";
+        const active = activeTabOf(this);
+        for (const tab of this.root.$$(".bottom-tab"))
+            tab.classList.toggle("active", tab.getAttribute("data-page") === active);
+        const button = this.root.$(".btn-bottom-panel");
+        button.classList.toggle("icon-bottom-panel-shown", !this.collapsed);
+        button.classList.toggle("icon-bottom-panel-hidden", this.collapsed);
+        const shortcut = this.host.shortcutText("view.bottomPanel"); // null: the menu didn't come
+        let title;
+        if (shortcut) title = this.collapsed ? tr("Show Bottom Panel ({shortcut})", { shortcut })
+            : tr("Hide Bottom Panel ({shortcut})", { shortcut });
+        else title = this.collapsed ? tr("Show Bottom Panel") : tr("Hide Bottom Panel");
+        button.setAttribute("title", title);
     }
 
     // Find (Cmd+F / Ctrl+F): the search page is shown, the caret at the end of the query.
     // Nothing if the focus is in the query already: the caret stays where it is
     focusSearch() {
         if (!this.visible || this.destroyed) return;
-        if (isInside(document.$(":focus"), this.root.$(".chip-search"))) return;
+        // A collapsed panel is expanded whatever has the keys
+        if (!this.collapsed && isInside(document.$(":focus"), this.root.$(".chip-search"))) return;
         this.showBottomPage("search");
         this.searchBar.editor.focusAtEnd();
     }
@@ -352,10 +439,11 @@ export class DocumentPane {
         if (!page) return false;
         for (const element of this.root.$$(".bottom-page, .bottom-tab")) {
             const shown = element.getAttribute("data-page") === name;
-            if (element.classList.contains("bottom-tab")) element.classList.toggle("active", shown);
-            else element.style.display = shown ? "" : "none";
+            if (!element.classList.contains("bottom-tab")) element.style.display = shown ? "" : "none";
         }
         this.bottomPage = name;
+        const active = activeTabOf(this);
+        for (const tab of this.root.$$(".bottom-tab")) tab.classList.toggle("active", tab.getAttribute("data-page") === active);
         if (this.visible && this.inHiddenPage(document.$(":focus"))) this.defaultFocus().state.focus = true;
         return true;
     }
@@ -494,6 +582,7 @@ export class DocumentPane {
         const on = (event, selector, handler) => root.on(event, selector, handler);
 
         on("click", ".bottom-tab", (evt, tab) => this.showBottomPage(tab.getAttribute("data-page")));
+        on("click", ".btn-bottom-panel", () => this.toggleBottomPanel());
 
         // What has the keys in the panel, read when they come: by the time
         // hide() runs a press on a tab has moved them to the strip. A focus set

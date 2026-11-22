@@ -22,6 +22,8 @@ import sciter.graphics : GfxCanvas = Canvas;
 import sciter.value;
 import ui.frame_stats : FrameStats, statsJson, usSince;
 import ui.log_table.log_table : LogTable, TableSource;
+import ui.log_table.log_tables : detachedOf;
+import sciter.element : attributeOf;
 import ui.log_table.marks : marksOf;
 import ui.log_table.log_look : LogLook;
 import ui.sciter_table.frame_request : FrameRequest;
@@ -155,6 +157,9 @@ final class LogTableBehavior : SciterEventHandler
         _host.attach(he);
         if (_log is null)
             build();
+        // The script may have told it that it is not seen before it was here: its `detach` reached no table then
+        if (detachedOf(attributeOf(he, "detached")))
+            _log.table.detach();
         _log.table.tableHasFocus = elementHasFocus(he); // the element may have it already when the table is made
         if (_hooks.attached !is null)
             _hooks.attached(_control);
@@ -409,6 +414,8 @@ final class LogTableBehavior : SciterEventHandler
         wstring hitTest(double x, double y) { return _log.table.hitTest(x, y).toJson.toUTF16; }
 
         void contextPick(size_t row) { _log.table.contextPick(row); }
+        void detach() { _log.table.detach(); }
+        void attach() { _log.table.attach(); }
         void anchorApplied(size_t message, bool moved) { _log.anchorApplied(message, moved); }
         void updateRow(size_t item) { _log.table.updateRow(item); }
         void updateCell(size_t item, size_t column) { _log.table.updateCell(item, column); }

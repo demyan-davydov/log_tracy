@@ -173,6 +173,8 @@ struct AppSettings
     ColumnLayouts columnLayouts; /// the columns of the log tables, by format
     string language; /// of the interface: a BCP 47 tag ("ru", "x-pseudo"); "": the language of the system
     string searchPanelHeight; /// of the search (bottom) panel of the documents, as on exit ("250dip"); "": the script's own
+    /// the bottom panel is collapsed to its tabs; `searchPanelHeight` is then the height it expands to
+    bool bottomPanelCollapsed;
 
     this(ref return scope const AppSettings rhs)
     {
@@ -186,6 +188,7 @@ struct AppSettings
         this.columnLayouts = copyOf(rhs.columnLayouts);
         this.language = rhs.language;
         this.searchPanelHeight = rhs.searchPanelHeight;
+        this.bottomPanelCollapsed = rhs.bottomPanelCollapsed;
     }
 
     void opAssign(const AppSettings rhs)
@@ -200,6 +203,7 @@ struct AppSettings
         this.columnLayouts = copyOf(rhs.columnLayouts);
         this.language = rhs.language;
         this.searchPanelHeight = rhs.searchPanelHeight;
+        this.bottomPanelCollapsed = rhs.bottomPanelCollapsed;
     }
 
     bool opEquals(const ref AppSettings rhs) const
@@ -213,7 +217,8 @@ struct AppSettings
             singleLineRows == rhs.singleLineRows &&
             columnLayouts == rhs.columnLayouts &&
             language == rhs.language &&
-            searchPanelHeight == rhs.searchPanelHeight;
+            searchPanelHeight == rhs.searchPanelHeight &&
+            bottomPanelCollapsed == rhs.bottomPanelCollapsed;
     }
 
     size_t toHash() const @safe nothrow
@@ -227,6 +232,7 @@ struct AppSettings
         hash = hashOf(singleLineRows, hash);
         hash = hashOf(language, hash);
         hash = hashOf(searchPanelHeight, hash);
+        hash = hashOf(bottomPanelCollapsed, hash);
         foreach (id, layout; columnLayouts) // in no order: summed
             hash += hashOf(layout, hashOf(id));
         return hash;
@@ -368,6 +374,7 @@ static JSONValue toJSON(in AppSettings settings)
     j.object["singleLineRows"] = JSONValue(settings.singleLineRows);
     j.object["language"] = JSONValue(settings.language);
     j.object["searchPanelHeight"] = JSONValue(settings.searchPanelHeight);
+    j.object["bottomPanelCollapsed"] = JSONValue(settings.bottomPanelCollapsed);
     if (settings.columnLayouts.length)
         j.object["columnLayouts"] = columnLayoutsToJson(settings.columnLayouts);
 
@@ -459,7 +466,7 @@ AppSettings mergeAppStateFromScript(const AppSettings base, const(char)[] appSta
 
 /// Reads what both the settings file and the state of the script hold: the
 /// window rect, the theme, the font size of the tables, whether their rows are
-/// single-line, the language and the height of the search panel. Keys `j`
+/// single-line, the language, the height of the search panel and whether it is collapsed. Keys `j`
 /// doesn't have leave their values in `settings` (a key it no longer knows, as
 /// the sidePanelWidth of the removed side panel, is ignored).
 private void readPreferences(in JSONValue j, ref AppSettings settings)
@@ -478,6 +485,9 @@ private void readPreferences(in JSONValue j, ref AppSettings settings)
         settings.language = language.type == JSONType.string ? language.str : "";
     if (const height = "searchPanelHeight" in j)
         settings.searchPanelHeight = height.str;
+    if (const collapsed = "bottomPanelCollapsed" in j)
+        if (collapsed.type == JSONType.true_ || collapsed.type == JSONType.false_)
+            settings.bottomPanelCollapsed = collapsed.boolean;
 }
 
 void saveSettings(in AppSettings settings, string path = defaultSettingsPath())
@@ -836,6 +846,34 @@ unittest
 
     assert(mergeAppStateFromScript(base, `{"searchPanelHeight": "180dip"}`).searchPanelHeight == "180dip");
     assert(mergeAppStateFromScript(base, `{"theme": "dark"}`).searchPanelHeight == "250dip", "kept when not sent");
+}
+
+@("mergeAppStateFromScript: whether the bottom panel is collapsed comes from the script")
+unittest
+{
+    AppSettings base;
+    assert(mergeAppStateFromScript(base, `{"bottomPanelCollapsed": true}`).bottomPanelCollapsed);
+    base.bottomPanelCollapsed = true;
+    assert(!mergeAppStateFromScript(base, `{"bottomPanelCollapsed": false}`).bottomPanelCollapsed);
+    assert(mergeAppStateFromScript(base, `{"theme": "dark"}`).bottomPanelCollapsed, "kept when not sent");
+    assert(mergeAppStateFromScript(base, `{"bottomPanelCollapsed": "yes"}`).bottomPanelCollapsed, "not a bool: kept");
+}
+
+@("the collapsed bottom panel survives a save and a load, as a copy and in equality")
+unittest
+{
+    const path = buildPath(tempDir(), "log_tracy_settings_collapsed_test.json");
+    scope (exit) if (exists(path)) remove(path);
+
+    AppSettings settings;
+    settings.bottomPanelCollapsed = true;
+    saveSettings(settings, path);
+    assert(loadSettings(path).bottomPanelCollapsed);
+
+    AppSettings copy = settings;
+    assert(copy.bottomPanelCollapsed, "copied");
+    const AppSettings none;
+    assert(copy != none, "compared");
 }
 
 @("the height of the search panel survives a save and a load")

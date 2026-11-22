@@ -23,7 +23,7 @@ import { fileFilter, allFiles } from "file-types.js";
 import { requestedLocale } from "i18n/languages.js";
 import { showNotice } from "notice.js";
 import { restorableFrame } from "window-frame.js";
-import { panelSizesOf, splittersOf } from "panel-sizes.js";
+import { defaultRows, savedSizesOf, splittersOf } from "panel-sizes.js";
 
 
 let currentTheme = "light";
@@ -89,9 +89,20 @@ function restoreWindowFrame(saved) {
 }
 
 // The size of the bottom panel as saved on exit (searchPanelHeight of the
-// settings), for the first panel; the default of `splitters` if not saved
+// settings) and whether it was collapsed (bottomPanelCollapsed), for the first
+// panel; the default of `splitters` if not saved. The menu labels its command by it
 function restoreSplitters(settings) {
     splitters = { ...splittersOf(settings, splitters), rowsState: null };
+    backend.setBottomPanelShown(splitters.collapsed !== true);
+}
+
+// The bottom panel of the documents was collapsed or expanded: the menu says
+// the other (the native one retitled by the backend, the menu bar drawn again
+// once the event is done: the command may come from a click on that bar, and a
+// list drawn again under the pointer mid-click is a trap of Sciter, see refreshTabsSoon)
+function bottomPanelChanged(shown) {
+    backend.setBottomPanelShown(shown);
+    if (windowMenu.menuBar) document.post(() => setupMenuBar());
 }
 
 // The theme and the font size of the settings as saved (null: none)
@@ -358,6 +369,9 @@ globalThis.onMenuCommand = function (id) {
         case "navigation.goToMessage":
             goToMessageAction();
             break;
+        case "view.bottomPanel":
+            if (shownPane) shownPane.toggleBottomPanel();
+            break;
         default:
             console.warn("Unhandled menu command:", id);
     }
@@ -466,6 +480,8 @@ const paneHost = {
     theme: () => currentTheme,
     tableFontSize: () => tableFontSize,
     singleLineRows: () => singleLineRows,
+    shortcutText: (command) => shortcutTextOf(windowMenu.menus, command),
+    bottomPanelChanged: (shown) => bottomPanelChanged(shown),
 };
 
 function refreshTabs() {
@@ -530,7 +546,7 @@ function closeTab(docId) {
 let shownPane = null;
 // The splitter of the panel shown last: a panel shown next gets it, so the
 // panels look the same (see DocumentPane.show)
-let splitters = { rows: "*, 250dip", rowsState: null };
+let splitters = { rows: defaultRows, rowsState: null };
 
 // Shows the panel of the active document, or the placeholder instead of all
 // the panels while no document is shown
@@ -629,9 +645,10 @@ globalThis.getAppState = function () {
     // Left out (the saved one kept) while the window isn't shown normally
     const windowRect = platform.windowFrame() ?? undefined;
     // Of the panel shown, or as the last one shown left them: written with the
-    // rest, not on each move of a splitter
-    // Not measured on a minimized window: its panels have no size then
-    const sizes = shownPane && !platform.windowMinimized() ? shownPane.panelSizes() : panelSizesOf(splitters);
+    // rest, not on each move of a splitter. Not measured on a minimized window:
+    // its panels have no size then (a collapsed one needs no measure)
+    const measured = shownPane && !shownPane.collapsed && !platform.windowMinimized() ? shownPane.measuredHeight() : null;
+    const sizes = savedSizesOf(splitters, shownPane, measured);
     return JSON.stringify({
         windowRect,
         theme: currentTheme,

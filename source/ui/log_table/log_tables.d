@@ -40,6 +40,23 @@ bool tableAttributesOf(const(char)[] doc, const(char)[] search, const(char)[] ta
         return false;
 }
 
+/// Whether the attribute `detached` of a log table's element (null: not there) says the table starts out of its column host: the
+/// script writes "1" while the table is not seen (a bottom panel collapsed), so a table attached after the script's `detach` call
+/// (which then reached no table) is out of its host all the same
+bool detachedOf(const(char)[] attribute)
+{
+    return attribute == "1";
+}
+
+@("detachedOf: \"1\" is detached, anything else or none is not")
+unittest
+{
+    assert(detachedOf("1"));
+    assert(!detachedOf(null));
+    assert(!detachedOf("0"));
+    assert(!detachedOf(""));
+}
+
 @("tableAttributesOf: the document, the view and the number of a table as the script wrote them; one missing or wrong is no table")
 unittest
 {

@@ -32,6 +32,10 @@ export const windowFrameChanged = () => xcall("windowFrameChanged");
 // in the label; a shortcut { text, code (KeyboardEvent.code), ctrl, shift,
 // alt, bySystem (the OS handles it) }
 export const menu = () => parsed(xcall("getMenu"), { menuBar: false, menus: [] });
+// The bottom panel of the documents is shown (true) or collapsed: the menu
+// labels its command by it (the native menu of macOS is retitled; menu() gives
+// the new labels)
+export const setBottomPanelShown = shown => xcall("setBottomPanelShown", shown);
 // The languages there are translations to: [{ locale, name }] (english, the
 // source, is none of them)
 export const languages = () => parsed(xcall("getLanguages"), []);

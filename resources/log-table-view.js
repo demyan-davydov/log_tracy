@@ -61,6 +61,19 @@ export class LogTableView {
         return logTableCall(this.tableId, method, ...args);
     }
 
+    // The table is not seen (the bottom panel collapsed): out of the column host of its document, it narrows no column of the other
+    // table (Table.detach). Written on its element too: a table attached later reads it (the call reached no table then)
+    detach() {
+        this.element.setAttribute("detached", "1");
+        this.call("detach");
+    }
+
+    // The table is seen again: back with its column host (Table.attach)
+    attach() {
+        this.element.removeAttribute("detached");
+        this.call("attach");
+    }
+
     // The message of an anchor was set or cleared, from wherever it came (this table, the other one, the pass of the index that
     // applied it later): the table reads its row again. `rows` as the backend tells it: { message, anchored, main, search }
     anchorApplied(rows) {

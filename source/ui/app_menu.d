@@ -89,6 +89,13 @@ enum MenuCommand : string
     minimize = "window.minimize",
     goToMessage = "navigation.goToMessage",
     find = "navigation.find",
+    bottomPanel = "view.bottomPanel", /// hides the bottom panel of the documents, or shows it again
+}
+
+/// What of the state of the window the menu shows: the labels that follow it.
+struct MenuState
+{
+    bool bottomPanelShown = true; /// the bottom panel of the documents is shown, not collapsed
 }
 
 /// A key combination, independent of the platform.
@@ -186,19 +193,23 @@ MenuItem[] macAppMenuMerge(MenuItem[] items) pure nothrow @safe
 /// What translates the texts of the menu: the english text to the language of the interface.
 alias Translate = string delegate(string text) pure @safe;
 
-/// The menu bar of the window on `platform`, in english.
-MenuItem[] appMenu(MenuPlatform platform) pure @safe
+/// The menu bar of the window on `platform` in the state `state`, in english.
+MenuItem[] appMenu(MenuPlatform platform, MenuState state = MenuState.init) pure @safe
 {
-    return appMenu(platform, delegate(string text) => text);
+    return appMenu(platform, delegate(string text) => text, state);
 }
 
-/// The menu bar of the window on `platform`, its labels translated by `tr`; the mnemonic is
-/// marked in the translation ("&Файл").
-MenuItem[] appMenu(MenuPlatform platform, scope Translate tr) pure @safe
+/// The menu bar of the window on `platform` in the state `state`, its labels translated by `tr`;
+/// the mnemonic is marked in the translation ("&Файл").
+MenuItem[] appMenu(MenuPlatform platform, scope Translate tr, MenuState state = MenuState.init) pure @safe
 {
     // `&` marks the mnemonic letter of Windows and Linux; macOS has none
     auto openFile = command(MenuCommand.openFile, tr("&Open File..."), primary("O"));
     auto settings = command(MenuCommand.settings, tr("&Settings..."), primary(","));
+    auto view = submenu(tr("&View"), [
+        command(MenuCommand.bottomPanel,
+            state.bottomPanelShown ? tr("&Hide Bottom Panel") : tr("&Show Bottom Panel"), primary("J")),
+    ]);
     auto navigation = submenu(tr("&Navigation"), [
         command(MenuCommand.find, tr("&Find"), primary("F")),
         command(MenuCommand.goToMessage, tr("&Go to Message..."), primary("G")),
@@ -211,6 +222,7 @@ MenuItem[] appMenu(MenuPlatform platform, scope Translate tr) pure @safe
                 settings, separator(), command(MenuCommand.quit, tr("Quit"), primary("Q")),
             ], MenuRole.app),
             submenu(tr("&File"), [openFile]),
+            view,
             navigation,
             submenu(tr("&Window"), [command(MenuCommand.minimize, tr("&Minimize"), primary("M"))]),
         ];
@@ -220,6 +232,7 @@ MenuItem[] appMenu(MenuPlatform platform, scope Translate tr) pure @safe
                 openFile, separator(), settings, separator(),
                 command(MenuCommand.quit, tr("E&xit"), Shortcut("F4", false, false, true, true)),
             ]),
+            view,
             navigation,
         ];
     case MenuPlatform.linux:
@@ -228,6 +241,7 @@ MenuItem[] appMenu(MenuPlatform platform, scope Translate tr) pure @safe
                 openFile, separator(), settings, separator(),
                 command(MenuCommand.quit, tr("&Quit"), primary("Q")),
             ]),
+            view,
             navigation,
         ];
     }
@@ -317,15 +331,15 @@ string menuJson(MenuItem[] bar, MenuPlatform platform) @safe
     return menuJsonValue(bar, platform).toString();
 }
 
-/// The menu of the window for the script, its labels translated by `tr`: `{"menuBar": whether
+/// The menu of the window for the script in the state `state`, its labels translated by `tr`: `{"menuBar": whether
 /// it draws it as its menu bar, "menus": menuJson}`.
-string windowMenuJson(WindowMenu menu, scope Translate tr) @safe
+string windowMenuJson(WindowMenu menu, scope Translate tr, MenuState state = MenuState.init) @safe
 {
     import std.json : JSONValue;
 
     JSONValue json;
     json["menuBar"] = menu.menuBar;
-    json["menus"] = menuJsonValue(appMenu(menu.platform, tr), menu.platform);
+    json["menus"] = menuJsonValue(appMenu(menu.platform, tr, state), menu.platform);
     return json.toString();
 }
 
@@ -401,7 +415,8 @@ unittest
     foreach (platform; [MenuPlatform.mac, MenuPlatform.windows, MenuPlatform.linux])
     {
         auto bar = appMenu(platform);
-        foreach (id; [MenuCommand.openFile, MenuCommand.settings, MenuCommand.quit, MenuCommand.goToMessage, MenuCommand.find])
+        foreach (id; [MenuCommand.openFile, MenuCommand.settings, MenuCommand.quit, MenuCommand.goToMessage, MenuCommand.find,
+                MenuCommand.bottomPanel])
             assert(find(bar, id) !is null, "a platform lacks " ~ id);
     }
 }
@@ -432,6 +447,41 @@ unittest
     }
 }
 
+@("the bottom panel is in View, right after File, with Cmd+J / Ctrl+J; its label follows the state")
+unittest
+{
+    foreach (platform; [MenuPlatform.mac, MenuPlatform.windows, MenuPlatform.linux])
+    {
+        auto bar = appMenu(platform);
+        size_t file, view;
+        foreach (i, ref menu; bar)
+        {
+            if (menu.label == "File")
+                file = i;
+            if (menu.label == "View")
+                view = i;
+        }
+        assert(view == file + 1, "View right after File");
+        assert(find(bar[view].items, MenuCommand.bottomPanel) !is null, "not in View");
+        assert(find(bar, MenuCommand.bottomPanel).shortcut == primary("J"));
+        assert(find(bar, MenuCommand.bottomPanel).label == "Hide Bottom Panel", "shown: hides it");
+        assert(find(appMenu(platform, MenuState(false)), MenuCommand.bottomPanel).label == "Show Bottom Panel",
+            "collapsed: shows it");
+    }
+}
+
+@("windowMenuJson: the label of the bottom panel by the state")
+unittest
+{
+    import std.json : parseJSON;
+
+    const menu = windowMenu(MenuPlatform.windows, "");
+    const shown = parseJSON(windowMenuJson(menu, delegate(string text) => text));
+    const hidden = parseJSON(windowMenuJson(menu, delegate(string text) => text, MenuState(false)));
+    assert(shown["menus"][1]["items"][0]["label"].str == "Hide Bottom Panel");
+    assert(hidden["menus"][1]["items"][0]["label"].str == "Show Bottom Panel");
+}
+
 @("macOS: the application menu holds Settings and Quit, Window holds Minimize")
 unittest
 {
@@ -447,7 +497,7 @@ unittest
 unittest
 {
     auto bar = appMenu(MenuPlatform.windows);
-    assert(bar.length == 2 && bar[0].label == "File" && bar[1].label == "Navigation");
+    assert(bar.length == 3 && bar[0].label == "File" && bar[1].label == "View" && bar[2].label == "Navigation");
     auto quit = find(bar, MenuCommand.quit);
     assert(quit.label == "Exit");
     assert(shortcutText(quit.shortcut, MenuPlatform.windows) == "Alt+F4");
@@ -560,8 +610,11 @@ version (unittest)
 @("every entry and command of Windows and Linux has a mnemonic, unique in its menu")
 unittest
 {
-    checkMnemonics(appMenu(MenuPlatform.windows));
-    checkMnemonics(appMenu(MenuPlatform.linux));
+    foreach (shown; [true, false])
+    {
+        checkMnemonics(appMenu(MenuPlatform.windows, MenuState(shown)));
+        checkMnemonics(appMenu(MenuPlatform.linux, MenuState(shown)));
+    }
 }
 
 @("the menus of every catalog built in have their mnemonics, unique in a menu")
@@ -575,8 +628,11 @@ unittest
     foreach (t; translations)
     {
         const catalog = parseCatalog(t.text);
-        checkMnemonics(appMenu(MenuPlatform.windows, &catalog.translate));
-        checkMnemonics(appMenu(MenuPlatform.linux, &catalog.translate));
+        foreach (shown; [true, false])
+        {
+            checkMnemonics(appMenu(MenuPlatform.windows, &catalog.translate, MenuState(shown)));
+            checkMnemonics(appMenu(MenuPlatform.linux, &catalog.translate, MenuState(shown)));
+        }
     }
 }
 @("DOM key codes of shortcut keys")

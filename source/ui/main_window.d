@@ -182,6 +182,12 @@ class MainWindow : SciterWindow
         case "getMenu":
             answer(_session.menuJson());
             return true;
+        case "setBottomPanelShown":
+            // setBottomPanelShown(shown): the bottom panel of the documents is shown or
+            // collapsed; the native menu retitles its item (the script redraws its menu bar)
+            _session.setBottomPanelShown(param!bool(0));
+            retitleAppMenu(this);
+            return true;
         case "getLanguages":
             answer(_session.languagesJson());
             return true;

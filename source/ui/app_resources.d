@@ -27,6 +27,8 @@ private enum string[] builtIn = [
     "i18n/languages.js",
     "i18n/plural.js",
     "i18n/translations/ru.json",
+    "icons/bottom-panel-hidden.svg",
+    "icons/bottom-panel-shown.svg",
     "icons/check.svg",
     "icons/chevron-down.svg",
     "icons/close.svg",
