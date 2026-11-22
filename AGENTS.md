@@ -106,7 +106,7 @@ worth a test lives in Sciter-free modules, D and JS alike.
   (`.ai/rules/tests.md`).
 - Every module starts with a `//!` comment stating its responsibility. Use camelCase, write
   code, comments and `.ai/` in English. Docs for people (`docs/`) are in English; the story of
-  a feature (`docs/stories/`) and `docs/backlog.md` are in Russian.
+  a feature (`docs/stories/`), the notes of measurements (`docs/experiments/`) and `docs/backlog.md` are in Russian.
 - Commit subjects are short, lower-case and imperative; on a feature branch they start with
   `<feature>: `.
 - When a change moves a responsibility or adds an extension point, update its file in

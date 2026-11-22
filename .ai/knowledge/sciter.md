@@ -449,7 +449,8 @@ agent can't drive it. In scapp a plain
   of its own (`pathMoveTo`... `gDrawPath`).
 - The layout of a text is as wide as its glyphs rounded up to a whole dip (`textGetMetrics`): a
   single glyph centered by it stands up to a dip left of the middle. The width of a glyph is
-  read off a run of it (the anchor of `AnchorColumn`, the advance of a monospace font).
+  read off a run of it (the anchor of `AnchorColumn`, the advance of a monospace font, `glyphWidth`). A line
+  drawn by runs is as wide as its runs rounded up each: the wrap measures the runs, not the glyphs.
 - No `contrast-color()` and no CSS function of one's own: `morph()` only shifts a color
   (`darken`, `lighten`, `sepia`, `mix`...; Sciter's name for the old `tint()`). It takes a
   `var()` as its base, in a variable too: the found rows derive from the stripes this way. A

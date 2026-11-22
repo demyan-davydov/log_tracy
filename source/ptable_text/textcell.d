@@ -247,7 +247,8 @@ class TextCell : TableColumn
     {
         if (_wrappedIn == width && _wrapped == text)
             return;
-        wrapLines(_lines, text, width, &advanceOf);
+        const font = cellFont; // the font the lines are drawn in (`drawLine`): their runs are measured as they are drawn
+        wrapLines(_lines, text, width, (const(wchar)[] piece) => _measurer.width(font, piece), &advanceOf);
         _wrapped.length = 0;
         assumeSafeAppend(_wrapped);
         _wrapped ~= text;
