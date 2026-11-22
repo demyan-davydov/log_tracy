@@ -382,10 +382,11 @@ export class DocumentPane {
         this.host.bottomPanelChanged(!collapsed);
     }
 
-    // The search table out of the column host while the panel is collapsed, back when it is expanded: not
-    // seen, it would narrow the columns of the main table (a pane made collapsed showed its rows blown up)
+    // The search table out of the column host while its page isn't shown (another page selected, the panel
+    // collapsed), back when it is: not seen, it would narrow the columns of the main table (a pane opened on
+    // the Filters page, or collapsed, showed its main table empty, its rows blown up)
     hostSearchTable() {
-        if (this.collapsed) this.search.logTable.detach();
+        if (this.pageHidden(this.bottomPageElement("search"))) this.search.logTable.detach();
         else this.search.logTable.attach();
     }
 
@@ -444,6 +445,7 @@ export class DocumentPane {
         this.bottomPage = name;
         const active = activeTabOf(this);
         for (const tab of this.root.$$(".bottom-tab")) tab.classList.toggle("active", tab.getAttribute("data-page") === active);
+        this.hostSearchTable();
         if (this.visible && this.inHiddenPage(document.$(":focus"))) this.defaultFocus().state.focus = true;
         return true;
     }

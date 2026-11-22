@@ -68,9 +68,10 @@ behaviour: `.ai/knowledge/sciter.md`.
   pages, all in `.bottom-pages`, are hidden by the display of that container, set on it by the script
   as a page's own is (a class on the pane that hid them by the CSS now and then left the panel laid
   out without them once expanded, until a click); whether a page is shown is `DocumentPane.pageHidden`.
-  The search table is out of the column host meanwhile (`DocumentPane.hostSearchTable`): not seen, it
-  would set the room of the columns of the main one (a pane made collapsed showed its main table
-  empty, its rows blown up). `LogTableView.detach`/`attach` write the attribute `detached` on the
+  The search table is out of the column host while its page isn't shown, collapsed or another page
+  selected (`DocumentPane.hostSearchTable`, by `selectBottomPage` and the collapse): not seen, it
+  would set the room of the columns of the main one (a pane opened on the Filters page or collapsed
+  showed its main table empty, its rows blown up). `LogTableView.detach`/`attach` write the attribute `detached` on the
   element and call the table (`logTableCall(id, "detach")`, `TableControl.detach`/`attach`:
   `Table.detach`/`attach`); a table attached later reads the attribute (`detachedOf`), as the call
   reached no table then. The state goes with the splitter from panel to panel (`splitters.collapsed`,
