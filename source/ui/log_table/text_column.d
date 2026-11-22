@@ -172,7 +172,7 @@ unittest
         RowSpec spec;
         spec.columns = columns;
         spec.flexDef = 1;
-        spec.flexWidth = 46; // four glyphs of 10 in a line
+        spec.flexWidth = 47; // four glyphs of 10 in a line, a dip for the rounding of their run (ptable_text/wrap)
         TableGeometry geometry;
         spec.geometry = geometry;
         auto rows = new RowWrap(&spec);

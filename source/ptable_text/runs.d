@@ -65,6 +65,24 @@ size_t runEnd(const(wchar)[] line, size_t start) pure nothrow @safe
     return isLow(line[i]) ? i + 1 : i; // one character longer than a run: at the bound, not inside a pair
 }
 
+/// Where a line of `text` that starts at `start` is cut at `at` or before it so that no grapheme (a letter and its marks, an emoji
+/// sequence, a flag) is split: `at` itself between two plain neighbours (no walk), else the end of the last grapheme within it; the first
+/// grapheme whole if it alone reaches past `at`; `at` if the text is not valid UTF-16
+size_t graphemeCut(const(wchar)[] text, size_t start, size_t at) pure nothrow @safe
+{
+    import std.uni : graphemeStride;
+
+    if (at <= start || at >= text.length || plainBoundary(text[at - 1], text[at]))
+        return at;
+    const cut = lastGraphemeEnd(text[start .. $], at - start);
+    if (cut > 0)
+        return start + cut;
+    try
+        return start + graphemeStride(text, start);
+    catch (Exception)
+        return at;
+}
+
 private bool isGap(wchar c) pure nothrow @nogc @safe
 {
     return c == ' ' || c == '\t';

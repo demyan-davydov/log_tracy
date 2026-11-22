@@ -4,9 +4,7 @@ module ptable_text.wrap;
 
 import ptable.ports : FontId;
 import ptable_text.measurer : TextMeasurer;
-import ptable_text.runs : PieceWidth, lineWidth, shownGlyph;
-import std.typecons : Yes;
-import std.utf : decode;
+import ptable_text.runs : PieceWidth, graphemeCut, lineWidth, runEnd, shownGlyph;
 
 /// A line of a wrapped text: [start, end) in UTF-16 units
 struct LineSpan
@@ -15,10 +13,12 @@ struct LineSpan
 }
 
 /// The lines of `text` in a width of `width` px, as a line of it is drawn (ptable_text/runs): a word is as wide as `piece` says of its runs,
-/// a gap of spaces or tabs too. A line breaks after a gap (the gap may stick out of the width); a word longer than a line is cut where its
-/// part, as drawn, still fits (found by `advance`, the width of a code point, and checked by `piece`); a hard "\n" breaks too, but one at
-/// the very end of the text ends its line and starts no empty one. A line has a glyph at least, so a width smaller than a glyph still moves
-/// on. An empty text is one empty line. `lines` is filled (its old content is dropped).
+/// a gap of spaces or tabs too. A line breaks after a gap (the gap may stick out of the width). A word is measured by `piece` only when it
+/// ends within the line by `advance`, the width of a code point, which must be no less than the glyph as drawn (`glyphWidth` reads it off a
+/// run of it, rounded up). A word longer than a line is cut where the `advance`s of its part and a dip for the rounding of each run it is
+/// drawn in fit, at the end of a grapheme; the part is not measured by `piece` (a new text on each line). A hard "\n" breaks too, but one
+/// at the very end of the text ends its line and starts no empty one. A line has a grapheme at least, so a width smaller than one still
+/// moves on. An empty text is one empty line. `lines` is filled (its old content is dropped).
 void wrapLines(ref LineSpan[] lines, const(wchar)[] text, double width, scope PieceWidth piece, scope double delegate(dchar) nothrow advance)
 {
     lines.length = 0;
@@ -60,7 +60,7 @@ private void wrapLine(ref LineSpan[] lines, const(wchar)[] text, size_t start, s
         while (reach < end && !isGap(text[reach]))
         {
             size_t next = reach;
-            const step = advance(decode!(Yes.useReplacementDchar)(text, next));
+            const step = advance(nextGlyph(text, next));
             if (x + estimate + step > width)
                 break;
             estimate += step;
@@ -83,12 +83,21 @@ private void wrapLine(ref LineSpan[] lines, const(wchar)[] text, size_t start, s
             x = 0;
             continue;
         }
-        // a word longer than the line: cut where the glyphs reach the width (a glyph at least), then back while its part as drawn does not fit
+        // A word longer than the line: cut where its glyphs and a dip for each run its part is drawn in still fit (a glyph at least). The
+        // part is not measured by the host: it is a new text on each line (a layout each), and drawn it is no wider than its glyphs (read off
+        // runs of them, rounded up) and the rounding of each of its runs
         size_t first = i;
-        decode!(Yes.useReplacementDchar)(text, first);
+        nextGlyph(text, first);
         size_t cut = reach > first ? reach : first;
-        while (cut > first && lineWidth(text[i .. cut], piece) > width)
-            cut -= cut - 2 >= i && isLow(text[cut - 1]) && isHigh(text[cut - 2]) ? 2 : 1;
+        double sum = estimate; // the glyphs of text[i .. reach], x is 0 at the start of a line
+        while (cut > first && sum + runsIn(text[i .. cut]) > width)
+        {
+            size_t back = cut - (cut - 2 >= i && isLow(text[cut - 1]) && isHigh(text[cut - 2]) ? 2 : 1);
+            size_t past = back;
+            sum -= advance(nextGlyph(text, past));
+            cut = back;
+        }
+        cut = graphemeCut(text, i, cut); // back to the end of a grapheme: only further in if the first one alone is wider than the line
         if (wordEnds(text, cut, end)) // a glyph wider than the line: it stays on its line with what follows it
         {
             x = lineWidth(text[i .. cut], piece);
@@ -100,6 +109,25 @@ private void wrapLine(ref LineSpan[] lines, const(wchar)[] text, size_t start, s
         x = 0;
     }
     lines ~= LineSpan(start, end);
+}
+
+// The code point at `at` of `text`, `at` moved past it: a surrogate pair is one, a lone surrogate is U+FFFD of one unit (std.utf's
+// replacement takes the unit after it too)
+private dchar nextGlyph(const(wchar)[] text, ref size_t at) pure nothrow @nogc @safe
+{
+    const c = text[at++];
+    if (isHigh(c) && at < text.length && isLow(text[at]))
+        return 0x10000 + ((c - 0xD800) << 10) + (text[at++] - 0xDC00);
+    return isHigh(c) || isLow(c) ? 0xFFFD : c;
+}
+
+// How many runs a line of `part` is drawn in (ptable_text/runs)
+private size_t runsIn(const(wchar)[] part) pure nothrow @safe
+{
+    size_t runs = 0;
+    for (size_t at = 0; at < part.length; at = runEnd(part, at))
+        ++runs;
+    return runs;
 }
 
 // Whether a word ends at `at` of a line that ends at `end`
@@ -215,22 +243,29 @@ unittest
     assert(cut(text, lines[0 .. 1]) == ["ab cd ef gh ij kl mn op qr "], "as many runs as fit as drawn");
 }
 
-@("wrapLines: a word longer than the line is cut where its piece, as drawn, still fits")
+@("wrapLines: a word longer than the line is cut where its glyphs and a dip for the rounding of each run of the part fit: drawn it fits")
 unittest
 {
+    import ptable_text.runs : lineWidth;
     import std.math : ceil;
 
     double piece(const(wchar)[] t) { return ceil(count(t) * 3.25); }
     auto glyph = delegate double(dchar) nothrow => 3.25;
     LineSpan[] lines;
     const text = "abcdefghijklmnopqrstuvwxyz"w;
-    wrapLines(lines, text, 33, &piece, glyph); // 10 glyphs are 32.5 by the glyphs and 33 drawn; 11 are 35.75
+    wrapLines(lines, text, 33.5, &piece, glyph); // 10 glyphs are 32.5 and a dip for their run: 33.5
     assert(cut(text, lines) == ["abcdefghij", "klmnopqrst", "uvwxyz"]);
-    wrapLines(lines, text, 32.9, &piece, glyph); // 10 glyphs fit by the glyphs, not as drawn (33): 9 (30 drawn)
+    wrapLines(lines, text, 33, &piece, glyph); // 10 are 33 drawn, but by the glyphs they may be 33.5: 9
     assert(cut(text, lines)[0] == "abcdefghi");
+    foreach (width; [10.0, 20.5, 33, 50.2, 81])
+    {
+        wrapLines(lines, text, width, &piece, glyph);
+        foreach (l; lines)
+            assert(lineWidth(text[l.start .. l.end], &piece) <= width, "a part drawn past the width");
+    }
 }
 
-@("wrapLines: a word of many lines is measured by its lines, not again whole after each cut (a dump of hex or base64)")
+@("wrapLines: a part cut off a word of many lines is placed by its glyphs, only the end of the word is measured (a dump of hex or base64)")
 unittest
 {
     size_t measured;
@@ -238,12 +273,12 @@ unittest
     auto text = new wchar[10_000];
     text[] = 'x';
     LineSpan[] lines;
-    wrapLines(lines, text, 300, &piece, tenPerGlyph); // 30 glyphs a line, 334 lines
+    wrapLines(lines, text, 301, &piece, tenPerGlyph); // 30 glyphs a line and a dip for the rounding of their run: 334 lines
     assert(lines.length == 334);
-    assert(measured <= 4 * text.length, "the rest of the word measured after each cut");
+    assert(measured <= 30, "a part cut off the word is measured by its glyphs, not by the host (a layout a line); only the last one, ending the word");
 }
 
-@("wrapLines: a cut that steps back as drawn steps over a surrogate pair whole")
+@("wrapLines: a cut that steps back steps over a surrogate pair whole")
 unittest
 {
     import std.math : ceil;
@@ -254,8 +289,28 @@ unittest
     foreach (_; 0 .. 20)
         text ~= "😀"w;
     LineSpan[] lines;
-    wrapLines(lines, text, 32.9, &piece, glyph); // 10 fit by the glyphs (32.5), not as drawn (33): 9
+    wrapLines(lines, text, 32.9, &piece, glyph); // 10 are 32.5 by the glyphs, 33.5 with the dip of their run: back by a pair, 9
     assert(lines[0] == LineSpan(0, 18) && lines[1].start == 18, "9 pairs, none cut");
+}
+
+@("wrapLines: a long word is cut between graphemes, not inside one: a letter keeps its mark, a flag is whole")
+unittest
+{
+    wchar[] accents, flags;
+    foreach (_; 0 .. 20)
+    {
+        accents ~= "é"w; // e and a combining acute
+        flags ~= "🇩🇪"w; // two regional indicators, two units each
+    }
+    LineSpan[] lines;
+    wrapLines(lines, accents, 31, tenPerGlyphPiece, tenPerGlyph); // 3 code points fit: the third is an e without its mark
+    foreach (l; lines)
+        assert(accents[l.start] == 'e' && (l.end - l.start) % 2 == 0, "a mark torn from its letter");
+    wrapLines(lines, flags, 31, tenPerGlyphPiece, tenPerGlyph); // 3 code points: half a flag
+    foreach (l; lines)
+        assert(l.start % 4 == 0 && (l.end - l.start) % 4 == 0, "a flag cut in two");
+    wrapLines(lines, flags, 15, tenPerGlyphPiece, tenPerGlyph); // not even a flag fits: a whole one a line
+    assert(lines.length == 20 && lines[0] == LineSpan(0, 4));
 }
 
 @("wrapLines: a lone surrogate is a glyph, not an error")
@@ -264,8 +319,10 @@ unittest
     double piece(const(wchar)[] t) { return 10.0 * t.length; }
     const text = "abc"w ~ cast(wchar) 0xD800 ~ "defgh"w;
     LineSpan[] lines;
-    wrapLines(lines, text, 40, &piece, tenPerGlyph);
-    assert(lines == [LineSpan(0, 4), LineSpan(4, 8), LineSpan(8, 9)], "the surrogate is a glyph of 10 of its own");
+    wrapLines(lines, text, 41, &piece, tenPerGlyph); // 4 glyphs and a dip for their run
+    assert(lines.length > 1 && lines[0].start == 0 && lines[$ - 1].end == text.length, "the whole text in lines");
+    foreach (k, l; lines)
+        assert((k == 0 || l.start == lines[k - 1].end) && 10.0 * (l.end - l.start) <= 41, "one after another, each in the width");
 }
 
 @("wrapLines: a text that fits is one line, an empty one is one empty line")
@@ -288,12 +345,13 @@ unittest
     assert(wrapped("aaaa bb", 40) == ["aaaa ", "bb"]);
 }
 
-@("wrapLines: a word longer than the line breaks at the width")
+@("wrapLines: a word longer than the line breaks at the width, less a dip for the rounding of its run")
 unittest
 {
-    assert(wrapped("abcdefghij", 40) == ["abcd", "efgh", "ij"]);
-    assert(wrapped("xabcdefghij", 40) == ["xabc", "defg", "hij"]);
-    assert(wrapped("ab cdefghijkl", 50) == ["ab ", "cdefg", "hijkl"]);
+    assert(wrapped("abcdefghij", 41) == ["abcd", "efgh", "ij"]);
+    assert(wrapped("abcdefghij", 40) == ["abc", "def", "ghij"], "4 glyphs are 40, their run may be drawn 41; the end of the word is measured as drawn");
+    assert(wrapped("xabcdefghij", 41) == ["xabc", "defg", "hij"]);
+    assert(wrapped("ab cdefghijkl", 51) == ["ab ", "cdefg", "hijkl"]);
 }
 
 @("wrapLines: a hard line break is kept")
@@ -316,7 +374,7 @@ unittest
 {
     LineSpan[] lines;
     const text = "a😀b"w; // 😀 is two units
-    wrapLines(lines, text, 20, tenPerGlyphPiece, tenPerGlyph);
+    wrapLines(lines, text, 21, tenPerGlyphPiece, tenPerGlyph); // 2 glyphs and a dip for their run
     assert(cut(text, lines) == ["a😀", "b"], "the pair is not cut");
 }
 
