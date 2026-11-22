@@ -595,6 +595,12 @@ frameset > splitter:active {
 .bottom-page[data-page=mcp],
 .bottom-tab.active[data-page=mcp] { background: var(--page-mcp-bg); }
 
+/* The placeholder of the MCP page, in its centre */
+.mcp-wip {
+    margin: *; /* Sciter: flexible margins center it */
+    color: var(--text-label);
+}
+
 /* The dot of the Filters tab: some rule works on the log (markFiltersTab).
    Always there, grown from its centre when it appears and collapsed back, so
    the tab keeps its width */

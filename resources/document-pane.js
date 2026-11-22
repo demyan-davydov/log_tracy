@@ -115,8 +115,10 @@ function renderPane(splitters) {
             <div class="bottom-page file-info-page" data-page="file-info" style="display:none;">
                 <dl class="file-info"></dl>
             </div>
-            {/* Of the whole application, not of the document: empty for now */}
-            <div class="bottom-page mcp-page" data-page="mcp" style="display:none;"></div>
+            {/* Of the whole application, not of the document: only a placeholder for now, not translated */}
+            <div class="bottom-page mcp-page" data-page="mcp" style="display:none;">
+                <div class="mcp-wip">Work in progress</div>
+            </div>
             </div>
             <div class="bottom-tabs">
                 {/* Collapses the panel to this strip, expands it again: its icon and title by renderCollapsed */}
