@@ -126,11 +126,11 @@ function renderPane(splitters) {
                 <div class="bottom-tab active" data-page="search">
                     <span class="bottom-tab-name" data-tr="Search" data-tr-context="noun" />
                 </div>
-                {/* Its dot: some rule works on the log (markFiltersTab) */}
+                {/* Its mark: some rule works on the log (markFiltersTab) */}
                 <div class="bottom-tab" data-page="filters">
                     <span class="tab-sep" />
                     <span class="bottom-tab-name" data-tr="Filters" />
-                    <span class="bottom-tab-dot" />
+                    <span class="bottom-tab-mark" />
                 </div>
                 <div class="bottom-tab" data-page="file-info">
                     <span class="tab-sep" />
@@ -430,7 +430,7 @@ export class DocumentPane {
         this.searchBar.editor.focusAtEnd();
     }
 
-    // Marks the tab of the Filters page with its dot while some rule works on the log
+    // Marks the tab of the Filters page with its mark while some rule works on the log
     markFiltersTab(active) {
         this.root.$(".bottom-tab[data-page=filters]").classList.toggle("marked", active);
     }

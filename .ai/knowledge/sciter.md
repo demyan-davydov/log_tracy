@@ -455,6 +455,9 @@ agent can't drive it. In scapp a plain
   `var()` as its base, in a variable too: the found rows derive from the stripes this way. A
   text on a color set by the script takes its color from the script too (`contrastText`
   of `resources/rule-colors.js`, the chips of the Filters page).
+- A grey of a theme color is `morph(var(--x), saturation:0%)` (the mark of the Filters tab):
+  `filter: saturate(0)` on the element did nothing (the samples of the SDK write a filter's
+  argument in percent, `saturate(50%)`).
 - An empty element as a space in a line of text (the gaps of the Index): `display: inline`
   takes no width, padding or not; `inline-block` takes it but has no height (a background
   unseen) and with a height sits on the baseline, hanging below the text and growing the

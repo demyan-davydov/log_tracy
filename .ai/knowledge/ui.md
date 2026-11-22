@@ -22,7 +22,7 @@ behaviour: `.ai/knowledge/sciter.md`.
   left; MCP Server, of the whole application, on the right, empty for now) and the buttons of
   the lost file (Retry reopens the whole document, Close its tab).
   Its parts: the filters, `FilterPanel` (`filter-panel.js`, chips on the Filters page,
-  `.filter-page`; the tab's dot: `active` of `DocumentFilters.toJson`, decided by the
+  `.filter-page`; the tab's mark: `active` of `DocumentFilters.toJson`, decided by the
   backend with the predicates the view and the rows use),
   the search bar, `SearchBar` (`search-bar.js`, on `.search-bar`), and its two tables,
   `MainViewTable` and `SearchViewTable` (`view-table.js`): each a `ViewTable`, a table with

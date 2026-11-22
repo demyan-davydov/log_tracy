@@ -601,23 +601,31 @@ frameset > splitter:active {
     color: var(--text-label);
 }
 
-/* The dot of the Filters tab: some rule works on the log (markFiltersTab).
-   Always there, grown from its centre when it appears and collapsed back, so
-   the tab keeps its width */
-.bottom-tab-dot {
-    width: 5dip;
-    height: 5dip;
-    margin: * 0 * 4pt; /* Sciter: flexible margins center it vertically */
-    border-radius: 50%;
-    background: var(--border-focus);
-    transform: scale(0);
-    opacity: 0;
-    transition: transform ease-out 150ms, opacity linear 150ms;
+/* The mark of the Filters tab: some rule works on the log (markFiltersTab).
+   A dot under the name, out of the flow so the tab keeps its width. Always
+   there: a faint grey of the focus color (so it follows the theme) while no
+   rule works, the focus color with a glow while one does */
+.bottom-tab-mark {
+    position: absolute;
+    left: 50%;
+    bottom: 3dip;
+    width: 4dip;
+    height: 4dip;
+    margin-left: -2dip; /* centred under the name */
+    border-radius: 2dip; /* half the size: round */
+    transition: box-shadow ease-out 150ms, opacity linear 150ms;
 }
 
-.bottom-tab.marked .bottom-tab-dot {
-    transform: scale(1);
+.bottom-tab .bottom-tab-mark {
+    background: morph(var(--border-focus), saturation:0%);
+    opacity: 0.4;
+    box-shadow: 0dip 0dip 0dip 0dip var(--border-focus);
+}
+
+.bottom-tab.marked .bottom-tab-mark {
+    background: var(--border-focus);
     opacity: 1;
+    box-shadow: 0dip 0dip 1dip 0dip var(--border-focus);
 }
 
 /* The icons of the buttons (resources/icons/): a file has the shape only, the stroke of
