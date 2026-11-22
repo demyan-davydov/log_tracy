@@ -41,25 +41,31 @@ function setHead(set, s, renaming) {
 // The chip of a rule: its switch, the mark of its kind and its name, filled
 // with the color of the rule and its text in the contrasting one; its buttons
 // (remove, then edit) in a tab sliding out of its left on hover, out of
-// its width, in its color (--chip-color, its text --chip-text). Its set-index and rule-index are read by the handlers. Its
+// its width, in its color. Its set-index and rule-index are read by the handlers. Its
 // tooltip (and its mark's: a cut name has a tooltip of its own) says what the
 // rule does; a rule not applied is marked, its error in its tooltip.
+// The colors of a rule are set on each element that shows them, not as custom
+// properties of the chip: Sciter hangs on SVG icons in 9+ elements with their own
+// custom properties (.ai/knowledge/sciter.md).
 function ruleChip(rule, s, r) {
     const classes = ["filter-chip"];
     if (rule.color) classes.push("colored");
     if (rule.error) classes.push("error");
     const kind = ruleKindTitles[rule.kind]?.() ?? "";
     const title = rule.error ? tr("Not applied: {error}", { error: rule.error }) : kind;
-    const look = rule.color
-        ? `background-color: ${rule.color}; color: ${contrastText(rule.color)}; --chip-text: ${contrastText(rule.color)}; --chip-color: ${rule.color}` : "";
+    const text = rule.color ? contrastText(rule.color) : null;
+    const look = rule.color ? `background-color: ${rule.color}; color: ${text}` : "";
+    const icon = rule.color ? `fill: ${text}` : "";
+    const tab = rule.color ? `background-color: ${rule.color}` : "";
+    const button = rule.color ? `stroke: ${text}` : "";
     return <div class={classes.join(" ")} set-index={s} rule-index={r} title={title} style={look}>
         <input type="checkbox" class="filter-rule-switch" />
-        <span class={"filter-kind " + rule.kind} title={kind} />
+        <span class={"filter-kind " + rule.kind} title={kind} style={icon} />
         <span class="filter-name">{rule.name || tr("(no name)")}</span>
         <span class="filter-chip-actions">
-            <span class="filter-chip-tab">
-                <span class="filter-button filter-rule-remove icon-close" title={tr("Remove this rule")}></span>
-                <span class="filter-button filter-rule-edit icon-edit" title={tr("Edit this rule (or double-click it)")}></span>
+            <span class="filter-chip-tab" style={tab}>
+                <span class="filter-button filter-rule-remove icon-close" title={tr("Remove this rule")} style={button}></span>
+                <span class="filter-button filter-rule-edit icon-edit" title={tr("Edit this rule (or double-click it)")} style={button}></span>
             </span>
         </span>
     </div>;

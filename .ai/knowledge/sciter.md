@@ -437,6 +437,12 @@ agent can't drive it. In scapp a plain
   that changes the color sets the fill or the stroke as well. Checked on 6.0.5.5: no `mask-image`
   (a plain square of the background), no `<use href="sprite.svg#id">` (nothing drawn); an inline
   `<svg>` in the DOM does take `currentColor`.
+- An SVG file as an image hangs the window (6.0.5.5, macOS; scapp too): it repaints forever,
+  input and timers stop, once 9+ elements in `flow: horizontal` with an SVG image inside each
+  have their own values of a custom property (`style="--a: ..."`, even unread). Eight are fine;
+  one value for all, no `flow: horizontal`, or no SVG are fine. Per-element colors go straight
+  onto the elements (`background-color`, `fill`, `stroke` inline), never as custom properties
+  (the chips of `filter-panel.js`).
 - The native `imageLoad` (sciter-x-graphics.h) reads PNG but not SVG (`GRAPHIN_PANIC`, with or
   without a size or an XML declaration); the image of the script made of the same bytes reads SVG. A
   native behavior (the log table) can't draw an SVG file as an image: it draws glyphs, or a path

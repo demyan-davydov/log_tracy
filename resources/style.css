@@ -834,7 +834,7 @@ frameset > splitter:active {
 
 /* What a rule does: + include, − exclude, ◆ marker, an icon (its class, set by
    the script) in the color of the chip's text: set as the fill, the icon doesn't
-   take currentColor */
+   take currentColor. On a colored chip the script sets its fill (ruleChip) */
 .filter-kind {
     width: 11dip;
     height: 11dip;
@@ -845,8 +845,6 @@ frameset > splitter:active {
     fill: var(--text-main);
     stroke: none;
 }
-
-.filter-chip.colored .filter-kind { fill: var(--chip-text); }
 
 .filter-kind.include { foreground-image: url(icons/include.svg); }
 .filter-kind.exclude { foreground-image: url(icons/exclude.svg); }
@@ -933,14 +931,9 @@ frameset > splitter:active {
 }
 
 /* Over a chip of a rule's color: the tab in that color, its buttons in the
-   chip's text color (set by the script) */
-.filter-chip.colored .filter-chip-tab {
-    background: var(--chip-color);
-}
-
+   chip's text color (their background-color and stroke set by the script, ruleChip) */
 .filter-chip.colored .filter-chip-tab > .filter-button {
     color: inherit;
-    stroke: var(--chip-text);
 }
 
 /* The tab joins the chip: no rounding between them */
