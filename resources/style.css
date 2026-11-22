@@ -740,10 +740,12 @@ frameset > splitter:active {
 }
 
 /* Indented enough for the buttons of a rule on the left of a chip
-   (.filter-chip-actions) */
+   (.filter-chip-actions). By a padding, not a margin: the tab of the first
+   chip of a line lies in the indent, and Sciter gives the mouse to no child
+   outside its parent's box, so in a margin the tab loses the chip's :hover */
 .filter-chips {
     width: *;
-    margin-left: 40dip;
+    padding-left: 40dip;
     flow: horizontal-wrap;
     border-spacing: 4dip;
     /* No overflow: hidden: it would clip the buttons left of the first chip
