@@ -25,7 +25,6 @@
         .row > .value > span { margin: * 0; } /* centered in the row: from, to */
         .row input[type=text] { width: *; }
         .row select.check { width: 100dip; }
-        .row select.level { width: 120dip; }
 
         /* The values of an enum column as push buttons, one pressed (.selected): a
            row of them. Not <button>s: a button takes the focus after a press */
@@ -75,6 +74,7 @@
         /* A wrong condition: its fields are red, its message under them */
         .condition.invalid .value input[type=text],
         .condition.invalid .value select { border-color: var(--log-error); }
+        .condition.invalid .slider-track { outline: 1dip solid var(--log-error); }
         .condition.invalid .label { color: var(--log-error); }
         .row-error { margin-left: 158dip; font-size: 0.85em; color: var(--log-error); }
         .row-error:empty { display: none; }
@@ -97,7 +97,8 @@
     </style>
     <script type="module">
         import { $, $$ } from "@sciter";
-        import { editableColumns, rowsFromRule, conditionsFromRows, describeCondition, errorsOfRows, levelNames } from "rule-form.js";
+        import { editableColumns, rowsFromRule, conditionsFromRows, describeCondition, errorsOfRows, levelNames, levelRange, levelsOfRange, levelAt } from "rule-form.js";
+        import { RangeSlider } from "slider.js";
         import * as platform from "platform.js";
         import { applyTheme } from "theme.js";
         import { setCatalog, tr, trc } from "i18n/i18n.js";
@@ -142,11 +143,7 @@
                             <input type="text" role="to" filter={filter} />];
                     }
                     case "Level":
-                        return [
-                            <select class="level" role="from">{levelNames.map(l => <option value={l}>{l}</option>)}</select>,
-                            <span>{trc("range", "to")}</span>,
-                            <select class="level" role="to">{levelNames.map(l => <option value={l}>{l}</option>)}</select>
-                        ];
+                        return [<div class="level-range"></div>]; // a RangeSlider: addLevelSliders()
                     case "Enum":
                         return [<div class="enum-buttons" role="value">
                             {(column.labels || []).map((l, i) =>
@@ -183,6 +180,23 @@
             for (const o of options) o.classList.toggle("selected", o === pressed);
         }
 
+        // The range sliders of the level columns by column id; a row of one has
+        // no controls of role from and to: its levels are the slider's
+        const levelSliders = new Map();
+
+        function addLevelSliders() {
+            for (const row of $$(".condition")) {
+                const element = row.$(".level-range");
+                if (!element) continue;
+                levelSliders.set(row.getAttribute("column"), new RangeSlider(element, {
+                    min: 0, max: levelNames.length - 1, step: 1,
+                    marks: levelNames.map((_, place) => ({ value: place })),
+                    format: levelAt,
+                    onChange: () => switchOn(null, element),
+                }));
+            }
+        }
+
         function control(row, role) {
             return row.$(`[role="${role}"]`);
         }
@@ -194,6 +208,8 @@
                     const c = control(row, role);
                     if (c) setControlValue(c, values[role]);
                 }
+                const slider = levelSliders.get(row.getAttribute("column"));
+                if (slider) slider.value = levelRange(values);
             }
         }
 
@@ -205,6 +221,8 @@
                     const role = c.getAttribute("role");
                     values[role] = controlValue(c);
                 }
+                const slider = levelSliders.get(row.getAttribute("column"));
+                if (slider) Object.assign(values, levelsOfRange(slider.value));
                 rows[row.getAttribute("column")] = values;
             }
             return rows;
@@ -278,6 +296,7 @@
             platform.setDialogTitle(params.title || tr("Filter Rule"));
             const conditions = $("#conditions");
             for (const column of editable) conditions.append(renderRow(column));
+            addLevelSliders();
 
             $("#name").value = rule.name || "";
             const radio = $(`input[name=kind][value="${rule.kind || "include"}"]`);

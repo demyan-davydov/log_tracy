@@ -34,3 +34,18 @@ export function keyedValue(value, code, { min, max, step }) {
         default: return null;
     }
 }
+
+// A range slider has two knobs, [low, high], low <= high.
+
+// The knob a press at `value` takes: 0 (low) or 1 (high), the nearer one (as
+// far from both: the right one). On knobs at one place a press on them takes
+// none yet (null): the way the mouse moves first decides
+export function nearestKnob(value, [low, high]) {
+    if (low === high) return value < low ? 0 : value > high ? 1 : null;
+    return value - low < high - value ? 0 : 1;
+}
+
+// The range with knob `knob` moved to `value`: up to the other knob, never past it
+export function movedRange([low, high], knob, value) {
+    return knob === 0 ? [Math.min(value, high), high] : [low, Math.max(value, low)];
+}

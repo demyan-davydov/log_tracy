@@ -2,7 +2,7 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { editableColumns, rowsFromRule, conditionsFromRows, describeCondition, errorsOfRows } from "../../resources/rule-form.js";
+import { editableColumns, rowsFromRule, conditionsFromRows, describeCondition, errorsOfRows, levelRange, levelsOfRange, levelAt } from "../../resources/rule-form.js";
 
 const columns = [
     { id: "time", title: "Time", kind: "Time" },
@@ -118,11 +118,11 @@ test("a kept condition is described for the editor", () => {
 test("the errors of the conditions go to their rows and kept conditions", () => {
     const { rows } = rowsFromRule({ conditions: [] }, columns);
     rows.pid = { on: true, from: "x", to: "" };
-    rows.level = { on: true, from: "verbose", to: "error" };
+    rows.id = { on: true, from: "10", to: "1" };
     const kept = [{ column: "header", check: "contains", value: "X" }];
-    // The conditions are those of conditionsFromRows: pid, level, then the kept one
+    // The conditions are those of conditionsFromRows: pid, id, then the kept one
     const errors = errorsOfRows(rows, columns, kept, ["not a number", "empty range", "no column"], [false, false, true]);
-    assert.deepEqual(errors.rows, { pid: "not a number", level: "empty range" });
+    assert.deepEqual(errors.rows, { pid: "not a number", id: "empty range" });
     assert.deepEqual(errors.kept, ["no column"]);
     assert.equal(errors.blocking, true);
     assert.deepEqual(errorsOfRows(rows, columns, kept, ["", "", ""], [false, false, true]),
@@ -153,4 +153,21 @@ test("a kept condition in words of the language of the interface", async () => {
     } finally {
         setCatalog(null);
     }
+});
+
+test("the levels of a row on the slider: verbose at the left, fatal at the right", () => {
+    assert.deepEqual(levelRange({ from: "fatal", to: "verbose" }), [0, 5]);
+    assert.deepEqual(levelRange({ from: "error", to: "info" }), [2, 4]);
+    assert.deepEqual(levelRange({ from: "warn", to: "warn" }), [3, 3]);
+});
+
+test("the levels of the slider for a row: the left knob is the least severe level, its to", () => {
+    assert.deepEqual(levelsOfRange([0, 5]), { from: "fatal", to: "verbose" });
+    assert.deepEqual(levelsOfRange([2, 4]), { from: "error", to: "info" });
+});
+
+test("the names of the places of the slider: verbose at the left, fatal at the right", () => {
+    assert.equal(levelAt(0), "verbose");
+    assert.equal(levelAt(3), "warn");
+    assert.equal(levelAt(5), "fatal");
 });

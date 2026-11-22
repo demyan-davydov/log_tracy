@@ -152,7 +152,9 @@ behaviour: `.ai/knowledge/sciter.md`.
 - Filters and the rule editor: `rule-editor.htm`, `rule-form.js`
 - Settings: `settings.htm`, `settings-sections.js`, `column-settings.js`; the font size is a `Slider`
   (`slider.js`, the values in `slider-value.js`, the look `.slider` in `style.css`): a reusable
-  slider drawn like a switch, with marks under it
+  slider drawn like a switch, with marks under it; its `RangeSlider` (two knobs) sets the
+  levels of a rule (`rule-editor.htm`; the places to levels: `levelRange`, `levelsOfRange` of
+  `rule-form.js`)
 - Go to Message (Navigation menu, Cmd+G / Ctrl+G): `go-to-message.htm`, `go-to-message.js`;
   the row it lands on (the nearest shown when filtered out) is
   `backend.mainViewNearestPosition`, `MainViewTable.goToMessage`

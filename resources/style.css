@@ -1243,3 +1243,26 @@ plaintext.filter-input span.number {
 .slider-tick { width: 1dip; height: 4dip; margin: 0 *; background: var(--text-label); }
 .slider-mark > span { margin: 2dip * 0; }
 .slider-value { min-width: 3.5em; line-height: 20dip; text-align: right; }
+
+/* A range slider (RangeSlider): two knobs, the fill between them (left and
+   width set by the script, the margin and paddings round it past both knobs),
+   ticks only under the track; the value of the left knob above the track, of
+   the right one under the ticks, so the two never cover each other */
+.slider.range { width: *; }
+.slider.range .slider-body { width: *; }
+.slider.range .slider-fill { margin-left: -10dip; }
+.slider.range .slider-knob:focus { outline: 2dip solid var(--border-focus) 1dip; }
+.slider.range .slider-marks { height: 8dip; margin-top: 3dip; }
+.slider-labels { position: relative; height: 1.4em; margin: 0 10dip; }
+.slider-label {
+    position: absolute;
+    top: 0;
+    width: 80dip;
+    margin-left: -40dip; /* left: its middle, set by the script */
+    text-align: center;
+    white-space: nowrap;
+    font-size: 0.85em;
+}
+/* At an end of the track: from its left end, or up to its right one */
+.slider-label.start { margin-left: -10dip; text-align: left; }
+.slider-label.end { margin-left: -70dip; text-align: right; }

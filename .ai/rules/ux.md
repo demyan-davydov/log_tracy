@@ -237,7 +237,10 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     not inline in the panel. Edits apply and are remembered at once (no
     Save, no unsaved prompts); a set can be exported to a `.dlf`. "New
     Filter" creates an empty set without asking for a file and opens the editor of its first
-    rule. The DLT rule editor offers exactly the conditions a `.dlf` can hold.
+    rule. The DLT rule editor offers exactly the conditions a `.dlf` can hold. The levels of a
+    rule are a range slider drawn like the font size slider: verbose at the left, fatal at the
+    right, two knobs that may meet (one level) but not pass each other; the level of the left
+    knob is written above the track, of the right one under it, so they never cover each other.
 
 ## Recent Files
 
