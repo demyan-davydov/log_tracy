@@ -22,7 +22,7 @@ import { showNotice } from "notice.js";
 import { FilterPanel } from "filter-panel.js";
 import { SearchBar } from "search-bar.js";
 import { MainViewTable, SearchViewTable } from "view-table.js";
-import { activeTabOf, collapseStep, panelSizesOf } from "panel-sizes.js";
+import { activeTabOf, collapseStep } from "panel-sizes.js";
 
 // True if `element` is `root` or inside it (and still in the document)
 function isInside(element, root) {
@@ -303,18 +303,9 @@ export class DocumentPane {
         };
     }
 
-    // The height of the search (bottom) panel as it is shown and whether it is
-    // collapsed, as the settings keep them (panelSizesOf): { searchPanelHeight ("230dip"), bottomPanelCollapsed }.
-    // Only while the panel is shown: a hidden one has no size. Its content box:
-    // a frameset sizes that, without the padding and the borders. Collapsed: the
-    // height it expands to, not that of its tabs
-    panelSizes() {
-        return panelSizesOf(this.sizesNow());
-    }
-
     // Its splitter now (splitterSizes()), whether its bottom panel is collapsed and
     // its height: as measured, or, collapsed, the one it expands to (none known:
-    // panelSizesOf gives the default). Only while the panel is shown, as panelSizes()
+    // panelSizesOf gives the default). Only while the panel is shown: a hidden one has no size
     sizesNow() {
         const height = this.collapsed ? this.expandedHeight ?? undefined : this.measuredHeight();
         return { ...this.splitterSizes(), collapsed: this.collapsed, searchPanelHeight: height };
@@ -327,7 +318,7 @@ export class DocumentPane {
     }
 
     // Hides the panel. @returns the size of its splitter for the next panel
-    // shown (splitterSizes(), panelSizes()) and the page of the bottom panel
+    // shown (sizesNow()) and the page of the bottom panel
     hide() {
         // A press on a tab has moved the focus to the strip already: lastFocus
         // keeps what focusin saw then
@@ -418,16 +409,20 @@ export class DocumentPane {
         const button = this.root.$(".btn-bottom-panel");
         button.classList.toggle("icon-bottom-panel-shown", !this.collapsed);
         button.classList.toggle("icon-bottom-panel-hidden", this.collapsed);
-        const shortcut = this.host.shortcutText("view.bottomPanel");
-        button.setAttribute("title", this.collapsed ? tr("Show Bottom Panel ({shortcut})", { shortcut })
-            : tr("Hide Bottom Panel ({shortcut})", { shortcut }));
+        const shortcut = this.host.shortcutText("view.bottomPanel"); // null: the menu didn't come
+        let title;
+        if (shortcut) title = this.collapsed ? tr("Show Bottom Panel ({shortcut})", { shortcut })
+            : tr("Hide Bottom Panel ({shortcut})", { shortcut });
+        else title = this.collapsed ? tr("Show Bottom Panel") : tr("Hide Bottom Panel");
+        button.setAttribute("title", title);
     }
 
     // Find (Cmd+F / Ctrl+F): the search page is shown, the caret at the end of the query.
     // Nothing if the focus is in the query already: the caret stays where it is
     focusSearch() {
         if (!this.visible || this.destroyed) return;
-        if (isInside(document.$(":focus"), this.root.$(".chip-search"))) return;
+        // A collapsed panel is expanded whatever has the keys
+        if (!this.collapsed && isInside(document.$(":focus"), this.root.$(".chip-search"))) return;
         this.showBottomPage("search");
         this.searchBar.editor.focusAtEnd();
     }

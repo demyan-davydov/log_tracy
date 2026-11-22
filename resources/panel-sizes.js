@@ -58,3 +58,15 @@ export function collapseStep(state, collapsed, measured) {
 export function activeTabOf(state) {
     return state.collapsed ? null : state.bottomPage;
 }
+
+// The sizes to save on exit (panelSizesOf): of the panel shown `shown` ({ collapsed, expandedHeight }, null:
+// none), its height `measured` ("230dip"; null: it can't be, the window minimized), or as the splitters of
+// the panel shown last left them (`splitters`). A collapsed panel needs no measure
+export function savedSizesOf(splitters, shown, measured) {
+    if (!shown) return panelSizesOf(splitters);
+    if (shown.collapsed)
+        return panelSizesOf({ rows: splitters.rows, collapsed: true, searchPanelHeight: shown.expandedHeight ?? undefined });
+    // Not collapsed: measured, or the height of the splitters (not the 0 of their row if they were collapsed)
+    const height = measured ?? splitters.searchPanelHeight ?? (splitters.collapsed ? shown.expandedHeight ?? defaultHeight : undefined);
+    return panelSizesOf({ rows: splitters.rows, collapsed: false, searchPanelHeight: height });
+}

@@ -2,7 +2,7 @@
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { panelSizesOf, splittersOf, rowsOf, collapseStep, activeTabOf, defaultRows } from "../../resources/panel-sizes.js";
+import { panelSizesOf, splittersOf, rowsOf, collapseStep, activeTabOf, defaultRows, savedSizesOf } from "../../resources/panel-sizes.js";
 
 test("the size of the panel is read from the splitter of a panel", () => {
     assert.deepEqual(panelSizesOf({ rows: "1*,177dip" }), { searchPanelHeight: "177dip", bottomPanelCollapsed: false });
@@ -76,4 +76,26 @@ test("no step when the panel is as asked", () => {
 test("no tab is active while the panel is collapsed", () => {
     assert.equal(activeTabOf({ collapsed: false, bottomPage: "filters" }), "filters");
     assert.equal(activeTabOf({ collapsed: true, bottomPage: "filters" }), null);
+});
+
+test("the sizes saved are those of the panel shown, measured", () => {
+    assert.deepEqual(savedSizesOf({ rows: "*,180dip" }, { collapsed: false, expandedHeight: null }, "230dip"),
+        { searchPanelHeight: "230dip", bottomPanelCollapsed: false });
+});
+
+test("a collapsed panel needs no measure: its state is saved on a minimized window too", () => {
+    // The splitters are those of the panel shown before: collapsed since, the panel shown says so
+    assert.deepEqual(savedSizesOf({ rows: "*,180dip" }, { collapsed: true, expandedHeight: "230dip" }, null),
+        { searchPanelHeight: "230dip", bottomPanelCollapsed: true });
+});
+
+test("an expanded panel that can't be measured keeps the height of the splitters, not their collapse", () => {
+    assert.deepEqual(savedSizesOf({ rows: "1*,0dip", collapsed: true, searchPanelHeight: "200dip" },
+        { collapsed: false, expandedHeight: "200dip" }, null),
+        { searchPanelHeight: "200dip", bottomPanelCollapsed: false });
+});
+
+test("no panel shown: the sizes as the splitters left them", () => {
+    assert.deepEqual(savedSizesOf({ rows: "1*,0dip", collapsed: true, searchPanelHeight: "200dip" }, null, null),
+        { searchPanelHeight: "200dip", bottomPanelCollapsed: true });
 });

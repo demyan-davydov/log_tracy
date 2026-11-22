@@ -74,7 +74,8 @@ behaviour: `.ai/knowledge/sciter.md`.
   element and call the table (`logTableCall(id, "detach")`, `TableControl.detach`/`attach`:
   `Table.detach`/`attach`); a table attached later reads the attribute (`detachedOf`), as the call
   reached no table then. The state goes with the splitter from panel to panel (`splitters.collapsed`,
-  `DocumentPane.sizesNow`) and is saved with it (`panelSizesOf`: `AppSettings.bottomPanelCollapsed`;
+  `DocumentPane.sizesNow`) and is saved with it (`savedSizesOf`, `panelSizesOf`: a collapsed panel needs
+  no measure, so a minimized window saves it too; `AppSettings.bottomPanelCollapsed`;
   `searchPanelHeight` is then the height it expands to). The script tells the backend
   (`backend.setBottomPanelShown`), whose menu labels the command by it; the menu bar of Windows and
   Linux is drawn again once the event is done.

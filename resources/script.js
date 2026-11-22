@@ -23,7 +23,7 @@ import { fileFilter, allFiles } from "file-types.js";
 import { requestedLocale } from "i18n/languages.js";
 import { showNotice } from "notice.js";
 import { restorableFrame } from "window-frame.js";
-import { defaultRows, panelSizesOf, splittersOf } from "panel-sizes.js";
+import { defaultRows, savedSizesOf, splittersOf } from "panel-sizes.js";
 
 
 let currentTheme = "light";
@@ -645,9 +645,10 @@ globalThis.getAppState = function () {
     // Left out (the saved one kept) while the window isn't shown normally
     const windowRect = platform.windowFrame() ?? undefined;
     // Of the panel shown, or as the last one shown left them: written with the
-    // rest, not on each move of a splitter
-    // Not measured on a minimized window: its panels have no size then
-    const sizes = shownPane && !platform.windowMinimized() ? shownPane.panelSizes() : panelSizesOf(splitters);
+    // rest, not on each move of a splitter. Not measured on a minimized window:
+    // its panels have no size then (a collapsed one needs no measure)
+    const measured = shownPane && !shownPane.collapsed && !platform.windowMinimized() ? shownPane.measuredHeight() : null;
+    const sizes = savedSizesOf(splitters, shownPane, measured);
     return JSON.stringify({
         windowRect,
         theme: currentTheme,
