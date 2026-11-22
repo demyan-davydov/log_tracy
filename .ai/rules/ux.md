@@ -22,7 +22,8 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
 2. **Keep familiar positions.** Controls stay where the user is used to them: the "+" button is
    on the left of the tabs, though Chrome puts it on the right.
 3. **No duplicate controls.** An action available in the app menu doesn't get a toolbar button
-   too (there is no top toolbar). Exception: "+" in the tab strip. Actions that belong to a
+   too (there is no top toolbar). Exceptions: "+" in the tab strip, and the button that collapses
+   the bottom panel (View → Hide/Show Bottom Panel). Actions that belong to a
    panel's content live in that panel (Load Filter next to the filters on their page; Load
    File, Load Folder and Unload FIBEX on the File Info page of a DLT log, under the path of
    the FIBEX).
@@ -282,6 +283,12 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     tabs stay on the grey of the strip.
     Tabs of the current document (data source) are on the left, in this order: "Search",
     "Filters", "File Info"; tabs of the whole application are on the right: "MCP Server".
+    A round button left of the tabs (before "Search") collapses the panel to its strip of tabs and
+    expands it to the height it had; its icon shows the state (the band of a panel filled or empty),
+    its tooltip names the action with its key. View → Hide/Show Bottom Panel (Cmd+J / Ctrl+J) does the
+    same, its label by the state. Collapsed, no tab is active and the splitter is gone; a click on a
+    tab or Find expands the panel with that page. The state and the height are kept for every
+    document and over a restart.
     The "Filters" tab has a dot after its name while some rule works on the log (an enabled,
     applied rule of an enabled set, markers too), so a filtered log is seen with another page
     open; the dot grows in and out, the tab keeps its width.

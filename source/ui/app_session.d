@@ -21,7 +21,7 @@ import domain.document_store;
 import log_core.log_format : ColumnInfo, FormatChoice, LogFormat;
 import log_core.rule_filter : RuleId;
 import log_core.search_filter : MatchBuffer, MatchRange, SearchFilter;
-import ui.app_menu : hostMenuPlatform, MenuItem, MenuPlatform, WindowMenu, windowMenu;
+import ui.app_menu : hostMenuPlatform, MenuItem, MenuPlatform, MenuState, WindowMenu, windowMenu;
 import ui.app_settings;
 import ui.document_tabs : DocumentTabs;
 import ui.document_ui : DocumentUi;
@@ -83,6 +83,7 @@ final class AppSession
     private bool _settingsChanged; // since they were last written
     private bool _closing; // the window closes: no more calls of the script
     private WindowMenu _menu = windowMenu(hostMenuPlatform(), ""); // the menu of the window
+    private MenuState _menuState; // what of the window the labels of the menu follow
     private Translation[] _translations; // of the interface, by locale
     private Catalog _catalog; // of the language of the interface: the texts of the session
     private bool _offerPseudo; // the pseudo locale among the languages (PSEUDO_LOCALE=1)
@@ -909,12 +910,19 @@ final class AppSession
         _menu = menu;
     }
 
+    /// The bottom panel of the documents is shown (`shown`) or collapsed: the menu labels its
+    /// command by it (the script tells it, as it keeps the panel)
+    void setBottomPanelShown(bool shown)
+    {
+        _menuState.bottomPanelShown = shown;
+    }
+
     /// The menu of the window for the script (ui.app_menu.windowMenuJson)
     string menuJson()
     {
         import ui.app_menu : windowMenuJson;
 
-        return windowMenuJson(_menu, &_catalog.translate);
+        return windowMenuJson(_menu, &_catalog.translate, _menuState);
     }
 
     // ── Translations ─────────────────────────────────────────────────────────
@@ -986,7 +994,7 @@ final class AppSession
     {
         import ui.app_menu : appMenu;
 
-        return appMenu(platform, &_catalog.translate);
+        return appMenu(platform, &_catalog.translate, _menuState);
     }
 
     // ── Columns ──────────────────────────────────────────────────────────────
@@ -1375,6 +1383,31 @@ unittest
     auto windows = parseJSON(f.session.menuJson());
     assert(windows["menuBar"].boolean);
     assert(windows["menus"] == parseJSON(menuJson(appMenu(MenuPlatform.windows), MenuPlatform.windows)));
+}
+
+@("AppSession: the label of the bottom panel in the menu follows what the script tells")
+unittest
+{
+    import std.json : parseJSON;
+    import ui.app_menu : MenuCommand;
+
+    auto f = Fixture.make();
+    f.session.showMenu(WindowMenu(MenuPlatform.windows, true));
+    string label()
+    {
+        foreach (menu; parseJSON(f.session.menuJson())["menus"].array)
+            foreach (item; menu["items"].array)
+                if ("command" in item && item["command"].str == MenuCommand.bottomPanel)
+                    return item["label"].str;
+        return null;
+    }
+
+    assert(label() == "Hide Bottom Panel", "shown until told");
+    f.session.setBottomPanelShown(false);
+    assert(label() == "Show Bottom Panel");
+    assert(f.session.menuBar(MenuPlatform.mac)[2].items[0].label == "Show Bottom Panel", "the native menu too");
+    f.session.setBottomPanelShown(true);
+    assert(label() == "Hide Bottom Panel");
 }
 
 @("AppSession: a file opened gets a document; the script is told later, not during the call")

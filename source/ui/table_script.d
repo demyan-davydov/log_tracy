@@ -114,6 +114,11 @@ interface TableControl
     void updateRow(size_t item); /// only the place of the row `item` is painted again (for the checks; what an animation does)
     void updateCell(size_t item, size_t column); /// the same for a cell: the column of the model
     void contextPick(size_t row); /// the click for the menu was on this row: it keeps the rows picked, or is picked alone
+    /// The table leaves its column host for a while, not seen (a bottom panel collapsed): its rows set no width, its room no room
+    /// of the columns (`Table.detach`)
+    void detach();
+    /// The table is back with its column host (`Table.attach`)
+    void attach();
 
     /// The measurements as JSON
     wstring stats();
@@ -155,6 +160,12 @@ bool dispatch(TableControl control, const(char)[] method, ScriptArgs args, out S
         return true;
     case "contextPick":
         control.contextPick(cast(size_t) args.number(0));
+        return true;
+    case "detach": // the table is not seen: out of its column host (the bottom panel collapsed)
+        control.detach();
+        return true;
+    case "attach":
+        control.attach();
         return true;
     default:
         version (DebugChannel)
@@ -302,6 +313,8 @@ version (unittest)
         void copy(CopyTarget target, size_t row, size_t column) { calls ~= "copy " ~ target.to!string ~ " " ~ row.to!string ~ " " ~ column.to!string; }
         wstring hitTest(double x, double y) { calls ~= "hitTest " ~ x.to!string ~ " " ~ y.to!string; return `{"row":1}`w; }
         void contextPick(size_t row) { calls ~= "contextPick " ~ row.to!string; }
+        void detach() { calls ~= "detach"; }
+        void attach() { calls ~= "attach"; }
         void updateRow(size_t item) { calls ~= "updateRow " ~ item.to!string; }
         void updateCell(size_t item, size_t column) { calls ~= "updateCell " ~ item.to!string ~ " " ~ column.to!string; }
         void anchorApplied(size_t message, bool moved) { calls ~= "anchorApplied " ~ message.to!string ~ " " ~ moved.to!string; }
@@ -333,6 +346,16 @@ unittest
     assert(control.calls == ["jump 500 true", "scrollBy -80 false", "render", "copyText true", "stats", "select [1, 2, 3, 4]",
         "pan -7.5 0", "pan 1 4", "panEnd", "copyText false",
         "copy text 0 0", "copy cell 7 3", "hitTest 5 6", "contextPick 4", "updateRow 4", "updateCell 4 2", "anchorApplied 9 true", "anchorApplied 8 false"]);
+}
+
+@("dispatch: detach and attach take the table out of its column host and back, in every build")
+unittest
+{
+    auto control = new Noting;
+    ScriptResult result;
+    assert(dispatch(control, "detach", ScriptArgs(), result) && result.kind == ScriptResult.Kind.nothing);
+    assert(dispatch(control, "attach", ScriptArgs(), result));
+    assert(control.calls == ["detach", "attach"]);
 }
 
 @("dispatch: view answers JSON, rowHeight text, scrollTo takes the cell and the offsets, smooth is off unless asked")

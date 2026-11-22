@@ -58,6 +58,26 @@ behaviour: `.ai/knowledge/sciter.md`.
   and is written with the rest of `getAppState()` (`AppSettings.searchPanelHeight`; the
   mapping is `resources/panel-sizes.js`), not on each move of the splitter, and the first panel
   starts with it.
+- The bottom panel collapses to the strip of its tabs and expands to the height it had
+  (`DocumentPane.setBottomPanelCollapsed`: the button left of its tabs, View → Hide/Show Bottom
+  Panel, a click on a tab or Find expands it). What a collapse or an expansion does is decided by
+  `collapseStep` and `activeTabOf` of `panel-sizes.js` (tested): the rows of the frameset, the height
+  remembered, the order (the pages are shown before the row gets its height back: a tall panel
+  without them puts the strip at its top), no tab active while collapsed. Collapsed, the panel has
+  the class `collapsed`: its row is 0, the CSS keeps the strip's height and hides the splitter; the
+  pages, all in `.bottom-pages`, are hidden by the display of that container, set on it by the script
+  as a page's own is (a class on the pane that hid them by the CSS now and then left the panel laid
+  out without them once expanded, until a click); whether a page is shown is `DocumentPane.pageHidden`.
+  The search table is out of the column host meanwhile (`DocumentPane.hostSearchTable`): not seen, it
+  would set the room of the columns of the main one (a pane made collapsed showed its main table
+  empty, its rows blown up). `LogTableView.detach`/`attach` write the attribute `detached` on the
+  element and call the table (`logTableCall(id, "detach")`, `TableControl.detach`/`attach`:
+  `Table.detach`/`attach`); a table attached later reads the attribute (`detachedOf`), as the call
+  reached no table then. The state goes with the splitter from panel to panel (`splitters.collapsed`,
+  `DocumentPane.sizesNow`) and is saved with it (`panelSizesOf`: `AppSettings.bottomPanelCollapsed`;
+  `searchPanelHeight` is then the height it expands to). The script tells the backend
+  (`backend.setBottomPanelShown`), whose menu labels the command by it; the menu bar of Windows and
+  Linux is drawn again once the event is done.
 - The log table is the native behavior `log-table` (`ui/log_table_behavior`, over `ptable`): the panel puts one in a slot for each view
   (`LogTableView` in `resources/log-table-view.js`, which writes on the element what it shows, `doc`, `search` and `table`, the number the script talks to it by,
   `logTableCall(tableId, method, ...)`, `ui/table_script`). It hears the views of its document itself (a new content version starts at the top,
@@ -108,6 +128,9 @@ behaviour: `.ai/knowledge/sciter.md`.
   gets it as JSON (`menuJson`, `backend.menu()`: what the items are, not how they look) and
   draws a Sciter menu bar from it (`resources/menu-bar.js`); on every platform the script takes
   the texts of shortcuts in hints from it (`resources/menu-shortcuts.js`).
+- A label that follows the state of the window is given by `MenuState` (`appMenu(platform, tr,
+  state)`, kept by `AppSession`): the native item is retitled (`retitleAppMenu`), the menu bar drawn
+  again from `backend.menu()`.
 - A label marks its mnemonic with `&` (`E&xit`). `MENU_BAR_PLATFORM=windows|linux` shows that menu
   bar on macOS too, to try it.
 
@@ -142,7 +165,7 @@ behaviour: `.ai/knowledge/sciter.md`.
   stroked path says `fill="none"` and its `stroke-width`), built in like every file
   (`ui/app_resources`). The CSS puts one on an element (`foreground-image: url(icons/x.svg)`;
   the buttons by a class `icon-close`, `icon-edit`, `icon-export`, `icon-plus`,
-  `icon-chevron-down` of `style.css`) and colors it by `fill` or `stroke` with the variables of
+  `icon-chevron-down`, `icon-bottom-panel-shown`, `icon-bottom-panel-hidden` of `style.css`) and colors it by `fill` or `stroke` with the variables of
   the theme (`.ai/knowledge/sciter.md`: no currentColor). No glyphs as icons. The icons of the
   program itself are `app-icons/` (not built in). The log table draws its marks as glyphs.
 - File dialogs' type filters: `file-types.js`; OS services: `platform.js`

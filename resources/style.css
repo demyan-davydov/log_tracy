@@ -474,6 +474,12 @@ frameset > splitter:active {
     background: var(--bg-main);
 }
 
+/* The pages of the bottom panel: hidden all at once while it is collapsed (DocumentPane.renderCollapsed) */
+.bottom-pages {
+    size: *;
+    flow: vertical;
+}
+
 .bottom-page {
     size: *;
     flow: vertical;
@@ -484,12 +490,52 @@ frameset > splitter:active {
    its page above */
 .bottom-tabs {
     flow: horizontal;
-    height: 18pt;
+    /* One whole number of dips with its padding and border (border-box): the collapsed panel is
+       given the same (min-height of .document-pane.collapsed > .bottom-panel), so the strip doesn't
+       change its height by a rounding when the panel collapses or expands */
+    box-sizing: border-box;
+    height: 28dip;
     padding: 0 3pt 2pt;
     border-top: 1dip solid var(--border-color);
     background: var(--bg-header);
     white-space: nowrap;
     overflow: visible;
+}
+
+/* Collapses the bottom panel to its tabs and expands it again (DocumentPane.setBottomPanelCollapsed):
+   a circle left of the tabs. Clickable, not a button: the keys stay where they were */
+.bottom-tabs > .btn-bottom-panel { /* over the stroke of the .icon-* rule */
+    behavior: clickable;
+    width: 16pt;
+    height: 16pt;
+    margin: * 3pt * 0; /* Sciter: flexible margins center it vertically */
+    padding: 0;
+    foreground-size: 12dip 12dip;
+    stroke: var(--tab-text);
+    fill: var(--tab-text);
+    background: transparent;
+    border: none;
+    border-radius: 8pt;
+    cursor: default;
+    transition: background-color linear 120ms;
+}
+
+.bottom-tabs > .btn-bottom-panel:hover {
+    stroke: var(--text-main);
+    fill: var(--text-main);
+    background: var(--bg-tab-hover);
+}
+
+/* Collapsed: only the strip of the tabs. Its row of the frameset is 0 (panel-sizes.js rowsOf), the
+   strip keeps its height (min-height); the container of the pages is hidden by its own display
+   (DocumentPane.renderCollapsed); the splitter neither shows nor drags */
+.document-pane.collapsed > .bottom-panel {
+    min-height: 28dip; /* the height of .bottom-tabs: the same number, rounded the same */
+}
+
+.document-pane.collapsed > splitter {
+    height: 0;
+    visibility: hidden;
 }
 
 .bottom-tab {
@@ -576,7 +622,9 @@ frameset > splitter:active {
 .icon-edit,
 .icon-export,
 .icon-plus,
-.icon-chevron-down {
+.icon-chevron-down,
+.icon-bottom-panel-shown,
+.icon-bottom-panel-hidden {
     foreground-repeat: no-repeat;
     foreground-position: 50% 50%;
     foreground-size: 12dip 12dip;
@@ -588,6 +636,8 @@ frameset > splitter:active {
 .icon-export { foreground-image: url(icons/export.svg); }
 .icon-plus { foreground-image: url(icons/plus.svg); }
 .icon-chevron-down { foreground-image: url(icons/chevron-down.svg); }
+.icon-bottom-panel-shown { foreground-image: url(icons/bottom-panel-shown.svg); }
+.icon-bottom-panel-hidden { foreground-image: url(icons/bottom-panel-hidden.svg); }
 
 /* The unload of a FIBEX: the cross in a box of a glyph, in the line of the text, in the
    color of the links */
