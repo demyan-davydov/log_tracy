@@ -142,8 +142,9 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     to rule 10. The font size setting scales the font only. Settings → Table → "Single-line
     rows" (off by default) makes every row one line high, Payload not wrapped and not cut: it
     runs on to the right and the table scrolls sideways (chosen over an ellipsis). Settings →
-    Table → "Monospace font for the payload" (off by default) sets Payload in the font of the
-    other columns at 10pt, scaled by the font size, at once; the levels keep the body font. Its
+    Table → "Monospace font for the payload" (off by default) sets Payload in the family of the
+    levels at 10pt, scaled by the font size, at once. The levels are always monospace, as large
+    as the other columns, in a font of thicker strokes than their thin one. Its
     label has no negation and is all the setting shows: the word "Monospace" set in that
     font, no sample plate, no hint. The one
     exception: a line wider than the widest column (`maxFitWidth`, 100 000 px; a record of 64 KB

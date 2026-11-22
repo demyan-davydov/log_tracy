@@ -11,39 +11,41 @@ import ui.look : FontSpec, Look, TextLook;
 /// The fonts of the table (`FontId`s): the family and the size by role; a host turns them into its fonts
 enum LogFont : FontId
 {
-    body, /// the levels: 10pt, the system's font
+    level, /// the levels: 8pt as the other columns, `levelFamily`, always monospace
     aux, /// the other cells: 8pt Courier New
     header, /// the titles: 10pt Courier New
-    bodyBold, /// the louder levels
-    sign, /// the sign of a refusal pressed on: the body font made big (19pt)
+    levelBold, /// the louder levels: the level font made bold
+    sign, /// the sign of a refusal pressed on: the system's font made big (19pt)
     groupHead, /// the head of a group of rows (the date) on its plate: the header font made bold
-    payload, /// the Payload: the body font, or `monospacePayloadFont` when the settings ask for it
+    payload, /// the Payload: 10pt, the system's font, or `monospacePayloadFont` when the settings ask for it
 }
 
-/// The families of the fonts: the system's for the body, the monospace one of the other columns (the Settings dialog sets the
-/// word of the monospace Payload in it too, resources/settings.htm `.monospace-word`)
-enum wstring bodyFamily = "system-ui, 'Segoe UI', sans-serif"w, monospaceFamily = "'Courier New', Courier, monospace"w;
+/// The families of the fonts: the system's (the Payload, the sign), the thin monospace one of the other columns, and the
+/// monospace one of the levels and of the monospace Payload, of thicker strokes, the first a system has (the Settings dialog sets
+/// the word of the monospace Payload in it too, resources/settings.htm `.monospace-word`)
+enum wstring bodyFamily = "system-ui, 'Segoe UI', sans-serif"w, monospaceFamily = "'Courier New', Courier, monospace"w,
+    levelFamily = "Menlo, Consolas, 'DejaVu Sans Mono', 'Courier New', monospace"w;
 
 /// The fonts by `LogFont`
 immutable(FontSpec)[] logFonts = [
-    FontSpec(bodyFamily, 10, false, false),
+    FontSpec(levelFamily, 8, false, true),
     FontSpec(monospaceFamily, 8, false, true),
     FontSpec(monospaceFamily, 10, false, true),
-    FontSpec(bodyFamily, 10, true, false),
+    FontSpec(levelFamily, 8, true, true),
     FontSpec(bodyFamily, 19, false, false),
     FontSpec(monospaceFamily, 10, true, true),
     FontSpec(bodyFamily, 10, false, false),
 ];
 
-/// The font of the Payload when the settings ask for a monospace one: the family of the other columns, at the size of the body font
-immutable FontSpec monospacePayloadFont = FontSpec(monospaceFamily, 10, false, true);
+/// The font of the Payload when the settings ask for a monospace one: the family of the levels at the size of the Payload
+immutable FontSpec monospacePayloadFont = FontSpec(levelFamily, 10, false, true);
 
 enum Color textInk = Color(0x33, 0x33, 0x33);
 
 /// The text of the log table for the Sciter layer: its fonts and ink
 TextLook logTextLook()
 {
-    return TextLook(logFonts, textInk, LogFont.body);
+    return TextLook(logFonts, textInk, LogFont.payload);
 }
 
 /// The look the log table has by default: the light theme
@@ -159,7 +161,7 @@ Color levelInkOf(ref const LogPalette palette, LogLevel level)
 /// The font of a level: the louder ones are bold; it is the level of the row, not the name of it, that tells
 FontId levelFontOf(LogLevel level)
 {
-    return level == LogLevel.Fatal || level == LogLevel.Error || level == LogLevel.Warn ? LogFont.bodyBold : LogFont.body;
+    return level == LogLevel.Fatal || level == LogLevel.Error || level == LogLevel.Warn ? LogFont.levelBold : LogFont.level;
 }
 
 /// The room of the parts of the log table, in dips (the CSS variables of `.log-table`, resources/log-table-look.js): above

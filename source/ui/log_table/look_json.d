@@ -4,7 +4,8 @@
 module ui.log_table.look_json;
 
 import ptable.ports : Color;
-import ui.log_table.log_look : LogLook, LogPalette, LogSpacing, logFonts, matchColorCount, monospaceFamily, monospacePayloadFont, textInk,
+import ui.log_table.log_look : LogLook, LogPalette, LogSpacing, bodyFamily, logFonts, matchColorCount, monospaceFamily, monospacePayloadFont,
+    textInk,
     LogFont, defaultLogLook;
 import ui.look : FontSpec, Look, TextLook;
 
@@ -238,7 +239,7 @@ TextLook scaledTextLook(double scale, bool monospacePayload = false)
         fonts[i] = i == LogFont.payload && monospacePayload ? monospacePayloadFont : spec;
         fonts[i].sizePt = fonts[i].sizePt * scale;
     }
-    return TextLook(cast(immutable) fonts, textInk, LogFont.body);
+    return TextLook(cast(immutable) fonts, textInk, LogFont.payload);
 }
 
 /// The text scale the table accepts: the settings offer 80 to 200 percent, a value far outside is a mistake of the script
@@ -321,19 +322,28 @@ unittest
 unittest
 {
     const look = scaledTextLook(1.25);
-    assert(look.fonts.length == logFonts.length && look.fonts[LogFont.body].sizePt == 12.5);
-    assert(look.fonts[LogFont.body].family == logFonts[LogFont.body].family);
+    assert(look.fonts.length == logFonts.length && look.fonts[LogFont.payload].sizePt == 12.5 && look.fonts[LogFont.level].sizePt == 10);
+    assert(look.fonts[LogFont.level].family == logFonts[LogFont.level].family);
 }
 
-@("scaledTextLook: the Payload is in the body font, or in the monospace one of the other columns at 10pt, scaled as the others")
+@("scaledTextLook: the Payload is in the body font, or in the monospace one of the levels at 10pt, scaled as the others")
 unittest
 {
     const plain = scaledTextLook(1);
-    assert(plain.fonts[LogFont.payload] == plain.fonts[LogFont.body]);
+    assert(plain.fonts[LogFont.payload].family == bodyFamily && !plain.fonts[LogFont.payload].monospace);
     const mono = scaledTextLook(1.25, true);
-    assert(mono.fonts[LogFont.payload].family == monospaceFamily && mono.fonts[LogFont.payload].monospace);
+    assert(mono.fonts[LogFont.payload].family == mono.fonts[LogFont.level].family && mono.fonts[LogFont.payload].monospace);
     assert(mono.fonts[LogFont.payload].sizePt == 12.5 && !mono.fonts[LogFont.payload].bold);
-    assert(mono.fonts[LogFont.body] == scaledTextLook(1.25).fonts[LogFont.body], "the levels keep the body font");
+    assert(mono.fonts[LogFont.level] == scaledTextLook(1.25).fonts[LogFont.level], "the levels are as they were");
+}
+
+@("logFonts: the levels are always monospace, in a family of their own and the Payload's, the louder ones bold")
+unittest
+{
+    assert(logFonts[LogFont.level].monospace && logFonts[LogFont.levelBold].monospace && logFonts[LogFont.levelBold].bold);
+    assert(logFonts[LogFont.level].family == logFonts[LogFont.levelBold].family && logFonts[LogFont.level].family != monospaceFamily);
+    assert(logFonts[LogFont.level].sizePt == logFonts[LogFont.aux].sizePt && logFonts[LogFont.levelBold].sizePt == logFonts[LogFont.aux].sizePt,
+        "as large as the other columns, the bold one too: it has the metrics of the column's");
 }
 
 @("applyLookJson: the fonts come with the scale, the monospace Payload with them (off when not said); no scale, the fonts stay")
@@ -346,12 +356,12 @@ unittest
     look.subscribe((const LookChange c) { seen ~= c; });
     applyLookJson(look, `{"scale": 1.5, "monospacePayload": true}`);
     assert(seen == [LookChange.metrics] && look.text.fonts[LogFont.payload].monospace);
-    assert(look.text.fonts[LogFont.payload].sizePt == 15 && look.text.fonts[LogFont.body].sizePt == 15);
+    assert(look.text.fonts[LogFont.payload].sizePt == 15 && look.text.fonts[LogFont.level].sizePt == 12);
     applyLookJson(look, `{"scale": 1.5, "monospacePayload": true}`);
     applyLookJson(look, `{"monospacePayload": false}`);
     assert(seen.length == 1 && look.text.fonts[LogFont.payload].monospace, "the same: nothing; no scale: the fonts stay");
     applyLookJson(look, `{"scale": 1.5}`);
-    assert(seen.length == 2 && look.text.fonts[LogFont.payload] == look.text.fonts[LogFont.body], "not said: off");
+    assert(seen.length == 2 && !look.text.fonts[LogFont.payload].monospace, "not said: off");
     applyLookJson(look, `{"scale": 1.5, "monospacePayload": 1}`);
     assert(seen.length == 2, "a value not a bool is off");
 }
@@ -397,7 +407,7 @@ unittest
     applyLookJson(look, `{"row": "#000000"}`);
     assert(seen.length == 1, "the same color: no change");
     applyLookJson(look, `{"scale": 1.5}`);
-    assert(seen == [LookChange.colors, LookChange.metrics] && look.text.fonts[LogFont.body].sizePt == 15);
+    assert(seen == [LookChange.colors, LookChange.metrics] && look.text.fonts[LogFont.payload].sizePt == 15);
     applyLookJson(look, `{"scale": 1.5}`);
     applyLookJson(look, "not json");
     assert(seen.length == 2, "the same size and a wrong text: nothing");
@@ -412,9 +422,9 @@ unittest
 
     auto look = defaultLogLook();
     applyLookJson(look, `{"scale": 100000}`);
-    assert(look.text.fonts[LogFont.body].sizePt == 10 * maxScale);
+    assert(look.text.fonts[LogFont.payload].sizePt == 10 * maxScale);
     applyLookJson(look, `{"scale": 0.0001}`);
-    assert(look.text.fonts[LogFont.body].sizePt == 10 * minScale);
+    assert(look.text.fonts[LogFont.payload].sizePt == 10 * minScale);
 }
 
 @("applyLookJson: the spacing of the groups changes the metrics once, the same one nothing; a pad is held from 0 to 40")

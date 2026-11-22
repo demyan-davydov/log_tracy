@@ -32,7 +32,7 @@ let currentLanguage = ""; // the setting: a BCP 47 tag, "": the language of the 
 let tableFontSize = 100;
 // Every row of the log tables one line high, the payload cut (Settings)
 let singleLineRows = false;
-// The payload of the log tables in the monospace font of the other columns (Settings)
+// The payload of the log tables in the monospace font of the levels (Settings)
 let monospacePayload = false;
 // The state of the window (window-state.js): the documents, the New Tab, the
 // file that failed to open. Changed by its events only, rendered by refreshTabs()
@@ -309,8 +309,8 @@ function setSingleLineRows(on) {
     backend.logTableSingleLine(on); // D keeps it for every table, those that start later too
 }
 
-// Sets the payload of the log tables in the monospace font of the other
-// columns or in the body font: a change of the fonts, as of their size
+// Sets the payload of the log tables in the monospace font of the levels or
+// in the system's font: a change of the fonts, as of their size
 function setMonospacePayload(on) {
     monospacePayload = on;
     globalThis.logTableMonospacePayload = on; // for a table that starts later

@@ -42,7 +42,7 @@ class TextColumn : TextCell
         this.look = look !is null ? look : defaultLogLook();
     }
 
-    protected override FontId defaultCellFont() const nothrow { return LogFont.body; }
+    protected override FontId defaultCellFont() const nothrow { return LogFont.payload; }
 
     protected override FontId defaultHeaderFont() const nothrow { return LogFont.header; }
 
@@ -546,7 +546,7 @@ unittest
     auto painter = new LogPainter;
     const data = CellData("12345"w);
     foreach (halign; [Halign.left, Halign.right, Halign.center])
-        foreach (font; [cast(FontId) LogFont.body, cast(FontId) LogFont.aux])
+        foreach (font; [cast(FontId) LogFont.level, cast(FontId) LogFont.aux])
         {
             auto def = ColumnDef("n", "N");
             auto column = new TextColumn(def, defaultLogLook(), measurer);

@@ -77,7 +77,7 @@ export const minWidthKey = name => {
 
 // What `setLook` is told: { name: "css color", ..., spacing: { name: dips }, scale, monospacePayload } for the variables
 // that have a value; `percent` is the font size of the tables in % of the normal one, `monospacePayload` whether the
-// Payload is in the monospace font of the other columns (Settings, both). The monospace is always told: D keeps what
+// Payload is in the monospace font of the levels (Settings, both). The monospace is always told: D keeps what
 // a look does not say, so leaving it out would never turn it off
 export function collectLook(read, percent = 100, minWidthNames = [], monospacePayload = false) {
     const look = {};

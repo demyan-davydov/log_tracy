@@ -170,7 +170,7 @@ struct AppSettings
     string theme;
     int tableFontSize = 100; /// font size of the log tables, % of the normal one
     bool singleLineRows; /// every row of the log tables one line high, the payload cut
-    bool monospacePayload; /// the payload of the log tables in the monospace font of the other columns
+    bool monospacePayload; /// the payload of the log tables in the monospace font of the levels
     ColumnLayouts columnLayouts; /// the columns of the log tables, by format
     string language; /// of the interface: a BCP 47 tag ("ru", "x-pseudo"); "": the language of the system
     string searchPanelHeight; /// of the search (bottom) panel of the documents, as on exit ("250dip"); "": the script's own
