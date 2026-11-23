@@ -1,5 +1,5 @@
-//! The base of the indexes of a log (offsets, filter, search): entries that grow by
-//! chunks and never move.
+//! The base of the filter and search indexes of a log: entries that grow by chunks and
+//! never move. The offset index is compact, of its own (domain/index/offset_index).
 module domain.index.base_index;
 
 import utils.chunked_array;

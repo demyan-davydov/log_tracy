@@ -61,8 +61,8 @@ a reused buffer will do.
    (`canFind`, `startsWith` on narrow strings decode to `dchar`); cheap checks first; a cancel
    and a lost file are checked as the existing loops do (every `stopCheckRecords` records of a block, `scanMatches` of `domain/index/match_scan`).
 3. **Indexes:** they grow by chunks, entries never move; a change of an entry's layout keeps
-   readers on the other thread safe. Memory per record: 8 bytes in the offset index is the
-   budget; more per record is a decision to name.
+   readers on the other thread safe. Memory per record: 4 bytes in the offset index
+   (`CompactOffsets`) is the budget; more per record is a decision to name.
 4. **Locks:** held briefly, never around a scan or a callback; one order where two are taken;
    no lock taken on the UI thread that a scan holds for long.
 5. **The table:** what it does per row and per frame (`ptable`, `ui/log_table`) stays O(the cells of the row on screen); it keeps no

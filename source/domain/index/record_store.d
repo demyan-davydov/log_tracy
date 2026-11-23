@@ -80,6 +80,7 @@ final class RecordStore
 {
     //! Records found and appended at a time
     enum bunchSize = 32;
+    static assert(bunchSize <= OffsetIndex.maxAppend, "a bunch is appended to the offset index at once");
 
     private ByteSource _source;
     private LogFormat _format;

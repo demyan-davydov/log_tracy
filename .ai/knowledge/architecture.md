@@ -385,10 +385,19 @@ The text code (wrapping, line layout, text hit tests, column styles) is in `ptab
     the window scans and folds on a pool of its own: on the shared one its blocks queue
     before those of an index, and closing a document waits for its index's scan;
   - `ProgressReporter` (`progress`): publishes the `PassProgress` of a pass, throttled.
-- The indexes are `BaseIndex` over `utils/chunked_array` (`domain/index/`):
-  - they grow by 64K-entry chunks (mmap / VirtualAlloc) up to 2^32 entries;
+- The indexes grow over `utils/chunked_array` (`domain/index/`):
+  - they grow by chunks (mmap / VirtualAlloc) up to 2^32 entries;
   - entries never move, which is what lets the indexing thread read the offset index without
-    the mutex while the UI thread reads under it.
+    the mutex while the UI thread reads under it;
+  - the filter and search indexes are `BaseIndex!uint32_t`, 4 bytes a record found;
+  - the offset index (`OffsetIndex` = `CompactOffsets`, `offset_index`) is an array of
+    `OffsetIndexItem` to `RecordStore`, 4 bytes a record inside: blocks of 4096 records keep
+    their first offset once (`_bases`), a record its distance from it in 30 bits, the joined
+    bit and a far bit; a record over 1 GB past its block's start keeps its full offset in
+    `_far` and its place there. An append writes the far offsets and the block starts first
+    and the records last, at once: a failed one changes nothing a reader sees, and a block
+    start it left is replaced. At most `maxAppend` records an append (a bunch). A template,
+    so that reads are inlined into `record_store`.
 - `scanRecords` can resume and leaves an incomplete last record for a later call, unless
   `final_` (the source is complete now): a growing file relies on it, and a stream will, so
   keep that contract.
