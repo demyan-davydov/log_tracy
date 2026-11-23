@@ -151,3 +151,24 @@ node scripts/build.mjs bench --against master
 
 The extra read of a block's start costs nothing measurable. On a log of 85 M records the offset
 index takes about 340 MB instead of about 680 MB (by the arithmetic: not measured on such a log).
+
+The same on the real RichOS log of the first section (481 745 787 bytes, 2 315 001 records;
+`bench <log> --bench index` and `bench <log>`, against master at 7ad63f9, 3 runs a side):
+
+| Step | master | `compact-index` | Difference |
+|---|---|---|---|
+| offset index | 94.6 ms (94.5–95.8) | 96.3 ms (95.6–103.4) | noise |
+| records loaded | 91.3 ms (91.2–104.3) | 93.7 ms (93.5–105.3) | noise |
+| filter `error` | 113.1 ms (112–113.9) | 111.8 ms (111.6–114.5) | noise |
+| search `error` | 112.1 ms (112–114.6) | 112.1 ms (112.1–113.8) | noise |
+| main view, no search | 200.5 ns a row | 201.6 ns a row | noise |
+| search `failed`, main view, rows only | 224.9 ns a row | 225.1 ns a row | noise |
+| search view of `failed`, with fragments | 104.1 ns a row | 104.0 ns a row | noise |
+| footprint after loading | 20.1 MB | 11.4 MB | -43.3 % |
+| footprint after search `failed` | 23.1 MB | 14.5 MB | -37.2 % |
+| footprint after search `value` | 23.5 MB | 14.8 MB | -37.0 % |
+| resident after loading | 481.2 MB | 472.5 MB | -1.8 % |
+
+8.7 MB less for 2.3 M records: 4 bytes a record, as expected. The resident memory holds the
+pages of the mapped log, as big as the file, which the OS drops for free; the footprint is the
+memory it can't.
