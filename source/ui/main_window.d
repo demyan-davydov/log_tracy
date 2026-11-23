@@ -73,7 +73,7 @@ class MainWindow : SciterWindow
             TableHooks(id, (TableControl control) { _tables.attached(id, control); }, &_tables.detached, &_tableCalls.put), he);
     }
 
-    /// The menu bar of the window on `platform`, in the language of the interface
+    /// The menu of the window on `platform`, in the language of the interface
     MenuItem[] menuBar(MenuPlatform platform)
     {
         return _session.menuBar(platform);
@@ -184,7 +184,7 @@ class MainWindow : SciterWindow
             return true;
         case "setBottomPanelShown":
             // setBottomPanelShown(shown): the bottom panel of the documents is shown or
-            // collapsed; the native menu retitles its item (the script redraws its menu bar)
+            // collapsed; the native menu retitles its item (the script redraws its menu)
             _session.setBottomPanelShown(param!bool(0));
             retitleAppMenu(this);
             return true;

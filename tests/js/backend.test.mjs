@@ -100,10 +100,11 @@ test("results that are no JSON objects keep their shape", () => {
         `{"error": ""}`, "as text: the rule editor window parses it");
 });
 
-test("the menu of the window: whether it is a menu bar, its menus", () => {
-    const menu = { menuBar: true, menus: [{ label: "File", items: [{ command: "file.open", label: "Open File..." }] }] };
+test("the menu of the window: whether it is drawn, by which platform, its menus", () => {
+    const menu = { drawn: true, platform: "windows",
+        menus: [{ label: "File", items: [{ command: "file.open", label: "Open File..." }] }] };
     assert.deepEqual(callOf(() => backend.menu(), JSON.stringify(menu)), { call: ["getMenu"], value: menu });
-    assert.deepEqual(callOf(() => backend.menu(), "").value, { menuBar: false, menus: [] });
+    assert.deepEqual(callOf(() => backend.menu(), "").value, { drawn: false, platform: "mac", menus: [] });
 });
 
 test("the files to open at start", () => {

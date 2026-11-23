@@ -1,0 +1,156 @@
+/* The menu of the window (resources/main-menu.js): the button right of the
+   tabs on Windows and Linux; and the look of every menu, the context menus
+   too, on every platform: GNOME's (roomy items, a grey rounded highlight
+   inset from the edges, round corners), the colors of the themes */
+
+/* The button is seen where the script draws the menu (the media variable
+   ui-platform, set by initApp in script.js); macOS: the native menu. Over
+   the tab strip, in the color of the header: tabs too many for the window go
+   on under it, never over it. Its paddings mirror those of the "+" at the
+   left (the header's 4dip and the strip's), its top that of the strip */
+#main-menu {
+    display: none;
+    position: relative;
+    z-index: 20; /* over a dragged tab too (.tab.dragging) */
+    margin-top: 2dip;
+    padding: 0 4dip;
+    background: var(--bg-header);
+}
+
+@media ui-platform == "windows" or ui-platform == "linux" {
+    /* The tabs, then the menu at the right of the header */
+    body > header {
+        flow: horizontal;
+    }
+
+    #tabs-container {
+        width: *;
+    }
+
+    #main-menu {
+        display: block;
+    }
+}
+
+/* Round as the "+" of the tabs (#btn-add-tab), as high as it */
+#main-menu > button {
+    width: 26dip;
+    height: 26dip;
+    margin: 2dip 0 0 0;
+    padding: 0;
+    foreground-size: 14dip 14dip;
+    stroke: var(--tab-text);
+    background: transparent;
+    border: none;
+    border-radius: 13dip;
+    cursor: default;
+    transition: background-color linear 120ms;
+}
+
+#main-menu > button:hover,
+#main-menu > button:owns-popup {
+    stroke: var(--text-main);
+    background: var(--bg-tab-hover);
+}
+
+/* A popup menu */
+menu {
+    font: system;
+    font-rendering-mode: classic;
+    behavior: menu;
+    flow: vertical;
+    display: none;
+    margin: 0;
+    padding: 6dip;
+    min-width: 200dip;
+    max-width: max-content;
+    border: 1dip solid var(--border-color);
+    border-radius: 12dip;
+    background-color: var(--bg-main);
+    color: var(--text-main);
+}
+
+@media (menu-animation-supported) {
+    menu {
+        popup-animation: popup-animation(type:blend, duration:100ms);
+    }
+}
+
+/* A nested menu */
+menu menu {
+    max-width: max-content;
+}
+
+/* An item of a menu */
+menu li {
+    border-radius: 6dip;
+    width: *;
+    display: block;
+    flow: horizontal;
+    vertical-align: middle;
+    padding-left: 24dip;
+    /* room for icon */
+    padding-right: 12dip;
+    /* room for the arrow */
+    /* More above the text than below: the line box has the room of a descender under
+       the baseline, so equal paddings leave the text low in the item; in em, with the font */
+    padding-top: 0.7em;
+    padding-bottom: 0.4em;
+    foreground-repeat: no-repeat;
+    foreground-position: left 2dip top 50%;
+    color: var(--text-main);
+}
+
+menu li:rtl {
+    width: *;
+    padding-right: 24dip;
+    /* room for icon */
+    padding-left: 12dip;
+    /* room for the arrow */
+    foreground-repeat: no-repeat;
+    foreground-position: right 2dip top 50%;
+    text-align: right;
+    color: var(--text-main);
+}
+
+menu li:disabled {
+    color: var(--text-main);
+    opacity: 0.4; /* unlike the shortcut texts, in --text-label */
+    foreground-image: none;
+}
+
+/* The text of the shortcut of an item, at its right */
+menu li span.accesskey {
+    display: block;
+    width: max-content;
+    white-space: nowrap;
+    margin-left: *;
+    /* spring to attach it to the right */
+    padding-left: 1em;
+    color: var(--text-label);
+}
+
+/* An item with a nested menu: its arrow */
+menu li:has-child-of-type(menu) {
+    foreground-image: url(stock:arrow-right);
+    foreground-repeat: no-repeat;
+    foreground-position: top 50% right 2dip;
+}
+
+menu li:has-child-of-type(menu):rtl {
+    foreground-image: url(stock:arrow-left);
+    foreground-repeat: no-repeat;
+    foreground-position: top 50% left 2dip;
+}
+
+/* The current item: a grey highlight, rounded (Sciter's own is rounded too) */
+menu li:hover:owns-popup,
+menu li:current {
+    background-color: var(--bg-tab-hover);
+    color: var(--text-main);
+}
+
+/* A separator */
+menu hr {
+    margin: 6dip 0;
+}

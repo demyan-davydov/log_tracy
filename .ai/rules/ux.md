@@ -119,10 +119,13 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     opening the dialog. A file opened from it takes its place; ⌘O / File → Open open the
     dialog directly. Without files the start screen stays tabless and without "+"; the New Tab
     isn't saved between sessions.
-25. **One menu, each platform's conventions.** The menu is described once in D (`ui/app_menu`);
-    macOS gets it native, Windows/Linux as a menu bar the script draws from its JSON model.
-    Layouts follow the platform: Windows File → Exit Alt+F4, Linux Quit Ctrl+Q, mnemonics with
-    `&` on Windows/Linux only. Shortcut texts in hints come from the same model (⌘O / Ctrl+O).
+25. **One menu, drawn as GNOME's main menu.** The menu is described once in D (`ui/app_menu`);
+    macOS gets it native; Windows and Linux get one flat list behind a round button at the
+    right of the tabs, drawn by the script from its JSON model, no menu bar, no mnemonics, no
+    key that opens it (F10 is the system's on Windows). On Windows this is the user's choice
+    over the platform's convention (rule 1). Only the way out follows the platform: Windows
+    Exit Alt+F4, Linux Quit Ctrl+Q. Every menu drawn by Sciter, the context menus too, on every
+    platform, looks as GNOME's: roomy items, a grey rounded highlight, round corners. Shortcut texts in hints come from the same model (⌘O / Ctrl+O).
     D gives the model, the script renders: D builds no Sciter markup.
 45. **After a tab is switched, the keys go to its document.** A click on a tab leaves the
     keyboard in that document's panel (its table, or what had the focus there) once the button

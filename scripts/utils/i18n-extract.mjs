@@ -307,15 +307,11 @@ export function mergeCatalog(catalog, texts) {
     };
 }
 
-// Whether `text` marks a mnemonic letter: "&" before it, "&&" is a "&" (ui/app_menu.parseLabel).
-// Only before a letter or a digit: "Search & Filter" is no mnemonic.
-const hasMnemonic = (text) => /&[\p{L}\p{N}]/u.test(text.replace(/&&/g, ""));
-
 const parametersOf = (...texts) => sorted(new Set(texts.flatMap((t) => t.match(/\{\w+\}/g) ?? []))).join();
 
 // What is wrong with `catalog` against the `texts` of the code: one key used for different
 // texts, missing texts, texts not in the code, entries that are no texts, translations whose
-// parameters, mnemonic or plural forms don't fit the source.
+// parameters or plural forms don't fit the source.
 export function checkCatalog(catalog, texts) {
     const problems = [];
     if (!catalog.locale)
@@ -350,10 +346,6 @@ export function checkCatalog(catalog, texts) {
                 problems.push(`not a plural: ${text.key}`);
             else if (parametersOf(entry) !== parametersOf(text.source))
                 problems.push(`parameters differ: ${text.key}`);
-            else if (hasMnemonic(text.source) && !hasMnemonic(entry))
-                problems.push(`mnemonic lost: ${text.key}`);
-            else if (!hasMnemonic(text.source) && hasMnemonic(entry))
-                problems.push(`mnemonic added: ${text.key}`);
             continue;
         }
         if (!isForms(entry)) {

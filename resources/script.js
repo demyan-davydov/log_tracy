@@ -15,7 +15,7 @@ import * as backend from "backend.js";
 import * as platform from "platform.js";
 import { menuOpensByMouse, watchMenuInput } from "menu-gate.js";
 import { applyTheme } from "theme.js";
-import { showMenuBar } from "menu-bar.js";
+import { showMainMenu } from "main-menu.js";
 import { shortcutTextOf } from "menu-shortcuts.js";
 import { currentCatalog, pseudoLocale, setCatalog, tr, trParts } from "i18n/i18n.js";
 import { translateTree } from "i18n/dom.js";
@@ -73,7 +73,10 @@ function initApp() {
     restoreSplitters(settings);
     restoreSettings(settings);
     restoreLanguage(settings?.language || "");
-    setupMenuBar();
+    setupMainMenu();
+    // the styles of the interface of the platform (main-menu.css); once: the
+    // platform doesn't change while the window lives
+    platform.setMediaVar("ui-platform", windowMenu.platform);
     setupEvents();
     refreshTabs();
     for (const path of backend.startFiles()) openFile(path);
@@ -99,12 +102,12 @@ function restoreSplitters(settings) {
 }
 
 // The bottom panel of the documents was collapsed or expanded: the menu says
-// the other (the native one retitled by the backend, the menu bar drawn again
-// once the event is done: the command may come from a click on that bar, and a
+// the other (the native one retitled by the backend, the menu of the button
+// drawn again once the event is done: the command may come from a click on it, and a
 // list drawn again under the pointer mid-click is a trap of Sciter, see refreshTabsSoon)
 function bottomPanelChanged(shown) {
     backend.setBottomPanelShown(shown);
-    if (windowMenu.menuBar) document.post(() => setupMenuBar());
+    if (windowMenu.drawn) document.post(() => setupMainMenu());
 }
 
 // The theme and the font size of the settings as saved (null: none)
@@ -286,7 +289,7 @@ function setLanguage(setting) {
     translateTree(document); // what is built once: the markup, the skeletons of the panels
     if (!menuSetUp) return; // starting: the rest is rendered in this language anyway
     // Rendered already: anew, in this language
-    setupMenuBar();
+    setupMainMenu();
     renderedPlaceholder = null;
     refreshTabs();
     for (const pane of panes.values()) pane.languageChanged();
@@ -421,15 +424,15 @@ function setupEvents() {
 }
 
 // The menu of the window, as the backend describes it: its shortcut texts are
-// shown in hints, and on Windows and Linux it is drawn as the menu bar (macOS:
-// the native menu)
-let windowMenu = { menuBar: false, menus: [] };
-let menuSetUp = false; // by setupMenuBar: set up again when the language changes
+// shown in hints, and on Windows and Linux it is drawn as the list of the menu
+// button (macOS: the native menu)
+let windowMenu = { drawn: false, platform: "mac", menus: [] };
+let menuSetUp = false; // by setupMainMenu: set up again when the language changes
 
-function setupMenuBar() {
+function setupMainMenu() {
     windowMenu = backend.menu();
     menuSetUp = true;
-    if (windowMenu.menuBar) showMenuBar($("#main-menu"), windowMenu.menus, id => onMenuCommand(id));
+    if (windowMenu.drawn) showMainMenu($("#main-menu"), windowMenu.menus, id => onMenuCommand(id));
 }
 
 // The panels of the open documents: docId -> DocumentPane (document-pane.js).

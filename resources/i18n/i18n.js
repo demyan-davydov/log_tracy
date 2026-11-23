@@ -43,14 +43,14 @@ const accented = {
 };
 
 // The pseudo translation of `text`: letters accented, padded by 30% of the visible text, in
-// brackets. Parameters and the mnemonic letter (after "&") stay as they are.
+// brackets. Parameters stay as they are.
 export function pseudoize(text) {
     let visible = 0;
-    const body = text.replace(/\{\w+\}|&.?|./gsu, (part) => {
+    const body = text.replace(/\{\w+\}|./gsu, (part) => {
         if (part.startsWith("{") && part.length > 1)
             return part;
-        visible += part[0] === "&" && part.length > 1 ? part.length - 1 : part.length; // UTF-16 units of the letters
-        return part[0] === "&" ? part : accented[part] ?? part;
+        visible += part.length; // UTF-16 units of the letters
+        return accented[part] ?? part;
     });
     return `[${body} ${"~".repeat(Math.max(1, Math.round(visible * 0.3)))}]`;
 }

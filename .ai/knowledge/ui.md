@@ -79,7 +79,7 @@ behaviour: `.ai/knowledge/sciter.md`.
   `DocumentPane.sizesNow`) and is saved with it (`savedSizesOf`, `panelSizesOf`: a collapsed panel needs
   no measure, so a minimized window saves it too; `AppSettings.bottomPanelCollapsed`;
   `searchPanelHeight` is then the height it expands to). The script tells the backend
-  (`backend.setBottomPanelShown`), whose menu labels the command by it; the menu bar of Windows and
+  (`backend.setBottomPanelShown`), whose menu labels the command by it; the menu of Windows and
   Linux is drawn again once the event is done.
 - The log table is the native behavior `log-table` (`ui/log_table_behavior`, over `ptable`): the panel puts one in a slot for each view
   (`LogTableView` in `resources/log-table-view.js`, which writes on the element what it shows, `doc`, `search` and `table`, the number the script talks to it by,
@@ -125,17 +125,25 @@ behaviour: `.ai/knowledge/sciter.md`.
 
 ## Menu
 
-- The main menu is described once, per platform convention, in the Sciter-free `ui/app_menu`
-  (`appMenu`; commands reach the script as `onMenuCommand(id)` on every platform).
-  `ui/main_menu_loader` builds the native macOS menu from it; on Windows and Linux the script
-  gets it as JSON (`menuJson`, `backend.menu()`: what the items are, not how they look) and
-  draws a Sciter menu bar from it (`resources/menu-bar.js`); on every platform the script takes
+- The main menu is described once in the Sciter-free `ui/app_menu` (`appMenu`; commands reach
+  the script as `onMenuCommand(id)` on every platform). `ui/main_menu_loader` builds the native
+  macOS menu from it; on Windows and Linux the script gets it as JSON (`windowMenuJson`,
+  `backend.menu()`: what the items are, not how they look, and `platform`, the interface of
+  which platform) and draws it (`resources/main-menu.js`, `showMainMenu`): one flat list behind
+  a round button at the right of the tabs, as GNOME's main menu; the two differ only in the
+  way out (Exit Alt+F4, Quit Ctrl+Q). No mnemonics anywhere. On every platform the script takes
   the texts of shortcuts in hints from it (`resources/menu-shortcuts.js`).
+- `initApp` sets the media variable `ui-platform` (`mac` | `windows` | `linux`) to that
+  `platform`, once: styles of one platform's interface go under `@media ui-platform == "..."`
+  (not Sciter's `platform`, which a try on macOS doesn't change). Only in the main window
+  (`main.htm`): the dialogs are windows of their own and nobody sets it there. `main-menu.css`
+  shows the button by it; the look of every menu (GNOME's, the context menus and the open lists
+  of a `<select>` too) is the same on every platform.
 - A label that follows the state of the window is given by `MenuState` (`appMenu(platform, tr,
-  state)`, kept by `AppSession`): the native item is retitled (`retitleAppMenu`), the menu bar drawn
-  again from `backend.menu()`.
-- A label marks its mnemonic with `&` (`E&xit`). `MENU_BAR_PLATFORM=windows|linux` shows that menu
-  bar on macOS too, to try it.
+  state)`, kept by `AppSession`): the native item is retitled (`retitleAppMenu`), the list of the
+  button drawn again from `backend.menu()`.
+- `UI_PLATFORM=windows|linux` shows the interface of that platform on macOS too, to try it: the
+  menu and the styles of `ui-platform`, not the OS (Cmd or Ctrl, the native menu stay).
 
 ## If You Need X, Start Here (resources/)
 
@@ -165,13 +173,13 @@ behaviour: `.ai/knowledge/sciter.md`.
   read going on or why one failed, Load File / Load Folder / Unload), rendered by
   `DocumentPane.updateFileInfo`, refreshed by `onFileInfoChanged`
 - Notices: `notice.js`
-- Menu bar (Windows/Linux): `menu-bar.js`, `menu-bar.css`, `menu-shortcuts.js`
+- The menu button (Windows, Linux), the look of every menu: `main-menu.js`, `main-menu.css`, `menu-shortcuts.js`
 - Theme and window frame: `theme.js`, `theme-light.css`, `theme-dark.css`, `window-frame.js`,
   `osx-frame.css`, `win-frame.css`
 - Icons of the interface: `icons/*.svg`, the shape only (no `fill`/`stroke` of a color; a
   stroked path says `fill="none"` and its `stroke-width`), built in like every file
   (`ui/app_resources`). The CSS puts one on an element (`foreground-image: url(icons/x.svg)`;
-  the buttons by a class `icon-close`, `icon-edit`, `icon-export`, `icon-plus`,
+  the buttons by a class `icon-close`, `icon-edit`, `icon-export`, `icon-plus`, `icon-menu`,
   `icon-chevron-down`, `icon-bottom-panel-shown`, `icon-bottom-panel-hidden` of `style.css`) and colors it by `fill` or `stroke` with the variables of
   the theme (`.ai/knowledge/sciter.md`: no currentColor). No glyphs as icons. The icons of the
   program itself are `app-icons/` (not built in). The log table draws its marks as glyphs.

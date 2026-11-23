@@ -16,10 +16,10 @@ test("a debug build, no logs, the default file and wait", () => {
 
 test("logs, a file, a wait, settings, variables and the build", () => {
     assert.deepEqual(parseShotArgs(["--open", "a.dlt", "--open=b.log", "--out", "x.png", "--wait", "0.5",
-        "--settings", "s.json", "--env", "PSEUDO_LOCALE=1", "--env=MENU_BAR_PLATFORM=windows",
+        "--settings", "s.json", "--env", "PSEUDO_LOCALE=1", "--env=UI_PLATFORM=windows",
         "--release", "--no-build"]), {
         open: ["a.dlt", "b.log"], out: "x.png", wait: 0.5, settings: "s.json",
-        env: { PSEUDO_LOCALE: "1", MENU_BAR_PLATFORM: "windows" }, release: true, build: false, help: false
+        env: { PSEUDO_LOCALE: "1", UI_PLATFORM: "windows" }, release: true, build: false, help: false
     });
     assert.equal(parseShotArgs(["--help"]).help, true);
 });
@@ -46,8 +46,8 @@ test("the paths given are taken from the folder the command was run in", () => {
 });
 
 test("the logs to open go to the app as OPEN_AT_START, with the variables given", () => {
-    const options = parseShotArgs(["--open", "/l/a.dlt", "--open", "/l/b.log", "--env", "MENU_BAR_PLATFORM=linux"]);
-    assert.deepEqual(appEnv(options), { MENU_BAR_PLATFORM: "linux", OPEN_AT_START: "/l/a.dlt\n/l/b.log" });
+    const options = parseShotArgs(["--open", "/l/a.dlt", "--open", "/l/b.log", "--env", "UI_PLATFORM=linux"]);
+    assert.deepEqual(appEnv(options), { UI_PLATFORM: "linux", OPEN_AT_START: "/l/a.dlt\n/l/b.log" });
     assert.deepEqual(appEnv(parseShotArgs([])), {}, "no OPEN_AT_START without logs");
 });
 

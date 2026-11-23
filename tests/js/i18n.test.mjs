@@ -8,7 +8,7 @@ const ru = {
     locale: "ru",
     name: "Русский",
     messages: {
-        "&Open File...": "&Открыть файл...",
+        "Open File...": "Открыть файл...",
         "Settings": "",
         "Filter|noun": "Фильтр",
         "Found {count} in {file}": "В {file} найдено: {count}",
@@ -20,13 +20,13 @@ const ru = {
 beforeEach(() => setCatalog(null));
 
 test("without a catalog the text is the english source", () => {
-    assert.equal(tr("&Open File..."), "&Open File...");
+    assert.equal(tr("Open File..."), "Open File...");
     assert.equal(trc("noun", "Filter"), "Filter");
 });
 
 test("a translated text comes from the catalog", () => {
     setCatalog(ru);
-    assert.equal(tr("&Open File..."), "&Открыть файл...");
+    assert.equal(tr("Open File..."), "Открыть файл...");
 });
 
 test("a text not in the catalog, or not translated yet, stays english", () => {
@@ -86,9 +86,8 @@ test("pseudo: letters accented, padded by 30% of the visible text, in brackets",
     assert.equal(pseudoize("Settings"), "[Šéţţîñĝš ~~]");
 });
 
-test("pseudo: parameters and the mnemonic letter stay as they are", () => {
+test("pseudo: parameters stay as they are", () => {
     assert.equal(pseudoize("{count} of {total}"), "[{count} ôƒ {total} ~]");
-    assert.equal(pseudoize("E&xit"), "[É&xîţ ~]");
 });
 
 test("pseudo locale: every text pseudoized, parameters put in after", () => {
@@ -98,9 +97,8 @@ test("pseudo locale: every text pseudoized, parameters put in after", () => {
     assert.equal(trn("{n} file", "{n} files", 3), "[3 ƒîļéš ~~]");
 });
 
-test("pseudo: lengths in UTF-16 units, a mnemonic counts its letter", () => {
+test("pseudo: lengths in UTF-16 units", () => {
     assert.equal(pseudoize("😀😀😀😀😀"), "[😀😀😀😀😀 ~~~]");
-    assert.equal(pseudoize("&😀😀😀😀😀"), "[&😀😀😀😀😀 ~~~]");
 });
 
 test("parts: the translation split around its parameters, the values put in as they are", () => {
