@@ -91,29 +91,19 @@ menu li {
     display: block;
     flow: horizontal;
     vertical-align: middle;
-    padding-left: 34dip;
-    /* room for icon, as a check of GTK */
+    /* The text as far from both edges: no room for an icon or a check, the
+       menus have none */
+    padding-left: 12dip;
     padding-right: 12dip;
-    /* room for the arrow */
     /* More above the text than below: the line box has the room of a descender under
        the baseline, so equal paddings leave the text low in the item; in em, with the font */
     padding-top: 0.7em;
     padding-bottom: 0.4em;
-    foreground-repeat: no-repeat;
-    foreground-position: left 10dip top 50%;
     color: var(--text-main);
 }
 
 menu li:rtl {
-    width: *;
-    padding-right: 34dip;
-    /* room for icon */
-    padding-left: 12dip;
-    /* room for the arrow */
-    foreground-repeat: no-repeat;
-    foreground-position: right 10dip top 50%;
     text-align: right;
-    color: var(--text-main);
 }
 
 menu li:disabled {
