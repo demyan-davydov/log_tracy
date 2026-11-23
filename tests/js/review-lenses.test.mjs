@@ -51,7 +51,7 @@ test("no architecture for a change inside one package, its tests or the docs", (
 });
 
 test("lenses come in a fixed order, each once", () => {
-    assert.deepEqual(lensesFor(["resources/tabs.js", "source/domain/workspace.d", "resources/menu-bar.js"]),
+    assert.deepEqual(lensesFor(["resources/tabs.js", "source/domain/workspace.d", "resources/main-menu.js"]),
         ["rules", "architecture", "performance", "ux"]);
     assert.deepEqual(lenses, ["rules", "architecture", "performance", "ux"]);
 });

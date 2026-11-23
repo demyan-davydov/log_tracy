@@ -224,7 +224,7 @@ The text code (wrapping, line layout, text hit tests, column styles) is in `ptab
   then. A holder keeps what it needs of the format (`DocumentFilters`: its columns), not the
   format.
 - Environment variables for trying things, read in `main()` (`newSession` of `app.d`) and
-  passed to the session and the window: `OPEN_AT_START` (logs opened at start, `backend.startFiles()`), `MENU_BAR_PLATFORM`,
+  passed to the session and the window: `OPEN_AT_START` (logs opened at start, `backend.startFiles()`), `UI_PLATFORM`,
   `PSEUDO_LOCALE`, `SCITER_DEBUG_MODE` (the debug mode of Sciter, for its inspector). The table of them: `docs/building.md`, "Environment variables for
   development"; a new one goes there.
 - The debug channel (only a build with `--debug-channel`, version `DebugChannel`, debug or release; `SCITER_DEBUG_PORT`): `ui/debug_channel` is a TCP

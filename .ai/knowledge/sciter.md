@@ -336,7 +336,7 @@ agent can't drive it. In scapp a plain
   `owner.popup(el, {popupAt, x, y})` with window coords from
   `other.state.box("xywh","border","window")` places it under another element.
 - Menus: `accesskey` on `behavior: menu-bar` / `menu` items does nothing for mnemonics:
-  handle them in script (`resources/menu-bar.js`). `li.popup(li.$("menu"), {anchorAt,
+  they'd be handled in script (the app has none). `li.popup(li.$("menu"), {anchorAt,
   popupAt})` opens an entry, `menu.state.popup = false` closes it; keydown with a menu open
   still reaches a capture listener on `document`.
 - `<select>` dropdown: `select > popup.list > option`; `option:hover` matches, but Sciter's own

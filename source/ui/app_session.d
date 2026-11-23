@@ -989,7 +989,7 @@ final class AppSession
         return _catalog.translate(t);
     }
 
-    /// The menu bar of the window on `platform`, in the language of the interface
+    /// The menu of the window on `platform`, in the language of the interface
     MenuItem[] menuBar(MenuPlatform platform)
     {
         import ui.app_menu : appMenu;
@@ -1376,12 +1376,12 @@ unittest
 
     auto f = Fixture.make();
     auto host = parseJSON(f.session.menuJson());
-    assert(host["menuBar"].boolean == windowMenu(hostMenuPlatform(), "").menuBar);
+    assert(host["drawn"].boolean == windowMenu(hostMenuPlatform(), "").drawn);
     assert(host["menus"] == parseJSON(menuJson(appMenu(hostMenuPlatform()), hostMenuPlatform())));
 
     f.session.showMenu(WindowMenu(MenuPlatform.windows, true));
     auto windows = parseJSON(f.session.menuJson());
-    assert(windows["menuBar"].boolean);
+    assert(windows["drawn"].boolean);
     assert(windows["menus"] == parseJSON(menuJson(appMenu(MenuPlatform.windows), MenuPlatform.windows)));
 }
 
@@ -1395,10 +1395,9 @@ unittest
     f.session.showMenu(WindowMenu(MenuPlatform.windows, true));
     string label()
     {
-        foreach (menu; parseJSON(f.session.menuJson())["menus"].array)
-            foreach (item; menu["items"].array)
-                if ("command" in item && item["command"].str == MenuCommand.bottomPanel)
-                    return item["label"].str;
+        foreach (item; parseJSON(f.session.menuJson())["menus"].array) // the flat list of Windows
+            if ("command" in item && item["command"].str == MenuCommand.bottomPanel)
+                return item["label"].str;
         return null;
     }
 
@@ -2155,22 +2154,22 @@ unittest
     assert(parseJSON(f.session.languagesJson()).array.length == 0, "none until told where they are");
     assert(f.session.useLanguage("ru") is null);
 
-    const text = `{"locale": "ru", "name": "Русский", "messages": {"&File": "&Файл"}}`;
+    const text = `{"locale": "ru", "name": "Русский", "messages": {"File": "Файл", "Open File...": "Открыть файл..."}}`;
     f.session.useTranslations([CatalogFile("ru.json", text)]);
     const languages = parseJSON(f.session.languagesJson());
     assert(languages.array.length == 1 && languages[0]["locale"].str == "ru");
 
-    assert(f.session.menuBar(MenuPlatform.windows)[0].label == "File");
+    assert(f.session.menuBar(MenuPlatform.mac)[1].label == "File");
     assert(f.session.useLanguage("ru-RU") == text, "the catalog for the script");
-    assert(f.session.menuBar(MenuPlatform.windows)[0].label == "Файл");
+    assert(f.session.menuBar(MenuPlatform.mac)[1].label == "Файл");
     f.session.showMenu(windowMenu(MenuPlatform.windows, ""));
-    assert(parseJSON(f.session.menuJson())["menus"][0]["label"].str == "Файл");
+    assert(parseJSON(f.session.menuJson())["menus"][0]["label"].str == "Открыть файл...");
 
     assert(f.session.useLanguage("x-pseudo") is null, "the script makes the pseudo catalog itself");
-    assert(f.session.menuBar(MenuPlatform.windows)[0].label == "File", "the menu stays english");
+    assert(f.session.menuBar(MenuPlatform.mac)[1].label == "File", "the menu stays english");
 
     assert(f.session.useLanguage("de") is null);
-    assert(f.session.menuBar(MenuPlatform.windows)[0].label == "File", "no catalog: english");
+    assert(f.session.menuBar(MenuPlatform.mac)[1].label == "File", "no catalog: english");
 }
 
 @("AppSession: the errors for the user are in the language used: of opening, of a retry, of the views")

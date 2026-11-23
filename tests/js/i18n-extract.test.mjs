@@ -27,8 +27,8 @@ test("the texts of tr, trc and trn calls, keyed as in the catalog", () => {
 const keysOf = (source, language) => extractTexts(source, language).texts.map((t) => t.key);
 
 test("escapes of a literal are decoded, D strings too", () => {
-    const source = `auto item = command(MenuCommand.quit, tr("E&xit \\"now\\"\\n"), primary("Q"));`;
-    assert.deepEqual(keysOf(source, "d"), ["E&xit \"now\"\n"]);
+    const source = `auto item = command(MenuCommand.quit, tr("Exit \\"now\\"\\n"), primary("Q"));`;
+    assert.deepEqual(keysOf(source, "d"), ["Exit \"now\"\n"]);
 });
 
 test("hex and unicode escapes are decoded", () => {
@@ -211,15 +211,6 @@ test("scan: the scripts of resources (js and the pages) and the D sources, each 
     } finally {
         rmSync(root, { recursive: true, force: true });
     }
-});
-
-test("check: a translation keeps the mnemonic of its source", () => {
-    const texts = extractTexts(`tr("&File"); tr("Tom && Jerry"); tr("Plain"); tr("Search & Filter")`).texts;
-    const catalog = { locale: "ru", name: "Русский", messages: { "&File": "Файл", "Tom && Jerry": "Том && Джерри", "Plain": "&Просто", "Search & Filter": "Поиск и фильтр" } };
-    assert.deepEqual(checkCatalog(catalog, texts), ["mnemonic lost: &File", "mnemonic added: Plain"]);
-    catalog.messages["&File"] = "&Файл";
-    catalog.messages["Plain"] = "Просто";
-    assert.deepEqual(checkCatalog(catalog, texts), []);
 });
 
 test("the texts of marked elements: data-tr, data-tr-title, data-tr-placeholder, in markup and JSX", () => {

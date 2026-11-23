@@ -21,7 +21,7 @@ export const shotUsage = `Takes a screenshot of the Log Tracy window: macOS, Win
   --wait <seconds>      how long to wait after the window shows (default 3): loading a log
   --settings <file>     start with this settings.json (theme, language, column layouts, ...)
   --env NAME=VALUE      an environment variable for the app (PSEUDO_LOCALE=1,
-                        MENU_BAR_PLATFORM=windows, ...), repeatable
+                        UI_PLATFORM=windows, ...), repeatable
   --release             a release build (default: debug)
   --no-build            take the build as it is
   --help                this text

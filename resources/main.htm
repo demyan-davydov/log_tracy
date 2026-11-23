@@ -7,16 +7,13 @@
     <style src="style.css" />
     <style src="table.css" />
     <style src="tab-content.css" />
-    <style src="menu-bar.css" />
+    <style src="main-menu.css" />
     <style src="match-colors.css" />
     <style src="search-editor.css" />
     <script type="module" src="script.js" />
 </head>
 
 <body>
-    <!-- The menu bar on Windows and Linux (macOS: the native menu), filled by
-         setupMenuBar() from the backend -->
-    <div id="main-menu" style="display: none;"></div>
     <header>
         <!-- Open File, Settings: in the menu; the theme: in Settings -->
         <!-- Focusable: a press on a tab moves the focus here, not to nothing
@@ -25,6 +22,10 @@
             <!-- The + button followed by the tabs, rendered by refreshTabs() -->
             <button id="btn-add-tab" class="icon-plus" data-tr-title="New Tab" style="display:none;"></button>
         </div>
+        <!-- The menu of the window on Windows and Linux (macOS: the native
+             menu), right of the tabs: its list filled by setupMainMenu() from
+             the backend; shown by main-menu.css -->
+        <div id="main-menu"><button class="icon-menu" tabindex="-1"></button></div>
     </header>
 
     <!-- Instead of all the panels below while no document is open; filled by

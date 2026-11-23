@@ -25,13 +25,13 @@ export const saveAppState = appStateJson => xcall("saveAppState", appStateJson);
 // The user moved or resized the window: the settings are written soon, with
 // the frame of getAppState()
 export const windowFrameChanged = () => xcall("windowFrameChanged");
-// The menu of the window: { menuBar: whether the script draws it as its menu
-// bar (Windows, Linux; macOS: the native menu), menus: [{ label, mnemonic?,
-// items }] }. An item { command, label, mnemonic?, shortcut? }, { separator:
-// true } or { label, mnemonic?, items }; a mnemonic is the index of its letter
-// in the label; a shortcut { text, code (KeyboardEvent.code), ctrl, shift,
-// alt, bySystem (the OS handles it) }
-export const menu = () => parsed(xcall("getMenu"), { menuBar: false, menus: [] });
+// The menu of the window: { drawn: whether the script draws it (Windows, Linux;
+// macOS: the native menu), platform: "mac" | "windows" | "linux", the interface
+// of which platform, menus: [item] }. An item { command, label, shortcut? },
+// { separator: true } or { label, items } (a submenu: macOS only, the list of
+// Windows and Linux is flat); a shortcut { text, code
+// (KeyboardEvent.code), ctrl, shift, alt, bySystem (the OS handles it) }
+export const menu = () => parsed(xcall("getMenu"), { drawn: false, platform: "mac", menus: [] });
 // The bottom panel of the documents is shown (true) or collapsed: the menu
 // labels its command by it (the native menu of macOS is retitled; menu() gives
 // the new labels)

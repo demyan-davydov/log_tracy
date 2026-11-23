@@ -40,8 +40,9 @@ private AppSession newSession(AppSettings settings, DocumentStore documents, out
 
 	auto session = new AppSession(settings, documents,
 		(string path, FormatChoice choice) => cast(Document) new LogDocument(path, choice));
-	// MENU_BAR_PLATFORM=windows|linux: that menu bar in the window, for a try on any platform
-	session.showMenu(windowMenu(hostMenuPlatform(), environment.get("MENU_BAR_PLATFORM", "")));
+	// UI_PLATFORM=windows|linux: the interface of that platform (the menu, the styles of ui-platform),
+	// for a try on any platform; the OS stays what it is (Cmd or Ctrl, the native menu of macOS)
+	session.showMenu(windowMenu(hostMenuPlatform(), environment.get("UI_PLATFORM", "")));
 	// PSEUDO_LOCALE=1: the pseudo translation among the languages of Settings
 	session.offerPseudoLocale(environment.get("PSEUDO_LOCALE", "") == "1");
 	// OPEN_AT_START=<path>[<new line><path>...]: files opened at start, to look at the app

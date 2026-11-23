@@ -72,7 +72,7 @@ node scripts/utils/app.mjs log | stop
 - Real hover and keys (macOS): `hover`, `key`, `type` hand the window events of the system:
   `:hover`, popups the app opens on hover, `keydown`, typed text. Not possible: a press of a
   mouse button (`:focus` from the mouse, a drag; `el.click()` doesn't move the mouse), Sciter's
-  own tooltip of `title`, a shortcut of the menu bar (call the command), Windows and Linux.
+  own tooltip of `title`, a shortcut of the native menu (call the command), Windows and Linux.
 - Stop the copy when done (`stop`): it keeps running otherwise.
 
 Refresh the binary of a copy with `rm` then `cp`, never `cp` over the old file: macOS kills an

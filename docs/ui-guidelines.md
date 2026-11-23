@@ -107,7 +107,6 @@
 ## 6. Реестр выявленных противоречий для будущей нормализации
 
 1. **Единицы `px` вместо `dip`**:
-   - `menu-bar.css`: паддинги и отступы заданы в `px` (`2px 8px`, `24px`, `2px`).
    - `search-editor.css:175`: `.chip-search-message { padding: 2px 4px; }`.
    - `settings.htm`, `rule-editor.htm`: границы `1px solid` вместо `1dip solid`.
 2. **Отсутствие базового стиля кнопок**:

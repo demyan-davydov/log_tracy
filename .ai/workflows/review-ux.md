@@ -34,7 +34,7 @@ part of it; flag only what nothing there explains, and say what was checked.
 3. **Feedback:** a refused action says why; a long one shows progress and can be cancelled;
    nothing happens silently; no dead end (after a failure the user knows what to do next).
 4. **Keyboard and focus:** the shortcuts of the menu model, Escape and Enter where expected,
-   the focus where the user works (not left in a hidden panel), mnemonics on Windows/Linux.
+   the focus where the user works (not left in a hidden panel).
 5. **Texts:** short, as the rest of the interface says things; translated
    (`.ai/knowledge/i18n.md`); not built from parts that won't translate.
 6. **Consistency:** the same thing looks and behaves the same everywhere (buttons, popups,

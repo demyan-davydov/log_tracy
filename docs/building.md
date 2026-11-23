@@ -342,7 +342,7 @@ development; users don't need them. They are read at start, in `newSession` of
 | Variable | Values | What it does |
 |---|---|---|
 | `OPEN_AT_START` | `<log>`, several on lines of their own | Opens these logs at start, each in its tab. `scripts/utils/screenshot.mjs` uses it. |
-| `MENU_BAR_PLATFORM` | `windows`, `linux` | Draws the menu bar of that system in the window, also on macOS: to try the menu of another system. |
+| `UI_PLATFORM` | `windows`, `linux` | Draws the interface of that system, also on macOS: its menu (Exit Alt+F4 or Quit Ctrl+Q) in the window and the styles of `@media ui-platform == ...`. Only the interface: the OS stays what it is (Cmd or Ctrl, the native menu of macOS, the dialogs). |
 | `PSEUDO_LOCALE` | `1` | Offers the pseudo translation in Settings: every text accented and lengthened, so what stays plain English is not translated. |
 | `SCITER_DEBUG_MODE` | `1` | Turns the debug mode of Sciter on, for its inspector: start `inspector.app` of the Sciter SDK first, then Ctrl+Shift+I in the window connects to it (the DOM, the styles, a script console), Ctrl+Shift+click shows the element clicked. |
 | `SCITER_DEBUG_PORT` | `<port>`, `0` for any free one | Debug builds only: opens the debug channel on `127.0.0.1:<port>` (the port is written to the output), through which `scripts/utils/app.mjs` runs JavaScript in the window and renders it. A release build ignores it and says so. |
@@ -350,7 +350,7 @@ development; users don't need them. They are read at start, in `newSession` of
 For example:
 
 ```sh
-MENU_BAR_PLATFORM=windows OPEN_AT_START=~/logs/trace.dlt build/osx-aarch64-debug/log_tracy
+UI_PLATFORM=windows OPEN_AT_START=~/logs/trace.dlt build/osx-aarch64-debug/log_tracy
 ```
 
 A new variable goes into this table.

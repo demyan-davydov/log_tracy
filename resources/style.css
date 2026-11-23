@@ -636,6 +636,7 @@ frameset > splitter:active {
 .icon-edit,
 .icon-export,
 .icon-plus,
+.icon-menu,
 .icon-chevron-down,
 .icon-bottom-panel-shown,
 .icon-bottom-panel-hidden {
@@ -649,6 +650,7 @@ frameset > splitter:active {
 .icon-edit { foreground-image: url(icons/edit.svg); }
 .icon-export { foreground-image: url(icons/export.svg); }
 .icon-plus { foreground-image: url(icons/plus.svg); }
+.icon-menu { foreground-image: url(icons/menu.svg); }
 .icon-chevron-down { foreground-image: url(icons/chevron-down.svg); }
 .icon-bottom-panel-shown { foreground-image: url(icons/bottom-panel-shown.svg); }
 .icon-bottom-panel-hidden { foreground-image: url(icons/bottom-panel-hidden.svg); }
@@ -1104,25 +1106,33 @@ main {
     padding: 5dip;
 }
 
-/* The open list of a <select> (behavior: select-dropdown): the chosen option
-   is tinted pale, the option under the mouse has the accent of the menu items
-   and wins over the tint. !important: the options are styled by Sciter's own
-   style set, which beats the rules of the document even when the selector
-   matches */
+/* The open list of a <select> (behavior: select-dropdown), as a menu
+   (main-menu.css): roomy options, the one under the mouse a grey rounded
+   highlight inset from the edges; the chosen option is tinted pale, the one
+   under the mouse wins over the tint. !important: the options are styled by
+   Sciter's own style set, which beats the rules of the document even when
+   the selector matches */
+select > popup > option {
+    padding: 0.7em 12dip 0.4em 12dip !important; /* more above: see menu li */
+    border-radius: 6dip !important;
+}
+
 select > popup > option:current {
     background-color: var(--option-current) !important;
     color: var(--text-main) !important;
 }
 
 select > popup > option:hover {
-    background-color: var(--btn-primary-bg) !important;
-    color: var(--btn-primary-text) !important;
+    background-color: var(--bg-tab-hover) !important;
+    color: var(--text-main) !important;
 }
 
-/* The list itself: in the dark theme Sciter draws it pure black. A visible
-   edge keeps it apart from the window it covers */
+/* The list itself, as a menu: in the dark theme Sciter draws it pure black.
+   A visible edge keeps it apart from the window it covers */
 select > popup {
-    background-color: var(--bg-input) !important;
+    padding: 6dip !important;
+    border-radius: 12dip !important;
+    background-color: var(--bg-main) !important;
     border: 1dip solid var(--border-popup) !important;
 }
 

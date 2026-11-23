@@ -22,7 +22,7 @@ void forgetAppMenuWindow()
 }
 
 /// Puts the labels of the menu of `window` in the language of the interface now (the native
-/// menu on macOS; the script draws its menu bar on the other platforms itself). The items
+/// menu on macOS; the script draws its menu on the other platforms itself). The items
 /// stay as they are, only their titles change: one may be running its action (Settings...
 /// opened from the menu), and the items of macOS stay untouched.
 void retitleAppMenu(MainWindow window)

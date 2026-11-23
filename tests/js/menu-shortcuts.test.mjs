@@ -1,9 +1,9 @@
-// The shortcuts of the menu bar, see resources/menu-shortcuts.js: a key press
+// The shortcuts of the menu of the window, see resources/menu-shortcuts.js: a key press
 // gives the command of the shortcut it is, with exactly its modifiers.
 // Run: node --test tests/js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { commandOfKey, shortcutsOf, shortcutTextOf, primaryShortcutText, mnemonicParts, mnemonicOf } from "../../resources/menu-shortcuts.js";
+import { commandOfKey, shortcutsOf, shortcutTextOf, primaryShortcutText } from "../../resources/menu-shortcuts.js";
 
 const shortcuts = [
     { command: "file.open", code: "KeyO", ctrl: true, shift: false, alt: false },
@@ -57,53 +57,6 @@ test("the text of the shortcut of a command, at any depth; null without one", ()
     assert.equal(shortcutTextOf(menus, "none"), null);
     assert.equal(shortcutTextOf(menus, "missing"), null);
     assert.equal(shortcutTextOf([], "file.open"), null);
-});
-
-test("a label with its mnemonic: the letter and the text around it", () => {
-    assert.deepEqual(mnemonicParts({ label: "Exit", mnemonic: 1 }), { before: "E", key: "x", after: "it" });
-    assert.deepEqual(mnemonicParts({ label: "File", mnemonic: 0 }), { before: "", key: "F", after: "ile" });
-    assert.equal(mnemonicParts({ label: "File" }), null);
-    assert.equal(mnemonicParts({ label: "File", mnemonic: 9 }), null);
-    assert.equal(mnemonicParts({ label: "File", mnemonic: -1 }), null);
-    // A letter outside the BMP stays whole
-    assert.deepEqual(mnemonicParts({ label: "a\u{1D400}b", mnemonic: 1 }), { before: "a", key: "\u{1D400}", after: "b" });
-});
-
-test("the item of a mnemonic key: Alt+letter on the bar, the letter alone in an open menu", () => {
-    const items = [
-        { label: "File", mnemonic: 0, items: [] },
-        { separator: true },
-        { label: "Exit", mnemonic: 1, command: "app.quit" },
-        { label: "None", command: "none" },
-    ];
-    assert.equal(mnemonicOf(items, key("KeyF"), false), 0);
-    assert.equal(mnemonicOf(items, key("KeyX"), false), 2);
-    assert.equal(mnemonicOf(items, key("KeyF", { altKey: true }), true), 0);
-    assert.equal(mnemonicOf(items, key("KeyF"), true), -1); // the bar needs Alt
-    assert.equal(mnemonicOf(items, key("KeyF", { altKey: true }), false), -1);
-    assert.equal(mnemonicOf(items, key("KeyF", { ctrlKey: true }), false), -1);
-    assert.equal(mnemonicOf(items, key("KeyF", { shiftKey: true, altKey: true }), true), -1);
-    assert.equal(mnemonicOf(items, key("KeyN"), false), -1);
-    assert.equal(mnemonicOf(items, key("Digit1"), false), -1);
-});
-
-test("a cyrillic mnemonic is the key of its letter on the russian layout, whatever layout is on", () => {
-    const items = [
-        { label: "Файл", mnemonic: 0, items: [] },
-        { label: "Выход", mnemonic: 1, command: "app.quit" },
-        { label: "Жёлтый", mnemonic: 1, command: "yellow" },
-        { label: "Юг", mnemonic: 0, command: "south" },
-    ];
-    assert.equal(mnemonicOf(items, key("KeyA", { altKey: true }), true), 0); // Ф
-    assert.equal(mnemonicOf(items, key("KeyS"), false), 1); // ы
-    assert.equal(mnemonicOf(items, key("Backquote"), false), 2); // ё
-    assert.equal(mnemonicOf(items, key("Period"), false), 3); // Ю
-    assert.equal(mnemonicOf(items, key("KeyF"), false), -1);
-});
-
-test("a mnemonic of no known key is none", () => {
-    assert.equal(mnemonicOf([{ label: "1st", mnemonic: 0, command: "a" }], key("Digit1"), false), -1);
-    assert.equal(mnemonicOf([{ label: "Ω", mnemonic: 0, command: "a" }], key("KeyW"), false), -1);
 });
 
 test("primaryShortcutText: a key with the primary modifier as each platform shows it", () => {
