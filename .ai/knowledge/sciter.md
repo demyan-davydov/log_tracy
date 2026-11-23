@@ -301,6 +301,17 @@ agent can't drive it. In scapp a plain
   the fix has to keep it on top without the child link. Looking at it: CGWindowListCopyWindowInfo
   (the windows of a pid, also off-screen ones) and lldb over `[[NSApplication sharedApplication] windows]`;
   the frame of a window in lldb needs a struct of four doubles declared in the same expression.
+- Linux (6.0.5.5, 2026-11-22, Ubuntu 24.04 x86-64 and arm64, Wayland and X11): once a dialog of
+  `Window.this.modal` closes, its parent gets no input (it still repaints and relayouts), each
+  input logs `gtk_widget_get_visible: assertion 'GTK_IS_WIDGET'`, and the process segfaults soon;
+  on arm64 without OpenGL a change of the DOM right after `modal` returns crashes it at once
+  (`gtk_gl_area_make_current` on the dead dialog). The same in the SDK's bare `usciter` with an
+  empty dialog; a non-modal `new Window({ type: Window.DIALOG_WINDOW })` closes cleanly. Every
+  dialog of the app (`platform.showModal`) hits it. Reported to the author, who says it is fixed
+  for the next build (no date given); not worked around. On the next update of Sciter, check it
+  on Linux first: open a dialog, close it, click in the main window.
+  Harmless noise in the same setup: `gtk_widget_set_can_focus` failed on creating any window,
+  `gtk_window_present` failed on closing a popup, `GtkPopover` children left on closing the window.
 
 - Text cut with `text-overflow: ellipsis/path-ellipsis` gets an automatic tooltip
   `popup[role=overflow-tooltip]` (besides `title` → `popup[role=tooltip]`). Tooltip popups
