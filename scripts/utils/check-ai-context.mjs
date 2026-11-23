@@ -22,6 +22,9 @@ export const allowed = new Map([
     ["CGEvent", "an API of the platform"],
     ["notifyWindowPaint", "a function inside Sciter, seen in a sample of its stack"],
     [".edit.selectRange/selectionStart/insertText", "an API of Sciter"],
+    ["GtkPopover", "a widget of GTK, in its warnings"],
+    ["paintContent", "a method of Sciter, named by its author"],
+    ["FPS", "an option of Sciter's Element.animate"],
 ]);
 
 /// Paths outside the repository, by their start: local logs, what a build writes, the folders
