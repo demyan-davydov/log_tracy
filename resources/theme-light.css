@@ -42,6 +42,8 @@
     --border-focus: #0078d7;
     /* the edge of a dropdown list, so it stands apart from the window under it */
     --border-popup: #a6a6a6;
+    /* the edge of the menus (main-menu.css), faint */
+    --menu-border: rgba(0, 0, 0, 0.12);
     /* the chosen option of an open <select> list (the hovered one has the accent) */
     --option-current: #dce9f8;
     /* the switches of a search chip (.*, Aa): off, on */

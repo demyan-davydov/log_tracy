@@ -1114,7 +1114,7 @@ main {
    the selector matches */
 select > popup > option {
     padding: 0.7em 12dip 0.4em 12dip !important; /* more above: see menu li */
-    border-radius: 6dip !important;
+    border-radius: 8dip !important;
 }
 
 select > popup > option:current {

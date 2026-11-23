@@ -60,11 +60,14 @@ menu {
     behavior: menu;
     flow: vertical;
     display: none;
+    /* No margin, no shadow of our own: a margin (room in the popup's window for a
+       shadow) put a context menu lower than the press and cut it to its top left
+       corner; a shadow without room is cut at the edge of that window */
     margin: 0;
     padding: 6dip;
     min-width: 200dip;
     max-width: max-content;
-    border: 1dip solid var(--border-color);
+    border: 1dip solid var(--menu-border);
     border-radius: 12dip;
     background-color: var(--bg-main);
     color: var(--text-main);
@@ -83,13 +86,13 @@ menu menu {
 
 /* An item of a menu */
 menu li {
-    border-radius: 6dip;
+    border-radius: 8dip;
     width: *;
     display: block;
     flow: horizontal;
     vertical-align: middle;
-    padding-left: 24dip;
-    /* room for icon */
+    padding-left: 34dip;
+    /* room for icon, as a check of GTK */
     padding-right: 12dip;
     /* room for the arrow */
     /* More above the text than below: the line box has the room of a descender under
@@ -97,18 +100,18 @@ menu li {
     padding-top: 0.7em;
     padding-bottom: 0.4em;
     foreground-repeat: no-repeat;
-    foreground-position: left 2dip top 50%;
+    foreground-position: left 10dip top 50%;
     color: var(--text-main);
 }
 
 menu li:rtl {
     width: *;
-    padding-right: 24dip;
+    padding-right: 34dip;
     /* room for icon */
     padding-left: 12dip;
     /* room for the arrow */
     foreground-repeat: no-repeat;
-    foreground-position: right 2dip top 50%;
+    foreground-position: right 10dip top 50%;
     text-align: right;
     color: var(--text-main);
 }
@@ -143,14 +146,26 @@ menu li:has-child-of-type(menu):rtl {
     foreground-position: top 50% left 2dip;
 }
 
-/* The current item: a grey highlight, rounded (Sciter's own is rounded too) */
+/* The current item: a grey highlight, rounded. Sciter's own is a foreground
+   in the accent of the system over the item (its master style sheet,
+   STD-MENU-ITEM-HOVER: foreground-color), tinting our highlight and the text:
+   none of it. !important: a context menu (evt.source of "contextmenu") is a
+   popup root of Sciter's style set std-popup-menu, which beats the rules of
+   the document, as on the options of a <select> */
 menu li:hover:owns-popup,
 menu li:current {
-    background-color: var(--bg-tab-hover);
-    color: var(--text-main);
+    foreground-color: transparent !important;
+    background-color: var(--bg-tab-hover) !important;
+    color: var(--text-main) !important;
+}
+
+menu li:current span.accesskey {
+    color: var(--text-label) !important; /* Sciter's: the accent */
 }
 
 /* A separator */
 menu hr {
     margin: 6dip 0;
+    border: none;
+    border-bottom: 1dip solid var(--menu-border); /* Sciter's: the border of widgets, dark */
 }
