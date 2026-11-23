@@ -100,7 +100,7 @@ agent can't drive it. In scapp a plain
   `requestPaint()`) draws the window twice, ~2 ms apart: Sciter's own render in its loop, then again when Core
   Animation has the view's layer display (`NSViewBackingLayer display` → `notifyWindowPaint`). Frames of an animation
   frame request come once each. Not caused by the handler (a handler that only fills does the same), nor by the layer
-  (CG, Skia raster alike); details in `docs/backlog.md`, "наведение перерисовывает всю таблицу".
+  (CG, Skia raster alike); reported, the author promised a fix. Details in `docs/backlog.md`, "наведение перерисовывает всю таблицу".
   Drawing the table into an image to blit it on the second pass doesn't pay: inside `DRAW_CONTENT` `gCreate` on an
   image answers `GRAPHIN_NOTSUPPORTED`, `imagePaint` works and keeps text sharp at `gScale(2)`, but drawing into it
   costs ~3x drawing on the screen (the image is rastered by the CPU, the screen's commands go to the GPU). Numbers and what the API lacks:
@@ -375,6 +375,14 @@ agent can't drive it. In scapp a plain
   step that changes nothing. An infinite one (the blinking caret of the search field) kept the app at ~35% of a
   core and made the popups lag: no infinite animations. A blink by a timer (`Element.timer(500, ...)`, or an
   interval of the script) costs 2 frames a switch, its ticks 499–508 ms apart (`SearchEditor.blinkCaret`).
+  The author's answer (forum, "A step CSS animation of a tiny element repaints the whole window every frame",
+  2026-11-22): by design, a GPU frame redraws the whole surface, and no partial repaint is planned. His advice for an
+  expensive `paintContent` is a bitmap cache: draw it once into `new Graphics.Image(w, h, painter)`, redraw that only
+  on a change, and `gfx.draw` it each frame; or a `<canvas>`, whose graphics "uses cached rendering". The first is
+  our `imagePaint` measurement above (~3x a direct draw): it pays only for frames where the table didn't change.
+  Left unanswered: frames in which an animation changes nothing, `step-end`, `FPS` of `Element.animate`. That the
+  draw commands cost the CPU "almost nothing" doesn't hold for our tables: their ~1 ms a frame is the handler's own
+  work (rows, text layouts), not the commands.
 - A transition of `height` works on an inline style: set the element's own height in px, then
   `0px` in the next requestAnimationFrame, and it folds (the removed item of the search history,
   `SearchEditor.removeHistory`; checked by the user, 2026-11-21).
