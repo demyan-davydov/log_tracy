@@ -657,38 +657,50 @@ frameset > splitter:active {
 
 /* The unload of a FIBEX: the cross in a box of a glyph, in the line of the text, in the
    color of the links */
-.link-button.btn-fibex-unload {
+.text-link.btn-fibex-unload {
+    display: inline-block;
     width: 1em;
     height: 1em;
     vertical-align: middle;
     stroke: var(--border-focus);
 }
 
-/* A button in the look of a link: a real button (focus, Enter, Space) whose
-   whole look is its background, so it has none: the text in the accent color,
-   underlined on hover */
-.link-button {
-    background: none;
-    border: none;
+/* A link within a line of text (File Info: "Reopen as", "file...", "folder..."; the Filters toolbar): the
+   text around it in the font, the size, the line and the baseline, only in the accent color and underlined
+   on hover. A span that acts as a button (`behavior: button`: the click, the focus, Enter and Space), not a
+   `<button>` with its look taken off. With `type="menu"` it has the behavior Sciter gives a `<button
+   type="menu">` (`button popup-menu`): its `<menu>` child opens on a press and shuts on the next one, as
+   the "⋮" of a recent file does. No outline of the focus */
+.text-link {
+    display: inline;
+    margin: 0;
     padding: 0 2dip;
+    border: none;
+    background: none;
+    font: inherit;
+    line-height: inherit;
+    vertical-align: baseline;
     color: var(--border-focus);
     cursor: pointer;
 }
 
-.link-button:hover {
-    background: none;
+span.text-link {
+    behavior: button;
+}
+
+span.text-link[type=menu] {
+    behavior: button popup-menu;
+}
+
+.text-link:hover {
     text-decoration: underline;
 }
 
-.link-button:focus {
-    outline: 1dip dotted var(--border-focus);
-}
-
-/* A chip with a gray label and link-buttons after it ("Load | file... | folder..."), to
+/* A chip with a gray label and links (`.text-link`) after it ("Load | file... | folder..."), to
    put into a line of text: it takes the font and the line of the text around it and sizes
    itself in em, so it scales with the text and adds nothing to the height of the line.
    A rounded outline; the label on a gray ground of its own, then the buttons on the
-   ground of an input. `.text-chip-sep` is the bar between buttons */
+   ground of an input. `.text-chip-sep` is the bar between links */
 .text-chip {
     display: inline-block;
     border: 1dip solid var(--chip-border);
@@ -702,7 +714,7 @@ frameset > splitter:active {
 .text-chip .text-chip-label,
 .text-chip .text-chip-body,
 .text-chip .text-chip-sep,
-.text-chip button {
+.text-chip .text-link {
     display: inline;
     height: auto;
     min-height: 0;
@@ -1066,6 +1078,24 @@ frameset > splitter:active {
 
 .file-info .descriptions-note.error {
     color: var(--log-error);
+}
+
+/* The Format row: its name (selected and copied, not the button) and "Open as" after it; the
+   format the log is open in is bold in the list, as the menus have no check */
+.file-info .format-line > * + * {
+    margin-left: 8dip;
+}
+
+/* The format as a plate, as the badge of a file of the New Tab (a ground, no border: it adds no
+   height to the line, and the row can share a line with other text) */
+.file-info .format-name {
+    behavior: selectable;
+    cursor: text;
+    display: inline-block;
+    padding: 0 0.5em;
+    border-radius: 0.4em;
+    background: var(--bg-tab-inactive);
+    font-weight: 600;
 }
 
 /* One line of inline children (a baseline for all), not a flow row: the gaps are margins */

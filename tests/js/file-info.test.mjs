@@ -4,14 +4,19 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fileInfoRows, groupDigits, sizeText } from "../../resources/file-info.js";
 
-const info = { name: "a.dlt", path: "/logs/a.dlt", format: "DLT", bytes: 257_215_283, records: 1234567 };
+const info = { name: "a.dlt", path: "/logs/a.dlt", format: "DLT", formatId: "dlt", detectedId: "text", bytes: 257_215_283, records: 1234567 };
 
 test("the rows: the full path, the size with the number of records, the format last", () => {
     assert.deepEqual(fileInfoRows(info, "ready"), [
         { label: "Path", value: "/logs/a.dlt" },
         { label: "Size", value: "245.3 MB · 1 234 567 records" },
-        { label: "Format", value: "DLT" },
+        { label: "Format", value: "DLT", openAs: { current: "dlt", detected: "text" } },
     ]);
+});
+
+test("a log with no format (its file lost) offers no Open as", () => {
+    const row = fileInfoRows({ ...info, format: "", formatId: "" }, "ready")[2];
+    assert.deepEqual(row, { label: "Format", value: "" });
 });
 
 test("one record is a record", () => {

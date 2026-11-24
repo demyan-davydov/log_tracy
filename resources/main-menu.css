@@ -112,8 +112,10 @@ menu li:disabled {
     foreground-image: none;
 }
 
-/* The text of the shortcut of an item, at its right */
-menu li span.accesskey {
+/* The text of the shortcut of an item, at its right; the note of an item of the list of the
+   formats ("auto-detected") likewise */
+menu li span.accesskey,
+menu li span.format-note {
     display: block;
     width: max-content;
     white-space: nowrap;
@@ -121,6 +123,16 @@ menu li span.accesskey {
     /* spring to attach it to the right */
     padding-left: 1em;
     color: var(--text-label);
+}
+
+/* The list of the formats ("Open as"): the format the log is open in is bold (the menus have no
+   check), its note stays as the others */
+menu li.format-current {
+    font-weight: 600;
+}
+
+menu li span.format-note {
+    font-weight: normal;
 }
 
 /* An item with a nested menu: its arrow */

@@ -18,7 +18,9 @@ import domain.document;
 import domain.document_id;
 import domain.document_item : DocumentItem;
 import domain.document_store;
-import log_core.log_format : ColumnInfo, FormatChoice, LogFormat;
+import formats.registry : formatInfo;
+import ui.detected_formats : DetectedFormats;
+import log_core.log_format : ColumnInfo, FormatChange, FormatChoice, formatChangeOf, FormatException, LogFormat;
 import log_core.rule_filter : RuleId;
 import log_core.search_filter : MatchBuffer, MatchRange, SearchFilter;
 import ui.app_menu : hostMenuPlatform, MenuItem, MenuPlatform, MenuState, WindowMenu, windowMenu;
@@ -50,11 +52,39 @@ struct ScriptCall
 struct OpenResult
 {
     DocumentId docId; // invalid on failure
-    string failureJson; // {"path" (as in the recent list), "error"}
+    string failureJson; // {"path" (as in the recent list), "error", "kind": "system" | "unrecognized" | "unreadable",
+                        // "format": the name of the one picked by the user, when there was one}
+}
+
+/// What the script is told of why a file could not be opened: "system" (no file, no right, ...: no
+/// format to choose), "unrecognized" (no format knows the data) or "unreadable" (the format asked
+/// for does not read it): told by the exception, the registry throws "unrecognized" for detection and
+/// "unreadable" for a format asked for
+private string failureKindOf(const Throwable e)
+{
+    if (const format = cast(const FormatException) e)
+        return format.kind == FormatException.Kind.unrecognized ? "unrecognized" : "unreadable";
+    return "system";
+}
+
+/// What an open asks of the format of the file: the one it had last time, detected again, or the one
+/// the user picked
+private struct FormatRequest
+{
+    enum Kind : ubyte { remembered, detect, picked }
+
+    Kind kind;
+    string id; /// of the format picked
+
+    static FormatRequest remembered() { return FormatRequest(Kind.remembered); }
+    /// The user picked `id`; an empty one asks to detect the format again
+    static FormatRequest pick(string id) { return id.length ? FormatRequest(Kind.picked, id) : FormatRequest(Kind.detect); }
 }
 
 /// Opens the file of a document in a format (unset: detected). Throws if it can't.
-alias DocumentFactory = Document delegate(string path, FormatChoice choice);
+/// `byHand`: `choice` names a format the user picked (its id; the variant and the encoding are
+/// the file's): no other is tried if it can't read the file
+alias DocumentFactory = Document delegate(string path, FormatChoice choice, bool byHand);
 
 /// Writes the settings (to their file)
 alias SettingsWriter = void delegate(in AppSettings settings);
@@ -71,6 +101,7 @@ final class AppSession
     private DocumentUi[DocumentId] _documentUis;
     private TableColumns _tableColumns; // the columns the tables show for each format
     private DocumentFactory _open;
+    private DetectedFormats _detected = new DetectedFormats; // what detection picks for a file, kept while it is the same
     private SettingsWriter _write;
     private FileShower _showInFolder;
     private ScriptCall[] _scriptCalls; // queued for the idle loop
@@ -328,8 +359,21 @@ final class AppSession
         return _documents.doc(docId);
     }
 
-    /// Opens `path` in a new tab, or shows its tab if it is open already
+    /// Opens `path` as the user picked for a file not open yet: in the format `formatId`, detected
+    /// again if it is empty (not the one it had last time: that is `openFile`)
+    OpenResult openFileAs(string path, string formatId)
+    {
+        return open(path, FormatRequest.pick(formatId));
+    }
+
+    /// Opens `path` in a new tab, or shows its tab if it is open already, in the format it had last
+    /// time, else detected
     OpenResult openFile(string path)
+    {
+        return open(path, FormatRequest.remembered);
+    }
+
+    private OpenResult open(string path, FormatRequest request)
     {
         import std.stdio : writeln;
 
@@ -352,7 +396,9 @@ final class AppSession
         {
             // Opened the way it was last time: the format may have been chosen by hand
             const openStart = MonoTime.currTime;
-            auto document = _open(path, savedFormat(_settings.recentFiles, path));
+            const byHand = request.kind == FormatRequest.Kind.picked;
+            auto document = _open(path, request.kind == FormatRequest.Kind.remembered
+                ? savedFormat(_settings.recentFiles, path) : FormatChoice(request.id), byHand);
             const hold = _documents.add(document, path); // held by its tab
             const docId = hold.docId;
             _loadStarted[docId] = openStart; // the load goes on (BuildOffsetIndex)
@@ -371,7 +417,10 @@ final class AppSession
             // where it is, a new one goes on top
             _settings.recentFiles = withFailedFile(_settings.recentFiles, path);
             settingsChanged();
-            JSONValue failure = ["path": recentFilePath(path), "error": _catalog.translate(uiTextOf(e))];
+            JSONValue failure = ["path": recentFilePath(path), "error": _catalog.translate(uiTextOf(e)),
+                "kind": failureKindOf(e)];
+            if (request.kind == FormatRequest.Kind.picked)
+                failure["format"] = formatInfo(request.id).name; // the one that did not read it
             return OpenResult(DocumentId.init, failure.toString());
         }
     }
@@ -387,22 +436,56 @@ final class AppSession
         return reopen(docId);
     }
 
+    /// Writes the choice to open the file at `path` with again into the recent list, in place.
+    /// Returns: whether the list changed (it was another choice, or none)
+    private bool rememberFormat(string path, FormatChoice choice)
+    {
+        if (!path.length || savedFormat(_settings.recentFiles, path) == choice)
+            return false;
+        _settings.recentFiles = withFormat(_settings.recentFiles, path, choice);
+        return true;
+    }
+
+    /// Opens the file of a document anew in its tab, in the format picked by hand (its id; the
+    /// variant and the encoding are those the file has for it), or detected again if `formatId`
+    /// is empty. Like Retry the script resets the tab when it is told "".
+    /// Returns: why it can't be, "" if the document was replaced by a freshly opened one
+    string reopenAs(int id, string formatId)
+    {
+        const docId = findDocument(id);
+        if (!docId.isValid)
+            return _catalog.translate(uiText("the document is not open"));
+        const had = _documents.doc(docId).formatChoice;
+        auto choice = FormatChoice(formatId);
+        if (had.id == formatId)
+            choice.descriptions = had.descriptions; // the same format still decodes by them
+        return reopen(docId, choice, formatId.length != 0);
+    }
+
     /// Opens the file of the document anew in its place, in the format it had, its filters
     /// restored. Returns: an error message for the UI, "" if it was replaced
     private string reopen(DocumentId docId)
+    {
+        // reopened in the format it had, not detected again
+        return reopen(docId, _documents.doc(docId).formatChoice, false);
+    }
+
+    /// As `reopen(docId)`, in the format `choice` (`byHand`: picked by the user, none other is
+    /// tried). A document that can't be opened stays as it was. Other records than the old
+    /// document's lose the anchors (messages numbered by the old ones), keep the filters
+    private string reopen(DocumentId docId, FormatChoice choice, bool byHand)
     {
         import std.stdio : writeln;
 
         const id = idOf(docId);
         const path = sourcePathOf(docId);
-        // reopened in the format it had, not detected again
-        const choice = _documents.doc(docId).formatChoice;
+        const had = _documents.doc(docId).formatChoice;
         try
         {
             // Timings: both steps run on the UI thread and may block on a disk
             // that has just been reconnected or removed
             const openStart = MonoTime.currTime;
-            auto fresh = _open(path, choice);
+            auto fresh = _open(path, choice, byHand);
             const openTime = MonoTime.currTime - openStart;
             _loadStarted[docId] = openStart; // its load starts anew
 
@@ -412,8 +495,20 @@ final class AppSession
             const filters = oldUi is null ? null : oldUi.filters.saved();
             auto old = _documents.replace(docId, fresh);
             addDocumentUi(docId); // the new document starts with a new machine
+            bool toSave = false; // the recent list changed
+            if (formatChangeOf(had, fresh.formatChoice) == FormatChange.records)
+            {
+                _settings.recentFiles = withAnchors(_settings.recentFiles, path, null); // other messages now
+                toSave = true;
+                // The columns of the tables of this document (and the layout of their host) are those of
+                // the old format: the rows of another set of columns would be painted by them
+                _viewListeners.columnsChanged(docId);
+            }
             restoreAnchors(docId, path); // before the filters: their pass lists them
             _documentUis[docId].filters.restore(filters);
+            toSave = rememberFormat(path, fresh.formatChoice) || toSave;
+            if (toSave)
+                settingsChanged();
             if (old !is null)
                 old.destroy();
             const destroyTime = MonoTime.currTime - destroyStart;
@@ -504,7 +599,7 @@ final class AppSession
     /// The recent files for the placeholder, the open ones marked
     string recentFilesJson()
     {
-        return ui.app_settings.recentFilesJson(_settings.recentFiles, openPaths());
+        return ui.app_settings.recentFilesJson(_settings.recentFiles, openPaths(), &_detected.of);
     }
 
     // ── The views ────────────────────────────────────────────────────────────
@@ -709,7 +804,19 @@ final class AppSession
         return log_core.search_filter.checkRegex(pattern, !matchCase);
     }
 
-    /// What the File Info page shows of the document: {name, path, format,
+    /// The formats a log can be opened as by hand, in the order of detection: [{id, name,
+    /// shortName}] (the names are the formats' own, not translated)
+    string formatsJson() const
+    {
+        import formats.registry : formatInfos;
+
+        JSONValue[] all;
+        foreach (info; formatInfos())
+            all ~= JSONValue(["id": info.id, "name": info.name, "shortName": info.shortName]);
+        return JSONValue(all).toString();
+    }
+
+    /// What the File Info page shows of the document: {name, path, format, formatId, detectedId,
     /// bytes, records, descriptions}, null if it isn't open. descriptions: null for a log that
     /// takes none, else {taken, folder, choice, read, reading, problem} (Document.descriptions;
     /// choice: those formatChoice names, problem translated), "" for none
@@ -740,6 +847,8 @@ final class AppSession
             "name": JSONValue(path.baseName),
             "path": JSONValue(path),
             "format": JSONValue(format is null ? "" : format.info.name),
+            "formatId": JSONValue(document.formatChoice.id),
+            "detectedId": JSONValue(_detected.of(path)),
             "records": JSONValue(document.messageCount),
             "bytes": JSONValue(document.byteSize),
             "descriptions": descriptions
@@ -1056,11 +1165,8 @@ final class AppSession
             const path = _documents.sourcePath(e.docId);
             const choice = _documents.doc(e.docId).formatChoice;
             // The same choice taken again (a FIBEX read at the open, read anew): nothing to write
-            if (path.length && savedFormat(_settings.recentFiles, path) != choice)
-            {
-                _settings.recentFiles = withFormat(_settings.recentFiles, path, choice);
+            if (rememberFormat(path, choice))
                 settingsChanged();
-            }
             if (auto ui = _documentUis.get(e.docId, null))
                 ui.fileInfoChanged = true;
         });
@@ -1320,6 +1426,7 @@ version (unittest)
             FakeDocument[string] opened; // by path
             AppSettings[] written;
             FormatChoice lastChoice; // asked of the factory
+            bool lastByHand; // and whether it was picked by the user
             string[] shown; // in the file manager
             bool refuseOpen; // every file opened from now on fails
         }
@@ -1334,16 +1441,27 @@ version (unittest)
             auto records = new Records();
             f.records = records;
             f.store = new DocumentStore();
-            f.session = new AppSession(settings, f.store, (string path, FormatChoice choice) {
+            f.session = new AppSession(settings, f.store, (string path, FormatChoice choice, bool byHand) {
                 records.lastChoice = choice;
+                records.lastByHand = byHand;
                 if (path.canFind("missing") || records.refuseOpen)
                     throw new Exception("no such file");
+                if (path.canFind("unreadable") && byHand)
+                {
+                    import log_core.log_format : FormatException;
+                    import utils.ui_text : uiText;
+                    throw new FormatException(FormatException.Kind.unreadable, uiText("unknown log format"));
+                }
                 if (path.canFind("refused"))
                 {
-                    import utils.ui_text : uiText, UiTextException;
-                    throw new UiTextException(uiText("not a log of {kinds}", "kinds", "DLT or text"));
+                    import log_core.log_format : FormatException;
+                    import utils.ui_text : uiText;
+                    throw new FormatException(FormatException.Kind.unrecognized,
+                        uiText("not a log of {kinds}", "kinds", "DLT or text"));
                 }
                 auto doc = new FakeDocument();
+                if (byHand)
+                    doc.choice = choice; // the format picked is the one it is open in
                 records.opened[path] = doc;
                 return cast(Document) doc;
             }, (in AppSettings s) { records.written ~= AppSettings(s); }, (string path) {
@@ -1443,6 +1561,26 @@ unittest
     assert(columns == 1 && heard.length == n);
 }
 
+@("AppSession: the tables are told the columns changed when a log is reopened in a format of other records, not otherwise")
+unittest
+{
+    auto f = Fixture.make();
+    const id = f.session.openFile(testPath("/logs/a.log")).docId;
+    const other = f.session.openFile(testPath("/logs/b.log")).docId;
+    int columns, otherColumns;
+    f.session.subscribeViews(id, ViewListener((bool search, ViewVersion v) {}, () { ++columns; }));
+    f.session.subscribeViews(other, ViewListener((bool search, ViewVersion v) {}, () { ++otherColumns; }));
+    f.session.dispatchEvents();
+
+    assert(f.session.retryDocument(cast(int) id.toInt()) == "");
+    assert(columns == 0, "the same format: the same columns");
+    assert(f.session.reopenAs(cast(int) id.toInt(), "logcat") == "");
+    assert(columns == 1, "the columns of the tables are those of another format now");
+    assert(otherColumns == 0, "the tables of another document keep their rows and their text selected");
+    assert(f.session.reopenAs(cast(int) id.toInt(), "logcat") == "");
+    assert(columns == 1, "the same records again");
+}
+
 @("AppSession: a file that can't be opened is listed with the reason, the script is told nothing")
 unittest
 {
@@ -1454,6 +1592,96 @@ unittest
     assert(failure["error"].str == "no such file");
     assert(f.session.settings.recentFiles.pathsOf == [testPath("/logs/missing.log")]);
     assert(!namesOf(f.session.takeScriptCalls()).canFind("onDocumentOpened"));
+}
+
+@("AppSession: a failure of opening tells its kind: of the system, or of the format")
+unittest
+{
+    import std.json : parseJSON;
+
+    auto f = Fixture.make();
+    assert(parseJSON(f.session.openFile(testPath("/logs/missing.log")).failureJson)["kind"].str == "system");
+    assert(parseJSON(f.session.openFile(testPath("/logs/refused.log")).failureJson)["kind"].str == "unrecognized");
+}
+
+@("AppSession: a file with no document opens in the format picked, and its failure names that format")
+unittest
+{
+    import std.json : parseJSON;
+
+    auto f = Fixture.make();
+    const path = testPath("/logs/a.log");
+    const opened = f.session.openFileAs(path, "dlt");
+    assert(opened.docId.isValid && f.records.lastChoice.id == "dlt" && f.records.lastByHand);
+    assert(savedFormat(f.session.settings.recentFiles, path).id == "dlt");
+
+    const failed = parseJSON(f.session.openFileAs(testPath("/logs/unreadable.log"), "dlt").failureJson);
+    assert(failed["kind"].str == "unreadable" && failed["format"].str == "DLT", "the name, not the id");
+    assert(f.session.settings.recentFiles.pathsOf.canFind(testPath("/logs/unreadable.log")), "listed to try again");
+    assert("format" !in parseJSON(f.session.openFile(testPath("/logs/refused.log")).failureJson).object,
+        "no format was asked: none to name");
+}
+
+@("AppSession: a Retry in the same format changes no settings, a format picked is written once")
+unittest
+{
+    auto f = Fixture.make();
+    const path = testPath("/logs/a.log");
+    const id = f.session.openFile(path).docId;
+    f.session.saveSettings("{}");
+    assert(!f.session.settingsDue);
+
+    assert(f.session.retryDocument(cast(int) id.toInt()) == "");
+    assert(!f.session.settingsDue, "nothing to write");
+
+    assert(f.session.reopenAs(cast(int) id.toInt(), "logcat") == "");
+    assert(f.session.settingsDue, "the format of the file is to be saved");
+}
+
+@("AppSession: the info of a document tells the format detection would pick for its file")
+unittest
+{
+    import std.file : remove, tempDir, write;
+    import std.json : parseJSON;
+    import std.path : buildPath;
+
+    const path = buildPath(tempDir(), "session_detected.log");
+    write(path, "11-03 14:22:01.123  1234  1250 I Tag: text\n");
+    scope (exit)
+        remove(path);
+    auto f = Fixture.make();
+    const id = f.session.openFile(path).docId;
+    assert(parseJSON(f.session.documentInfoJson(id))["detectedId"].str == "logcat", "though it is open as another");
+}
+
+@("AppSession: a file not open is detected again when the user asks it, not opened as it was last time")
+unittest
+{
+    auto settings = AppSettings.init;
+    settings.recentFiles = [RecentFile(testPath("/logs/a.log"), FormatChoice("logcat", 0), 1)];
+    auto f = Fixture.make(settings);
+    const path = testPath("/logs/a.log");
+
+    f.session.openFile(path);
+    assert(f.records.lastChoice.id == "logcat" && !f.records.lastByHand, "a plain open: as it was");
+    f.session.closeTab(cast(int) f.session.openFile(path).docId.toInt());
+    assert(f.session.openFileAs(path, "").docId.isValid);
+    assert(!f.records.lastChoice.isSet && !f.records.lastByHand, "detected, though logcat is what the list remembers");
+    assert(savedFormat(f.session.settings.recentFiles, path).id == "plain-text", "and remembered as what it is now");
+}
+
+@("AppSession: the formats to pick from, each once, and the one a document is open in")
+unittest
+{
+    import std.algorithm : count;
+    import std.json : parseJSON;
+
+    auto f = Fixture.make();
+    const formats = parseJSON(f.session.formatsJson()).array;
+    assert(formats.count!(x => x["id"].str == "dlt") == 1 && formats.count!(x => x["id"].str == "text") == 1);
+    assert(formats.length > 3 && formats[0]["name"].str.length);
+    const id = f.session.openFile(testPath("/logs/a.log")).docId;
+    assert(parseJSON(f.session.documentInfoJson(id))["formatId"].str == "plain-text", "what formatChoice tells");
 }
 
 @("AppSession: a file open already shows its tab instead of a second document")
@@ -1485,6 +1713,67 @@ unittest
     assert(f.store.doc(id) is f.docOf(path), "in the place of the old one, with its id");
     const calls = f.session.takeScriptCalls();
     assert(calls.length > 0 && calls[0] == ScriptCall("onDocumentReopened", cast(int) id.toInt()));
+}
+
+@("AppSession: reopenAs opens the file anew in its tab by the format picked, and the recent list keeps it")
+unittest
+{
+    auto f = Fixture.make();
+    const path = testPath("/logs/a.log");
+    const id = f.session.openFile(path).docId;
+    auto old = f.docOf(path);
+
+    assert(f.session.reopenAs(cast(int) id.toInt(), "logcat") == "");
+    assert(f.docOf(path) !is old, "opened anew");
+    assert(f.store.doc(id) is f.docOf(path), "in the place of the old one, with its id");
+    assert(f.records.lastChoice.id == "logcat" && f.records.lastByHand);
+    assert(savedFormat(f.session.settings.recentFiles, path).id == "logcat", "the next open is in it");
+}
+
+@("AppSession: reopenAs with no format detects the format again, not by the one the file had")
+unittest
+{
+    auto f = Fixture.make();
+    const path = testPath("/logs/a.log");
+    const id = f.session.openFile(path).docId;
+
+    assert(f.session.reopenAs(cast(int) id.toInt(), "") == "");
+    assert(!f.records.lastChoice.isSet && !f.records.lastByHand, "detected");
+}
+
+@("AppSession: a format that can't open the file leaves the document and the recent list as they were")
+unittest
+{
+    auto f = Fixture.make();
+    const path = testPath("/logs/a.log");
+    const id = f.session.openFile(path).docId;
+    auto old = f.docOf(path);
+    const before = savedFormat(f.session.settings.recentFiles, path);
+
+    f.records.refuseOpen = true;
+    assert(f.session.reopenAs(cast(int) id.toInt(), "dlt") == "no such file");
+    assert(f.store.doc(id) is old, "not replaced");
+    assert(savedFormat(f.session.settings.recentFiles, path) == before);
+    assert(f.session.reopenAs(12345, "dlt") != "", "a tab that is not open");
+}
+
+@("AppSession: the anchors of a file are not carried to other records, the filters are")
+unittest
+{
+    auto settings = AppSettings.init;
+    auto file = RecentFile(testPath("/logs/a.log"), FormatChoice("plain-text", 0), 1);
+    file.anchors = [3, 5];
+    file.filters = [SavedFilter("kept", "", true, null)];
+    settings.recentFiles = [file];
+    auto f = Fixture.make(settings);
+    const path = testPath("/logs/a.log");
+    const id = f.session.openFile(path).docId;
+    assert(f.docOf(path).anchored == [3, 5], "restored as the file was opened");
+
+    f.session.reopenAs(cast(int) id.toInt(), "logcat");
+    assert(f.docOf(path).anchored.length == 0, "the messages are others now");
+    assert(savedAnchors(f.session.settings.recentFiles, path).length == 0, "and not kept for the next open");
+    assert(f.session.filters(id).saved().length == 1 && f.session.filters(id).saved()[0].name == "kept");
 }
 
 @("AppSession: a document that can't be opened anew is shown lost, to be retried")
@@ -2034,7 +2323,7 @@ unittest
 
     AppSettings[] written;
     auto session = new AppSession(AppSettings.init, new DocumentStore(),
-        (string path, FormatChoice choice) => cast(Document) new LogDocument(path, choice),
+        (string path, FormatChoice choice, bool byHand) => cast(Document) new LogDocument(path, choice, byHand),
         (in AppSettings s) { written ~= AppSettings(s); });
     scope (exit) session.closeAll();
     const id = session.openFile(path).docId;
@@ -2061,7 +2350,7 @@ unittest
     scope (exit) remove(path);
 
     auto session = new AppSession(AppSettings.init, new DocumentStore(),
-        (string path, FormatChoice choice) => cast(Document) new LogDocument(path, choice),
+        (string path, FormatChoice choice, bool byHand) => cast(Document) new LogDocument(path, choice, byHand),
         (in AppSettings s) {});
     scope (exit) session.closeAll();
     const id = session.openFile(path).docId;

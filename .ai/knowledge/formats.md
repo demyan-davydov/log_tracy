@@ -8,6 +8,13 @@
   and picks the best (in UTF-8: see Text Formats for UTF-16).
 - Plain text is the low-score fallback; data no detector accepts is refused.
 - A `.dlt` extension alone only decides for binary data.
+- A format picked by hand (Open as) is made by `formats/registry.choiceFor(id, path, data)`:
+  the variant its detector reads in the data (its first variant when it reads none) and the
+  UTF-16 encoding when the data is that and the format is a text one. Unlike a saved choice,
+  it is never detected again if it fails (`LogDocument` `byHand`).
+- What detection would pick for a file is `registry.detectedFormatId(path, head)` (pure, of the
+  bytes): the pages that mark it (the lists of "Open as") ask `ui/detected_formats`, which reads
+  the head of a regular file once while its size and time of change stay.
 - A recent file remembers the format it was opened with (`FormatChoice`: `FormatInfo.id`, the
   variant, the text encoding and the file of descriptions; the descriptions are taken apart
   from `createFormat` and detection, by the document, and dropped for a format of none) and opens in it again through `createFormat`, without

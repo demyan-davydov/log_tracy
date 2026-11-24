@@ -96,6 +96,16 @@ struct ViewListeners
         });
     }
 
+    /// The columns of `doc` changed (it was opened again in a format with others): the listeners of
+    /// that document hear it
+    void columnsChanged(DocumentId doc)
+    {
+        tell((ref Entry e) {
+            if (e.doc == doc && e.listener.columnsChanged !is null)
+                e.listener.columnsChanged();
+        });
+    }
+
     /// The columns changed: every listener hears it
     void columnsChanged()
     {
@@ -133,6 +143,17 @@ unittest
     assert(heard == ["as"], "only the listener of the document");
     listeners.columnsChanged();
     assert(heard == ["as", "a cols", "b cols"]);
+}
+
+@("ViewListeners: a change of the columns of a document is heard by the listeners of that document only")
+unittest
+{
+    ViewListeners listeners;
+    string[] heard;
+    listeners.subscribe(DocumentId(1), ViewListener(null, () { heard ~= "a"; }));
+    listeners.subscribe(DocumentId(2), ViewListener(null, () { heard ~= "b"; }));
+    listeners.columnsChanged(DocumentId(2));
+    assert(heard == ["b"]);
 }
 
 @("ViewListeners: a change of the rules is heard by the listeners of its document")

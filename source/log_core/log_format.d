@@ -7,6 +7,27 @@ module log_core.log_format;
 import log_core.log_level : LogLevel;
 import log_core.log_message : LogMessage, TimeKind;
 import log_core.text_encoding : TextEncoding;
+import utils.ui_text : UiText, UiTextException;
+
+//! Why a log could not be given a format: no format knows its data (`unrecognized`), or the
+//! format asked for does not read it (`unreadable`). What the user can do about it differs from
+//! a failure of the system (no file, no right): choose a format by hand.
+class FormatException : UiTextException
+{
+    enum Kind : ubyte
+    {
+        unrecognized, //< detection found no format
+        unreadable, //< the format asked for can't be made of the data
+    }
+
+    Kind kind;
+
+    this(Kind kind, UiText text, string file = __FILE__, size_t line = __LINE__) @safe
+    {
+        super(text, file, line);
+        this.kind = kind;
+    }
+}
 
 //! What a column of the log table shows and how
 enum ColumnKind : ubyte

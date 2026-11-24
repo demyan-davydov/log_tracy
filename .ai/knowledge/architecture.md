@@ -17,7 +17,8 @@ LogDocument (domain/log_document)          a log + its main view and search view
 DocumentStore (domain/document_store)      open documents and who holds them, their events by id
 AppSession (ui/app_session)                what the calls of the script do: files, tabs
                                            (ui/document_tabs), views, search, filters, settings
-                                           (Sciter-free, tested)
+                                           (Sciter-free, tested); what detection picks for a file, for the
+                                           marks of "Open as": ui/detected_formats (kept while the file stays)
 MainWindow (ui/main_window)                Sciter window: xcall bridge to the session
 resources/script.js, tabs.js               the window: tabs, placeholder, settings, backend callbacks
 resources/document-pane.js                 a panel per document: its parts (view-table: the two tables,
@@ -309,8 +310,20 @@ The text code (wrapping, line layout, text hit tests, column styles) is in `ptab
   (`LogDocument.detectAnew`; passes wait for them), is opened anew: the document publishes
   `ReopenWanted` and builds nothing more, `AppSession` opens it in its tab by the format
   choice of the document (`reopen`, the path of Retry; the script's `onDocumentReopened`).
+  The user may pick a format (`AppSession.reopenAs`, `openFileAs(path, formatId)`, an empty id
+  detects the format again, `openFile(path)` opens as it was last time: the factory
+  gets `byHand`, `LogDocument` takes the variant and encoding of `registry.choiceFor` and no
+  other format stands in for one that can't read the file; a `FormatException` says why:
+  `unrecognized` (detection) or `unreadable` (the format asked for), the failure of the system
+  is any other exception; `OpenResult.failureJson` carries the `kind`). A change of records
+  drops the anchors of the file, the filters stay (`reopen`, `formatChangeOf`).
   A document is never given a format of other records in place: its holders keep the
-  columns of the format they opened it with (`DocumentFilters`). If it can't be opened, it
+  columns of the format they opened it with (`DocumentFilters`). But the id of a tab outlives
+  its document: `DocumentStore.replace` may put a document with other columns under it, and
+  whoever keeps state by that id (the rows and the column set of its tables) is told by
+  `AppSession.reopen` (`ViewListeners.columnsChanged(docId)`, for the records changed only):
+  a holder added later is told by it too, or paints the new rows by the old columns (a crash
+  once). If it can't be opened, it
   is shown lost, with Retry. Room to grow: `utils/mapped_file` reserves address space after the file
   (`roomFor`) and maps the new pages there (`MappedFile.grow`), the slot of the fault
   handler growing with it. On Windows (placeholders, Windows 10 1803+) whole 64K pieces of

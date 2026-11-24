@@ -221,16 +221,26 @@ class MainWindow : SciterWindow
             answer(_session.showInFolder(param!string(0)));
             return true;
         case "openFile":
-            // openFile(path) -> the id of the new document, or why the file
-            // can't be opened: {"path" (as in the recent list), "error"}
+        case "openFileAs":
+            // openFile(path) -> the id of the new document, or why the file can't be opened:
+            // {"path" (as in the recent list), "error", "kind", "format"}. openFileAs(path,
+            // formatId): in the format the user picked, detected again if it is ""
             const path = param!string(0);
             if (path.empty)
                 return true;
-            const opened = _session.openFile(pathOfFileUrl(path));
+            const opened = method == "openFileAs" ? _session.openFileAs(pathOfFileUrl(path), param!string(1))
+                : _session.openFile(pathOfFileUrl(path));
             if (opened.docId.isValid)
                 resultView = cast(int) opened.docId.toInt();
             else
                 answer(opened.failureJson);
+            return true;
+        case "reopenAs":
+            // reopenAs(docId, formatId) -> error message, "" if the file was reopened in the format
+            answer(_session.reopenAs(param!int(0), param!string(1)));
+            return true;
+        case "getFormats":
+            answer(_session.formatsJson());
             return true;
         case "retryDocument":
             // retryDocument(docId) -> error message, "" if the file was reopened

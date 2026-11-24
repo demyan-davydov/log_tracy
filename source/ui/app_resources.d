@@ -49,6 +49,8 @@ private enum string[] builtIn = [
     "menu-shortcuts.js",
     "new-tab.js",
     "notice.js",
+    "open-as-menu.js",
+    "open-as.js",
     "osx-frame.css",
     "pane-commands.js",
     "pane-state.js",

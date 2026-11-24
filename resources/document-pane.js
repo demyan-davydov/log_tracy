@@ -17,6 +17,7 @@ import { SelectionFollower } from "row-selection.js";
 import { tr, trc } from "i18n/i18n.js";
 import { translateTree } from "i18n/dom.js";
 import { fileInfoRows } from "file-info.js";
+import { openAsButtonText, openAsListItems } from "open-as-menu.js";
 import { rememberJump } from "go-to-message.js";
 import { showNotice } from "notice.js";
 import { FilterPanel } from "filter-panel.js";
@@ -106,8 +107,8 @@ function renderPane(splitters) {
             {/* The filters as chips: filter-panel.js */}
             <div class="bottom-page filter-page" data-page="filters" style="display:none;">
                 <div class="toolbar filter-toolbar">
-                    <button class="link-button btn-new-dlf" data-tr="New Filter..." />
-                    <button class="link-button btn-dlf" data-tr="Load Filter..." />
+                    <span class="text-link btn-new-dlf" data-tr="New Filter..." />
+                    <span class="text-link btn-dlf" data-tr="Load Filter..." />
                     <div class="filter-message" style="display:none;"></div>
                 </div>
                 <div class="filter-sets"></div>
@@ -465,17 +466,53 @@ export class DocumentPane {
         if (list.children.length !== rows.length * 2) {
             list.innerHTML = "";
             this.shownDescriptions = null;
+            this.shownFormat = null;
             for (const row of rows) {
                 list.append(<dt>{row.label}</dt>);
-                list.append(row.descriptions ? <dd class="descriptions" /> : <dd>{row.value}</dd>);
+                list.append(row.descriptions || row.openAs ? <dd class="descriptions" /> : <dd>{row.value}</dd>);
             }
         }
         rows.forEach((row, i) => {
             const label = list.children[2 * i], value = list.children[2 * i + 1];
             if (label.innerText !== row.label) label.innerText = row.label;
             if (row.descriptions) this.renderDescriptions(value, row);
+            else if (row.openAs) this.renderFormat(value, row);
             else if (value.innerText !== row.value) value.innerText = row.value;
         });
+    }
+
+    // The Format row (fileInfoRows): the format the log is open in and "Reopen as", the list of the
+    // formats to open it anew in (the one it is open in current). A `<span type="menu">` with the behavior
+    // of a menu button (`popup-menu`, see style.css), as the "⋮" of a recent file: Sciter opens its list on
+    // a press and shuts it on the next one. Changed only when it changed, and in place: the link that owns
+    // the list stays (a list open under it is shut first), as an owner taken away under its open list
+    // leaves the popup and the next click is lost
+    renderFormat(cell, row) {
+        const key = JSON.stringify([row, tr("Reopen as")]);
+        if (this.shownFormat === key) return;
+        this.shownFormat = key;
+        let list = cell.$(".btn-open-as menu");
+        if (!list) {
+            cell.innerHTML = "";
+            cell.append(<div class="format-line">
+                <span class="format-name"></span>
+                <span type="menu" class="text-link btn-open-as"><span class="open-as-label"></span><menu class="popup"></menu></span>
+            </div>);
+            list = cell.$(".btn-open-as menu");
+        }
+        cell.$(".format-name").innerText = row.value;
+        cell.$(".open-as-label").innerText = openAsButtonText(tr("Reopen as"));
+        if (list.state.popup) list.state.popup = false;
+        list.innerHTML = "";
+        for (const item of openAsListItems(backend.formats(), row.openAs.current, row.openAs.detected)) list.append(item);
+    }
+
+    // Opens the file of the log anew in this tab in the format `formatId` ("": detected again);
+    // refused: why, next to `near`
+    reopenAs(formatId, near = this.root) {
+        const error = backend.reopenAs(this.docId, formatId);
+        if (error) showNotice(near, error);
+        else this.reopened();
     }
 
     // The FIBEX row (fileInfoRows): what decodes the log, a note under it (a read
@@ -486,15 +523,16 @@ export class DocumentPane {
         if (this.shownDescriptions === key) return;
         this.shownDescriptions = key;
         const d = row.descriptions;
-        // The button that had the keys keeps them: the buttons are made anew
+        // The link that had the keys keeps them: the links are made anew
         const focused = document.$(":focus");
-        const focusedButton = focused && isInside(focused, cell) ? focused.className : null;
+        // The link that had the keys, by its own class (btn-...): all of them are `text-link`
+        const focusedLink = focused && isInside(focused, cell) ? focused.className.split(" ").find(c => c.startsWith("btn-")) : null;
         cell.innerHTML = "";
         // JSX gives a description of the elements, not elements: built whole, then appended
         // One line: the FIBEX (or "None", in italics), its × (unload: only with a FIBEX),
         // the chip "Load file | folder" that loads one. A note goes under it; a failed load with no FIBEX
         // keeps its × on the note, the only way to drop the note
-        const unload = <button class="link-button btn-fibex-unload icon-close" title={tr("Unload")}></button>;
+        const unload = <span class="text-link btn-fibex-unload icon-close" title={tr("Unload")}></span>;
         cell.append(<div class="descriptions-line">
             <span class={(d.muted ? "descriptions-path muted" : "descriptions-path") + (d.none ? " none" : "")}>{row.value}</span>
             {d.kind ? <span class="descriptions-kind">{d.kind}</span> : []}
@@ -502,19 +540,19 @@ export class DocumentPane {
             <span class="text-chip">
                 <span class="text-chip-label">{tr("Load")}</span>
                 <span class="text-chip-body">
-                    <button class="link-button btn-fibex-file">{trc("object", "file...")}</button>
+                    <span class="text-link btn-fibex-file">{trc("object", "file...")}</span>
                     <span class="text-chip-sep">|</span>
-                    <button class="link-button btn-fibex-folder">{trc("object", "folder...")}</button>
+                    <span class="text-link btn-fibex-folder">{trc("object", "folder...")}</span>
                 </span>
             </span>
         </div>);
         if (d.note) {
             cell.append(<div class={d.error ? "descriptions-note error" : "descriptions-note"}>
                 <span>{d.note}</span>
-                {d.canUnload && !d.hasPath ? <button class="link-button btn-fibex-unload icon-close" title={tr("Unload")}></button> : []}
+                {d.canUnload && !d.hasPath ? <span class="text-link btn-fibex-unload icon-close" title={tr("Unload")}></span> : []}
             </div>);
         }
-        const refocus = focusedButton && cell.$("." + focusedButton.split(" ")[0]);
+        const refocus = focusedLink && cell.$("." + focusedLink);
         if (refocus && !refocus.state.disabled) refocus.state.focus = true;
     }
 
@@ -599,6 +637,15 @@ export class DocumentPane {
         root.on("focusin", keysCame);
 
         on("click", ".btn-lost-close", () => this.host.closeTab(this.docId));
+
+        // The pick: the list is shut first and the log opened anew on the next turn, not under the
+        // click that is still being handled inside the list
+        on("click", ".file-info li[command=open-as-format]", (evt, item) => {
+            const format = item.getAttribute("format") ?? "";
+            const list = item.closest("menu");
+            if (list?.state.popup) list.state.popup = false;
+            setTimeout(() => this.reopenAs(format, this.root.$(".btn-open-as")), 0);
+        });
 
         // The FIBEX of the log (File Info): a file, or a folder of them. The system
         // dialogs choose either files or folders, not both: a button each

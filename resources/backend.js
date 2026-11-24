@@ -61,10 +61,14 @@ export const recentFiles = () => parsed(xcall("getRecentFiles"), []);
 export const removeRecentFile = path => xcall("removeRecentFile", path) === true;
 // Shows the file in the file manager of the system: why it can't, "" if shown
 export const showInFolder = path => message(xcall("showInFolder", path));
-// Opens a file: { docId } of its document, or { failure: { path (as in the
-// recent files), error } } if it can't be opened
-export function openFile(path) {
-    const result = xcall("openFile", path);
+// Opens a file in a new tab, as it was last time or detected: { docId } of its document, or
+// { failure: { path (as in the recent files), error, kind ("system", "unrecognized",
+// "unreadable"), format (the name of the one picked, when there was one) } } if it can't be opened
+export const openFile = path => opened(path, xcall("openFile", path));
+// The same in the format `formatId` the user picked (formats()), detected again if "" (not as it
+// was last time)
+export const openFileAs = (path, formatId) => opened(path, xcall("openFileAs", path, formatId));
+function opened(path, result) {
     if (typeof result !== "string") return { docId: result };
     try {
         return { failure: JSON.parse(result) };
@@ -74,6 +78,11 @@ export function openFile(path) {
 }
 // Reopens a lost file in the same tab: why it can't be, "" if it was reopened
 export const retryDocument = docId => message(xcall("retryDocument", docId));
+// Opens the file of a document anew in its tab in the format `formatId` (formats()), detected
+// again if "": why it can't be, "" if it was (the tab is then reset: DocumentPane.reopened)
+export const reopenAs = (docId, formatId) => message(xcall("reopenAs", docId, formatId));
+// The formats a log can be opened as by hand: [{ id, name, shortName }]
+export const formats = () => parsed(xcall("getFormats"), []);
 // The open documents in the order of the tabs: [{ id, name, path, active,
 // mainView, searchView }], null if the backend gives none
 export const workspaceInfo = () => parsed(xcall("getWorkspaceInfo"), null);
@@ -119,7 +128,7 @@ export const startChipSearch = (docId, chips) => message(xcall("startChipSearch"
 export const searchHistory = docId => parsed(xcall("getSearchHistory", docId), []);
 // Removes a query [chips] from the history of the file: whether it was there
 export const removeSearch = (docId, chips) => xcall("removeSearch", docId, JSON.stringify(chips)) === true;
-// {name, path, format, bytes, records, descriptions} of the document for its File Info page,
+// {name, path, format, formatId, bytes, records, descriptions} of the document for its File Info page,
 // null if it isn't open. descriptions: null for a log that takes none (no FIBEX row), else
 // {taken, folder, choice, read, reading, problem} (source/ui/app_session.d, documentInfoJson)
 export const documentInfo = docId => parsed(xcall("getDocumentInfo", docId), null);

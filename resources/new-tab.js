@@ -4,6 +4,8 @@
 // State: { open, active }; the functions return a new state. Tests:
 // tests/js/new-tab.test.mjs.
 
+import { tr } from "./i18n/i18n.js";
+
 export const noNewTab = Object.freeze({ open: false, active: false });
 const newTabShown = Object.freeze({ open: true, active: true });
 
@@ -64,4 +66,19 @@ export function shownDocument(state, docCount, activeDocId) {
 export function failureReason(message) {
     const match = /\(([^()]*)\)$/.exec(message);
     return match ? match[1] : message;
+}
+
+// The line under a file that failed to open (`failure` of backend.openFile: error, kind
+// "system" | "unrecognized" | "unreadable", format: the name of the one asked for): what the
+// user can do depends on it. Of the system (no file, no right) nothing of the format helps; no
+// format knew the data: choose one; the one asked for did not read it: choose another
+export function failureNote(failure) {
+    const reason = failureReason(failure.error);
+    if (failure.kind === "unrecognized") return tr("Format not recognized");
+    if (failure.kind === "unreadable") {
+        return failure.format
+            ? tr("Failed to open as {format}: {reason}", { format: failure.format, reason })
+            : tr("Failed to open in that format: {reason}", { reason });
+    }
+    return tr("Failed to open: {reason}", { reason });
 }

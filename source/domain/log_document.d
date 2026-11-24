@@ -21,7 +21,7 @@ import domain.log_index;
 import domain.index.progress : PassProgress;
 import domain.index.record_store : RecordsLease;
 import domain.operation_progress : filterOver, loadOver, progressOf, ProgressThrottle, Running;
-import formats.registry : createFormat, detectFormat, takesDescriptions, withDescriptions;
+import formats.registry : choiceFor, createFormat, detectFormat, takesDescriptions, withDescriptions;
 import log_core.byte_source;
 import log_core.log_format : ColumnInfo, FormatChoice, LogFormat;
 
@@ -122,8 +122,10 @@ class LogDocument : Document
 
     //! @brief Opens the file in the format chosen before, or detects it
     //! @param choice - the format to open with; unset: detect it
+    //! @param byHand - `choice` is a format the user picked (its id only): the variant and the
+    //! encoding are chosen by the file, and a format that can't read it is an error
     //! @throws Exception if the file can't be opened or its format is unknown
-    this(string path, FormatChoice choice = FormatChoice.init)
+    this(string path, FormatChoice choice = FormatChoice.init, bool byHand = false)
     {
         auto source = new FileSource(path);
         scope (failure)
@@ -133,14 +135,21 @@ class LogDocument : Document
         // A choice this build can't make (a format it doesn't know, a broken
         // variant) is detected again instead of locking the file out
         LogFormat format;
-        if (choice.isSet)
+        const descriptions = choice.descriptions;
+        if (choice.isSet && byHand)
+        {
+            // Picked by the user: the variant and the encoding are the file's for that format, and no
+            // other format stands in its place if it can't read the file
+            choice = choiceFor(choice.id, path, source.data);
+            format = createFormat(choice, source.data);
+        }
+        else if (choice.isSet)
         {
             try
                 format = createFormat(choice, source.data);
             catch (Exception)
                 format = null;
         }
-        const descriptions = choice.descriptions;
         if (format is null)
             format = detectFormat(path, source.data, choice);
         choice.descriptions = descriptions; // not detected: kept for the format detected too
@@ -1226,6 +1235,49 @@ version (unittest)
             Thread.sleep(1.msecs);
         }
     }
+}
+
+@("LogDocument: a format picked by hand opens the file in it, the variant and the encoding the file has")
+unittest
+{
+    import std.file : remove, write, tempDir;
+    import std.path : buildPath;
+
+    const path = buildPath(tempDir(), "document_by_hand.log");
+    write(path, "11-03 14:22:01.123  1234  1250 I Tag: text\n");
+    scope (exit)
+        remove(path);
+
+    auto doc = new LogDocument(path, FormatChoice("text"), true);
+    scope (exit)
+        doc.destroy();
+    assert(doc.formatChoice == FormatChoice("text"), "not logcat, which detection would pick");
+    auto detected = new LogDocument(path);
+    scope (exit)
+        detected.destroy();
+    assert(detected.formatChoice.id == "logcat");
+}
+
+@("LogDocument: a format picked by hand that can't read the file is an error, not a detection in its place")
+unittest
+{
+    import log_core.log_format : FormatException;
+    import std.exception : collectException;
+    import std.file : remove, write, tempDir;
+    import std.path : buildPath;
+
+    const path = buildPath(tempDir(), "document_by_hand_unknown.log");
+    write(path, "notes\n");
+    scope (exit)
+        remove(path);
+
+    auto e = collectException!FormatException(new LogDocument(path, FormatChoice("nope"), true));
+    assert(e !is null && e.kind == FormatException.Kind.unreadable);
+    // The one saved before that this build can't make is detected again: not locked out
+    auto saved = new LogDocument(path, FormatChoice("nope"), false);
+    scope (exit)
+        saved.destroy();
+    assert(saved.formatChoice.id == "text");
 }
 
 @("LogDocument: opening reports Started, Progress, Finished in order")
