@@ -100,8 +100,9 @@ whether the program is up to date or not. `dub describe` doesn't run it, so the 
 `bench` and `test --module`, which ask dub to describe, put the library in place themselves.
 Without Node.js dub stops there and says so (`Node.js is required to build`), after that stage and
 before any build, run or test hook. The check is in the command of dub.sdl, in the shell of the
-system, and tells the presence of `node`, not its version (22 or newer); for Windows (`cmd`) it is
-written but not tried.
+system, and tells the presence of `node`, not its version (22 or newer); the Windows (`cmd`)
+variant runs in the CI (`dub test` goes through it), but its message for a missing `node` was
+not seen there.
 
 ## Commands
 
