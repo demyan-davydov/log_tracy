@@ -7,7 +7,7 @@
 module ui.log_table.log_tables;
 
 import ptable.columnhost : ColumnHost;
-import ptable.tablepointer : OverKinds;
+import ptable.table : OverKinds;
 import ui.log_table.log_columns : anchorColumnId, indexColumnId;
 import ui.log_table.log_look : defaultLogLook, LogLook;
 import ui.table_script : TableControl, TableRegistry;

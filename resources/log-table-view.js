@@ -121,12 +121,11 @@ export class LogTableView {
     // as its continuation (popup.column-tip in table.css). It hides when the title may move from under it: a wheel or the fingers
     // scroll the columns, a key is pressed, a menu opens, the window loses the focus, the table goes.
     makeTip() {
-        let hints = null, close = null;
+        let close = null;
         const tip = new ColumnTip({
-            hintOf: column => {
-                hints ??= hintsOf(columns(this.docId)); // null while the document is not open: asked again at the next title
-                return hints?.get(column);
-            },
+            // Asked at every title, not kept: the columns of a document change when it is reopened as another format;
+            // null while the document is not open
+            hintOf: column => hintsOf(columns(this.docId))?.get(column),
             show: (rect, text) => {
                 close = popupAtRect(this.element, rect, Element.create(<popup class="column-tip" style={`font-size: ${headerPoints * fontPercent() / 100}pt`}>{text}</popup>),
                     { anchorAt: 1, popupAt: 7, onDismissed: () => tip.dismiss() }); // its top-left on the title's bottom-left

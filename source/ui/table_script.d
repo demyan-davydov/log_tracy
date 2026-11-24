@@ -6,7 +6,7 @@
 module ui.table_script;
 
 import ptable.tablehit : CopyTarget;
-import ptable.tablepointer : OverKinds;
+import ptable.table : OverKinds;
 import std.math : isNaN;
 
 /// The numbers of a call's arguments after its method; a value that is not a number is NaN
