@@ -8,7 +8,7 @@ import log_core.log_message : TimeKind;
 import std.json : JSONValue;
 
 //! @brief The columns of a log of the format `formatId` (FormatInfo.id) as
-//! JSON for the script (the Settings arrange them): a column is found by the
+//! JSON for the script (the Settings arrange them, the table tips its titles): a column is found by the
 //! ids of its format and of the column
 string columnsJson(const(ColumnInfo)[] columns, string formatId)
 {
@@ -31,6 +31,8 @@ string columnsJson(const(ColumnInfo)[] columns, string formatId)
             c["labels"] = JSONValue(column.labels);
         if (column.byLevel)
             c["byLevel"] = JSONValue(true);
+        if (column.hint.length)
+            c["hint"] = JSONValue(column.hint); // the tip of the title
         result ~= c;
     }
     return JSONValue(result).toString();
@@ -60,4 +62,16 @@ unittest
     ], "dlt");
     assert(json.count(`"format":"dlt"`) == 2, json);
     assert(!json.canFind(`"width"`), json);
+}
+
+@("columnsJson: a column with a full name gives it as its hint, one whose title says it all gives none")
+unittest
+{
+    import std.algorithm.searching : canFind, count;
+
+    ColumnInfo session = ColumnInfo("sid", "sId", ColumnKind.Integer);
+    session.hint = "Session ID";
+    const json = columnsJson([session, ColumnInfo("time", "Time", ColumnKind.Time)], "dlt");
+    assert(json.canFind(`"hint":"Session ID"`), json);
+    assert(json.count(`"hint"`) == 1, json);
 }

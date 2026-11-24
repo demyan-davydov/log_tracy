@@ -6,6 +6,7 @@
 module ui.table_script;
 
 import ptable.tablehit : CopyTarget;
+import ptable.table : OverKinds;
 import std.math : isNaN;
 
 /// The numbers of a call's arguments after its method; a value that is not a number is NaN
@@ -119,6 +120,7 @@ interface TableControl
     void detach();
     /// The table is back with its column host (`Table.attach`)
     void attach();
+    void hearOver(OverKinds kinds); /// the script hears the mouse enter and leave the titles, the cells (a handler of the view listens)
 
     /// The measurements as JSON
     wstring stats();
@@ -166,6 +168,9 @@ bool dispatch(TableControl control, const(char)[] method, ScriptArgs args, out S
         return true;
     case "attach":
         control.attach();
+        return true;
+    case "hearOver":
+        control.hearOver(OverKinds(args.number(0) != 0, args.number(1) != 0)); // headers, cells
         return true;
     default:
         version (DebugChannel)
@@ -315,6 +320,7 @@ version (unittest)
         void contextPick(size_t row) { calls ~= "contextPick " ~ row.to!string; }
         void detach() { calls ~= "detach"; }
         void attach() { calls ~= "attach"; }
+        void hearOver(OverKinds kinds) { calls ~= "hearOver " ~ kinds.headers.to!string ~ " " ~ kinds.cells.to!string; }
         void updateRow(size_t item) { calls ~= "updateRow " ~ item.to!string; }
         void updateCell(size_t item, size_t column) { calls ~= "updateCell " ~ item.to!string ~ " " ~ column.to!string; }
         void anchorApplied(size_t message, bool moved) { calls ~= "anchorApplied " ~ message.to!string ~ " " ~ moved.to!string; }
@@ -340,12 +346,13 @@ unittest
     assert(dispatch(control, "copy", ScriptArgs(), result) && dispatch(control, "copy", ScriptArgs([2, 7, 3]), result));
     assert(dispatch(control, "hitTest", ScriptArgs([5, 6]), result) && result == ScriptResult.ofText(`{"row":1}`w));
     assert(dispatch(control, "contextPick", ScriptArgs([4]), result));
+    assert(dispatch(control, "hearOver", ScriptArgs([1, 0]), result));
     assert(dispatch(control, "updateRow", ScriptArgs([4]), result) && dispatch(control, "updateCell", ScriptArgs([4, 2]), result));
     assert(dispatch(control, "anchorApplied", ScriptArgs([9, 1]), result) && dispatch(control, "anchorApplied", ScriptArgs([8]), result));
     assert(dispatch(control, "copy", ScriptArgs([7, 1, 1]), result) && dispatch(control, "copy", ScriptArgs([2, -1, 1]), result), "no kind or row like that: known call, nothing copied");
     assert(control.calls == ["jump 500 true", "scrollBy -80 false", "render", "copyText true", "stats", "select [1, 2, 3, 4]",
         "pan -7.5 0", "pan 1 4", "panEnd", "copyText false",
-        "copy text 0 0", "copy cell 7 3", "hitTest 5 6", "contextPick 4", "updateRow 4", "updateCell 4 2", "anchorApplied 9 true", "anchorApplied 8 false"]);
+        "copy text 0 0", "copy cell 7 3", "hitTest 5 6", "contextPick 4", "hearOver true false", "updateRow 4", "updateCell 4 2", "anchorApplied 9 true", "anchorApplied 8 false"]);
 }
 
 @("dispatch: detach and attach take the table out of its column host and back, in every build")

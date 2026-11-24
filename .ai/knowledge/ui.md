@@ -122,6 +122,26 @@ behaviour: `.ai/knowledge/sciter.md`.
 - Text is selected across cells and rows by the table (`ptable`), not by Sciter: a plain drag selects text, a plain click selects the row,
   Shift/Cmd work on rows (rule 29). Positions are (row, cell, caret).
 - Drawing a row is hot: see `.ai/rules/ui.md`; the table keeps no content of a row from one frame to the next.
+- The mouse of a table is one unit, `ptable/tablepointer` (`TablePointer`): where the mouse was last seen, the dispatcher of what it
+  did to the titles and the cells (`ptable/pointerdispatch`, `PointerDispatch`), whether a clickable cell holds the press, what the host is
+  still to hear. The table hit-tests (`Table.targetAt`, the one hit test of the titles and the cells: `clickableCellAt` is it and a column's
+  `ColumnDef.clickable`, `Table.hitTest` of the menus builds on it), decides who owns a press and whether it became a drag (`TableSelection`), and feeds it: a move from
+  `Table.hoverAt` and from the paint (the rows moved under a still mouse: the thing under the point kept), a press, a release, a cancel;
+  it answers when the host takes or lets go of the mouse (`Capture`): any press holds it until the release or a cancel. A reset of the
+  rows (`Table.forgetPicks`) cancels the press and leaves the mouse over nothing until the next paint asks again. The dispatcher's
+  listeners either hold (a leave at the press, nothing until the release, then the thing under the mouse again) or track
+  (`ListenerWants.track`); one listener's wants change nothing of what the others hear. The host holds: `TableEvents.pointer`, told
+  after the input that made it (a move, a press, a release, a cancel, a reset of the rows) or the paint; an enter and the leave of the
+  same thing not yet told cancel out; a press on nothing holds the mouse but is told nothing of; it hears the enters and leaves only
+  of the kinds it asks for (`Table.hostHearsOver` with `OverKinds`: titles, cells; the script's
+  `LogTableView.onPointer(handler, { over: ["header"] })` writes the attribute `hears` on the table's element, which a table attaching
+  later reads (`hearsOf`), and calls `hearOver`: the cells' come at every frame of a scroll under the mouse).
+  `ui/log_table_behavior` sends `logTableEvent` (`ui/table_messages`: `readsOf` says what is read for it, `pointerJson`) and the script
+  hands it to the handlers of the view (`pointer-handlers.js`: who hears, the union of the kinds asked); the anchor's click is one of them (`isAnchorClick`). A release of another button alone ends no
+  press (`endsPress`). The table's own work with the mouse (selecting text and rows, the drag past the rows, double and triple clicks by
+  `selectAt`) is not a listener: it is the table's, and goes on whatever a handler does. The scroll bars of `ScrolledTable` take their
+  presses before the table: those are no presses of the dispatcher; whether the table is pressed is `Table.pressed` (no bar widens under it). A new thing (a mark, a part of a cell) is a new `TargetKind` and
+  `Table.targetAt`/`targetRect` of it (`targetRect`: the part seen, not under a pinned column); a drag of a thing (a column by its title) would be a listener of the table's own that tracks.
 
 ## Menu
 
@@ -178,7 +198,9 @@ behaviour: `.ai/knowledge/sciter.md`.
 - File Info page: `file-info.js` (the rows; the FIBEX row of a DLT log: what decodes it, a
   read going on or why one failed, Load File / Load Folder / Unload), rendered by
   `DocumentPane.updateFileInfo`, refreshed by `onFileInfoChanged`
-- Notices: `notice.js`
+- Notices: `notice.js`; a popup by a place of the painted table, with no element of its own (`popupAtRect`): `rect-popup.js`
+- The tip of a short column title (the full name, `hint` of `getColumns`): `column-tip.js` (when it shows and hides, pure), shown by
+  `LogTableView.makeTip` through `onPointer` (`hintsOf`); it hides on a wheel, a pan, a key, a context menu, the window losing the focus
 - The menu button (Windows, Linux), the look of every menu: `main-menu.js`, `main-menu.css`, `menu-shortcuts.js`
 - Theme and window frame: `theme.js`, `theme-light.css`, `theme-dark.css`, `window-frame.js`,
   `osx-frame.css`, `win-frame.css`

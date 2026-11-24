@@ -128,3 +128,16 @@ popup.notice.right {
     margin-left: 3dip;
     popup-animation: popup-animation(type:slide, axis:horizontal, heading:start-to-end, duration:200ms);
 }
+
+/* The full name of a short column title (log-table-view.js, makeTip): under the title, as its continuation (rule 14 of .ai/rules/ux.md):
+   the color and the font of the title (D's header font, LogFont.header of source/ui/log_table/log_look.d; its size, scaled as the
+   table's text, is set by the script), its top-left corner square on the title's, the rest rounded: it is mostly wider than the title */
+popup.column-tip {
+    background-color: var(--bg-table-header);
+    color: var(--text-main);
+    font-family: 'Courier New', Courier, monospace;
+    border: 1dip solid var(--border-color);
+    border-radius: 0 4.5pt 4.5pt 4.5pt;
+    padding: 2pt 6pt;
+    box-shadow: 0 1.5pt 4.5pt rgba(0, 0, 0, 0.2);
+}

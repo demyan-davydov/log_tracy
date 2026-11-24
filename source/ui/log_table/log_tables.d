@@ -1,4 +1,5 @@
-//! The log tables of the window (`LogTables`): what a table shows, read off its element (`tableAttributesOf`), the tables the script
+//! The log tables of the window (`LogTables`): what a table shows and what the script hears of its mouse, read off its element
+//! (`tableAttributesOf`, `hearsOf`), the tables the script
 //! talks to by their numbers, and what they share: the column host of a document, so the main table and the search table of a
 //! document keep the same columns, widths, hidden columns and horizontal scroll, fit to the rows of both; the look and the single-line
 //! setting of the application. What the script asks of the log tables (`logTableCall`, `logTableSetLook`, ...) is done here: the
@@ -6,6 +7,7 @@
 module ui.log_table.log_tables;
 
 import ptable.columnhost : ColumnHost;
+import ptable.table : OverKinds;
 import ui.log_table.log_columns : anchorColumnId, indexColumnId;
 import ui.log_table.log_look : defaultLogLook, LogLook;
 import ui.table_script : TableControl, TableRegistry;
@@ -57,6 +59,17 @@ unittest
     assert(!detachedOf(""));
 }
 
+/// Reads the attribute `hears` of a log table's element: the kinds of things the script hears the mouse enter and leave (a handler of
+/// the view asked: resources/log-table-view.js, `onPointer`), by space ("header cell"); none when it is not there. The element keeps
+/// them so a table attached later (or again) hears what the script asked before
+OverKinds hearsOf(const(char)[] hears)
+{
+    import std.algorithm.iteration : splitter;
+    import std.algorithm.searching : canFind;
+
+    return OverKinds(hears.splitter(' ').canFind("header"), hears.splitter(' ').canFind("cell"));
+}
+
 @("tableAttributesOf: the document, the view and the number of a table as the script wrote them; one missing or wrong is no table")
 unittest
 {
@@ -69,6 +82,15 @@ unittest
     assert(!tableAttributesOf("3", "0", "x", read), "a number is a number");
     assert(!tableAttributesOf("3", "0", "0", read), "the numbers start at 1");
     assert(!tableAttributesOf("-1", "0", "2", read), "no document has a negative id");
+}
+
+@("hearsOf: the kinds of things whose enters and leaves the script hears, as it wrote them on the table's element; none if none")
+unittest
+{
+    assert(hearsOf(null) == OverKinds(false, false));
+    assert(hearsOf("header") == OverKinds(true, false));
+    assert(hearsOf("header cell") == OverKinds.all);
+    assert(hearsOf("cell") == OverKinds(false, true));
 }
 
 /// The log tables of the window: those the script talks to, by their numbers, and what they share
@@ -89,10 +111,12 @@ final class LogTables
         _tables.each((TableControl table) { table.singleLine(on); });
     }
 
-    /// The table `control` attached as `id`: the script talks to it from now on
-    void attached(size_t id, TableControl control)
+    /// The table `control` attached as `id`: the script talks to it from now on; it hears the enters and leaves of `hears`, what the
+    /// script asked on its element before (`hearsOf`)
+    void attached(size_t id, TableControl control, OverKinds hears = OverKinds.init)
     {
         _tables.attach(id, control);
+        control.hearOver(hears);
     }
 
     /// The table `control` is gone (whatever its number)
@@ -198,6 +222,23 @@ unittest
     assert(a.lines == [true] && b.lines == [true] && gone.lines.length == 0, "the tables there are, not one gone");
     assert(tables.singleLine, "the next table starts so");
     assert(tables.table(1) is a && tables.table(3) is null && tables.table(9) is null);
+}
+
+@("LogTables: a table attached hears the enters and leaves the script asked for on its element before it attached")
+unittest
+{
+    import std.typecons : BlackHole;
+
+    static class Told : BlackHole!TableControl
+    {
+        OverKinds[] heard;
+        override void hearOver(OverKinds kinds) { heard ~= kinds; }
+    }
+
+    auto tables = new LogTables;
+    auto a = new Told;
+    tables.attached(1, a, OverKinds(true, false));
+    assert(a.heard == [OverKinds(true, false)]);
 }
 
 @("LogTables: the look the script sends is the look every table has; the names of the least widths are a JSON array")

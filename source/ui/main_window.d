@@ -18,7 +18,7 @@ import ui.app_resources : appResourceOfUrl, appResourceUrl, builtInCatalogs;
 import ui.app_session : AppSession;
 import ui.app_settings : toJSON;
 import ui.filter_commands : DocumentFilters;
-import ui.log_table.log_tables : LogTables, TableAttributes, tableAttributesOf;
+import ui.log_table.log_tables : LogTables, TableAttributes, hearsOf, tableAttributesOf;
 import sciter.element : attributeOf;
 import ui.log_table.log_table : TableSource;
 import ui.script_queue : ScriptQueue;
@@ -68,9 +68,10 @@ class MainWindow : SciterWindow
             return null;
         }
         const id = shown.id;
+        const hears = hearsOf(attributeOf(he, "hears"));
         auto source = TableSource(_session, _session.findDocument(shown.doc), shown.search, _tables.hostOf(shown.doc), _tables.singleLine);
         return new LogTableBehavior(source, _tables.look,
-            TableHooks(id, (TableControl control) { _tables.attached(id, control); }, &_tables.detached, &_tableCalls.put), he);
+            TableHooks(id, (TableControl control) { _tables.attached(id, control, hears); }, &_tables.detached, &_tableCalls.put), he);
     }
 
     /// The menu of the window on `platform`, in the language of the interface

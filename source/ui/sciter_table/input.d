@@ -22,6 +22,13 @@ bool startsPress(uint buttonState)
     return (buttonState & MOUSE_BUTTONS.MAIN_MOUSE_BUTTON) != 0;
 }
 
+/// Whether a release may end the table's press: one that names another button and not the main one does not (a right click while the
+/// main button is held). One that names none passes: what Sciter gives on a release is not checked (6.0.5.5)
+bool endsPress(uint buttonState)
+{
+    return buttonState == 0 || (buttonState & MOUSE_BUTTONS.MAIN_MOUSE_BUTTON) != 0;
+}
+
 /// The key of the table a key of Sciter is; false for one the table has no use for
 bool tableKey(uint keyCode, out Key key)
 {
@@ -172,6 +179,14 @@ unittest
 {
     assert(wheelIsAcross(KEYBOARD_STATES.KEYBOARD_STATE_LSHIFT) && wheelIsAcross(KEYBOARD_STATES.KEYBOARD_STATE_RSHIFT));
     assert(!wheelIsAcross(0) && !wheelIsAcross(KEYBOARD_STATES.KEYBOARD_STATE_LCONTROL));
+}
+
+@("endsPress: the release of another button alone ends no press of the main one; one of the main button or of none does")
+unittest
+{
+    assert(endsPress(MOUSE_BUTTONS.MAIN_MOUSE_BUTTON) && endsPress(0));
+    assert(!endsPress(MOUSE_BUTTONS.PROP_MOUSE_BUTTON) && !endsPress(MOUSE_BUTTONS.MIDDLE_MOUSE_BUTTON));
+    assert(endsPress(MOUSE_BUTTONS.MAIN_MOUSE_BUTTON | MOUSE_BUTTONS.PROP_MOUSE_BUTTON));
 }
 
 @("startsPickPress: the main button, not with Control on macOS; isOurEvent: not a sinking or a handled event")

@@ -350,15 +350,10 @@ unittest
     assert(instanceLockPath(buildPath("a", "b", "settings.json")) == buildPath("a", "b", "settings.lock"));
 }
 
-/// The version of the layout of settings.json, written into it for a change of the layout that
-/// can't be read by the keys alone; nothing reads it yet.
-enum settingsVersion = 1;
-
 static JSONValue toJSON(in AppSettings settings)
 {
     JSONValue j;
     j.object = null; // Clear
-    j.object["version"] = JSONValue(settingsVersion);
 
     JSONValue r = [
         "left": settings.windowRect.left, "top": settings.windowRect.top,
@@ -517,12 +512,6 @@ void saveSettings(in AppSettings settings, string path = defaultSettingsPath())
     {
         writeln("Error saving settings: ", e.msg);
     }
-}
-
-@("settings: the version of the settings is written")
-unittest
-{
-    assert(toJSON(AppSettings.init)["version"].integer == 1);
 }
 
 @("settings: the recent list survives a save and a load")
