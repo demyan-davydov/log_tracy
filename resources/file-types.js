@@ -11,3 +11,13 @@ export const fileFilter = (types) => types
 
 // The type that ends a filter: any file
 export const allFiles = () => [tr("All Files"), "*.*"];
+
+// The filter of the dialog that opens a log. A log has any name (`.bin`, `.out`, `.gz` to be
+// unpacked, none), so the types here only help to find it. macOS: none, its panel takes the
+// patterns of every type for the only extensions that can be chosen, "All Files" doesn't lift it
+// (the dialog of a FIBEX keeps its filter: it is XML)
+export function logFileFilter(mac) {
+    if (mac) return "";
+    return fileFilter([[tr("Log Files"), "*.dlt;*.log;*.txt"], [tr("DLT Files"), "*.dlt"],
+        [tr("Text Logs"), "*.log;*.txt"], allFiles()]);
+}

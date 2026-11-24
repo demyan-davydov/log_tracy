@@ -148,6 +148,12 @@ behaviour: `.ai/knowledge/sciter.md`.
 ## If You Need X, Start Here (resources/)
 
 - The window, its documents, the start screen: `script.js`, `window-state.js`, `new-tab.js`
+  (`failureNote`: the note under a file that failed to open, by its kind)
+- Opening a log in a format picked by hand ("Open as"; the backend: `openFileAs`, `reopenAs`,
+  `formats`, and `ui/detected_formats` for the mark "auto-detected"): `open-as.js` (the list, Sciter-free),
+  `open-as-menu.js` (its items as markup), used by the Format row of File Info
+  (`document-pane.js`), the menu of a tab and the menu of a recent file (`script.js`,
+  `recent-file-menu.js`: when the item is on)
 - Tabs: `tabs.js`, `drag-strip.js`, `drag-order.js`
 - One document's panel: `document-pane.js`, `view-table.js`, `filter-panel.js`,
   `search-bar.js`, `status-view.js`, `pane-state.js`, `pane-commands.js`, `panel-sizes.js`

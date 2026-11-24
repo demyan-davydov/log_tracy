@@ -24,9 +24,9 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
 3. **No duplicate controls.** An action available in the app menu doesn't get a toolbar button
    too (there is no top toolbar). Exceptions: "+" in the tab strip, and the button that collapses
    the bottom panel (View → Hide/Show Bottom Panel). Actions that belong to a
-   panel's content live in that panel (Load Filter next to the filters on their page; Load
-   File, Load Folder and Unload FIBEX on the File Info page of a DLT log, under the path of
-   the FIBEX).
+   panel's content live in that panel (Load Filter next to the filters on their page; the
+   links "file...", "folder..." and the cross that unloads the FIBEX on the File Info page of a
+   DLT log, under the path of the FIBEX).
 4. **Settings, not quick toggles.** Rarely changed preferences (the theme) live in Settings; no
    separate toggle button or menu item.
 5. **Hide what can't be used.** Panels that only work with a document (filters, document view,
@@ -250,7 +250,7 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
 35. **Immediate and forgiving.** A file joins the recent list (newest first, max 8) as soon as
     it opens, and the list is saved at once. A file that no longer exists stays listed, grayed,
     with a "File not found" note; a file that failed to open goes on top, marked "Failed to
-    open" with the reason under it (error color), and the New Tab is brought up if a document
+    open" (or by its kind, rule 52) with the reason under it (error color), and the New Tab is brought up if a document
     was shown; the reason disappears after a successful open or "+".
 36. **A file remembers its format.** A recent file opens in the format it was opened with last
     time, not by detection; with no saved format it is detected and then remembered. The
@@ -263,9 +263,10 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     refresh while the screen is shown.
 38. **Actions in a per-row menu.** Hovering a recent file shows a "⋮" button at the right of
     its row, in a slot of its own (nothing moves); it stays while its menu is open. The menu
-    acts on that file only: Show in Folder, Copy Path, then apart Remove from Recent. The
-    labels are the same on every system. An open file has no Remove; a file not found has Show
-    in Folder disabled. No "Clear all recent". Remove has no confirmation and no undo for now.
+    acts on that file only: Show in Folder, Copy Path, Open as (a submenu, rule 51), then apart
+    Remove from Recent. The labels are the same on every system. An open file has no Remove and
+    no Open as (its tab has it); a file not found has Show in Folder and Open as disabled. No
+    "Clear all recent". Remove has no confirmation and no undo for now.
 
 ## Settings
 
@@ -306,11 +307,14 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     The "Filters" tab has a dot after its name while some rule works on the log (an enabled,
     applied rule of an enabled set, markers too), so a filtered log is seen with another page
     open; the dot grows in and out, the tab keeps its width.
-43. **File Info.** Path, Size (physical size with the record count next to it), Format, and
-    for a DLT log FIBEX last: the path of the FIBEX with "file" or "folder" after it (or that
-    there is none; the remembered one muted while it is read or if it can't be), a note under
-    it (reading, or why it can't be read: the one before stays), and the buttons Load File,
-    Load Folder (the system dialogs pick files or folders, not both) and Unload. No Name row
+43. **File Info.** Path, Size (physical size with the record count next to it), Format (a plate
+    with a ground, as the badge of a file of the New Tab, adding no height to the line; with
+    "Reopen as" after it, rule 51; none for a log with no format, its file lost), and for a DLT
+    log FIBEX last: the path of the FIBEX with "file" or "folder" after it (or that there is
+    none; the remembered one muted while it is read or if it can't be), a note under
+    it (reading, or why it can't be read: the one before stays), and the links "file..." and
+    "folder..." after "Load" (the system dialogs pick files or folders, not both) and the cross
+    that unloads (links of rule 53). No Name row
     (the tab shows it). Every value that carries information is selectable.
 44. **Filters as chips.** The Filters page shows a block per filter set: its head (switch,
     name, buttons) on its own line, as wide as its content, its buttons shown right of the
@@ -339,3 +343,33 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     Its thumb is taken by the mouse and dragged anywhere, held outside the window too; a press on
     its track puts the thumb there at once. How it comes, goes and widens is made smooth last
     (the user, 2026-11-20).
+51. **Open as: one choice everywhere.** A log can be opened in another format by hand where
+    its format is told or its file is: the Format row of File Info (the link "Reopen as" with a
+    small triangle after it, written as text, a list), the context menu of its tab ("Reopen as",
+    a submenu; none for a log with no format, its file lost) and the menu of a file of the
+    recent list ("Open as", a submenu: the file is not open). One action in three places is on
+    purpose: each is where the user is looking at that log or file. The list is the same in all
+    three: "Detect automatically" first, then the formats by their own names, the one the log is
+    open in bold (the menus have no check), the one detection picks for the file marked
+    "auto-detected" at the right, in the grey of a shortcut. In the recent list it is for a file
+    that is there and not open (an open one has its tab), and not for a file the system refused
+    (no right, no disk: the format is not the matter), the item is disabled then. Picking opens
+    the file anew in its tab (a file not open: in a new one), the filters stay (a rule of a
+    column the new format lacks is not applied), the anchors go (they number the messages of the
+    old records), the choice is remembered for the file (rule 36). A format that can't read the
+    file leaves the log as it was, with a notice (rule 19) or, from the list, a note under the
+    file.
+52. **A failed open says what failed.** The note under a file of the recent list that did not
+    open tells which: "Failed to open: <reason>" when the system refused (no file, no right),
+    "Format not recognized" when no format knew the data, "Failed to open as <format>: <reason>"
+    when the format the user picked did not read it (a remembered one that fails is detected
+    again, so it is "Format not recognized" if nothing fits). The last two are where Open as
+    helps (rule 51). The kind is kept with the note (until the file opens or "+"), never in the
+    settings, and a failed try never replaces the format a file was last opened with.
+53. **A link in a line of text is the text.** A "button" that reads as a link (File Info: Reopen
+    as, file..., folder..., Unload; the Filters toolbar) takes the font, the size, the line and
+    the baseline of what is around it, and adds only its color and the underline on hover (no
+    outline of the focus). It is
+    a `<span class="text-link">` (`behavior: button`: the click, the focus, Enter and Space), not
+    a `<button>` with its look taken off: what is left of a button's style (the height, the font
+    of the control, the baseline) shows as a link that does not sit in its line.

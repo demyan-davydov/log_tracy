@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import {
     noNewTab, plusShown, openNewTab, activateNewTab, activateDocument,
     closeNewTab, documentOpened, documentsCounted, showsPlaceholder,
-    shownDocument, fileFailed, failureReason
+    shownDocument, fileFailed, failureReason, failureNote
 } from "../../resources/new-tab.js";
 
 test("no + while no document is open: the start screen has its own Open", () => {
@@ -80,4 +80,16 @@ test("the reason of a failed open is the part in parentheses at the end", () => 
     assert.equal(failureReason("Can't open /logs/a (b).dlt (Permission denied)"), "Permission denied");
     assert.equal(failureReason("Not a DLT file"), "Not a DLT file");
     assert.equal(failureReason(""), "");
+});
+
+test("the note of a failed open tells its kind: of the system, format not recognized, not read as a format", () => {
+    assert.equal(failureNote({ kind: "system", error: "Can't open /a.dlt (Permission denied)" }),
+        "Failed to open: Permission denied");
+    assert.equal(failureNote({ error: "no such file" }), "Failed to open: no such file", "no kind: the system's");
+    assert.equal(failureNote({ kind: "unrecognized", error: "not a log of a format Log Tracy can read" }),
+        "Format not recognized");
+    assert.equal(failureNote({ kind: "unreadable", format: "DLT", error: "unknown log format" }),
+        "Failed to open as DLT: unknown log format");
+    assert.equal(failureNote({ kind: "unreadable", error: "unknown log format" }),
+        "Failed to open in that format: unknown log format", "the format not told");
 });

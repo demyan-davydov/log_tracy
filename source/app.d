@@ -39,7 +39,7 @@ private AppSession newSession(AppSettings settings, DocumentStore documents, out
 	import std.process : environment;
 
 	auto session = new AppSession(settings, documents,
-		(string path, FormatChoice choice) => cast(Document) new LogDocument(path, choice));
+		(string path, FormatChoice choice, bool byHand) => cast(Document) new LogDocument(path, choice, byHand));
 	// UI_PLATFORM=windows|linux: the interface of that platform (the menu, the styles of ui-platform),
 	// for a try on any platform; the OS stays what it is (Cmd or Ctrl, the native menu of macOS)
 	session.showMenu(windowMenu(hostMenuPlatform(), environment.get("UI_PLATFORM", "")));

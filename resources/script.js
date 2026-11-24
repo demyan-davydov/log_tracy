@@ -1,12 +1,13 @@
 import { $ } from "@sciter";
 import { logTableLookChanged } from "log-table-view.js";
-import { plusShown, failureReason } from "new-tab.js";
+import { plusShown, failureNote } from "new-tab.js";
 import {
     initialWindow, workspaceChanged, newTabRequested, newTabPressed, newTabClosed, documentPressed,
     documentOpened, openFailed, documentClosed, recentFileRemoved, shown, activeDocId
 } from "window-state.js";
 import { lastUsedText } from "recent-time.js";
 import { clickOpensRecentFile, recentFileMenu } from "recent-file-menu.js";
+import { openAsListItems } from "open-as-menu.js";
 import { DocumentPane } from "document-pane.js";
 import { paneChanges, tabProgress } from "pane-state.js";
 import { TabStrip, NEW_TAB_ID } from "tabs.js";
@@ -19,7 +20,7 @@ import { showMainMenu } from "main-menu.js";
 import { shortcutTextOf } from "menu-shortcuts.js";
 import { currentCatalog, pseudoLocale, setCatalog, tr, trParts } from "i18n/i18n.js";
 import { translateTree } from "i18n/dom.js";
-import { fileFilter, allFiles } from "file-types.js";
+import { logFileFilter } from "file-types.js";
 import { requestedLocale } from "i18n/languages.js";
 import { showNotice } from "notice.js";
 import { restorableFrame } from "window-frame.js";
@@ -161,6 +162,7 @@ function renderPlaceholder() {
     </div>);
     const recentFiles = getRecentFiles();
     if (!recentFiles.length) return;
+    const formats = backend.formats(); // for the menus of the files: one call for all of them
 
     // Items one by one: append() of JSX is known to work, nested arrays aren't
     placeholder.$(".placeholder-body").append(<div class="recent-files">
@@ -168,7 +170,7 @@ function renderPlaceholder() {
     </div>);
     const list = placeholder.$(".recent-files");
     const now = Date.now();
-    for (const { path, exists, opened, format, lastUsed } of recentFiles) {
+    for (const { path, exists, opened, format, lastUsed, detected } of recentFiles) {
         const { dir, name } = splitPath(path);
         // The badge of the format the file opens in; an empty one keeps the names aligned
         const badge = format
@@ -182,7 +184,7 @@ function renderPlaceholder() {
                 </div>
                 <div class="recent-file-dir">{dir}</div>
             </div>
-            {recentFileMenuButton({ exists, opened })}
+            {recentFileMenuButton({ exists, opened, failureKind: failureKindOf(path), formatId: format?.id, detectedId: detected, formats })}
         </div>;
         list.append(item);
         const added = list.lastElementChild;
@@ -197,10 +199,21 @@ function renderPlaceholder() {
         const failed = failure && failure.path === path;
         if (failed || !exists) {
             added.classList.add(failed ? "failed" : "missing");
-            const note = failed ? tr("Failed to open: {reason}", { reason: failureReason(failure.error) }) : tr("File not found");
+            const note = failed ? failureNote(failure) : tr("File not found");
             added.$(".recent-file-text").append(<div class="recent-file-note">{note}</div>);
         }
     }
+}
+
+// Why `path` failed to open now ("system", "unrecognized", "unreadable"), undefined if it didn't
+function failureKindOf(path) {
+    return win.failure && win.failure.path === path ? win.failure.kind : undefined;
+}
+
+// The "Open as" item of a menu: the list of the formats as a submenu, the one the log is open
+// in current, detecting it again first. `docId`: the tab's, for a menu of a tab
+function openAsMenuItem(label, formats, formatId, detectedId, docId) {
+    return <li command="open-as"><span>{label}</span><menu>{openAsListItems(formats, formatId, detectedId, docId)}</menu></li>;
 }
 
 // The "⋮" button at the right of a recent file, shown on hover: a dropdown of
@@ -209,12 +222,17 @@ function recentFileMenuButton(file) {
     const labels = {
         "show-in-folder": tr("Show in Folder"),
         "copy-path": tr("Copy Path"),
+        "open-as": tr("Open as"),
         "remove": tr("Remove from Recent"),
     };
     // Flat: nested arrays of JSX aren't known to work; Remove apart from the others
     const items = [];
     for (const { command, enabled } of recentFileMenu(file)) {
         if (command === "remove") items.push(<hr />);
+        if (command === "open-as" && enabled) {
+            items.push(openAsMenuItem(tr("Open as"), file.formats, file.formatId, file.detectedId));
+            continue;
+        }
         items.push(enabled
             ? <li command={command}>{labels[command]}</li>
             : <li command={command} disabled>{labels[command]}</li>);
@@ -226,9 +244,12 @@ function recentFileMenuButton(file) {
     </button>;
 }
 
-// A command of the menu of the recent file `path`
-function recentFileCommand(command, path) {
+// A command of the menu of the recent file `path` (`item`: the item clicked)
+function recentFileCommand(command, path, item) {
     switch (command) {
+        case "open-as-format":
+            openFileAs(path, item.getAttribute("format") ?? ""); // an empty attribute may come back as none: "" is detection
+            break;
         case "show-in-folder": {
             const error = backend.showInFolder(path);
             if (error) console.error("Can't show", path, "in its folder:", error);
@@ -249,8 +270,17 @@ function recentFileCommand(command, path) {
 // Opens a file in a new tab. On failure the backend keeps it in the recent
 // files (where it was, or on top if it is new there), and the placeholder
 // (brought up if needed) shows why under it.
+// As it was last time, or detected
 function openFile(path) {
-    const { failure } = backend.openFile(path);
+    showOpenFailure(path, backend.openFile(path));
+}
+
+// In the format the user picked, "" detects it again (not as it was last time)
+function openFileAs(path, formatId) {
+    showOpenFailure(path, backend.openFileAs(path, formatId));
+}
+
+function showOpenFailure(path, { failure }) {
     if (!failure) return; // opened
     console.error("Can't open", path, ":", failure.error);
     win = openFailed(win, failure); // shown under the file in the recent files
@@ -356,8 +386,7 @@ function goToMessageAction() {
 }
 
 function openFileAction() {
-    const fn = platform.chooseFileToOpen(fileFilter([[tr("Log Files"), "*.dlt;*.log;*.txt"],
-        [tr("DLT Files"), "*.dlt"], [tr("Text Logs"), "*.log;*.txt"], allFiles()]));
+    const fn = platform.chooseFileToOpen(logFileFilter(platform.isMac()));
     if (fn) {
         console.log("File selected:", fn);
         openFile(fn);
@@ -401,7 +430,7 @@ function setupEvents() {
     });
     document.on("click", ".recent-file-menu li[command]", (evt, li) => {
         if (li.hasAttribute("disabled")) return;
-        recentFileCommand(li.getAttribute("command"), li.closest(".recent-file").getAttribute("path"));
+        recentFileCommand(li.getAttribute("command"), li.closest(".recent-file").getAttribute("path"), li);
     });
 
     // Context menus open by the mouse only, not by the keyboard (menu-gate.js)
@@ -409,11 +438,25 @@ function setupEvents() {
     // Context menu of a document's tab (not the + one): Copy Path and Copy File Name, of its file
     document.on("contextmenu", `#tabs-container > .tab:not(#${NEW_TAB_ID})`, (evt, tab) => {
         if (!menuOpensByMouse()) return true; // the Menu key, Shift+F10: no menu
+        const info = backend.documentInfo(parseInt(tab.id));
         evt.source = Element.create(<menu class="context">
             <li class="copy-tab-path" docid={tab.id}>{tr("Copy Path")}</li>
             <li class="copy-tab-name" docid={tab.id}>{tr("Copy File Name")}</li>
+            {info?.format ? <hr /> : []}
+            {info?.format ? openAsMenuItem(tr("Reopen as"), backend.formats(), info.formatId, info.detectedId, tab.id) : []}
         </menu>);
         return true;
+    });
+    // A format picked for the log of a tab: it is opened anew in that tab, which is shown first
+    // (a refusal is a notice on its panel, and the user sees what the pick did)
+    document.on("click", "menu.context li[command=open-as-format]", (evt, li) => {
+        const docId = parseInt(li.getAttribute("docid"));
+        const format = li.getAttribute("format") ?? "";
+        // On the next turn: not under the click that is still being handled inside the menu
+        setTimeout(() => {
+            switchTab(docId);
+            panes.get(docId)?.reopenAs(format);
+        }, 0);
     });
     document.on("click", "menu.context > li.copy-tab-path, menu.context > li.copy-tab-name", (evt, item) => {
         const info = backend.documentInfo(parseInt(item.getAttribute("docid")));

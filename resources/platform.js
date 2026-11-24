@@ -16,8 +16,8 @@ export const systemLanguage = () => ({ language: env.language() || "", country: 
 // ── Dialogs ──────────────────────────────────────────────────────────────────
 
 // The path of the file to open, null if cancelled
-// @param filter - "Name (*.ext)|*.ext|..." as Sciter takes it
-export const chooseFileToOpen = filter => Window.this.selectFile({ mode: "open", filter }) || null;
+// @param filter - "Name (*.ext)|*.ext|..." as Sciter takes it; "" for none: any file can be chosen
+export const chooseFileToOpen = filter => Window.this.selectFile(filter ? { mode: "open", filter } : { mode: "open" }) || null;
 
 // The path of the folder chosen, null if cancelled
 export const chooseFolder = () => Window.this.selectFolder({}) || null;

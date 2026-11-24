@@ -82,6 +82,17 @@ test("a message of the backend is \"\" when there is none", () => {
         { call: ["renameFilterSet", 3, 1, "Errors"], value: "" });
 });
 
+test("reopenAs and openFile with a format: the format is sent, the failure names the one picked", () => {
+    assert.deepEqual(callOf(() => backend.reopenAs(3, "dlt"), "").call, ["reopenAs", 3, "dlt"]);
+    assert.equal(callOf(() => backend.reopenAs(3, ""), "gone").value, "gone", "why it can't be");
+    assert.deepEqual(callOf(() => backend.openFileAs("/a.log", "dlt"), 4).call, ["openFileAs", "/a.log", "dlt"]);
+    assert.deepEqual(callOf(() => backend.openFileAs("/a.log", ""), 4).call, ["openFileAs", "/a.log", ""],
+        "detected again is its own call, not 'as it was last time'");
+    assert.deepEqual(callOf(() => backend.openFile("/a.log"), 4).call, ["openFile", "/a.log"]);
+    assert.deepEqual(callOf(() => backend.formats(), `[{"id": "dlt", "name": "DLT", "shortName": "DLT"}]`).value,
+        [{ id: "dlt", name: "DLT", shortName: "DLT" }]);
+});
+
 test("openFile: the id of the document, or why the file can't be opened", () => {
     assert.deepEqual(callOf(() => backend.openFile("/a.log"), 4).value, { docId: 4 });
     assert.deepEqual(callOf(() => backend.openFile("/b.log"), `{"path": "/b.log", "error": "gone"}`).value,

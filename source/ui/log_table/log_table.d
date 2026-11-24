@@ -191,7 +191,7 @@ version (unittest)
         log.path = buildPath(tempDir(), name);
         write(log.path, "a line of the log with some words in it\n".replicate(lines));
         log.session = new AppSession(AppSettings.init, new DocumentStore(),
-            (string path, FormatChoice choice) => cast(Document) new LogDocument(path, choice), (in AppSettings s) {});
+            (string path, FormatChoice choice, bool byHand) => cast(Document) new LogDocument(path, choice, byHand), (in AppSettings s) {});
         log.id = log.session.openFile(log.path).docId;
         foreach (attempt; 0 .. 500)
         {

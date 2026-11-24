@@ -51,7 +51,11 @@ export function fileInfoRows(info, status) {
             label: tr("Size"),
             value: `${sizeText(info.bytes)} · ${records}`,
         },
-        { label: tr("Format"), value: info.format },
+        // openAs: where the log can be opened in another format (the format it is open in now);
+        // a log with no format (its file is lost) has none to change
+        info.format
+            ? { label: tr("Format"), value: info.format, openAs: { current: info.formatId, detected: info.detectedId } }
+            : { label: tr("Format"), value: info.format },
     ];
     if (info.descriptions) rows.push(descriptionsRow(info.descriptions));
     return rows;

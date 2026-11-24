@@ -4,11 +4,15 @@
 
 // [{ command, enabled }] for a file { exists, opened } of backend.recentFiles()
 // in the order shown; Remove is last, apart from the others, and an open file
-// has none (it would be listed again at once)
-export function recentFileMenu({ exists, opened }) {
+// has none (it would be listed again at once), nor is it reopened from here: its tab has
+// that. Open as is for a file that is there and was not refused by the system: the format
+// is not what stops a file from opening then
+// (`failureKind`: why the file failed to open, if it did: "system", "unrecognized", "unreadable")
+export function recentFileMenu({ exists, opened, failureKind }) {
     const items = [
         { command: "show-in-folder", enabled: exists },
         { command: "copy-path", enabled: true },
+        { command: "open-as", enabled: exists && !opened && failureKind !== "system" },
     ];
     if (!opened) items.push({ command: "remove", enabled: true });
     return items;

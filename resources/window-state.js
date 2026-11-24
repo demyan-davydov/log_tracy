@@ -7,8 +7,9 @@
 // State: {
 //   docs - [{ id, name, path, active, mainView, searchView }] in the order of the tabs
 //   newTab - { open, active }
-//   failure - { path (as in the recent files), error } of the file that failed
-//             to open last, shown under it in the placeholder; null if none
+//   failure - { path (as in the recent files), error, kind ("system", "unrecognized",
+//             "unreadable"), format (the name of the one picked, if any) } of the file that
+//             failed to open last, shown under it in the placeholder; null if none
 //   placeholderVersion - grows when what the placeholder shows changed (it is
 //             rendered again then, not on every change of the documents: that
 //             would rebuild the recent files under the mouse)

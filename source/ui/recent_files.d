@@ -294,22 +294,31 @@ FormatChoice savedFormat(const RecentFile[] list, string path)
 }
 
 /// The recent list for the placeholder, the newest first: [{"path", "exists",
-/// "opened" (one of `openPaths`), "format": {"shortName", "name"} if known,
+/// "opened" (one of `openPaths`), "format": {"id", "shortName", "name"} if known, "detected": the
+/// id of the format detection picks for the file if it is there and one fits,
 /// "lastUsed" (ms since the Unix epoch) if known}]
-string recentFilesJson(const RecentFile[] list, const string[] openPaths = null)
+string recentFilesJson(const RecentFile[] list, const string[] openPaths = null,
+    scope string delegate(string path) detectedOf = null)
 {
     const opened = openPaths.map!recentFilePath.array;
     JSONValue[] items;
     foreach (file; list)
     {
         JSONValue item = ["path": file.path];
-        item.object["exists"] = JSONValue(exists(file.path));
+        const there = exists(file.path);
+        item.object["exists"] = JSONValue(there);
+        if (there && detectedOf !is null) // what "Detect automatically" would open it as, marked in its menu
+        {
+            const detected = detectedOf(file.path);
+            if (detected.length)
+                item.object["detected"] = JSONValue(detected);
+        }
         item.object["opened"] = JSONValue(opened.canFind!(p => filenameCmp(p, file.path) == 0));
         if (file.lastUsed > 0)
             item.object["lastUsed"] = JSONValue(file.lastUsed);
         const info = file.format.isSet ? formatInfo(file.format.id) : FormatInfo.init;
         if (info.id.length)
-            item.object["format"] = JSONValue(["shortName": info.shortName, "name": info.name]);
+            item.object["format"] = JSONValue(["id": info.id, "shortName": info.shortName, "name": info.name]);
         items ~= item;
     }
     return JSONValue(items).toString();
@@ -665,6 +674,7 @@ unittest
             RecentFile(testPath("/b.log")), RecentFile(testPath("/c.log"), FormatChoice("no-such-format"))]));
     assert(j[0]["format"]["shortName"].str == logcatFormatInfo.shortName);
     assert(j[0]["format"]["name"].str == logcatFormatInfo.name);
+    assert(j[0]["format"]["id"].str == logcatFormatInfo.id, "the menu of the file marks it");
     assert("format" !in j[1], "no format saved: no badge");
     assert("format" !in j[2], "a format this build doesn't know: no badge");
 }
@@ -698,6 +708,23 @@ unittest
     auto list = [RecentFile(testPath("/b.log"), FormatChoice.init, 300), RecentFile(testPath("/a.log"), FormatChoice("dlt"), 200)];
     assert(withFilesStamped(list, [testPath("/a.log"), testPath("/d.log")], 1000)
             == [RecentFile(testPath("/b.log"), FormatChoice.init, 300), RecentFile(testPath("/a.log"), FormatChoice("dlt"), 1000)]);
+}
+
+@("recentFilesJson: the format detection would pick for a file that is there, to mark it in the menu")
+unittest
+{
+    import std.file : remove, tempDir, write;
+    import std.path : buildPath;
+
+    const path = buildPath(tempDir(), "recent_detected.log");
+    write(path, "x\n");
+    scope (exit)
+        remove(path);
+    auto j = parseJSON(recentFilesJson([RecentFile(path, FormatChoice("text")), RecentFile(testPath("/gone.log"))], null,
+            (string p) => "logcat"));
+    assert(j[0]["detected"].str == "logcat", "though it is saved as text");
+    assert("detected" !in j[1], "a file that isn't there is not asked");
+    assert("detected" !in parseJSON(recentFilesJson([RecentFile(path)]))[0], "nobody to ask");
 }
 
 @("recentFilesJson: the time a file was used and whether it is open")

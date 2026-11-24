@@ -490,3 +490,9 @@ agent can't drive it. In scapp a plain
   `fixedrows` (their names are in the library) change nothing, and `position: sticky` is
   unknown (`style.position` stays null). A cell with `position: relative` moves twice its
   `left` (`left: 100dip` → 200dip), and `transform: translate(...)` doesn't move a cell at all.
+- `<button type="menu">` is `behavior: button popup-menu` (read by `getComputedStyle(el).behavior`):
+  the `<menu>` child opens on a press and shuts on the next. A span that has the same behavior
+  (`span[type=menu] { behavior: button popup-menu }`) does it too, and takes the font and the baseline
+  of its line, which a `<button>` with its look taken off does not; `type="menu"` alone, with no
+  behavior, does nothing. A list opened by `element.popup()` by hand is shut by a press outside it
+  before the press is handled: a press on its own owner opens it again.
