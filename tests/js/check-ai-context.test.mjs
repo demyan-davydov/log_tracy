@@ -87,3 +87,12 @@ test("the shared context is AGENTS.md, CLAUDE.md and the Markdown of .ai/ and .c
     for (const file of ["README.md", "docs/building.md", ".ai/notes.txt"])
         assert.equal(isContext(file), false, file);
 });
+
+test("as a hook of dub with the hooks off it does nothing: scripts/test.mjs runs it itself", async () => {
+    const { spawnSync } = await import("node:child_process");
+    const script = new URL("../../scripts/utils/check-ai-context.mjs", import.meta.url).pathname;
+    const result = spawnSync(process.execPath, [script, "--hook"], {
+        encoding: "utf8", env: { ...process.env, NO_DUB_HOOKS: "1" } });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, "");
+});

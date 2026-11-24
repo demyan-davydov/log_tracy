@@ -8,6 +8,8 @@ import { readFileSync, realpathSync } from "node:fs";
 import { basename } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { hooksOff } from "./hooks.mjs";
+
 /// Names the code doesn't have that are still right, each with why.
 export const allowed = new Map([
     ["settings.json", "written by the program next to it"],
@@ -144,6 +146,8 @@ export function checkContext() {
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) {
+    // a hook of dub (--hook, postRunCommands of dub.sdl) keeps out when build.mjs test runs this itself
+    if (process.argv.includes("--hook") && hooksOff(process.env)) process.exit(0);
     process.chdir(fileURLToPath(new URL("../..", import.meta.url))); // the project root
     const stale = checkContext();
     if (stale === null) {

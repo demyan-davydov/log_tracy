@@ -93,8 +93,11 @@ archives, one per system and architecture (`libsciter.dylib.br`, `sciter.dll.br`
 13 MB each. A clone fetches none of them (`.lfsconfig`). The first build fetches the one it
 needs (`node scripts/build.mjs` runs `git lfs pull --include=<archive> --exclude=`) and unpacks
 it next to itself, the others stay pointers. The unpacked library is ignored by git; a build
-unpacks it again when the archive changes (a checkout, an update of Sciter). A plain
-`dub build` doesn't fetch nor unpack it: run a build of the script once first.
+unpacks it again when the archive changes (a checkout, an update of Sciter). It is dub that does
+it, for the script and for a plain `dub build`, `dub run` and `dub test` alike: dub runs
+`scripts/utils/prepare-sciter.mjs` before each of them (`preGenerateCommands` of `dub.sdl`),
+whether the program is up to date or not. `dub describe` doesn't run it, so the script's
+`bench` and `test --module`, which ask dub to describe, put the library in place themselves.
 
 ## Commands
 
@@ -129,9 +132,8 @@ starts the program from its build folder; its output goes to the same terminal.
 Every build has its own folder, `build/<platform>-<architecture>-<type>/`: for example
 `build/osx-aarch64-debug/`, `build/linux-x86_64-release/`, `build/windows-x86_64-unittest/`
 (the tests). dub puts the Sciter library of `libs/` next to the program, so it runs from
-there as it is. Plain `dub build --compiler=ldc2` and `dub test --compiler=ldc2` do the same
-once a build of the script has unpacked the library; they don't fetch nor unpack it themselves,
-so after a checkout that changes the archive build with the script first.
+there as it is. Plain `dub build --compiler=ldc2`, `dub run --compiler=ldc2` and
+`dub test --compiler=ldc2` do the same as the script, fetching and unpacking the library first.
 
 The program keeps its settings (`settings.json`) next to itself, so every build has its own.
 Only a distribution keeps them in the user's folder (see "Distribution" below).
@@ -141,8 +143,12 @@ JS needs a rebuild.
 
 ### Tests
 
-`node scripts/test.mjs` (the same as `node scripts/build.mjs test`) runs the D unittests (`dub test`) and the JS tests (`node --test "tests/js/*.test.mjs"`), the second
-even when the first fail, and tells the result of both.
+`node scripts/test.mjs` (the same as `node scripts/build.mjs test`) runs the D unittests (`dub test`), the JS tests (`scripts/utils/test-js.mjs`) and the names of
+`.ai/` the code no longer has, each even when the ones before fail, and tells the result of all. A plain
+`dub test` runs all three too, the last two as `postRunCommands` of `dub.sdl` after the unittests;
+the script keeps them out of that run (`NO_DUB_HOOKS`) and runs them itself. The JS tests tell
+a line when all pass (`JS tests: 547 passed`), else what failed; `node scripts/utils/test-js.mjs --verbose`
+shows a line per test.
 
 `dub test` builds the configuration `unittest` of `dub.sdl`: the runner of
 [unit-threaded](https://github.com/atilaneves/unit-threaded), whose `main` its `gen_ut_main`
@@ -151,8 +157,9 @@ generates into `build/unittest/ut.d` before every build. It runs in one thread
 test of its own, named by its `@("...")` string: a failed one doesn't stop the ones after it,
 and the report lists every failed test by name. `test --filter <name>` runs only the D
 unittests whose names start with `<name>` (a module such as `utils.fsm`, or a test's full
-name; the option may be repeated), without the JS tests; it is `dub test --compiler=ldc2 --
-<name>`. The runner's own options: `dub test --compiler=ldc2 -- -h` (`-l` lists the tests). The JS tests also check that the
+name; the option may be repeated) and the JS tests whose names contain `<name>`, without the check of `.ai/`.
+The D part alone is `dub test --compiler=ldc2 -- <name>`, which still runs the JS tests and the check
+whole: filter through the script to filter both. The runner's own options: `dub test --compiler=ldc2 -- -h` (`-l` lists the tests). The JS tests also check that the
 translation catalogs are up to date with the code (`node scripts/utils/i18n-extract.mjs` updates
 them). Last, `scripts/utils/check-ai-context.mjs` looks up what `.ai/`, `AGENTS.md`, `CLAUDE.md` and
 `.claude/` name in backquotes (paths, identifiers, options) and lists those the code no longer

@@ -10,6 +10,10 @@ stringImportPaths "resources" // the files of the interface, built in by ui/app_
 // library next to the program, `dub test` too. scripts/build.mjs builds through dub, after it
 // unpacks the library of the build from its archive in Git LFS (<library>.br)
 targetPath "build/$PLATFORM-$ARCH-$BUILD_TYPE"
+// The library is put in place before dub copies it: scripts/utils/prepare-sciter.mjs fetches its
+// archive from Git LFS and unpacks it. preGenerateCommands runs before dub decides whether to
+// rebuild, so a plain `dub build`, `dub run` and `dub test` get it on a fresh clone too
+preGenerateCommands "node \"$PACKAGE_DIR/scripts/utils/prepare-sciter.mjs\""
 copyFiles "libs/macosx/libsciter.dylib" platform="osx" // universal: x86_64 and arm64
 copyFiles "libs/linux/x64/libsciter.so" platform="linux-x86_64"
 copyFiles "libs/linux/arm64/libsciter.so" platform="linux-aarch64"
@@ -61,5 +65,10 @@ configuration "unittest" {
 	mainSourceFile "build/unittest/ut.d"
 	excludedSourceFiles "source/app.d" // the program's main
 	preBuildCommands "\"$DUB\" run --compiler=\"$DC\" unit-threaded@2.2.6 -c gen_ut_main -- -f build/unittest/ut.d -d \"$DUB\""
+	// After the unittests: the JS tests of tests/js and the names of .ai/ the code no longer has,
+	// so a plain `dub test` runs everything `node scripts/test.mjs` does. --hook: they keep out
+	// when scripts/build.mjs test runs them itself (NO_DUB_HOOKS)
+	postRunCommands "node \"$PACKAGE_DIR/scripts/utils/test-js.mjs\" --hook"
+	postRunCommands "node \"$PACKAGE_DIR/scripts/utils/check-ai-context.mjs\" --hook"
 }
 

@@ -46,13 +46,13 @@ node scripts/build.mjs --release                # release; --arch x64|arm64 for 
 node scripts/build.mjs --debug-channel          # the debug channel is in a build only with this (debug or --release)
 node scripts/run.mjs                            # builds as above (same options) and starts the app, its stdout here
 node scripts/test.mjs                           # D unittests ("N test(s) run, 0 failed."), JS tests, stale names of .ai/
-node scripts/test.mjs --filter utils.fsm        # only the D unittests whose names start with it (repeatable), no JS tests
+node scripts/test.mjs --filter utils.fsm        # only the tests named so (repeatable): D unittests by the start of the name, JS tests by a part of it; no .ai/ check
 node scripts/test.mjs --module source/log_core/text/text_format.d  # one Sciter-free module, no dub
 node scripts/test.mjs --brief                   # any build/test command: only what failed, the rest in build/brief.log
 node scripts/build.mjs dist                     # release distribution in build/dist/<macos|linux|windows>/
 node scripts/build.mjs --help                   # the commands and options (run.mjs --help too)
-dub build --compiler=ldc2                       # the same build without the script; dub test likewise
-node --test "tests/js/*.test.mjs"               # JS unit tests only (pure modules such as resources/new-tab.js)
+dub build --compiler=ldc2                       # the same build without the script; dub run likewise; dub test runs the D unittests, the JS tests and the .ai/ check
+node scripts/utils/test-js.mjs                  # JS unit tests only (pure modules such as resources/new-tab.js): a line when they pass, --verbose a line per test
 node scripts/utils/i18n-extract.mjs             # brings the translation catalogs up to the texts of the code
 node scripts/utils/screenshot.mjs --open <log>  # the app's window with a log → build/screenshot.png (--help)
 node scripts/utils/app.mjs start --open <log>   # a running copy (debug; --release too) to drive: eval, wait, shot, run, stop (--help)
@@ -67,8 +67,10 @@ node scripts/utils/backtrace.mjs [pid]          # stacks of every thread of a ru
   for `dub test`) and copies the Sciter library of `libs/` next to it (`copyFiles`): a build
   runs from there, in a fresh worktree too. `libs/` keeps each library packed by brotli
   (`<library>.br`) in Git LFS and a clone fetches none of them (`.lfsconfig`):
-  `scripts/build.mjs` fetches the one archive a build needs and unpacks it next to itself
-  (ignored by git), while a plain `dub build` on a fresh clone finds no library. The Sciter version is in `libs/SCITER_VERSION`; the app's version is `VERSION`.
+  dub itself runs `scripts/utils/prepare-sciter.mjs` before every `build`, `run` and `test`
+  (`preGenerateCommands` of `dub.sdl`): it fetches the one archive a build needs and unpacks it
+  next to itself (ignored by git). `dub describe`, `bench` and `test --module` don't run it:
+  the script calls the same code (`scripts/sciter-library.mjs`) itself. The Sciter version is in `libs/SCITER_VERSION`; the app's version is `VERSION`.
 - `dub test` runs unit-threaded's runner (`dub.sdl`, configuration `unittest`, one thread):
   every `unittest` block is a test of its own, named by its `@("...")` string, and the ones
   after a failed one still run. `test --module` compiles one module and what it imports with

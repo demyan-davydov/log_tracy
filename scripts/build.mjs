@@ -3,20 +3,24 @@
 // build/<platform>-<arch>-<build type>/ with the Sciter library of libs/ next to the program.
 // The commands and options: `node scripts/build.mjs --help` (buildUsage below), the setup and
 // more: docs/building.md.
-// Builds and starts the program: scripts/run.mjs. Tests: tests/js/build-script.test.mjs.
+// Builds and starts the program: scripts/run.mjs. The Sciter library: scripts/utils/prepare-sciter.mjs
+// (dub runs it, dub.sdl). Tests: tests/js/build-script.test.mjs.
 import { spawnSync } from "node:child_process";
 import { appendFileSync, chmodSync, closeSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync,
     readFileSync, readSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
-import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
-import { brotliCompress, brotliDecompressSync, constants as zlibConstants } from "node:zlib";
 
 import { BenchError, benchCompileArgs, benchUsage, compareRuns, defaultBenchArgs, formatComparison,
     parseBenchArgs, runOrder } from "./utils/bench.mjs";
 import { filterBuildOutput } from "./build-output-filter.mjs";
+import { noHooksVariable } from "./utils/hooks.mjs";
+import { BuildError, arches, checkSciterLibrary as putSciterLibrary, isLfsPointer, lfsPullArgs, packLibrary,
+    sciterArchive, sciterLibraries, sciterLibrary, unpackLibrary } from "./sciter-library.mjs";
+
+// what the tests and the scripts of scripts/utils take from here
+export { isLfsPointer, lfsPullArgs, packLibrary, sciterArchive, sciterLibraries, sciterLibrary, unpackLibrary };
 
 export const commands = ["build", "test", "dist", "gen-log", "bench", "pack-libs"];
 
@@ -32,14 +36,16 @@ Commands:
   build           build the program (the default) into build/<platform>-<arch>-<type>/,
                   the Sciter library next to it
   test            the D unittests, the JS tests (tests/js) and the names of .ai/ the code
-                  no longer has (scripts/utils/check-ai-context.mjs)
+                  no longer has (scripts/utils/check-ai-context.mjs); dub test runs the
+                  same
   test --module <file.d>
                   the unittests of one D module and of the modules it imports, without
                   dub (one that doesn't depend on Sciter): built into build/tools/
   test --filter <name> [--filter <name>...]
-                  only the D unittests whose names start with one of these, by
-                  unit-threaded's runner: utils.fsm, or a test's own name (dub test -- -l
-                  lists them)
+                  only the tests named so, no names of .ai/: the D unittests whose names
+                  start with one of these, by unit-threaded's runner (utils.fsm, or a test's
+                  own name; dub test -- -l lists them), and the JS tests whose names contain
+                  one of them
   dist            a distribution in build/dist/<macos|linux|windows>/: the release of an
                   installed program (build type dist), settings in the user's folder; with
                   its installer, a .dmg on macOS, a .deb on Linux (where dpkg-deb is), a
@@ -91,18 +97,17 @@ Options:
                   the unittests of one D module and of the modules it imports, without
                   dub (one that doesn't depend on Sciter)
   --filter <name>
-                  only the D unittests whose names start with it (a module, utils.fsm, or a
-                  test's own name), no JS tests; may be repeated
+                  only the tests named so, no names of .ai/: the D unittests whose names
+                  start with it (a module, utils.fsm, or a test's own name) and the JS tests
+                  whose names contain it; may be repeated
   --arch x64|arm64
                   another architecture than this machine's
   --brief         only what failed, the whole output in ${briefLogPath}
   -h, --help      this help
 `;
-const arches = ["x64", "arm64"];
 const dubArchOf = { x64: "x86_64", arm64: "aarch64" };
 
-/// A command line not understood, or a step that failed: told without a stack.
-export class BuildError extends Error {}
+export { BuildError };
 
 /// What the command line asks: `{ command, release, arch }`, `arch` null for this machine's.
 /// A distribution is always a release. `gen-log` first gives everything after it to the
@@ -188,96 +193,6 @@ export function distArch(arch, hostArch) {
         throw new BuildError(`no build for this machine's architecture "${hostArch}": `
             + `name one with --arch (${arches.join(", ")})`);
     return hostArch;
-}
-
-/// The Sciter library of libs/ for a system (`process.platform`) and an architecture.
-export function sciterLibrary(platform, arch) {
-    if (platform === "darwin") return "libs/macosx/libsciter.dylib"; // universal
-    if (platform === "win32") return `libs/windows/${arch}/sciter.dll`;
-    return `libs/linux/${arch}/libsciter.so`;
-}
-
-/// Every Sciter library of libs/, one per system and architecture: what `pack-libs` packs.
-export const sciterLibraries = [sciterLibrary("darwin"),
-    ...["linux", "win32"].flatMap((platform) => arches.map((arch) => sciterLibrary(platform, arch)))];
-
-/// The archive a Sciter library is kept as in Git LFS: the library packed by brotli, a quarter
-/// of its size, which Node unpacks with no package. The library itself is ignored by git.
-export function sciterArchive(library) {
-    return `${library}.br`;
-}
-
-/// What the library unpacked from an archive was: the hash, size and time of the archive, the
-/// size and time of the library. Ignored by git, next to the library.
-function unpackedStamp(library) {
-    return `${library}.unpacked`;
-}
-
-/// Unpacks the archive of a library into the library next to it, unless the library is already
-/// the one of this archive: unpacked from it and not changed since. Gives whether it unpacked.
-/// Throws, keeping the library, when it changed though the archive didn't: a new Sciter put by
-/// hand and not packed yet would be lost.
-export function unpackLibrary(library) {
-    const archivePath = sciterArchive(library);
-    const stampPath = unpackedStamp(library);
-    const stamp = existsSync(stampPath) ? readFileSync(stampPath, "utf8").split(" ") : [];
-    const [stampHash, ...stampRest] = stamp.length === 5 ? stamp : []; // another one: as if none
-    const archiveStats = statSync(archivePath);
-    const archiveFile = `${archiveStats.size} ${archiveStats.mtimeMs}`;
-    // the archive is read and hashed only when its file changed: a checkout writes it anew
-    let archive = null;
-    const hash = stampHash !== undefined && stampRest.slice(0, 2).join(" ") === archiveFile ? stampHash
-        : createHash("sha256").update(archive = readFileSync(archivePath)).digest("hex");
-    if (existsSync(library) && stampHash === hash) {
-        const libraryStats = statSync(library);
-        if (stampRest.slice(2).join(" ") === `${libraryStats.size} ${libraryStats.mtimeMs}`) {
-            if (stampRest.slice(0, 2).join(" ") !== archiveFile) writeStamp(); // touched, same bytes
-            return false;
-        }
-        throw new Error(`${library} isn't the library of ${archivePath}: if it is a new Sciter, `
-            + `run "node scripts/build.mjs pack-libs"; else delete it to unpack the archive again`);
-    }
-    const unpacking = `${library}.${process.pid}.unpacking`; // half written, it's never taken for the library
-    writeFileSync(unpacking, brotliDecompressSync(archive ?? readFileSync(archivePath)));
-    renameSync(unpacking, library);
-    writeStamp();
-    return true;
-
-    function writeStamp() {
-        const libraryStats = statSync(library);
-        writeFileSync(stampPath, `${hash} ${archiveFile} ${libraryStats.size} ${libraryStats.mtimeMs}`);
-    }
-}
-
-/// Packs a library into its archive (`pack-libs`): the strongest brotli, a window as large as
-/// it goes (16 MB), a minute or two for the largest library.
-export async function packLibrary(library) {
-    const data = readFileSync(library);
-    const packed = await promisify(brotliCompress)(data, { params: {
-        [zlibConstants.BROTLI_PARAM_QUALITY]: zlibConstants.BROTLI_MAX_QUALITY,
-        [zlibConstants.BROTLI_PARAM_LGWIN]: zlibConstants.BROTLI_MAX_WINDOW_BITS,
-        [zlibConstants.BROTLI_PARAM_SIZE_HINT]: data.length,
-    } });
-    writeFileSync(sciterArchive(library), packed);
-}
-
-/// Whether these first bytes of a file are a pointer of Git LFS, left in place of a file it
-/// hasn't fetched: .lfsconfig excludes libs/ from fetching, or git-lfs wasn't installed.
-export function isLfsPointer(head) {
-    return head.subarray(0, lfsPointerStart.length).equals(lfsPointerStart);
-}
-
-const lfsPointerStart = Buffer.from("version https://git-lfs");
-
-/// The arguments of node that run the JS tests: a pattern, node 22 takes no folder. spec, not
-/// node's default: before node 23 that is TAP when the output is no terminal (--brief).
-export const jsTestArgs = ["--test", "--test-reporter=spec", "tests/js/*.test.mjs"];
-
-/// The arguments of git that fetch one file of Git LFS and put it in place of its pointer.
-/// .lfsconfig excludes libs/ from every fetch (a clone fetches no library) and an --include
-/// alone doesn't lift that: the empty --exclude does.
-export function lfsPullArgs(file) {
-    return ["lfs", "pull", `--include=${file}`, "--exclude="];
 }
 
 /// The compiler arguments of `dub describe --data-0` (each argument ends with a zero, a list
@@ -500,44 +415,13 @@ function describe(data, dubBuildArgs) {
     return result.stdout.split(/\r?\n/).filter((line) => line !== "");
 }
 
-/// Makes sure the Sciter library the build will copy is in libs/: unpacked from its archive,
-/// which a clone leaves as a pointer of Git LFS (.lfsconfig), so only the archive of this build
-/// is fetched, on the first build that needs it. Stops with what to do when it can't be: the
-/// program would build and then fail to load it.
-function checkSciterLibrary(arch) {
-    if (!arches.includes(arch)) return; // no library for it: dub will tell
-    const library = sciterLibrary(process.platform, arch);
-    const archive = sciterArchive(library);
-    if (readArchiveHead(archive) === "pointer") {
-        if (briefLog === null) console.log(`Fetching ${archive} from Git LFS`);
-        const failed = `${archive} is a pointer of Git LFS, not the library, and fetching it failed: install git `
-            + `and git-lfs, run "git lfs install", then "git ${lfsPullArgs(archive).join(" ")}" (docs/building.md).`;
-        let pulled;
-        try {
-            pulled = run("git", lfsPullArgs(archive)).status === 0;
-        } catch (error) {
-            throw new BuildError(`${error.message}\n${failed}`); // no git on the PATH
-        }
-        if (!pulled || readArchiveHead(archive) === "pointer") throw new BuildError(failed);
-    }
-    try {
-        if (unpackLibrary(library) && briefLog === null) console.log(`Unpacked ${library}`);
-    } catch (error) {
-        throw new BuildError(`Can't unpack ${archive} into ${library}: ${error.message}`);
-    }
-}
-
-/// "pointer" when the archive is a pointer of Git LFS, "archive" otherwise; stops when it is missing.
-function readArchiveHead(archive) {
-    const head = Buffer.alloc(lfsPointerStart.length);
-    let read = 0;
-    try {
-        const file = openSync(archive, "r");
-        try { read = readSync(file, head); } finally { closeSync(file); }
-    } catch {
-        throw new BuildError(`No Sciter library ${archive}: run "git checkout -- ${archive}" and build again (docs/building.md).`);
-    }
-    return read === head.length && isLfsPointer(head) ? "pointer" : "archive";
+/// Makes sure the Sciter library of the build is in libs/ (scripts/sciter-library.mjs), what is
+/// being done told as the steps of a build are: not with --brief, git's output in its log.
+export function checkSciterLibrary(arch) {
+    putSciterLibrary(arch, {
+        git: (args) => run("git", args).status === 0,
+        log: (line) => { if (briefLog === null) console.log(line); },
+    });
 }
 
 /// Packs every Sciter library of libs/ into its archive, side by side (zlib works on threads
@@ -555,7 +439,7 @@ export async function packLibs(libraries = sciterLibraries) {
 
 /// Builds (`{ release, arch }`) and gives the folder of the program.
 export function build(options) {
-    checkSciterLibrary(options.arch ?? process.arch);
+    // the library is put in place by dub's own hook (preGenerateCommands of dub.sdl)
     runOrFail("dub", dubArgs("build", options), "Build failed.");
     return targetPath(options);
 }
@@ -566,15 +450,16 @@ export function targetPath(options) {
 }
 
 function test(options) {
-    checkSciterLibrary(options.arch ?? process.arch);
-    const dub = run("dub", dubArgs("test", options)).status === 0;
-    // a filter asks for some D tests: the rest would only be in the way
+    // the hooks of dub.sdl would run the JS tests and the names of .ai/ after the unittests: this runs them itself
+    const dub = run("dub", dubArgs("test", options), { env: { [noHooksVariable]: "1" } }).status === 0;
+    // the filters name the tests to run, the D unittests and the JS ones; the names of .ai/ are no test of that kind
+    const filters = options.filters ?? [];
+    const js = run(process.execPath, ["scripts/utils/test-js.mjs", ...filters]).status === 0;
     if (options.filters) {
-        console.log(`D unittests: ${dub ? "OK" : "FAILED"}`);
-        if (!dub) throw new BuildError("Tests failed.");
+        console.log(`D unittests: ${dub ? "OK" : "FAILED"}, JS tests: ${js ? "OK" : "FAILED"}`);
+        if (!dub || !js) throw new BuildError("Tests failed.");
         return;
     }
-    const js = run(process.execPath, jsTestArgs).status === 0;
     // the names of .ai/, AGENTS.md, CLAUDE.md and .claude/ the code no longer has
     const context = run(process.execPath, ["scripts/utils/check-ai-context.mjs"]).status === 0;
     console.log(`D unittests: ${dub ? "OK" : "FAILED"}, JS tests: ${js ? "OK" : "FAILED"}, `

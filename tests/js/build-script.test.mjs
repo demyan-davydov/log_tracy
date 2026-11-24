@@ -6,7 +6,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseCommand, dubArgs, distArch, infoPlist, desktopEntry, sciterLibrary, sciterLibraries, sciterArchive, unpackLibrary,
-    packLibrary, packLibs, isLfsPointer, lfsPullArgs, jsTestArgs,
+    packLibrary, packLibs, isLfsPointer, lfsPullArgs,
     compilerArgs, genLogArgs, moduleTestArgs, commands, buildUsage, runUsage, testUsage, dmgName, debName, debControl, zipName, zipCommand,
     makeDebRoot, signScript, dmgCommand } from "../../scripts/build.mjs";
 
@@ -214,10 +214,6 @@ test("only the Sciter library of the build is pulled, past the exclusion of .lfs
     // .lfsconfig excludes libs/ from every fetch: an --include alone fetches nothing
     assert.deepEqual(lfsPullArgs("libs/linux/x64/libsciter.so"),
         ["lfs", "pull", "--include=libs/linux/x64/libsciter.so", "--exclude="]);
-});
-
-test("the JS tests are named by a pattern: node 22 takes no folder", () => {
-    assert.deepEqual(jsTestArgs, ["--test", "--test-reporter=spec", "tests/js/*.test.mjs"]);
 });
 
 test("the compiler arguments dub describes, separated by zeros", () => {

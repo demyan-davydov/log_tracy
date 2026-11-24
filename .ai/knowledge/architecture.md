@@ -97,7 +97,11 @@ ptable  ←  ptable_text  ←  ui
   Windows check, `gen-log` that builds and runs the test log generator `gen_log.d`, `bench`
   that measures the tree against a ref, its pure part in `bench.mjs`; `--brief` filters the
   output of every step through `build-output-filter.mjs`), `run.mjs`,
-  `check-ai-context.mjs` (the names of `.ai/` the code lost), `backtrace.mjs` (the stacks of
+  `prepare-sciter.mjs` (the Sciter library of a build put in place: dub runs it before every
+  build, run and test, `preGenerateCommands`; the code is `scripts/sciter-library.mjs`, which
+  `build.mjs` uses too), `hooks.mjs` (`NO_DUB_HOOKS`: the hooks keep out of a run of `build.mjs test`), `test-js.mjs` (the JS tests in a line) and
+  `check-ai-context.mjs` (the names of `.ai/` the code lost): the last two after the unittests of
+  `dub test` (`postRunCommands`), `backtrace.mjs` (the stacks of
   a running app),
   `app.mjs` (drives a copy of the app through the debug channel), `screenshot.mjs`,
   i18n extraction, benchmarks (`bench_rows.d`, `bench_index.d`). They run from the project

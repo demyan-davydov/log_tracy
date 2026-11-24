@@ -16,11 +16,14 @@ Applies to every fix and feature, D and script alike.
 ## Running
 
 - All tests: `node scripts/test.mjs` (= `build.mjs test`; D unittests, "N test(s) run, 0 failed.",
-  and the JS tests). JS only: `node --test "tests/js/*.test.mjs"` (node 22 takes no folder).
+  the JS tests and the names of `.ai/`); a plain `dub test` runs the same. JS only:
+  `node scripts/utils/test-js.mjs` (one line when they pass; `--verbose` a line per test).
 - `dub test` runs unit-threaded's runner in one thread: each `unittest` block is a test of its
   own, a failed one doesn't stop the ones after it.
-- Some D tests: `node scripts/test.mjs --filter <name>` (a module, `utils.fsm`, or a test's
-  full name; repeatable), the same as `dub test --compiler=ldc2 -- <name>`.
+- Some tests: `node scripts/test.mjs --filter <name>` (repeatable): the D unittests whose names
+  start with it (a module, `utils.fsm`, or a test's full name) and the JS tests whose names
+  contain it. `dub test --compiler=ldc2 -- <name>` filters the D ones only: its hooks run the
+  JS tests whole.
 - One module that doesn't depend on Sciter: `node scripts/test.mjs --module <file.d>`. It runs
   druntime's runner: no filter, a module's tests stop at the first failing `unittest` block.
 - An agent runs them with `--brief` (`build`, `test`, `test --filter`, `test --module`, `dist`,
