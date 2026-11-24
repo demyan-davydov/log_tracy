@@ -98,6 +98,10 @@ it, for the script and for a plain `dub build`, `dub run` and `dub test` alike: 
 `scripts/utils/prepare-sciter.mjs` before each of them (`preGenerateCommands` of `dub.sdl`),
 whether the program is up to date or not. `dub describe` doesn't run it, so the script's
 `bench` and `test --module`, which ask dub to describe, put the library in place themselves.
+Without Node.js dub stops there and says so (`Node.js is required to build`), after that stage and
+before any build, run or test hook. The check is in the command of dub.sdl, in the shell of the
+system, and tells the presence of `node`, not its version (22 or newer); for Windows (`cmd`) it is
+written but not tried.
 
 ## Commands
 

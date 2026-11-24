@@ -13,7 +13,11 @@ targetPath "build/$PLATFORM-$ARCH-$BUILD_TYPE"
 // The library is put in place before dub copies it: scripts/utils/prepare-sciter.mjs fetches its
 // archive from Git LFS and unpacks it. preGenerateCommands runs before dub decides whether to
 // rebuild, so a plain `dub build`, `dub run` and `dub test` get it on a fresh clone too
-preGenerateCommands "node \"$PACKAGE_DIR/scripts/utils/prepare-sciter.mjs\""
+// Without Node.js there is nothing to run the hooks with: told here, in the shell of the system
+// (nothing of Node can tell it), not by "node: command not found". Not `a && b || c`: c would
+// also tell it when b, the script, failed. No parentheses in the Windows message: cmd ends the block there
+preGenerateCommands "command -v node >/dev/null 2>&1 || { echo 'Node.js is required to build: see docs/building.md' >&2; exit 1; }; node \"$PACKAGE_DIR/scripts/utils/prepare-sciter.mjs\"" platform="posix"
+preGenerateCommands "where node >NUL 2>&1 & if errorlevel 1 (echo Node.js is required to build: see docs/building.md 1>&2 & exit /b 1) else (node \"$PACKAGE_DIR/scripts/utils/prepare-sciter.mjs\")" platform="windows"
 copyFiles "libs/macosx/libsciter.dylib" platform="osx" // universal: x86_64 and arm64
 copyFiles "libs/linux/x64/libsciter.so" platform="linux-x86_64"
 copyFiles "libs/linux/arm64/libsciter.so" platform="linux-aarch64"
