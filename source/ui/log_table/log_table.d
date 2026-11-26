@@ -129,10 +129,12 @@ final class LogTable
     /// What the table tells its host (the table's and the bar's)
     ref TableEvents events() { return _scrolled.events; }
 
-    /// The table and the model let go of the document and the column host
+    /// The table and the model let go of the document and the column host. Silently: the tables of a host go together, and
+    /// this is called while Sciter takes them off (`Table.detachSilently`)
     void dispose()
     {
         _look.unsubscribe(_lookHandle);
+        _table.detachSilently(); // first: nothing after it may fit the widths of the host
         _table.cancelPress(); // a drag that was on goes with the table
         _table.dispose();
         _model.dispose(); // the model stops hearing its source
@@ -286,6 +288,28 @@ unittest
     look.setSpacing(spacing);
     assert(log.table.rowsArea.x == 5 && log.table.rowsArea.w == 375);
     log.dispose();
+}
+
+@("LogTable: a disposed table leaves its column host silently: the other table of the host is not told to lay out anew")
+unittest
+{
+    import ptable.layout : LayoutChange;
+    import ptable_text.testing : FakeMeasurer;
+    import ui.log_table.log_look : defaultLogLook;
+
+    auto opened = openTestLog("log_tracy_log_table_silent_dispose.log", 5);
+    scope (exit) opened.close();
+    auto host = new ColumnHost;
+    auto look = defaultLogLook();
+    auto stays = new LogTable(TableSource(opened.session, opened.id, false, host), look, new FakeMeasurer);
+    scope (exit) stays.dispose();
+    auto goes = new LogTable(TableSource(opened.session, opened.id, true, host), look, new FakeMeasurer);
+    stays.table.resize(400, 300);
+    goes.table.resize(300, 300); // the narrower one sets the room of the columns
+    size_t told;
+    host.subscribe((const LayoutChange change) { ++told; });
+    goes.dispose();
+    assert(told == 0, "the room is another now, but nobody is asked to follow it");
 }
 
 @("LogTable: a table made not to wrap the Payload has rows of one line from the start")

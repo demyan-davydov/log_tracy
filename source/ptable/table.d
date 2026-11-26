@@ -175,6 +175,18 @@ final class Table
         invalidate();
     }
 
+    /// As `detach`, but nothing is asked of anybody: the other tables of the host don't settle, nothing is painted again. For a
+    /// table about to be disposed together with the others of its host: in a view being torn down, asking one of them to lay
+    /// out its rows may take it apart in the middle of that
+    void detachSilently()
+    {
+        if (_detached)
+            return;
+        _detached = true;
+        _motion.stop();
+        _store.detachHostSilently();
+    }
+
     /// The table is back with its host (`detach`): its room counts again, the widths are fit anew with its rows, and it shows them
     /// where they stood
     void attach()
@@ -3768,6 +3780,33 @@ unittest
     search.dispose();
     assert(host.layout.width("n") == narrow, "the column narrows to the rows of the main table");
     assert(asked > 0, "the main table is painted again");
+}
+
+@("Table: a silently detached table asks nothing of the others of its host, not even when it is disposed")
+unittest
+{
+    auto host = new ColumnHost;
+    auto main = new Table(new Levels(100, shortLevel), host, portsOf(new Painter));
+    auto search = new Table(new Levels(5, longLevel), host, portsOf(new Painter));
+    main.resize(400, 121);
+    search.resize(300, 60);
+    auto canvas = new RecordingCanvas;
+    main.paint(canvas);
+    search.paint(canvas);
+    const wide = host.layout.width("n");
+    size_t asked, told;
+    main.events.invalidate = () { ++asked; };
+    search.events.invalidate = () { ++asked; };
+    host.subscribe((const LayoutChange change) { ++told; });
+    search.detachSilently();
+    assert(!search.attached);
+    search.resize(350, 60); // out of the host: its size and its rows are nobody else's business
+    search.cancelPress();
+    asked = 0;
+    search.dispose();
+    assert(told == 0, "no change of the room or of the widths is told");
+    assert(host.layout.width("n") == wide, "the columns of the other are not fit anew");
+    assert(asked == 0, "nobody is painted again");
 }
 
 @("Table: a detached table gives its host no widths and no room, draws its background only and keeps its place; attached again, it counts")

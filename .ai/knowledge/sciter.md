@@ -80,7 +80,9 @@ agent can't drive it. In scapp a plain
   (6.0.5.5, macOS, 2026-11-26): a log table disposed so wrote into its freed cache and the program
   crashed on close, now and then. So do not count on an object being whole after a call into
   Sciter, and in `handleDetached` ask nothing of another object with a behavior (it may be next,
-  and be detached inside that).
+  and be detached inside that). **Only partly dealt with**: `LogTable.dispose` leaves the column host
+  asking nothing of the other table (`Table.detachSilently`); nothing guards a table detached amid
+  work of its own begun for another reason (`docs/backlog.md`).
 - The graphics API (`graphicsApi()`, `sciter-x-graphics.h`) has 72 functions in the table
   `SciterGraphicsAPI` (the order is checked by a unittest), every one `nothrow`. `RGBA` packs a, b, g, r from the
   top byte. A text layout (`TextLayout`, `textCreateForElementAndStyle`) takes the font, the size

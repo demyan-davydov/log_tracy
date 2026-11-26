@@ -97,6 +97,13 @@ final class RowStore : ColumnClient
         host.detach(this);
     }
 
+    /// As `detachHost`, with nothing asked of the other tables of the host (`ColumnHost.detachSilently`)
+    void detachHostSilently()
+    {
+        _detached = true;
+        host.detachSilently(this);
+    }
+
     /// The store is back with its host: its room counts again and the widths are fit anew with its rows (at the next layout)
     void attachHost()
     {

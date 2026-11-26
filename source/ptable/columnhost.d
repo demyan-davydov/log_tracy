@@ -137,14 +137,22 @@ final class ColumnHost
     /// `client` no longer shows them: what it needed and the room it had are forgotten, the others settle without it
     void detach(ColumnClient client)
     {
-        const at = find(client);
-        if (at == size_t.max)
+        if (find(client) == size_t.max)
             return;
         const room = width;
-        _clients = _clients[0 .. at] ~ _clients[at + 1 .. $];
+        detachSilently(client);
         toldRoom(room);
         if (_clients.length)
             settle(_least);
+    }
+
+    /// As `detach`, but nothing is told and nobody measures: the others keep the widths and the room they were told of until
+    /// something else settles them. For a client that goes together with the others, which must not be worked with then
+    void detachSilently(ColumnClient client)
+    {
+        const at = find(client);
+        if (at != size_t.max)
+            _clients = _clients[0 .. at] ~ _clients[at + 1 .. $];
     }
 
     /// The body of `client` (where its rows and the margins around them are) is `width` wide now
