@@ -1,8 +1,8 @@
 //! The log tables of the window (`LogTables`): what a table shows and what the script hears of its mouse, read off its element
 //! (`tableAttributesOf`, `hearsOf`), the tables the script
 //! talks to by their numbers, and what they share: the column host of a document, so the main table and the search table of a
-//! document keep the same columns, widths, hidden columns and horizontal scroll, fit to the rows of both; the look and the single-line
-//! setting of the application. What the script asks of the log tables (`logTableCall`, `logTableSetLook`, ...) is done here: the
+//! document keep the same columns, widths, hidden columns and horizontal scroll, fit to the rows of both; the look and the setting of the
+//! application whether the Payload wraps. What the script asks of the log tables (`logTableCall`, `logTableSetLook`, ...) is done here: the
 //! window only converts the values of Sciter. Free of Sciter.
 module ui.log_table.log_tables;
 
@@ -96,19 +96,19 @@ unittest
 /// The log tables of the window: those the script talks to, by their numbers, and what they share
 final class LogTables
 {
-    private bool _singleLine;
+    private bool _wrapPayload = true;
     private ColumnHost[int] _hosts;
     private LogLook _look;
     private TableRegistry _tables; // the tables attached, by their numbers
 
-    /// Whether the rows of the log tables are one line high (the setting of the application): a table starts so
-    bool singleLine() const { return _singleLine; }
+    /// Whether the Payload of the log tables wraps (else every row is one line high; the setting of the application): a table starts so
+    bool wrapPayload() const { return _wrapPayload; }
 
-    /// The setting of the single line changed: every table now, the next ones from the start
-    void singleLine(bool on)
+    /// The setting of the wrap of the Payload changed: every table now, the next ones from the start
+    void wrapPayload(bool on)
     {
-        _singleLine = on;
-        _tables.each((TableControl table) { table.singleLine(on); });
+        _wrapPayload = on;
+        _tables.each((TableControl table) { table.wrapPayload(on); });
     }
 
     /// The table `control` attached as `id`: the script talks to it from now on; it hears the enters and leaves of `hears`, what the
@@ -180,9 +180,9 @@ final class LogTables
 unittest
 {
     auto target = new LogTables;
-    assert(!target.singleLine);
-    target.singleLine = true;
-    assert(target.singleLine, "the next table starts so");
+    assert(target.wrapPayload, "wrapped unless the setting says otherwise");
+    target.wrapPayload = false;
+    assert(!target.wrapPayload, "the next table starts so");
     assert(target.hostOf(3) is target.hostOf(3), "both tables of a document settle their widths in one host");
     assert(target.hostOf(3) !is target.hostOf(4));
     auto old = target.hostOf(3);
@@ -201,15 +201,15 @@ unittest
     assert(host.layout.pin("time") == Pin.none, "the columns of the format scroll");
 }
 
-@("LogTables: the setting of the single line reaches every table attached, and a table attached later starts so")
+@("LogTables: the setting of the wrap of the Payload reaches every table attached, and a table attached later starts so")
 unittest
 {
     import std.typecons : BlackHole;
 
     static class Told : BlackHole!TableControl
     {
-        bool[] lines;
-        override void singleLine(bool on) { lines ~= on; }
+        bool[] wraps;
+        override void wrapPayload(bool on) { wraps ~= on; }
     }
 
     auto tables = new LogTables;
@@ -218,9 +218,9 @@ unittest
     tables.attached(2, b);
     tables.attached(3, gone);
     tables.detached(gone);
-    tables.singleLine(true);
-    assert(a.lines == [true] && b.lines == [true] && gone.lines.length == 0, "the tables there are, not one gone");
-    assert(tables.singleLine, "the next table starts so");
+    tables.wrapPayload(false);
+    assert(a.wraps == [false] && b.wraps == [false] && gone.wraps.length == 0, "the tables there are, not one gone");
+    assert(!tables.wrapPayload, "the next table starts so");
     assert(tables.table(1) is a && tables.table(3) is null && tables.table(9) is null);
 }
 

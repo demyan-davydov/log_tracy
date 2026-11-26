@@ -4,20 +4,19 @@
 module ui.log_table.log_table;
 
 import domain.document_id : DocumentId;
-import domain.document_item : DocumentItem;
 import ptable.columnar : ColumnarModel;
 import ptable.columnhost : ColumnHost;
 import ptable.regions : SideMargins;
 import ptable.lookchange : LookChange;
-import ptable.model : TableModel;
-import ptable_text.measurer : TextMeasurer;
 import ptable.scrollbar : ScrollBar;
 import ptable.scrolledtable : ScrolledTable;
 import ptable.table : Table, TableEvents;
 import ptable.selection : CopyFormat;
 import ptable.tableports : TablePorts;
+import ptable_text.measurer : TextMeasurer;
+import std.meta : AliasSeq;
 import ui.app_session : AppSession;
-import ui.log_table.document_model : DocumentRows, LogColumnLook, documentTableModel;
+import ui.log_table.document_model : DocumentRows, LogColumnLook, LogRow, documentTableModel;
 import ui.log_table.log_look : LogLook;
 import ui.log_table.painter : LogPainter, LogScrollBarPainter;
 
@@ -28,7 +27,7 @@ struct TableSource
     DocumentId docId;
     bool search;
     ColumnHost host;
-    bool singleLine; /// the rows are one line high (the setting of the application) from the start
+    bool wrapPayload = true; /// the Payload wraps, else every row is one line high (the setting of the application): from the start
 }
 
 /// What follows a change of the look, in the order that matters: when the metrics changed (the fonts, their sizes, the
@@ -45,56 +44,58 @@ void applyLookChange(LookChange change, scope void delegate() beforeMetrics, sco
 /// into a sheet), a million characters at most
 enum CopyFormat logCopyFormat = CopyFormat("\t"w, "\n"w, 1_000_000);
 
+// A row that comes into view has this much room from the edge it came from, in dips
+private enum double logRevealMargin = 24;
+// The width of a scroll bar in dips: the hover area at the edge, the wide thumb is 9 (12, a dip wider: the user, 2026-11-20); a trial value
+private enum double logScrollBarWidth = 13;
+
 final class LogTable
 {
     /// The look's metrics changed (the fonts, their sizes, the spacing): the host drops what it measured. Called before
     /// the table reads its metrics again, and only for a change of the metrics.
     void delegate() beforeMetrics;
 
-    private void delegate() _disposeModel; // the model stops hearing its source
+    private ColumnarModel!LogRow _model;
     private DocumentRows _rows; // the rows of the view: told what the model cannot know
-    private LogPainter _painter;
     private Table _table;
     private ScrolledTable _scrolled; // the table with its scroll bar beside it
     private LogLook _look;
     private size_t _lookHandle;
-    private bool _singleLine; // every row one line: the Payload is cut, not wrapped
-    private bool _columnLookStale = true; // the look or the single line changed: what the columns are made with is made again
+    private LogColumnLook _columnLook; // what the columns are made with: the model reads it at every row
 
     /// The model listens to the document and the table to the look from now on, until `dispose`
     this(TableSource source, LogLook look, TextMeasurer measurer)
     {
         ColumnHost host = source.host;
-        bool delegate() anchorsFull = () => source.session.doc(source.docId).anchorsFull; // the document says whether there is room
-        // The model asks for it at every row it reads: it is made again only after a change of the look or of the single line, and
-        // holds the look's own least widths (a change of the look replaces them, it never changes them in place)
-        LogColumnLook columnLook;
-        auto model = documentTableModel(source.session, source.docId, source.search, _rows, () {
-            if (_columnLookStale)
-            {
-                // the columns only read the widths: the look's own, not a copy
-                columnLook = LogColumnLook(look.spacing.payloadPadLeft, look.spacing.payloadPadRight, !_singleLine, look, anchorsFull, measurer, null,
-                    cast(double[string]) look.spacing.minWidths);
-                _columnLookStale = false;
-            }
-            return columnLook;
-        });
-        _disposeModel = &model.dispose;
-        _painter = new LogPainter(look);
-        auto ports = TablePorts(_painter);
+        _look = look;
+        _columnLook.look = look;
+        _columnLook.measurer = measurer;
+        _columnLook.anchorsFull = () => source.session.doc(source.docId).anchorsFull; // the document says whether there is room
+        _columnLook.wrapPayload = source.wrapPayload;
+        readSpacing(_columnLook, look);
+        AliasSeq!(_model, _rows) = documentTableModel(source.session, source.docId, source.search, () => _columnLook)[];
+        auto ports = TablePorts(new LogPainter(look));
         ports.copyFormat = logCopyFormat;
         host.setMargins(sidesOf(look)); // the same for the tables of a document: each gives the look's, the host keeps one
-        _table = new Table(model, host, ports);
-        _table.revealMargin = 24; // a row that comes into view has 24 dips of room from the edge it came from
+        _table = new Table(_model, host, ports);
+        _table.revealMargin = logRevealMargin;
         _table.followEnd(true); // the rows of a document grow (a file being written): the table at its end follows it, as a terminal does
         _scrolled = new ScrolledTable(_table, new ScrollBar(new LogScrollBarPainter(look)), new ScrollBar(new LogScrollBarPainter(look)));
-        _scrolled.bar.width = _scrolled.across.width = 13; // the hover area at the edge, the wide thumb 9 (12, a dip wider: the user, 2026-11-20); a trial value
-        _look = look;
+        _scrolled.bar.width = _scrolled.across.width = logScrollBarWidth;
         _lookHandle = look.subscribe((const LookChange change) {
             host.setMargins(sidesOf(look)); // nothing told when they are the same
-            _columnLookStale = true;
+            readSpacing(_columnLook, look);
             applyLookChange(change, beforeMetrics, (LookChange c) { _table.restyle(c); });
         });
+    }
+
+    // What of the column look follows the spacing of the look: at the start and after a change of the look
+    private static void readSpacing(ref LogColumnLook columnLook, const LogLook look)
+    {
+        columnLook.payloadPadLeft = look.spacing.payloadPadLeft;
+        columnLook.payloadPadRight = look.spacing.payloadPadRight;
+        // the look's own least widths, not a copy: the columns only read them, and a change of the look replaces them
+        columnLook.minWidths = cast(double[string]) look.spacing.minWidths;
     }
 
     // The margins left and right of the rows the look asks for
@@ -103,13 +104,12 @@ final class LogTable
         return SideMargins(look.spacing.rowsMarginLeft, look.spacing.rowsMarginRight);
     }
 
-    /// Every row one line (the Payload is cut where its cell ends) or as many as the Payload wraps to
-    void singleLine(bool on)
+    /// Every row as many lines as the Payload wraps to, or one line (the Payload is cut where its cell ends)
+    void wrapPayload(bool on)
     {
-        if (on == _singleLine)
+        if (on == _columnLook.wrapPayload)
             return;
-        _singleLine = on;
-        _columnLookStale = true;
+        _columnLook.wrapPayload = on;
         _table.restyle(LookChange.metrics); // the columns are read again, the rows are wrapped again, the place is kept
     }
 
@@ -117,8 +117,6 @@ final class LogTable
     /// (the rows after it are other ones: nothing stays picked)
     void anchorApplied(size_t message, bool moved)
     {
-        if (_rows is null)
-            return;
         _rows.messageChanged(message, moved);
         if (moved)
             _table.forgetPicks();
@@ -137,7 +135,7 @@ final class LogTable
         _look.unsubscribe(_lookHandle);
         _table.cancelPress(); // a drag that was on goes with the table
         _table.dispose();
-        _disposeModel();
+        _model.dispose(); // the model stops hearing its source
     }
 }
 
@@ -288,6 +286,60 @@ unittest
     look.setSpacing(spacing);
     assert(log.table.rowsArea.x == 5 && log.table.rowsArea.w == 375);
     log.dispose();
+}
+
+@("LogTable: a table made not to wrap the Payload has rows of one line from the start")
+unittest
+{
+    import ptable_text.testing : FakeMeasurer;
+    import ui.log_table.log_look : defaultLogLook;
+
+    auto opened = openTestLog("log_tracy_log_table_no_wrap.log", 5);
+    scope (exit) opened.close();
+    auto wrapped = new LogTable(TableSource(opened.session, opened.id, false, new ColumnHost), defaultLogLook(), new FakeMeasurer);
+    scope (exit) wrapped.dispose();
+    auto cut = new LogTable(TableSource(opened.session, opened.id, false, new ColumnHost, false), defaultLogLook(), new FakeMeasurer);
+    scope (exit) cut.dispose();
+    wrapped.table.resize(300, 300); // the Payload does not fit in one line
+    cut.table.resize(300, 300);
+    assert(cut.table.rowHeight(0) < wrapped.table.rowHeight(0), "the Payload is cut, not wrapped");
+}
+
+@("LogTable: the wrap of the Payload turned off and on for a table that is there changes the height of its rows")
+unittest
+{
+    import ptable_text.testing : FakeMeasurer;
+    import ui.log_table.log_look : defaultLogLook;
+
+    auto opened = openTestLog("log_tracy_log_table_wrap_toggle.log", 5);
+    scope (exit) opened.close();
+    auto log = new LogTable(TableSource(opened.session, opened.id, false, new ColumnHost), defaultLogLook(), new FakeMeasurer);
+    scope (exit) log.dispose();
+    log.table.resize(300, 300);
+    const wrapped = log.table.rowHeight(0);
+    log.wrapPayload(false);
+    assert(log.table.rowHeight(0) < wrapped);
+    log.wrapPayload(true);
+    assert(log.table.rowHeight(0) == wrapped);
+}
+
+@("LogTable: the room left of the Payload in a changed look reaches the columns of a table that is there")
+unittest
+{
+    import ptable_text.testing : FakeMeasurer;
+    import ui.log_table.log_look : LogSpacing, defaultLogLook;
+
+    auto look = defaultLogLook();
+    auto opened = openTestLog("log_tracy_log_table_spacing.log", 5);
+    scope (exit) opened.close();
+    auto log = new LogTable(TableSource(opened.session, opened.id, false, new ColumnHost), look, new FakeMeasurer);
+    scope (exit) log.dispose();
+    log.table.resize(1200, 300); // the Payload fits in one line
+    const oneLine = log.table.rowHeight(0);
+    LogSpacing spacing;
+    spacing.payloadPadLeft = 1000;
+    look.setSpacing(spacing);
+    assert(log.table.rowHeight(0) > oneLine, "little room left for the text: it wraps");
 }
 
 @("LogTable: the rows of a document scrolled frame after frame take no memory of the garbage collector")

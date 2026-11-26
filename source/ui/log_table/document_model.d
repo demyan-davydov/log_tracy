@@ -35,6 +35,7 @@ import ui.row_cells : putColumnText, putNumber;
 import ui.view_listeners : ViewListener, ViewVersion;
 
 import std.datetime.timezone : LocalTime, TimeZone;
+import std.typecons : Tuple;
 import std.uni : toLower;
 
 /// The parts of a cell of time: its date heads the rows of its day ("2026/11/18 12:34:56.000001", `putTime`); a time
@@ -42,7 +43,7 @@ import std.uni : toLower;
 immutable HeadedCellPartsExtractor timeParts = new immutable HeadedCellPartsExtractor(&firstSpace);
 
 /// What the look and the settings say of the columns of the log table: the room left and right of the Payload text (less than 0:
-/// the geometry's) and whether the Payload wraps (not in the single-line view)
+/// the geometry's) and whether the Payload wraps
 struct LogColumnLook
 {
     double payloadPadLeft = -1, payloadPadRight = -1;
@@ -326,20 +327,15 @@ final class DocumentColumns
     }
 }
 
-/// The model of a view of a document (the main one, or the search results) for a log table
-ColumnarModel!LogRow documentTableModel(AppSession session, DocumentId docId, bool search, LogColumnLook delegate() look = null)
-{
-    DocumentRows rows;
-    return documentTableModel(session, docId, search, rows, look);
-}
-
-/// The same, and the rows of the view too: they are told what the model cannot know (an anchor changed some rows)
-ColumnarModel!LogRow documentTableModel(AppSession session, DocumentId docId, bool search, out DocumentRows rows,
+/// The model of a view of a document (the main one, or the search results) for a log table, and the rows of the view: they are told
+/// what the model cannot know (an anchor changed some rows)
+Tuple!(ColumnarModel!LogRow, "model", DocumentRows, "rows") documentTableModel(AppSession session, DocumentId docId, bool search,
     LogColumnLook delegate() look = null)
 {
     auto columns = new DocumentColumns(session, docId, look);
-    rows = new DocumentRows(session, docId, search);
-    return new ColumnarModel!LogRow(rows, &columns.get, (ref const LogRow row) => rowExtraOf(row));
+    auto rows = new DocumentRows(session, docId, search);
+    auto model = new ColumnarModel!LogRow(rows, &columns.get, (ref const LogRow row) => rowExtraOf(row));
+    return typeof(return)(model, rows);
 }
 
 version (unittest)

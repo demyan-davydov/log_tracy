@@ -69,7 +69,7 @@ class MainWindow : SciterWindow
         }
         const id = shown.id;
         const hears = hearsOf(attributeOf(he, "hears"));
-        auto source = TableSource(_session, _session.findDocument(shown.doc), shown.search, _tables.hostOf(shown.doc), _tables.singleLine);
+        auto source = TableSource(_session, _session.findDocument(shown.doc), shown.search, _tables.hostOf(shown.doc), _tables.wrapPayload);
         return new LogTableBehavior(source, _tables.look,
             TableHooks(id, (TableControl control) { _tables.attached(id, control, hears); }, &_tables.detached, &_tableCalls.put));
     }
@@ -282,7 +282,7 @@ class MainWindow : SciterWindow
             return true;
         case "logTableSingleLine":
             // logTableSingleLine(on): the rows of the painted tables are one line high (the setting of the application): every table now, the next ones from the start
-            _tables.singleLine(param!bool(0));
+            _tables.wrapPayload(!param!bool(0)); // from here on the setting is whether the Payload wraps
             return true;
 
         // ── The views ───────────────────────────────────────────────────────
