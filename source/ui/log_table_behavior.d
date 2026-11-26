@@ -418,11 +418,11 @@ final class LogTableBehavior : SciterEventHandler
             _host.textLimit(texts);
         }
 
-        void singleLine(bool on)
+        void wrapPayload(bool on)
         {
-            // `LogTables.singleLine` goes over a copy of the tables: one may be detached by the time its turn comes
+            // `LogTables.wrapPayload` goes over a copy of the tables: one may be detached by the time its turn comes
             if (_log !is null)
-                _log.singleLine(on); // the restyle repaints
+                _log.wrapPayload(on); // the restyle repaints
         }
 
         void resetStats() { _frames.reset(); }

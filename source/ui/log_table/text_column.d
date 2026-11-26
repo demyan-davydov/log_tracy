@@ -385,7 +385,7 @@ unittest
 
     auto measurer = new Counting;
     auto column = new TextColumn(ColumnDef("t", "T", 24, true), defaultLogLook(), measurer);
-    column.style.wrap = false; // one line of all of it, as in the single-line view
+    column.style.wrap = false; // one line of all of it, as in a log table that does not wrap the Payload
     column.lookChanged();
     const data = CellData("word "w.replicate(12_000));
     auto input = CellInput(0, 0, &data);

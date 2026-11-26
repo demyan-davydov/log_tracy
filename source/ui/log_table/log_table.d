@@ -27,7 +27,7 @@ struct TableSource
     DocumentId docId;
     bool search;
     ColumnHost host;
-    bool singleLine; /// the rows are one line high (the setting of the application) from the start
+    bool wrapPayload = true; /// the Payload wraps, else every row is one line high (the setting of the application): from the start
 }
 
 /// What follows a change of the look, in the order that matters: when the metrics changed (the fonts, their sizes, the
@@ -71,7 +71,7 @@ final class LogTable
         _columnLook.look = look;
         _columnLook.measurer = measurer;
         _columnLook.anchorsFull = () => source.session.doc(source.docId).anchorsFull; // the document says whether there is room
-        _columnLook.wrapPayload = !source.singleLine;
+        _columnLook.wrapPayload = source.wrapPayload;
         readSpacing(_columnLook, look);
         AliasSeq!(_model, _rows) = documentTableModel(source.session, source.docId, source.search, () => _columnLook)[];
         auto ports = TablePorts(new LogPainter(look));
@@ -104,12 +104,12 @@ final class LogTable
         return SideMargins(look.spacing.rowsMarginLeft, look.spacing.rowsMarginRight);
     }
 
-    /// Every row one line (the Payload is cut where its cell ends) or as many as the Payload wraps to
-    void singleLine(bool on)
+    /// Every row as many lines as the Payload wraps to, or one line (the Payload is cut where its cell ends)
+    void wrapPayload(bool on)
     {
-        if (on != _columnLook.wrapPayload)
-            return; // already so
-        _columnLook.wrapPayload = !on;
+        if (on == _columnLook.wrapPayload)
+            return;
+        _columnLook.wrapPayload = on;
         _table.restyle(LookChange.metrics); // the columns are read again, the rows are wrapped again, the place is kept
     }
 
@@ -288,38 +288,38 @@ unittest
     log.dispose();
 }
 
-@("LogTable: a table made for one-line rows has them from the start")
+@("LogTable: a table made not to wrap the Payload has rows of one line from the start")
 unittest
 {
     import ptable_text.testing : FakeMeasurer;
     import ui.log_table.log_look : defaultLogLook;
 
-    auto opened = openTestLog("log_tracy_log_table_single_line.log", 5);
+    auto opened = openTestLog("log_tracy_log_table_no_wrap.log", 5);
     scope (exit) opened.close();
     auto wrapped = new LogTable(TableSource(opened.session, opened.id, false, new ColumnHost), defaultLogLook(), new FakeMeasurer);
     scope (exit) wrapped.dispose();
-    auto single = new LogTable(TableSource(opened.session, opened.id, false, new ColumnHost, true), defaultLogLook(), new FakeMeasurer);
-    scope (exit) single.dispose();
+    auto cut = new LogTable(TableSource(opened.session, opened.id, false, new ColumnHost, false), defaultLogLook(), new FakeMeasurer);
+    scope (exit) cut.dispose();
     wrapped.table.resize(300, 300); // the Payload does not fit in one line
-    single.table.resize(300, 300);
-    assert(single.table.rowHeight(0) < wrapped.table.rowHeight(0), "the Payload is cut, not wrapped");
+    cut.table.resize(300, 300);
+    assert(cut.table.rowHeight(0) < wrapped.table.rowHeight(0), "the Payload is cut, not wrapped");
 }
 
-@("LogTable: the single line turned on and off for a table that is there changes the height of its rows")
+@("LogTable: the wrap of the Payload turned off and on for a table that is there changes the height of its rows")
 unittest
 {
     import ptable_text.testing : FakeMeasurer;
     import ui.log_table.log_look : defaultLogLook;
 
-    auto opened = openTestLog("log_tracy_log_table_single_line_toggle.log", 5);
+    auto opened = openTestLog("log_tracy_log_table_wrap_toggle.log", 5);
     scope (exit) opened.close();
     auto log = new LogTable(TableSource(opened.session, opened.id, false, new ColumnHost), defaultLogLook(), new FakeMeasurer);
     scope (exit) log.dispose();
     log.table.resize(300, 300);
     const wrapped = log.table.rowHeight(0);
-    log.singleLine(true);
+    log.wrapPayload(false);
     assert(log.table.rowHeight(0) < wrapped);
-    log.singleLine(false);
+    log.wrapPayload(true);
     assert(log.table.rowHeight(0) == wrapped);
 }
 

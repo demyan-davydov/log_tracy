@@ -43,7 +43,7 @@ import std.uni : toLower;
 immutable HeadedCellPartsExtractor timeParts = new immutable HeadedCellPartsExtractor(&firstSpace);
 
 /// What the look and the settings say of the columns of the log table: the room left and right of the Payload text (less than 0:
-/// the geometry's) and whether the Payload wraps (not in the single-line view)
+/// the geometry's) and whether the Payload wraps
 struct LogColumnLook
 {
     double payloadPadLeft = -1, payloadPadRight = -1;

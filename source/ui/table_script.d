@@ -96,8 +96,8 @@ interface TableControl
     /// How many text layouts the host keeps
     void setLimits(size_t texts);
 
-    /// Every row one line (the Payload cut at its cell) or the Payload wrapped (the setting of the log tables)
-    void singleLine(bool on);
+    /// The Payload wrapped, or every row one line with the Payload cut at its cell (the setting of the log tables)
+    void wrapPayload(bool on);
 
     void resetStats();
 
@@ -211,8 +211,8 @@ version (DebugChannel)
             case "setLimits":
                 control.setLimits(cast(size_t) args.number(0, 6000)); // the layouts of both generations, as by default (ui/sciter_table/host)
                 return true;
-            case "singleLine":
-                control.singleLine(args.number(0) != 0);
+            case "wrapPayload":
+                control.wrapPayload(args.number(0) != 0);
                 return true;
             case "resetStats":
                 control.resetStats();
@@ -271,7 +271,7 @@ struct TableRegistry
         return null;
     }
 
-    /// Every table there is: what is told to all of them (the setting of the single line)
+    /// Every table there is: what is told to all of them (the setting of the wrap of the Payload)
     void each(scope void delegate(TableControl) call)
     {
         foreach (control; _controls.values)
@@ -310,7 +310,7 @@ version (unittest)
         void panEnd() { calls ~= "panEnd"; }
         void setWrap(bool bySciter) { calls ~= "setWrap " ~ bySciter.to!string; }
         void setLimits(size_t texts) { calls ~= "setLimits " ~ texts.to!string; }
-        void singleLine(bool on) { calls ~= "singleLine " ~ on.to!string; }
+        void wrapPayload(bool on) { calls ~= "wrapPayload " ~ on.to!string; }
         void resetStats() { calls ~= "resetStats"; }
         void select(double x1, double y1, double x2, double y2) { calls ~= "select " ~ [x1, y1, x2, y2].to!string; }
         void selectWord(double x, double y, bool word) { calls ~= "selectWord " ~ x.to!string ~ " " ~ y.to!string ~ " " ~ word.to!string; }
@@ -390,11 +390,11 @@ unittest
     dispatch(control, "selectWord", ScriptArgs([5, 6, 0]), result);
     dispatch(control, "selectWord", ScriptArgs([5, 6, 1]), result);
     dispatch(control, "setWrap", ScriptArgs([double.nan]), result);
-    dispatch(control, "singleLine", ScriptArgs([1]), result);
-    dispatch(control, "singleLine", ScriptArgs([0]), result);
+    dispatch(control, "wrapPayload", ScriptArgs([1]), result);
+    dispatch(control, "wrapPayload", ScriptArgs([0]), result);
     dispatch(control, "resetStats", ScriptArgs(), result);
     assert(control.calls == ["setLimits 6000", "setLimits 100", "selectWord 5 6 true",
-        "selectWord 5 6 false", "setWrap false", "singleLine true", "singleLine false", "resetStats"]);
+        "selectWord 5 6 false", "setWrap false", "wrapPayload true", "wrapPayload false", "resetStats"]);
 }
 
 @("dispatch: a method it does not know is false and answers nothing")
@@ -421,8 +421,8 @@ unittest
     assert(tables.length == 1);
     tables.attach(3, a);
     size_t told;
-    tables.each((TableControl c) { ++told; c.singleLine(true); });
-    assert(told == 2 && a.calls == ["singleLine true"] && b.calls == ["singleLine true"]);
+    tables.each((TableControl c) { ++told; c.wrapPayload(true); });
+    assert(told == 2 && a.calls == ["wrapPayload true"] && b.calls == ["wrapPayload true"]);
     tables.detach(b);
     tables.detach(a);
     assert(tables.length == 0);
