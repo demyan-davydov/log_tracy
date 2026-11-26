@@ -267,6 +267,17 @@ final class LogTableBehavior : SciterEventHandler
 
     // ---- input ----
 
+    // The cursor is told at every event of the mouse that has a place, of whatever phase: an event left unanswered (a move, a
+    // press, a release over a clickable cell) shows the arrow for a moment. True if it is the hand
+    private bool tellCursor(MOUSE_PARAMS* params, uint cmd, bool onBar)
+    {
+        if (cmd == MOUSE_EVENTS.MOUSE_WHEEL || cmd == MOUSE_EVENTS.MOUSE_LEAVE || onBar)
+            return false;
+        const pointer = _log.table.pointerAt(params.pos.x, params.pos.y);
+        params.cursor_type = cursorOf(pointer);
+        return pointer == PointerKind.hand;
+    }
+
     override protected bool handleEvent(HELEMENT he, MOUSE_PARAMS* params)
     {
         if (_log is null)
@@ -276,12 +287,7 @@ final class LogTableBehavior : SciterEventHandler
         // here too, handled by the menu, and must not be a press of the table (it let go of the text before the item copied it)
         const x = params.pos.x, y = params.pos.y;
         const onBar = _log.scrolled.onBar(x, y);
-        // the cursor is told at every event of the mouse that has a place, of whatever phase: an event left unanswered (a move, a press, a
-        // release over a clickable cell) shows the arrow for a moment
-        const hand = cmd != MOUSE_EVENTS.MOUSE_WHEEL && cmd != MOUSE_EVENTS.MOUSE_LEAVE && !onBar
-            && _log.table.pointerAt(x, y) == PointerKind.hand;
-        if (cmd != MOUSE_EVENTS.MOUSE_WHEEL && cmd != MOUSE_EVENTS.MOUSE_LEAVE && !onBar)
-            params.cursor_type = cursorOf(hand ? PointerKind.hand : PointerKind.arrow);
+        const hand = tellCursor(params, cmd, onBar);
         if (!isOurEvent(params.cmd))
             return false;
         switch (cmd)
