@@ -217,8 +217,7 @@ final class LogTableBehavior : SciterEventHandler
     // The table asks again and again while it scrolls by itself: one frame is on its way at a time
     private void requestFrame()
     {
-        const asked = _frameRequest.ask(MonoTime.currTime);
-        if (asked)
+        if (_frameRequest.ask(MonoTime.currTime))
             _host.requestFrame(frameEvent);
     }
 
@@ -415,12 +414,9 @@ final class LogTableBehavior : SciterEventHandler
 
         void singleLine(bool on)
         {
-            _source.singleLine = on;
+            // `LogTables.singleLine` goes over a copy of the tables: one may be detached by the time its turn comes
             if (_log !is null)
-            {
-                _log.singleLine(on);
-                _host.repaint();
-            }
+                _log.singleLine(on); // the restyle repaints
         }
 
         void resetStats() { _frames.reset(); }
