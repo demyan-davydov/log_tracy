@@ -14,6 +14,7 @@ import ptable.table : Table, TableEvents;
 import ptable.selection : CopyFormat;
 import ptable.tableports : TablePorts;
 import ptable_text.measurer : TextMeasurer;
+import std.meta : AliasSeq;
 import ui.app_session : AppSession;
 import ui.log_table.document_model : DocumentRows, LogColumnLook, LogRow, documentTableModel;
 import ui.log_table.log_look : LogLook;
@@ -72,7 +73,7 @@ final class LogTable
         _columnLook.anchorsFull = () => source.session.doc(source.docId).anchorsFull; // the document says whether there is room
         _columnLook.wrapPayload = !source.singleLine;
         readSpacing(_columnLook, look);
-        _model = documentTableModel(source.session, source.docId, source.search, _rows, () => _columnLook);
+        AliasSeq!(_model, _rows) = documentTableModel(source.session, source.docId, source.search, () => _columnLook)[];
         auto ports = TablePorts(new LogPainter(look));
         ports.copyFormat = logCopyFormat;
         host.setMargins(sidesOf(look)); // the same for the tables of a document: each gives the look's, the host keeps one
