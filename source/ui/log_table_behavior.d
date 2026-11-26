@@ -309,6 +309,7 @@ final class LogTableBehavior : SciterEventHandler
                 return false; // another button's release (a right click while the main one is held): the press goes on
             return _log.scrolled.mouseUp(x, y, nowMs()); // a click on a row cut at an edge brings it in by a glide
         case MOUSE_EVENTS.MOUSE_ENTER:
+        case MOUSE_EVENTS.MOUSE_IDLE: // the mouse stands: left unanswered it shows the arrow
             return hand;
         case MOUSE_EVENTS.MOUSE_LEAVE:
             _log.scrolled.mouseOver(double.nan, double.nan);
