@@ -72,7 +72,7 @@ agent can't drive it. In scapp a plain
   reaches its `HANDLE_SCRIPTING_METHOD_CALL`: Sciter answers "unknown name" and only asks the
   object model (`HANDLE_SOM`, cmd 0). The script calls the window instead
   (`Window.this.xcall("logTableCall", method, ...)`, `ui/main_window` hands it to
-  `LogTableBehavior.script`). 6.0.5.5, macOS (2026-11-19).
+  `runScript` of `ui/log_table_behavior`). 6.0.5.5, macOS (2026-11-19).
 - The graphics API (`graphicsApi()`, `sciter-x-graphics.h`) has 72 functions in the table
   `SciterGraphicsAPI` (the order is checked by a unittest), every one `nothrow`. `RGBA` packs a, b, g, r from the
   top byte. A text layout (`TextLayout`, `textCreateForElementAndStyle`) takes the font, the size
