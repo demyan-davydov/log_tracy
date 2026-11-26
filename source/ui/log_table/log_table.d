@@ -45,6 +45,11 @@ void applyLookChange(LookChange change, scope void delegate() beforeMetrics, sco
 /// into a sheet), a million characters at most
 enum CopyFormat logCopyFormat = CopyFormat("\t"w, "\n"w, 1_000_000);
 
+// A row that comes into view has this much room from the edge it came from, in dips
+private enum double logRevealMargin = 24;
+// The width of a scroll bar in dips: the hover area at the edge, the wide thumb is 9 (12, a dip wider: the user, 2026-11-20); a trial value
+private enum double logScrollBarWidth = 13;
+
 final class LogTable
 {
     /// The look's metrics changed (the fonts, their sizes, the spacing): the host drops what it measured. Called before
@@ -77,10 +82,10 @@ final class LogTable
         ports.copyFormat = logCopyFormat;
         host.setMargins(sidesOf(look)); // the same for the tables of a document: each gives the look's, the host keeps one
         _table = new Table(model, host, ports);
-        _table.revealMargin = 24; // a row that comes into view has 24 dips of room from the edge it came from
+        _table.revealMargin = logRevealMargin;
         _table.followEnd(true); // the rows of a document grow (a file being written): the table at its end follows it, as a terminal does
         _scrolled = new ScrolledTable(_table, new ScrollBar(new LogScrollBarPainter(look)), new ScrollBar(new LogScrollBarPainter(look)));
-        _scrolled.bar.width = _scrolled.across.width = 13; // the hover area at the edge, the wide thumb 9 (12, a dip wider: the user, 2026-11-20); a trial value
+        _scrolled.bar.width = _scrolled.across.width = logScrollBarWidth;
         _lookHandle = look.subscribe((const LookChange change) {
             host.setMargins(sidesOf(look)); // nothing told when they are the same
             readSpacing(_columnLook, look);
