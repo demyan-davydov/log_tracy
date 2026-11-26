@@ -1423,7 +1423,6 @@ version (unittest)
     import ptable.model : NumbersModel;
     import ptable.painter : RecordingCanvas;
 
-    // every glyph 10 dips wide, a line 14 high, the ascent 11; never wraps by itself
     private struct Fixture
     {
         NumbersModel model;
