@@ -345,6 +345,10 @@ Sciter is fixed.
   on Linux first: open a dialog, close it, click in the main window.
   Harmless noise in the same setup: `gtk_widget_set_can_focus` failed on creating any window,
   `gtk_window_present` failed on closing a popup, `GtkPopover` children left on closing the window.
+- Linux (6.0.5.6, arm64, seen by the user 2026-11-26): pasting into an input text copied in the
+  same window hangs the app; that text pastes into a terminal, and text of another program pastes
+  into the app. Not tried in `usciter`, so the cause is not proven; not worked around. Report:
+  `docs/experiments/2026-11-26-sciter-linux-paste-hang.md`.
 
 - Text cut with `text-overflow: ellipsis/path-ellipsis` gets an automatic tooltip
   `popup[role=overflow-tooltip]` (besides `title` → `popup[role=tooltip]`). Tooltip popups
