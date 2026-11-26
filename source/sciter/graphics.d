@@ -3,7 +3,9 @@
 //! (sciter-x-graphics.h: textCreateForElementAndStyle, textGetMetrics, textSetBox, gDrawText).
 module sciter.graphics;
 
-import sciter.api : graphicsApi;
+import sciter.api : graphicsApi, sciterApi;
+import sciter.capi.behavior : BEHAVIOR_METHOD_IDENTIFIERS, GET_CANVAS_GRAPHICS_PARAMS;
+import sciter.capi.dom : METHOD_PARAMS, SCDOM_OK;
 import sciter.capi.graphics;
 import sciter.capi.types;
 
@@ -58,7 +60,7 @@ struct TextLayout
     }
 }
 
-/// The canvas of a DRAW event
+/// The canvas of a DRAW event, or of a <canvas> element (`canvasOf`)
 struct Canvas
 {
     HGFX handle;
@@ -109,6 +111,17 @@ struct Canvas
     {
         graphicsApi().gPopClip(handle);
     }
+}
+
+/// The canvas of the `<canvas>` element `he`; its `handle` is null when the element gives none. The
+/// graphics stays Sciter's: nothing to release (as `get_canvas_graphics` of sciter-x-dom.hpp)
+Canvas canvasOf(HELEMENT he)
+{
+    GET_CANVAS_GRAPHICS_PARAMS params;
+    params.methodID = BEHAVIOR_METHOD_IDENTIFIERS.GET_CANVAS_GRAPHICS;
+    if (sciterApi().SciterCallBehaviorMethod(he, cast(METHOD_PARAMS*) &params) != SCDOM_OK)
+        return Canvas(null);
+    return Canvas(params.hgfx);
 }
 
 /// The color of the given bytes (0..255), alpha 255 unless given

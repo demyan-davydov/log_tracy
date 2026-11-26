@@ -289,6 +289,9 @@ enum SCITER_RT_OPTIONS
     //        TRUE by default on Windows 11. Set it to FALSE if window will host child windows.
     SCITER_SET_ROOT_CA = 21, // hWnd - N/A , const char* certificates, in format acceptable by mbedtls_x509_crt_parse()
 
+    SCITER_ALLOW_DISPLAY_SLEEP_FULLSCREEN = 22, // hWnd - N/A , TRUE/FALSE, full screen windows prevent screen saver and display power-off.
+    //        FALSE by default. Set it to TRUE before a window enters full screen mode to enable sleep mode.
+
 }
 
 /**Set various options.
@@ -590,4 +593,10 @@ unittest
         assert(SCITER_WINDOW_STATE_MAXIMIZED == 4);
         assert(SCITER_WINDOW_STATE_FULL_SCREEN == 5);
     }
+}
+
+@("SCITER_RT_OPTIONS: the sleep option of sciter-x-def.h (6.0.5.6)")
+unittest
+{
+    assert(SCITER_RT_OPTIONS.SCITER_ALLOW_DISPLAY_SLEEP_FULLSCREEN == 22);
 }
