@@ -1,6 +1,6 @@
 //! The log table in Sciter: the thin adapter of the table of the package ptable. It is a native
 //! behavior (`behavior: log-table` puts it on an element) that turns the events of Sciter into the calls
-//! of `Table` and gives it a canvas, a text measurer and a clipboard (ui/sciter_table/sciter_host), the rows of a view
+//! of `Table` and gives it a canvas and a text measurer (ui/sciter_table/sciter_host), the rows of a view
 //! of a document (ui/log_table/document_model) and the look of the log table (ui/log_table/painter, ui/log_table/log_look).
 //! docs/stories/painted-table.md, docs/experiments/2026-11-19-painted-rows-d.md.
 //!
@@ -106,8 +106,8 @@ final class LogTableBehavior : SciterEventHandler
     // that never got attached keeps nobody listening
     private void build(HELEMENT he)
     {
-        _host = new SciterHost(he, _look.text, (const(wchar)[] text) { _hooks.tell("logTableCopy", text); }); // the clipboard is the script's
-        _log = new LogTable(_source, _look, _host.measurer, _host.clipboard);
+        _host = new SciterHost(he, _look.text);
+        _log = new LogTable(_source, _look, _host.measurer);
         _log.singleLine(_source.singleLine);
         _log.beforeMetrics = () { _host.setLook(_look.text); };
         _log.events.invalidate = &_host.repaint;
@@ -117,6 +117,14 @@ final class LogTableBehavior : SciterEventHandler
         _log.events.pointer = &pointer;
         _log.events.rowSelected = &rowChosen;
         _log.events.copyCut = &copyCut;
+    }
+
+    // The clipboard is the script's. An empty text leaves it as it was
+    private void copyToClipboard(CopyTarget target = CopyTarget.text, size_t row = 0, size_t column = 0)
+    {
+        const text = _log.table.textToCopy(target, row, column);
+        if (text.length)
+            _hooks.tell("logTableCopy", text);
     }
 
     // A copy of rows was cut by the limit of the copy: the script tells the user how many rows went to the clipboard
@@ -315,7 +323,7 @@ final class LogTableBehavior : SciterEventHandler
             return false;
         if (isCopy(params.alt_state, params.key_code))
         {
-            _log.table.copy(); // a cell selected whole, a row: with its date
+            copyToClipboard(); // a cell selected whole, a row: with its date
             return true;
         }
         if (isSelectAll(params.alt_state, params.key_code))
@@ -419,7 +427,7 @@ final class LogTableBehavior : SciterEventHandler
         void select(double x1, double y1, double x2, double y2) { _log.table.selectBetween(x1, y1, x2, y2); }
         void selectWord(double x, double y, bool word) { _log.table.selectAt(x, y, word); }
         wstring copyText(bool wholeCellsInFull) { return _log.table.copyText(wholeCellsInFull); }
-        void copy(CopyTarget target, size_t row, size_t column) { _log.table.copy(target, row, column); }
+        void copy(CopyTarget target, size_t row, size_t column) { copyToClipboard(target, row, column); }
         wstring hitTest(double x, double y) { return _log.table.hitTest(x, y).toJson.toUTF16; }
 
         void contextPick(size_t row) { _log.table.contextPick(row); }

@@ -230,7 +230,7 @@ unittest
 {
     auto fake = new Fake;
     fake.virtual_[7] = true;
-    auto picker = new RowPicker(new TableSelection(null, null), fake.ports);
+    auto picker = new RowPicker(new TableSelection(null), fake.ports);
     picker.selectRow(3, Pick.replace);
     assert(picker.isSelected(3) && picker.selected == 3 && fake.calls == ["show", "told, delayed", "invalidate"], "in this order; a step of the keys is delayed");
     fake.calls = null;
@@ -251,7 +251,7 @@ unittest
 unittest
 {
     auto fake = new Fake;
-    auto picker = new RowPicker(new TableSelection(null, null), fake.ports);
+    auto picker = new RowPicker(new TableSelection(null), fake.ports);
     picker.press(20, Pick.replace);
     assert(picker.count == 0 && !picker.rowDrag);
     picker.endPress();
@@ -274,7 +274,7 @@ unittest
 {
     auto fake = new Fake;
     fake.virtual_[2] = true;
-    auto picker = new RowPicker(new TableSelection(null, null), fake.ports);
+    auto picker = new RowPicker(new TableSelection(null), fake.ports);
     picker.press(16 * 2 + 3, Pick.extend);
     assert(!picker.rowDrag && picker.count == 0, "the row under it is a separator");
 }
@@ -284,7 +284,7 @@ unittest
 {
     auto fake = new Fake;
     fake.virtual_[9] = true;
-    auto picker = new RowPicker(new TableSelection(null, null), fake.ports);
+    auto picker = new RowPicker(new TableSelection(null), fake.ports);
     picker.click(5);
     assert(picker.ranges == [RowRange(5, 5)] && fake.calls == ["show", "told", "invalidate"]);
     fake.calls = null;
@@ -301,7 +301,7 @@ unittest
     import ptable.selection : Position, Selection;
 
     auto fake = new Fake;
-    auto picker = new RowPicker(new TableSelection(null, null), fake.ports);
+    auto picker = new RowPicker(new TableSelection(null), fake.ports);
     assert(!picker.escape(), "nothing picked");
     picker.select(4);
     picker.text.setText(true, Selection(Position(1, 0, 0), Position(1, 0, 3)));
@@ -314,7 +314,7 @@ unittest
 unittest
 {
     auto fake = new Fake;
-    auto picker = new RowPicker(new TableSelection(null, null), fake.ports);
+    auto picker = new RowPicker(new TableSelection(null), fake.ports);
     picker.selectAll(0);
     assert(picker.count == 0 && fake.calls.length == 0);
     picker.selectAll(20);
@@ -329,7 +329,7 @@ unittest
 {
     auto fake = new Fake;
     fake.virtual_[9] = true;
-    auto picker = new RowPicker(new TableSelection(null, null), fake.ports);
+    auto picker = new RowPicker(new TableSelection(null), fake.ports);
     picker.select(2);
     picker.selectRow(5, Pick.extend);
     fake.calls = null;

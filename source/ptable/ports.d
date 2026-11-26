@@ -1,6 +1,6 @@
-//! What a table needs of its surroundings, as interfaces: a canvas to draw on, the
-//! clipboard. The tests give it fakes, the application a Sciter implementation
-//! (`sciter/graphics`). See docs/stories/painted-table.md.
+//! What a table needs of its surroundings, as an interface: a canvas to draw on. The tests
+//! give it fakes, the application a Sciter implementation (`sciter/graphics`). See
+//! docs/stories/painted-table.md.
 module ptable.ports;
 
 /// A rectangle in dips: the left top corner and the size
@@ -89,9 +89,4 @@ interface Canvas
     /// Draws only inside `area` until `popClip`
     void pushClip(Rect area);
     void popClip();
-}
-
-interface Clipboard
-{
-    void writeText(const(wchar)[] text);
 }

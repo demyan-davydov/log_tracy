@@ -4,7 +4,7 @@ module ptable.testing;
 
 version (unittest)
 {
-    import ptable.ports : Clipboard, Rect;
+    import ptable.ports : Rect;
     import ptable.cellparts : HeadedCellPartsExtractor, firstSpace;
     import ptable.column : CellInput, CellLayout, GroupInput, Measured, TableColumn;
     import ptable.painter : Painter;
@@ -117,10 +117,10 @@ version (unittest)
         return CopyFormat("\t"w, "\n"w, limit);
     }
 
-    /// The ports of a table of a test: `painter`, `clipboard` and copies `tabbed`
-    TablePorts portsOf(Painter painter, Clipboard clipboard = null)
+    /// The ports of a table of a test: `painter` and copies `tabbed`
+    TablePorts portsOf(Painter painter)
     {
-        auto ports = TablePorts(painter, clipboard);
+        auto ports = TablePorts(painter);
         ports.copyFormat = tabbed;
         return ports;
     }

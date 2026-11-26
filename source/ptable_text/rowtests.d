@@ -228,7 +228,7 @@ unittest
     }
 
     auto model = new Switch(1000);
-    auto table = new Table(model, new ColumnHost, portsOf(new Painter, null));
+    auto table = new Table(model, new ColumnHost, portsOf(new Painter));
     table.resize(70, 121); // the flex column is left with room for a few glyphs: "row 5" wraps
     auto canvas = new RecordingCanvas;
     table.paint(canvas);
@@ -301,7 +301,7 @@ unittest
     {
         auto model = new Tall;
         model.keep = keep;
-        table = new Table(model, new ColumnHost, portsOf(new Painter, null));
+        table = new Table(model, new ColumnHost, portsOf(new Painter));
         table.resize(200, 121); // the rows 21..121
         auto canvas = new Where;
         table.paint(canvas);

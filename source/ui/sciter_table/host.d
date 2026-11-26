@@ -1,4 +1,4 @@
-//! The host of the log table (ptable) in Sciter: its canvas, text measurer and clipboard over the
+//! The host of the log table (ptable) in Sciter: its canvas and text measurer over the
 //! graphics API of Sciter (sciter/graphics). The fonts and the ink come as a `TextLook` (ui/look): this layer
 //! knows nothing of the log. The text layouts are kept in two generations (a layout of Sciter is what the memory of a log table
 //! is). See docs/experiments/2026-11-19-painted-rows-d.md.
@@ -340,24 +340,5 @@ final class SciterCanvas : Canvas
     void popClip()
     {
         _gfx.popClip();
-    }
-}
-
-/// Where a copy goes: the clipboard of Sciter belongs to the script, the one who makes the host says how the text reaches it
-alias CopyTaker = void delegate(const(wchar)[] text);
-
-/// The clipboard of a table: the text goes to whom the host was told (`CopyTaker`)
-final class ScriptClipboard : Clipboard
-{
-    private CopyTaker _take;
-
-    this(CopyTaker take)
-    {
-        _take = take;
-    }
-
-    void writeText(const(wchar)[] text)
-    {
-        _take(text);
     }
 }

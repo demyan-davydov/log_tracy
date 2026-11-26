@@ -1,17 +1,17 @@
 //! Everything a log table needs from Sciter's element, text and graphics, as one unit: the element it is drawn in
-//! (repaint, capture, a frame), the cache of text layouts, the measurer and the canvas that read it, and the clipboard.
+//! (repaint, capture, a frame), the cache of text layouts, the measurer and the canvas that read it.
 //! The element is kept once and handed to those that need it; a change of the fonts is one call, which drops what was
 //! measured with the old ones in the order that matters. It knows nothing of the log. Needs Sciter to run, so it is
 //! checked by the build and by looking at the table.
 module ui.sciter_table.sciter_host;
 
-import ptable.ports : Canvas, Clipboard, Rect;
+import ptable.ports : Canvas, Rect;
 import ptable_text.measurer : TextMeasurer;
 import sciter.api : sciterApi;
 import sciter.capi.api;
 import sciter.graphics : GfxCanvas = Canvas;
 import ui.look : TextLook;
-import ui.sciter_table.host : CopyTaker, SciterCanvas, SciterMeasurer, SciterTextCache, ScriptClipboard;
+import ui.sciter_table.host : SciterCanvas, SciterMeasurer, SciterTextCache;
 
 final class SciterHost
 {
@@ -19,16 +19,13 @@ final class SciterHost
     private SciterTextCache _cache;
     private SciterMeasurer _measurer;
     private SciterCanvas _canvas;
-    private ScriptClipboard _clipboard;
 
-    /// `copied` takes the text of a copy to the clipboard
-    this(HELEMENT he, TextLook look, CopyTaker copied)
+    this(HELEMENT he, TextLook look)
     {
         _he = he;
         _cache = new SciterTextCache(he, look);
         _measurer = new SciterMeasurer(_cache);
         _canvas = new SciterCanvas(_cache);
-        _clipboard = new ScriptClipboard(copied);
     }
 
     /// The fonts changed: what was made and measured with the old ones is dropped, the cache first
@@ -47,7 +44,6 @@ final class SciterHost
     // ---- what the table is given ----
 
     TextMeasurer measurer() { return _measurer; }
-    Clipboard clipboard() { return _clipboard; }
 
     /// The canvas of a draw event of Sciter: (0, 0) of the table at (`ox`, `oy`) of `gfx`
     Canvas canvas(GfxCanvas gfx, float ox, float oy)
