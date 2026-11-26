@@ -89,7 +89,7 @@ final class LogTable
     }
 
     // What of the column look follows the spacing of the look: at the start and after a change of the look
-    private static void readSpacing(LogColumnLook columnLook, const LogLook look)
+    private static void readSpacing(ref LogColumnLook columnLook, const LogLook look)
     {
         columnLook.payloadPadLeft = look.spacing.payloadPadLeft;
         columnLook.payloadPadRight = look.spacing.payloadPadRight;
