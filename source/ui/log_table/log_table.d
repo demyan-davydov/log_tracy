@@ -4,12 +4,10 @@
 module ui.log_table.log_table;
 
 import domain.document_id : DocumentId;
-import domain.document_item : DocumentItem;
 import ptable.columnar : ColumnarModel;
 import ptable.columnhost : ColumnHost;
 import ptable.regions : SideMargins;
 import ptable.lookchange : LookChange;
-import ptable.model : TableModel;
 import ptable.scrollbar : ScrollBar;
 import ptable.scrolledtable : ScrolledTable;
 import ptable.table : Table, TableEvents;
@@ -17,7 +15,7 @@ import ptable.selection : CopyFormat;
 import ptable.tableports : TablePorts;
 import ptable_text.measurer : TextMeasurer;
 import ui.app_session : AppSession;
-import ui.log_table.document_model : DocumentRows, LogColumnLook, documentTableModel;
+import ui.log_table.document_model : DocumentRows, LogColumnLook, LogRow, documentTableModel;
 import ui.log_table.log_look : LogLook;
 import ui.log_table.painter : LogPainter, LogScrollBarPainter;
 
@@ -56,9 +54,8 @@ final class LogTable
     /// the table reads its metrics again, and only for a change of the metrics.
     void delegate() beforeMetrics;
 
-    private void delegate() _disposeModel; // the model stops hearing its source
+    private ColumnarModel!LogRow _model;
     private DocumentRows _rows; // the rows of the view: told what the model cannot know
-    private LogPainter _painter;
     private Table _table;
     private ScrolledTable _scrolled; // the table with its scroll bar beside it
     private LogLook _look;
@@ -75,13 +72,11 @@ final class LogTable
         _columnLook.anchorsFull = () => source.session.doc(source.docId).anchorsFull; // the document says whether there is room
         _columnLook.wrapPayload = !source.singleLine;
         readSpacing(_columnLook, look);
-        auto model = documentTableModel(source.session, source.docId, source.search, _rows, () => _columnLook);
-        _disposeModel = &model.dispose;
-        _painter = new LogPainter(look);
-        auto ports = TablePorts(_painter);
+        _model = documentTableModel(source.session, source.docId, source.search, _rows, () => _columnLook);
+        auto ports = TablePorts(new LogPainter(look));
         ports.copyFormat = logCopyFormat;
         host.setMargins(sidesOf(look)); // the same for the tables of a document: each gives the look's, the host keeps one
-        _table = new Table(model, host, ports);
+        _table = new Table(_model, host, ports);
         _table.revealMargin = logRevealMargin;
         _table.followEnd(true); // the rows of a document grow (a file being written): the table at its end follows it, as a terminal does
         _scrolled = new ScrolledTable(_table, new ScrollBar(new LogScrollBarPainter(look)), new ScrollBar(new LogScrollBarPainter(look)));
@@ -121,8 +116,6 @@ final class LogTable
     /// (the rows after it are other ones: nothing stays picked)
     void anchorApplied(size_t message, bool moved)
     {
-        if (_rows is null)
-            return;
         _rows.messageChanged(message, moved);
         if (moved)
             _table.forgetPicks();
@@ -141,7 +134,7 @@ final class LogTable
         _look.unsubscribe(_lookHandle);
         _table.cancelPress(); // a drag that was on goes with the table
         _table.dispose();
-        _disposeModel();
+        _model.dispose(); // the model stops hearing its source
     }
 }
 
