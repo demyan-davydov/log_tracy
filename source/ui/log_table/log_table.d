@@ -65,6 +65,7 @@ final class LogTable
     this(TableSource source, LogLook look, TextMeasurer measurer)
     {
         ColumnHost host = source.host;
+        _singleLine = source.singleLine;
         bool delegate() anchorsFull = () => source.session.doc(source.docId).anchorsFull; // the document says whether there is room
         // The model asks for it at every row it reads: it is made again only after a change of the look or of the single line, and
         // holds the look's own least widths (a change of the look replaces them, it never changes them in place)
@@ -288,6 +289,23 @@ unittest
     look.setSpacing(spacing);
     assert(log.table.rowsArea.x == 5 && log.table.rowsArea.w == 375);
     log.dispose();
+}
+
+@("LogTable: a table made for one-line rows has them from the start")
+unittest
+{
+    import ptable_text.testing : FakeMeasurer;
+    import ui.log_table.log_look : defaultLogLook;
+
+    auto opened = openTestLog("log_tracy_log_table_single_line.log", 5);
+    scope (exit) opened.close();
+    auto wrapped = new LogTable(TableSource(opened.session, opened.id, false, new ColumnHost), defaultLogLook(), new FakeMeasurer);
+    scope (exit) wrapped.dispose();
+    auto single = new LogTable(TableSource(opened.session, opened.id, false, new ColumnHost, true), defaultLogLook(), new FakeMeasurer);
+    scope (exit) single.dispose();
+    wrapped.table.resize(300, 300); // the Payload does not fit in one line
+    single.table.resize(300, 300);
+    assert(single.table.rowHeight(0) < wrapped.table.rowHeight(0), "the Payload is cut, not wrapped");
 }
 
 @("LogTable: the rows of a document scrolled frame after frame take no memory of the garbage collector")

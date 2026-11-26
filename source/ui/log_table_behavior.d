@@ -108,7 +108,6 @@ final class LogTableBehavior : SciterEventHandler
     {
         _host = new SciterHost(he, _look.text);
         _log = new LogTable(_source, _look, _host.measurer);
-        _log.singleLine(_source.singleLine);
         _log.beforeMetrics = () { _host.setLook(_look.text); };
         _log.events.invalidate = &_host.repaint;
         _log.events.invalidateArea = &_host.repaintArea;
