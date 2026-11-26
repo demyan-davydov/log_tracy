@@ -569,6 +569,8 @@ enum BEHAVIOR_METHOD_IDENTIFIERS
     GET_VALUE = 0xFD, // p - VALUE_PARAMS
     SET_VALUE = 0xFE, // p - VALUE_PARAMS
 
+    GET_CANVAS_GRAPHICS = 0x100, // p - GET_CANVAS_GRAPHICS_PARAMS // the graphics of a <canvas> element
+
     FIRST_APPLICATION_METHOD_ID = 0x100
 }
 
@@ -594,6 +596,13 @@ struct IS_EMPTY_PARAMS
     UINT is_empty; // !0 - is empty
 }
 
+// GET_CANVAS_GRAPHICS method params
+struct GET_CANVAS_GRAPHICS_PARAMS
+{
+    UINT methodID;
+    HGFX hgfx;
+}
+
 // see SciterRequestElementData
 
 struct DATA_ARRIVED_PARAMS
@@ -613,4 +622,14 @@ struct ATTRIBUTE_CHANGE_PARAMS
     HELEMENT he; // this element
     LPCSTR name; // attribute name
     LPCWSTR value; // new attribute value, NULL if attribute was deleted
+}
+
+@("GET_CANVAS_GRAPHICS: the method and its params as in sciter-x-behavior.h (6.0.5.6)")
+unittest
+{
+    // the same number as FIRST_APPLICATION_METHOD_ID: so it is in the C header
+    assert(BEHAVIOR_METHOD_IDENTIFIERS.GET_CANVAS_GRAPHICS == 0x100);
+    assert(GET_CANVAS_GRAPHICS_PARAMS.methodID.offsetof == 0);
+    assert(GET_CANVAS_GRAPHICS_PARAMS.hgfx.offsetof == (void*).sizeof);
+    assert(GET_CANVAS_GRAPHICS_PARAMS.sizeof == 2 * (void*).sizeof);
 }

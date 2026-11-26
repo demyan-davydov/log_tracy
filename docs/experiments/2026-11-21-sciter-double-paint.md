@@ -8,6 +8,19 @@ as a file and open it in `scapp`.
 - Sciter 6.0.5.5, `scapp` and `libsciter.dylib` of the SDK (`bin/macosx`), default graphics layer
 - macOS 27.2 (26B123), Apple M1 Pro, a Retina screen
 
+## Fixed in 6.0.5.6
+
+Checked 2026-11-26, same machine, macOS 27.2, `scapp` of both SDKs side by side (copies, signed ad hoc), each page
+changed only to print its result and close the window:
+
+| Page | 6.0.5.5 | 6.0.5.6 |
+|---|---|---|
+| `double-paint.htm`, rounds with two paints, 3 runs | 15, 13, 12 of 20 | 0, 0, 0 of 20 |
+| `changes.htm`, paints per change, 3 runs of 12 changes | mostly 2 (up to 5) | 1 every time |
+| `clip.htm`, paints of each element, 4 runs | 1, 1, 1, 2 | 1, 1, 1, 1 |
+
+The rest of this note describes 6.0.5.5.
+
 ## What happens
 
 One `element.requestPaint()` (or `SciterRefreshElementArea` / `SciterUpdateElement` from the C API) makes Sciter paint

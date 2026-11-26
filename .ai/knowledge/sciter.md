@@ -83,6 +83,11 @@ agent can't drive it. In scapp a plain
   and be detached inside that). **Only partly dealt with**: `LogTable.dispose` leaves the column host
   asking nothing of the other table (`Table.detachSilently`); nothing guards a table detached amid
   work of its own begun for another reason (`docs/backlog.md`).
+- 6.0.5.6 declares the behavior method `GET_CANVAS_GRAPHICS` (the graphics of a `<canvas>` for
+  native code, `canvasOf` in `sciter/graphics`), but the engine doesn't answer it (macOS, probe of
+  2026-11-26): `SciterCallBehaviorMethod` gives `SCDOM_OK_NOT_HANDLED` and no graphics for a
+  `<canvas>` made by script, drawn on by its 2D context and on screen; no method id of 0..0x3ff is
+  handled by it (`DO_CLICK` on a button is, so the call itself works). Windows and Linux not tried.
 - The graphics API (`graphicsApi()`, `sciter-x-graphics.h`) has 72 functions in the table
   `SciterGraphicsAPI` (the order is checked by a unittest), every one `nothrow`. `RGBA` packs a, b, g, r from the
   top byte. A text layout (`TextLayout`, `textCreateForElementAndStyle`) takes the font, the size
@@ -110,7 +115,9 @@ agent can't drive it. In scapp a plain
   `requestPaint()`) draws the window twice, ~2 ms apart: Sciter's own render in its loop, then again when Core
   Animation has the view's layer display (`NSViewBackingLayer display` → `notifyWindowPaint`). Frames of an animation
   frame request come once each. Not caused by the handler (a handler that only fills does the same), nor by the layer
-  (CG, Skia raster alike); reported, the author promised a fix. Details in `docs/backlog.md`, "наведение перерисовывает всю таблицу".
+  (CG, Skia raster alike); reported to the author.
+  **Fixed in 6.0.5.6** (macOS, `scapp` repro, 2026-11-26): one paint per change; the same pages on 6.0.5.5 still paint
+  twice. Not re-measured inside the app. Details in `docs/backlog.md`, "наведение перерисовывает всю таблицу".
   Drawing the table into an image to blit it on the second pass doesn't pay: inside `DRAW_CONTENT` `gCreate` on an
   image answers `GRAPHIN_NOTSUPPORTED`, `imagePaint` works and keeps text sharp at `gScale(2)`, but drawing into it
   costs ~3x drawing on the screen (the image is rastered by the CPU, the screen's commands go to the GPU). Numbers and what the API lacks:
