@@ -31,13 +31,6 @@ final class SciterHost
         _clipboard = new ScriptClipboard(copied);
     }
 
-    /// The behavior is attached to `he`: every service that holds the element gets it
-    void attach(HELEMENT he)
-    {
-        _he = he;
-        _cache.element(he);
-    }
-
     /// The fonts changed: what was made and measured with the old ones is dropped, the cache first
     void setLook(TextLook look)
     {

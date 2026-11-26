@@ -48,11 +48,6 @@ final class SciterTextCache
         _layouts = new Generations!(TextKey, TextLayout)(6000, delegate(ref TextLayout layout) nothrow { layout.release(); }, allocator);
     }
 
-    void element(HELEMENT he)
-    {
-        _he = he;
-    }
-
     /// The text this cache makes layouts of
     ref const(TextLook) look() const
     {

@@ -83,7 +83,7 @@ bool runScript(TableControl control, const(char)[] method, const(SCITER_VALUE)* 
 /// A native behavior drawing the rows of a view of a document
 final class LogTableBehavior : SciterEventHandler
 {
-    private SciterHost _host; // the element and everything of Sciter the table needs
+    private SciterHost _host; // the element and everything of Sciter the table needs: made with the table
     private TableSource _source; // what the table shows, until it is attached and made
     private LogLook _look;
     private TableHooks _hooks; // the window is told when the table can be talked to
@@ -94,9 +94,8 @@ final class LogTableBehavior : SciterEventHandler
     private FrameStats _frames; // the times of the frames drawn
     private FrameRequest _frameRequest; // one frame event on its way at a time
 
-    this(TableSource source, LogLook look, TableHooks hooks, HELEMENT he)
+    this(TableSource source, LogLook look, TableHooks hooks)
     {
-        _host = new SciterHost(he, look.text, (const(wchar)[] text) { hooks.tell("logTableCopy", text); }); // the clipboard is the script's
         _look = look;
         _source = source;
         _hooks = hooks;
@@ -105,9 +104,9 @@ final class LogTableBehavior : SciterEventHandler
 
     // The model and the table listen to the document and the look: made once the element has them, so a behavior
     // that never got attached keeps nobody listening
-    private void build()
+    private void build(HELEMENT he)
     {
-        _host.setLook(_look.text); // the fonts may have changed since the behavior was made
+        _host = new SciterHost(he, _look.text, (const(wchar)[] text) { _hooks.tell("logTableCopy", text); }); // the clipboard is the script's
         _log = new LogTable(_source, _look, _host.measurer, _host.clipboard);
         _log.singleLine(_source.singleLine);
         _log.beforeMetrics = () { _host.setLook(_look.text); };
@@ -163,9 +162,8 @@ final class LogTableBehavior : SciterEventHandler
 
     override protected void handleAttached(HELEMENT he)
     {
-        _host.attach(he);
         if (_log is null)
-            build();
+            build(he);
         // The script may have told it that it is not seen before it was here: its `detach` reached no table then
         if (detachedOf(attributeOf(he, "detached")))
             _log.table.detach();
@@ -190,8 +188,8 @@ final class LogTableBehavior : SciterEventHandler
             if (_hooks.detached !is null)
                 _hooks.detached(_control);
             _log.dispose();
+            _host.release();
         }
-        _host.release();
         _log = null; // nothing of the behavior works after it is detached
         SciterEventHandler.unhold(this);
     }

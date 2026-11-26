@@ -71,7 +71,7 @@ class MainWindow : SciterWindow
         const hears = hearsOf(attributeOf(he, "hears"));
         auto source = TableSource(_session, _session.findDocument(shown.doc), shown.search, _tables.hostOf(shown.doc), _tables.singleLine);
         return new LogTableBehavior(source, _tables.look,
-            TableHooks(id, (TableControl control) { _tables.attached(id, control, hears); }, &_tables.detached, &_tableCalls.put), he);
+            TableHooks(id, (TableControl control) { _tables.attached(id, control, hears); }, &_tables.detached, &_tableCalls.put));
     }
 
     /// The menu of the window on `platform`, in the language of the interface
