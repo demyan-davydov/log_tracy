@@ -1,12 +1,11 @@
-//! The text a user has selected in a table, the press of the mouse that waits to become a click or a drag, and the copy of the
-//! text or of the rows picked to the clipboard. The rows picked are `RowPicker`'s (it owns this too). Pure.
+//! The text a user has selected in a table, the press of the mouse that waits to become a click or a drag, and the text a copy
+//! takes of it or of the rows picked. The rows picked are `RowPicker`'s (it owns this too). Pure.
 //! See docs/stories/painted-table.md.
 module ptable.tableselection;
 
 version (unittest) import ptable.testing : tabbed;
 import ptable.layout : Placements;
 import ptable.pointer : PressTracker, Release, SelectionState;
-import ptable.ports : Clipboard;
 import ptable.rowcopy : CopiedRows, RowCopier;
 import ptable.rowranges : RowRange;
 import ptable.selection : Position, Selection, TextRange, textRange;
@@ -16,13 +15,10 @@ final class TableSelection
     private SelectionState _text;
     private PressTracker _press;
     private RowCopier _copier;
-    private Clipboard _clipboard;
 
-    /// `clipboard` may be null: a copy then goes nowhere
-    this(RowCopier copier, Clipboard clipboard)
+    this(RowCopier copier)
     {
         _copier = copier;
-        _clipboard = clipboard;
     }
 
     // ---- the text ----
@@ -118,19 +114,12 @@ final class TableSelection
     {
         return _copier.cellText(row, column, wanted);
     }
-
-    /// Puts a text on the clipboard; nothing for an empty one
-    void toClipboard(const(wchar)[] text)
-    {
-        if (_clipboard !is null && text.length)
-            _clipboard.writeText(text);
-    }
 }
 
 @("TableSelection: a new text reports a change once, clearText lets go of it")
 unittest
 {
-    auto picked = new TableSelection(null, null);
+    auto picked = new TableSelection(null);
     assert(!picked.hasText && !picked.clearText(), "nothing picked");
     const text = Selection(Position(1, 0, 0), Position(1, 0, 3));
     assert(picked.setText(true, text) && !picked.setText(true, text) && picked.hasText);
@@ -149,7 +138,7 @@ unittest
     auto columns = new ColumnSet(new ColumnLayout);
     columns.refresh(model.columns());
     const p = placeColumns(columns.columns, new ColumnLayout, 300);
-    auto picked = new TableSelection(new RowCopier(model, columns, tabbed), null);
+    auto picked = new TableSelection(new RowCopier(model, columns, tabbed));
     assert(picked.copyText(null, p, true, null) == ""w, "no rows");
     assert(picked.copyText(null, p, true, [RowRange(2, 2), RowRange(4, 5)]) == "2\trow 2\n4\trow 4\n5\trow 5"w);
     picked.setText(true, Selection(Position(1, 0, 0), Position(1, 0, 1)));
@@ -160,7 +149,7 @@ unittest
 @("TableSelection: a press that is not dragged is a click at its place, a dragged one is not")
 unittest
 {
-    auto picked = new TableSelection(null, null);
+    auto picked = new TableSelection(null);
     assert(!picked.pressed);
     picked.pressBegin(10, 10, true, Position(3, 1, 4), 2);
     assert(picked.pressed && picked.pressHasPosition && picked.pressPosition.row == 3);

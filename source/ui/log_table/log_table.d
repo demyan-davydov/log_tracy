@@ -1,5 +1,5 @@
 //! The table of a log: the rows of a view of a document (its model), the table that
-//! draws them in the look of the log table, and the scroll bar beside it, made and let go of together. It has the measurer and the clipboard it is given
+//! draws them in the look of the log table, and the scroll bar beside it, made and let go of together. It has the measurer it is given
 //! and knows no Sciter: the behavior that shows it (ui/log_table_behavior) joins it to an element.
 module ui.log_table.log_table;
 
@@ -10,7 +10,6 @@ import ptable.columnhost : ColumnHost;
 import ptable.regions : SideMargins;
 import ptable.lookchange : LookChange;
 import ptable.model : TableModel;
-import ptable.ports : Clipboard;
 import ptable_text.measurer : TextMeasurer;
 import ptable.scrollbar : ScrollBar;
 import ptable.scrolledtable : ScrolledTable;
@@ -63,7 +62,7 @@ final class LogTable
     private bool _columnLookStale = true; // the look or the single line changed: what the columns are made with is made again
 
     /// The model listens to the document and the table to the look from now on, until `dispose`
-    this(TableSource source, LogLook look, TextMeasurer measurer, Clipboard clipboard)
+    this(TableSource source, LogLook look, TextMeasurer measurer)
     {
         ColumnHost host = source.host;
         bool delegate() anchorsFull = () => source.session.doc(source.docId).anchorsFull; // the document says whether there is room
@@ -82,7 +81,7 @@ final class LogTable
         });
         _disposeModel = &model.dispose;
         _painter = new LogPainter(look);
-        auto ports = TablePorts(_painter, clipboard);
+        auto ports = TablePorts(_painter);
         ports.copyFormat = logCopyFormat;
         host.setMargins(sidesOf(look)); // the same for the tables of a document: each gives the look's, the host keeps one
         _table = new Table(model, host, ports);
@@ -282,7 +281,7 @@ unittest
     look.setSpacing(spacing);
     auto opened = openTestLog("log_tracy_log_table_margins.log", 50);
     scope (exit) opened.close();
-    auto log = new LogTable(TableSource(opened.session, opened.id, false, new ColumnHost), look, new FakeMeasurer, null);
+    auto log = new LogTable(TableSource(opened.session, opened.id, false, new ColumnHost), look, new FakeMeasurer);
     log.table.resize(400, 300);
     assert(log.table.rowsArea.x == 10 && log.table.rowsArea.w == 370);
     spacing.rowsMarginLeft = 5;
@@ -322,7 +321,7 @@ unittest
 
     auto opened = openTestLog("log_tracy_log_table_frames.log", 2000);
     scope (exit) opened.close();
-    auto log = new LogTable(TableSource(opened.session, opened.id, false, new ColumnHost), defaultLogLook(), new FakeMeasurer, null);
+    auto log = new LogTable(TableSource(opened.session, opened.id, false, new ColumnHost), defaultLogLook(), new FakeMeasurer);
     scope (exit) log.dispose();
     static void noFrame() {}
     import std.functional : toDelegate;

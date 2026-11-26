@@ -145,7 +145,7 @@ final class Table
     this(TableModel model, ColumnHost host, TablePorts ports)
     {
         _store = new RowStore(model, host, ports, &measureWindow);
-        _picker = new RowPicker(new TableSelection(new RowCopier(model, _store.columns, ports.copyFormat), ports.clipboard),
+        _picker = new RowPicker(new TableSelection(new RowCopier(model, _store.columns, ports.copyFormat)),
             PickPorts(&isVirtualItem, &rowAtHeight, &showRow, &toldRow, &invalidate));
         _viewport = new RowViewport(&_store.heightOf, &_store.estimateOf);
         _motion = new ScrollMotion;
@@ -882,9 +882,9 @@ final class Table
         return _picker.text.copyText(_store.columns.wanted(changed), p, wholeCellsInFull, _picker.ranges);
     }
 
-    /// Puts on the clipboard what `target` says: the text selected (the rows if none), the rows picked, or the cell of the
-    /// address (`row`, `column` of the model); cells and rows in full, heads too. True if something was copied
-    bool copy(CopyTarget target = CopyTarget.text, size_t row = 0, size_t column = 0)
+    /// The text `target` puts on the clipboard: the text selected (the rows if none), the rows picked, or the cell of the
+    /// address (`row`, `column` of the model); cells and rows in full, heads too. Empty if there is none
+    wstring textToCopy(CopyTarget target = CopyTarget.text, size_t row = 0, size_t column = 0)
     {
         prepare();
         const p = places();
@@ -893,10 +893,9 @@ final class Table
         CopiedRows copied;
         const text = target == CopyTarget.cell ? _picker.text.cellText(row, column, wanted)
             : _picker.text.copyText(wanted, p, true, _picker.ranges, target == CopyTarget.rows, copied);
-        _picker.text.toClipboard(text);
         if (copied.cut && events.copyCut !is null)
             events.copyCut(copied.copied, copied.asked);
-        return text.length > 0;
+        return text;
     }
 
     /// Picks every row (Cmd/Ctrl+A); the text selected is let go of, nothing scrolls
@@ -1424,19 +1423,11 @@ version (unittest)
     import ptable.model : NumbersModel;
     import ptable.painter : RecordingCanvas;
 
-    // every glyph 10 dips wide, a line 14 high, the ascent 11; never wraps by itself
-    private final class FakeClipboard : Clipboard
-    {
-        wstring last;
-        void writeText(const(wchar)[] text) { last = text.idup; }
-    }
-
     private struct Fixture
     {
         NumbersModel model;
         Table table;
         RecordingCanvas canvas;
-        FakeClipboard clipboard;
         ColumnLayout layout;
         size_t invalidations;
     }
@@ -1458,9 +1449,8 @@ version (unittest)
         Fixture f;
         f.model = new NumbersModel(rows);
         f.layout = new ColumnLayout;
-        f.clipboard = new FakeClipboard;
         f.canvas = new RecordingCanvas;
-        f.table = new Table(f.model, new ColumnHost(f.layout), portsOf(new Painter, f.clipboard));
+        f.table = new Table(f.model, new ColumnHost(f.layout), portsOf(new Painter));
         f.table.resize(width, height);
         return f;
     }
@@ -1593,10 +1583,8 @@ unittest
     f.table.selectAll();
     f.table.selectBetween(30, 21 + 3, 60, 21 + 3);
     assert(f.table.hasTextSelected);
-    f.table.copy(CopyTarget.text);
-    const text = f.clipboard.last;
-    f.table.copy(CopyTarget.rows);
-    assert(f.clipboard.last.length > text.length, "the rows, not the text");
+    const text = f.table.textToCopy(CopyTarget.text);
+    assert(f.table.textToCopy(CopyTarget.rows).length > text.length, "the rows, not the text");
     f.table.selectAll();
     assert(!f.table.hasTextSelected, "the text goes");
 }
@@ -1607,7 +1595,7 @@ unittest
     import ptable.testing : tabbedUpTo;
 
     auto f = make(50);
-    auto ports = portsOf(new Painter, f.clipboard);
+    auto ports = portsOf(new Painter);
     ports.copyFormat = tabbedUpTo(20);
     auto table = new Table(f.model, new ColumnHost(f.layout), ports);
     table.resize(400, 121);
@@ -1615,9 +1603,9 @@ unittest
     size_t[2][] told;
     table.events.copyCut = (size_t copied, size_t total) { told ~= [copied, total]; };
     table.selectAll();
-    assert(table.copy(CopyTarget.rows) && told == [[2, 50]] && f.clipboard.last == "0\trow 0\n1\trow 1"w);
+    assert(table.textToCopy(CopyTarget.rows) == "0\trow 0\n1\trow 1"w && told == [[2, 50]]);
     table.selectRow(3, Pick.replace);
-    assert(table.copy(CopyTarget.rows) && told.length == 1, "one row fits: nothing told");
+    assert(table.textToCopy(CopyTarget.rows).length && told.length == 1, "one row fits: nothing told");
 }
 
 @("Table: the pointer is a hand over the cells of a clickable column, the arrow over the others, the header and below the rows")
@@ -1626,7 +1614,7 @@ unittest
     auto f = make(2, 400, 300);
     f.model = null;
     auto model = new ClickableModel(2);
-    auto table = new Table(model, new ColumnHost(f.layout), portsOf(new Painter, f.clipboard));
+    auto table = new Table(model, new ColumnHost(f.layout), portsOf(new Painter));
     table.resize(400, 300);
     table.paint(f.canvas);
     assert(table.pointerAt(5, 21 + 3) == PointerKind.hand, "the first column: clickable");
@@ -1640,7 +1628,7 @@ unittest
 {
     auto f = make(5, 400, 200);
     auto model = new ClickableModel(5);
-    auto table = new Table(model, new ColumnHost(f.layout), portsOf(new Painter, f.clipboard));
+    auto table = new Table(model, new ColumnHost(f.layout), portsOf(new Painter));
     table.resize(400, 200);
     table.paint(f.canvas);
     size_t clickedRow = size_t.max, clickedColumn = size_t.max;
@@ -1789,7 +1777,7 @@ unittest
 unittest
 {
     auto f = make(5, 400, 200);
-    auto table = new Table(new ClickableModel(5), new ColumnHost(f.layout), portsOf(new Painter, f.clipboard));
+    auto table = new Table(new ClickableModel(5), new ColumnHost(f.layout), portsOf(new Painter));
     table.resize(400, 200);
     table.paint(f.canvas);
     string[] told;
@@ -1920,7 +1908,7 @@ unittest
 
     auto f = make(100, 400, 200);
     auto spy = new Spy;
-    auto table = new Table(f.model, new ColumnHost(f.layout), portsOf(spy, f.clipboard));
+    auto table = new Table(f.model, new ColumnHost(f.layout), portsOf(spy));
     table.resize(400, 200);
     auto canvas = new RecordingCanvas;
     table.paint(canvas);
@@ -1980,9 +1968,9 @@ unittest
     assert(f.table.selectedCount == 2, "on a row picked the rows stay");
     f.table.contextPick(6);
     assert(f.table.selectedCount == 1 && f.table.isSelected(6));
-    assert(f.table.copy(CopyTarget.cell, 6, 1) && f.clipboard.last == "row 6"w, "the cell of the address, not the rows picked");
-    assert(f.table.copy(CopyTarget.rows) && f.clipboard.last == "6\trow 6"w);
-    assert(!f.table.copy(CopyTarget.cell, 600, 1), "a row that is not there copies nothing");
+    assert(f.table.textToCopy(CopyTarget.cell, 6, 1) == "row 6"w, "the cell of the address, not the rows picked");
+    assert(f.table.textToCopy(CopyTarget.rows) == "6\trow 6"w);
+    assert(f.table.textToCopy(CopyTarget.cell, 600, 1) == ""w, "a row that is not there gives nothing");
 }
 
 @("Table: a drag selects the text across the cells, copying gives it by tabs and lines, a click drops it")
@@ -1993,8 +1981,8 @@ unittest
     // the columns: N (width 10 + 7 by the longest text seen), text; the rows are at y = 21 + 16 i
     f.table.selectBetween(2, 21 + 3, 40, 21 + 16 + 3);
     assert(f.table.hasTextSelected);
-    f.table.copy();
-    assert(f.clipboard.last.length > 0 && f.clipboard.last[0 .. 1] == "0");
+    const copied = f.table.textToCopy();
+    assert(copied.length > 0 && copied[0 .. 1] == "0");
     f.table.mouseDown(5, 21 + 3);
     assert(!f.table.hasTextSelected, "a press drops the selection");
     f.table.mouseUp(5, 21 + 3);
@@ -2743,7 +2731,7 @@ unittest
     }
 
     auto model = new DatedModel(100, 3);
-    auto table = new Table(model, new ColumnHost, portsOf(new Grouping, null));
+    auto table = new Table(model, new ColumnHost, portsOf(new Grouping));
     table.resize(400, 200);
     table.paint(new RecordingCanvas);
     // header 21; row 0 (no margin: its head is in the header) 21..37; rows 1, 2 to 69; row 3: a margin 69..89, the row 89..105
@@ -2766,7 +2754,7 @@ unittest
     }
 
     auto painter = new Seen;
-    auto table = new Table(new DatedModel(0, 3), new ColumnHost, portsOf(painter, null));
+    auto table = new Table(new DatedModel(0, 3), new ColumnHost, portsOf(painter));
     table.resize(400, 200);
     table.paint(new RecordingCanvas);
     assert(painter.calls == ["title", "title"], "the titles, no head");
@@ -2790,14 +2778,12 @@ unittest
 {
     import ptable.testing : DatedModel;
 
-    auto clipboard = new FakeClipboard;
-    auto table = new Table(new DatedModel(100, 3), new ColumnHost, portsOf(new Painter, clipboard));
+    auto table = new Table(new DatedModel(100, 3), new ColumnHost, portsOf(new Painter));
     table.resize(400, 200);
     table.paint(new RecordingCanvas);
     assert(table.selectAt(5, 21 + 5 + 16 * 4, false)); // the time cell of row 4
     assert(table.copyText(true) == "d1 t4" && table.copyText(false) == "t4" && table.copyText() == "t4");
-    table.copy();
-    assert(clipboard.last == "d1 t4");
+    assert(table.textToCopy() == "d1 t4");
     table.selectBetween(4, 21 + 5 + 16 * 4, 9, 21 + 5 + 16 * 4); // from before "t" to after it (the right half of the glyph)
     assert(table.copyText(true) == "t");
 }
@@ -2812,7 +2798,7 @@ unittest
         override TableGeometry geometry() { TableGeometry g; g.groupHeight = 20; return g; }
     }
 
-    auto table = new Table(new DatedModel(100, 3), new ColumnHost, portsOf(new Grouping, null));
+    auto table = new Table(new DatedModel(100, 3), new ColumnHost, portsOf(new Grouping));
     table.resize(400, 200); // rows 21..200: row 0 21..37, 1, 2 to 69; row 3 a margin 69..89, the row 89..105; ...
     table.paint(new RecordingCanvas);
     table.mouseDown(5, 25); // the time of row 0
@@ -2846,7 +2832,7 @@ unittest
         override TableGeometry geometry() { TableGeometry g; g.groupHeight = 20; return g; }
     }
 
-    auto table = new Table(new DatedModel(100, 3), new ColumnHost, portsOf(new Grouping, null));
+    auto table = new Table(new DatedModel(100, 3), new ColumnHost, portsOf(new Grouping));
     table.events.needFrame = () {};
     table.resize(400, 200);
     auto canvas = new RecordingCanvas;
@@ -2886,7 +2872,7 @@ unittest
         override TableGeometry geometry() { TableGeometry g; g.groupHeight = 20; return g; }
     }
 
-    auto table = new Table(new DatedModel(3000, 3), new ColumnHost, portsOf(new Grouping, null));
+    auto table = new Table(new DatedModel(3000, 3), new ColumnHost, portsOf(new Grouping));
     table.events.needFrame = () {};
     table.resize(400, 300);
     auto canvas = new RecordingCanvas;
@@ -3504,7 +3490,7 @@ unittest
     }
 
     auto marks = new Marks;
-    auto table = new Table(new NumbersModel(100), new ColumnHost, portsOf(marks, null));
+    auto table = new Table(new NumbersModel(100), new ColumnHost, portsOf(marks));
     table.resize(400, 121);
     table.paint(new RecordingCanvas);
     assert(marks.focused.length == 0, "no row is current yet");

@@ -1,6 +1,6 @@
 //! The log table in Sciter: the thin adapter of the table of the package ptable. It is a native
 //! behavior (`behavior: log-table` puts it on an element) that turns the events of Sciter into the calls
-//! of `Table` and gives it a canvas, a text measurer and a clipboard (ui/sciter_table/sciter_host), the rows of a view
+//! of `Table` and gives it a canvas and a text measurer (ui/sciter_table/sciter_host), the rows of a view
 //! of a document (ui/log_table/document_model) and the look of the log table (ui/log_table/painter, ui/log_table/log_look).
 //! docs/stories/painted-table.md, docs/experiments/2026-11-19-painted-rows-d.md.
 //!
@@ -83,7 +83,7 @@ bool runScript(TableControl control, const(char)[] method, const(SCITER_VALUE)* 
 /// A native behavior drawing the rows of a view of a document
 final class LogTableBehavior : SciterEventHandler
 {
-    private SciterHost _host; // the element and everything of Sciter the table needs
+    private SciterHost _host; // the element and everything of Sciter the table needs: made with the table
     private TableSource _source; // what the table shows, until it is attached and made
     private LogLook _look;
     private TableHooks _hooks; // the window is told when the table can be talked to
@@ -94,9 +94,8 @@ final class LogTableBehavior : SciterEventHandler
     private FrameStats _frames; // the times of the frames drawn
     private FrameRequest _frameRequest; // one frame event on its way at a time
 
-    this(TableSource source, LogLook look, TableHooks hooks, HELEMENT he)
+    this(TableSource source, LogLook look, TableHooks hooks)
     {
-        _host = new SciterHost(he, look.text, (const(wchar)[] text) { hooks.tell("logTableCopy", text); }); // the clipboard is the script's
         _look = look;
         _source = source;
         _hooks = hooks;
@@ -105,10 +104,10 @@ final class LogTableBehavior : SciterEventHandler
 
     // The model and the table listen to the document and the look: made once the element has them, so a behavior
     // that never got attached keeps nobody listening
-    private void build()
+    private void build(HELEMENT he)
     {
-        _host.setLook(_look.text); // the fonts may have changed since the behavior was made
-        _log = new LogTable(_source, _look, _host.measurer, _host.clipboard);
+        _host = new SciterHost(he, _look.text);
+        _log = new LogTable(_source, _look, _host.measurer);
         _log.singleLine(_source.singleLine);
         _log.beforeMetrics = () { _host.setLook(_look.text); };
         _log.events.invalidate = &_host.repaint;
@@ -118,6 +117,14 @@ final class LogTableBehavior : SciterEventHandler
         _log.events.pointer = &pointer;
         _log.events.rowSelected = &rowChosen;
         _log.events.copyCut = &copyCut;
+    }
+
+    // The clipboard is the script's. An empty text leaves it as it was
+    private void copyToClipboard(CopyTarget target = CopyTarget.text, size_t row = 0, size_t column = 0)
+    {
+        const text = _log.table.textToCopy(target, row, column);
+        if (text.length)
+            _hooks.tell("logTableCopy", text);
     }
 
     // A copy of rows was cut by the limit of the copy: the script tells the user how many rows went to the clipboard
@@ -163,9 +170,8 @@ final class LogTableBehavior : SciterEventHandler
 
     override protected void handleAttached(HELEMENT he)
     {
-        _host.attach(he);
         if (_log is null)
-            build();
+            build(he);
         // The script may have told it that it is not seen before it was here: its `detach` reached no table then
         if (detachedOf(attributeOf(he, "detached")))
             _log.table.detach();
@@ -190,8 +196,8 @@ final class LogTableBehavior : SciterEventHandler
             if (_hooks.detached !is null)
                 _hooks.detached(_control);
             _log.dispose();
+            _host.release();
         }
-        _host.release();
         _log = null; // nothing of the behavior works after it is detached
         SciterEventHandler.unhold(this);
     }
@@ -211,8 +217,7 @@ final class LogTableBehavior : SciterEventHandler
     // The table asks again and again while it scrolls by itself: one frame is on its way at a time
     private void requestFrame()
     {
-        const asked = _frameRequest.ask(MonoTime.currTime);
-        if (asked)
+        if (_frameRequest.ask(MonoTime.currTime))
             _host.requestFrame(frameEvent);
     }
 
@@ -262,6 +267,17 @@ final class LogTableBehavior : SciterEventHandler
 
     // ---- input ----
 
+    // The cursor is told at every event of the mouse that has a place, of whatever phase: an event left unanswered (a move, a
+    // press, a release over a clickable cell) shows the arrow for a moment. True if it is the hand
+    private bool tellCursor(MOUSE_PARAMS* params, uint cmd, bool onBar)
+    {
+        if (cmd == MOUSE_EVENTS.MOUSE_WHEEL || cmd == MOUSE_EVENTS.MOUSE_LEAVE || onBar)
+            return false;
+        const pointer = _log.table.pointerAt(params.pos.x, params.pos.y);
+        params.cursor_type = cursorOf(pointer);
+        return pointer == PointerKind.hand;
+    }
+
     override protected bool handleEvent(HELEMENT he, MOUSE_PARAMS* params)
     {
         if (_log is null)
@@ -271,12 +287,7 @@ final class LogTableBehavior : SciterEventHandler
         // here too, handled by the menu, and must not be a press of the table (it let go of the text before the item copied it)
         const x = params.pos.x, y = params.pos.y;
         const onBar = _log.scrolled.onBar(x, y);
-        // the cursor is told at every event of the mouse that has a place, of whatever phase: an event left unanswered (a move, a press, a
-        // release over a clickable cell) shows the arrow for a moment
-        const hand = cmd != MOUSE_EVENTS.MOUSE_WHEEL && cmd != MOUSE_EVENTS.MOUSE_LEAVE && !onBar
-            && _log.table.pointerAt(x, y) == PointerKind.hand;
-        if (cmd != MOUSE_EVENTS.MOUSE_WHEEL && cmd != MOUSE_EVENTS.MOUSE_LEAVE && !onBar)
-            params.cursor_type = cursorOf(hand ? PointerKind.hand : PointerKind.arrow);
+        const hand = tellCursor(params, cmd, onBar);
         if (!isOurEvent(params.cmd))
             return false;
         switch (cmd)
@@ -298,6 +309,7 @@ final class LogTableBehavior : SciterEventHandler
                 return false; // another button's release (a right click while the main one is held): the press goes on
             return _log.scrolled.mouseUp(x, y, nowMs()); // a click on a row cut at an edge brings it in by a glide
         case MOUSE_EVENTS.MOUSE_ENTER:
+        case MOUSE_EVENTS.MOUSE_IDLE: // the mouse stands: left unanswered it shows the arrow
             return hand;
         case MOUSE_EVENTS.MOUSE_LEAVE:
             _log.scrolled.mouseOver(double.nan, double.nan);
@@ -317,7 +329,7 @@ final class LogTableBehavior : SciterEventHandler
             return false;
         if (isCopy(params.alt_state, params.key_code))
         {
-            _log.table.copy(); // a cell selected whole, a row: with its date
+            copyToClipboard(); // a cell selected whole, a row: with its date
             return true;
         }
         if (isSelectAll(params.alt_state, params.key_code))
@@ -409,19 +421,16 @@ final class LogTableBehavior : SciterEventHandler
 
         void singleLine(bool on)
         {
-            _source.singleLine = on;
+            // `LogTables.singleLine` goes over a copy of the tables: one may be detached by the time its turn comes
             if (_log !is null)
-            {
-                _log.singleLine(on);
-                _host.repaint();
-            }
+                _log.singleLine(on); // the restyle repaints
         }
 
         void resetStats() { _frames.reset(); }
         void select(double x1, double y1, double x2, double y2) { _log.table.selectBetween(x1, y1, x2, y2); }
         void selectWord(double x, double y, bool word) { _log.table.selectAt(x, y, word); }
         wstring copyText(bool wholeCellsInFull) { return _log.table.copyText(wholeCellsInFull); }
-        void copy(CopyTarget target, size_t row, size_t column) { _log.table.copy(target, row, column); }
+        void copy(CopyTarget target, size_t row, size_t column) { copyToClipboard(target, row, column); }
         wstring hitTest(double x, double y) { return _log.table.hitTest(x, y).toJson.toUTF16; }
 
         void contextPick(size_t row) { _log.table.contextPick(row); }
