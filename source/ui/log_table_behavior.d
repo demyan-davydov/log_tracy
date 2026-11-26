@@ -167,6 +167,15 @@ final class LogTableBehavior : SciterEventHandler
         return true;
     }
 
+    // Whether the element is the one in focus now (`:focus`)
+    private static bool elementHasFocus(HELEMENT he)
+    {
+        import sciter.capi.dom : ELEMENT_STATE_BITS, SCDOM_OK;
+
+        UINT bits;
+        return sciterApi().SciterGetElementState(he, &bits) == SCDOM_OK && (bits & ELEMENT_STATE_BITS.STATE_FOCUS) != 0;
+    }
+
     override protected void handleAttached(HELEMENT he)
     {
         if (_log is null)
@@ -177,15 +186,6 @@ final class LogTableBehavior : SciterEventHandler
         _log.table.tableHasFocus = elementHasFocus(he); // the element may have it already when the table is made
         if (_hooks.attached !is null)
             _hooks.attached(_control);
-    }
-
-    // Whether the element is the one in focus now (`:focus`)
-    private static bool elementHasFocus(HELEMENT he)
-    {
-        import sciter.capi.dom : ELEMENT_STATE_BITS, SCDOM_OK;
-
-        UINT bits;
-        return sciterApi().SciterGetElementState(he, &bits) == SCDOM_OK && (bits & ELEMENT_STATE_BITS.STATE_FOCUS) != 0;
     }
 
     override protected void handleDetached(HELEMENT he)
