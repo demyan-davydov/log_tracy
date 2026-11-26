@@ -12,6 +12,15 @@ agent can't drive it. In scapp a plain
 `<script>` with JSX doesn't run: use `<script type="module">`. Previewing a page or the app:
 `.ai/workflows/preview-ui.md`.
 
+## The Move to 6.0.5.6
+
+Merged into `master` on 2026-11-26 (merge `75c196e3`; the branch `sciter-6.0.5.6` removed):
+`fee363c7` the libraries and the canvas graphics call, `073c8bf3` the popups kept above their
+windows. Open after it: Windows and Linux not checked; the reports to the author of Sciter not
+sent (the popups: `docs/experiments/2026-11-26-sciter-popups-behind.md`; `GET_CANVAS_GRAPHICS`
+not handled: no report written in the repository); `sciter/popup_order` to be removed once
+Sciter is fixed.
+
 ## Native Side
 
 - `SciterPostCallback(hwnd, wparam, lparam, 0)` from any thread delivers
