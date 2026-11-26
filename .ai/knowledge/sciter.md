@@ -289,6 +289,13 @@ agent can't drive it. In scapp a plain
 
 ## Popups, Tooltips, Menus
 
+- **6.0.5.6 regression** (macOS, 2026-11-26): the popup window of a `<select>` list or of a context menu Sciter opens
+  itself is ordered **behind** its window, so nothing is seen, though `popuprequest`, `popupready` and
+  `popupdismissed` come as usual (seen with `CGWindowListCopyWindowInfo`); the popups of `element.popup()` were in
+  front in `scapp`, in the app some opened behind at first. 6.0.5.5 shows them. **Temporary workaround**:
+  `sciter/popup_order` makes every popup window a child of the window under it; remove it once Sciter is fixed. A very
+  quick second press on a `<select>` is sometimes lost (accepted by the user). Report:
+  `docs/experiments/2026-11-26-sciter-popups-behind.md`.
 - `Window.this.modal({url, alignment})`: `alignment` is a number of the numpad, 1..9 on the
   screen, -1..-9 on the parent window (-5: its centre, `platform.showModal`). A string such
   as `"center"` is ignored: the dialog lands at the top left of the screen.

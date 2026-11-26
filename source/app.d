@@ -146,6 +146,13 @@ int main()
 
 		win.updateWindow();
 
+		version (OSX)
+		{
+			import sciter.popup_order : raisePopups;
+
+			raisePopups(); // Sciter 6.0.5.6 (sciter/popup_order)
+		}
+
 		writeln("Event loop starting...");
 		while (sciterApplication().runIteration())
 			win.onIdle();
