@@ -183,8 +183,11 @@ are in `docs/ui-guidelines.md`; code rules in `.ai/rules/ui.md`.
     Cell" and "Copy Row" (a
     right click on a row not picked picks it, on one picked keeps the rows; the text stays).
     Selected text is painted over the match colors (`--bg-text-selected`).
-30. **A table follows its end only when the user asks.** While the vertical scroll bar is shown, a
-    badge "A" stands under it (in the corner where the bars meet when both are there). A click on it
+30. **A table follows its end only when the user asks.** A badge "A" stands under the vertical scroll
+    bar (in the corner where the bars meet when both are there); while all the rows are in view there
+    is no bar, only the A at the bottom right, so following can be turned on before the rows need the
+    bar; the A lights under the mouse, and while following is on it is circled and the bar that
+    comes later is pinned to it. A click on it
     turns following on, and so does the thumb dragged onto the badge and held there for a moment: the
     table goes to its end and keeps its last row in view whatever comes (a file being written, a load,
     a filter or a search filling it), as a terminal does; the thumb is pinned to the bottom, takes the

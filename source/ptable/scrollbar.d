@@ -301,17 +301,22 @@ final class ScrollBar
     }
 
     /// Draws the bar in `strip`, its track being `track`, and the badge of following the end in `badge` (empty: none), on while the thumb is
-    /// pinned (the painter may join them then)
-    void paint(Canvas canvas, Rect strip, Rect track, Rect badge = Rect.init)
+    /// pinned (the painter may join them then). A bar not shown draws only the badge (a bar turned off: nothing), lit when `badgeLit` (the
+    /// mouse on it: with no bar to widen the host tells it)
+    void paint(Canvas canvas, Rect strip, Rect track, Rect badge = Rect.init, bool badgeLit = false)
     {
+        const hasBadge = badge.w > 0 && badge.h > 0;
         if (!shown)
+        {
+            if (hasBadge && _enabled)
+                _painter.paintBadge(canvas, badge, _pinned, badgeLit ? 1 : 0);
             return;
+        }
         const thumb = _thumb.thumb(_metrics, length(track));
         Rect rect;
         if (thumb.visible)
             rect = orientation == Orientation.vertical ? Rect(strip.x, track.y + thumb.top, strip.w, thumb.size)
                 : Rect(track.x + thumb.top, strip.y, thumb.size, strip.h);
-        const hasBadge = badge.w > 0 && badge.h > 0;
         if (hasBadge && _pinned && orientation == Orientation.vertical)
             return _painter.paintPinned(canvas, strip, track, rect, badge, _wide.value);
         _painter.paint(canvas, strip, track, rect, _wide.value, orientation);

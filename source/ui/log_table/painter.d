@@ -16,7 +16,7 @@ import ptable_text.measurer : FontMetrics, TextMeasurer;
 import ptable.scrollbar : Orientation, ScrollBarPainter;
 
 import std.algorithm.searching : canFind;
-import std.algorithm.comparison : max;
+import std.algorithm.comparison : max, min;
 import std.math : round;
 
 /// The look of the scroll bar over the edge of the log table (ux.md rule 46): a thin rounded thumb at the edge; under the mouse
@@ -80,14 +80,15 @@ final class LogScrollBarPainter : ScrollBarPainter
         canvas.fillRoundRect(rect, rect.w < rect.h ? rect.w / 2 : rect.h / 2, thumbInk(wide));
     }
 
-    // The badge of following the end: the letter A in the ink of the thumb, lit with the bar; on, white on a plate of the frame of the current
-    // row as wide as the wide thumb. Trial values to be tuned by eye: the plate's radius, where the letter of the 8pt Courier New (about
-    // 10.7 dips, a glyph 0.6 em wide) stands
+    // The badge of following the end: the letter A in the ink of the thumb, lit with the bar; on (only while there is no bar: with the bar
+    // `paintPinned` draws it), the A of the frame of the current row in a circle of it. On a disc of the row's background either way, so
+    // that the text of a row under it does not show through. Trial values to be tuned by eye: the circle's radius, where the letter of the
+    // 8pt Courier New (about 10.7 dips, a glyph 0.6 em wide) stands
     override void paintBadge(Canvas canvas, Rect area, bool on, double wide)
     {
-        if (on)
-            canvas.fillRoundRect(plateOf(area), 3, _look.palette.currentRow);
-        letter(canvas, area, on ? _look.palette.row : thumbInk(wide));
+        const blue = _look.palette.currentRow, back = _look.palette.row;
+        canvas.fillCircle(area.x + area.w / 2, area.y + area.h / 2, max(0.0, min(area.w, area.h) / 2 - 0.5), back, on ? blue : back);
+        letter(canvas, area, on ? blue : thumbInk(wide));
     }
 
     // While the table follows its end the thumb is of the color of the plate and runs down into it: one thumb with the A at its bottom; thin at
