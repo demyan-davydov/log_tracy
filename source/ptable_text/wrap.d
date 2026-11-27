@@ -17,7 +17,7 @@ struct LineSpan
 /// ends within the line by `advance`, the width of a code point, which must be no less than the glyph as drawn (`glyphWidth` reads it off a
 /// run of it, rounded up). A word longer than a line is cut where the `advance`s of its part and a dip for the rounding of each run it is
 /// drawn in fit, at the end of a grapheme; the part is not measured by `piece` (a new text on each line). A hard "\n" breaks too, but one
-/// at the very end of the text ends its line and starts no empty one. A line has a grapheme at least, so a width smaller than one still
+/// at the very end of the text ends its line and starts no empty one; the CR before a break, or at the very end, is in no line. A line has a grapheme at least, so a width smaller than one still
 /// moves on. An empty text is one empty line. `lines` is filled (its old content is dropped).
 void wrapLines(ref LineSpan[] lines, const(wchar)[] text, double width, scope PieceWidth piece, scope double delegate(dchar) nothrow advance)
 {
@@ -29,11 +29,18 @@ void wrapLines(ref LineSpan[] lines, const(wchar)[] text, double width, scope Pi
         size_t end = start;
         while (end < text.length && text[end] != '\n')
             ++end;
-        wrapLine(lines, text, start, end, width, piece, advance);
+        wrapLine(lines, text, start, shownEnd(text, start, end), width, piece, advance);
         if (end >= text.length || end + 1 == text.length) // a break at the very end starts no empty line
             return;
         start = end + 1;
     }
+}
+
+/// Where what is shown of a line of `text`, [`start`, `end`) up to a hard break or the end of the text, ends: a CR there is the line break's
+/// own and is not drawn (a CR within a line is: ptable_text/safetext)
+size_t shownEnd(const(wchar)[] text, size_t start, size_t end) pure nothrow @nogc @safe
+{
+    return end > start && text[end - 1] == '\r' ? end - 1 : end;
 }
 
 // The lines of `text[start .. end]`, a line with no hard break, appended to `lines`
@@ -189,6 +196,7 @@ double firstLineWidth(const(wchar)[] text, scope double delegate(const(wchar)[])
     size_t end = 0;
     while (end < text.length && text[end] != '\n')
         ++end;
+    end = shownEnd(text, 0, end);
     const measured = end < maxMeasuredChars ? end : maxMeasuredChars;
     const part = width(text[0 .. measured]);
     return measured < end ? part * end / measured : part;
@@ -361,6 +369,23 @@ unittest
     assert(wrapped("ab\n", 100) == ["ab"], "a line break at the very end ends the line, it starts no empty one (as in a browser)");
     assert(wrapped("ab\n\n", 100) == ["ab", ""], "only the last one: another is an empty line");
     assert(wrapped("\n", 100) == [""] && wrapped("a\n\nb", 100) == ["a", "", "b"], "in the middle every break is a line");
+}
+
+@("wrapLines: the CR of a line break, or at the very end, is no part of the line; a CR within a line is")
+unittest
+{
+    assert(wrapped("ab\r\ncd\r\n", 100) == ["ab", "cd"]);
+    assert(wrapped("ab\r", 100) == ["ab"]);
+    assert(wrapped("a\rb\ncd", 100) == ["a\rb", "cd"]);
+    assert(wrapped("ab\r\n\r\ncd", 100) == ["ab", "", "cd"]);
+}
+
+@("firstLineWidth: the CR of a line break takes no width")
+unittest
+{
+    double width(const(wchar)[] text) { return text.length * 10.0; }
+    assert(firstLineWidth("abc\r\ndefgh"w, &width) == 30);
+    assert(firstLineWidth("abc\r"w, &width) == 30);
 }
 
 @("wrapLines: a width smaller than a glyph still takes a glyph a line")

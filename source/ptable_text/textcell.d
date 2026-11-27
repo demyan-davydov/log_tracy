@@ -14,7 +14,7 @@ import ptable_text.columnstyle : ColumnStyle, Halign, alignOffset, alignedTopInV
 import ptable_text.measurer : FontMetrics, TextMeasurer;
 import ptable_text.runs : eachRun, lineMemo, lineWidth, shown, xAt;
 import ptable_text.texthit : TextSpot, caretInText, rectsInText, unitInText;
-import ptable_text.wrap : LineSpan, firstLineWidth, glyphWidth, maxMeasuredChars, wrapLines;
+import ptable_text.wrap : LineSpan, firstLineWidth, glyphWidth, maxMeasuredChars, shownEnd, wrapLines;
 
 import std.algorithm.comparison : max;
 import std.conv : to;
@@ -235,7 +235,7 @@ class TextCell : TableColumn
             size_t end = 0;
             while (end < text.length && text[end] != '\n')
                 ++end;
-            _one[0] = LineSpan(0, end);
+            _one[0] = LineSpan(0, shownEnd(text, 0, end));
             return _one[];
         }
         wrap(text, style.cell.inner(cellWidth, sidePad));
@@ -577,6 +577,39 @@ unittest
     assert(drawn(true, "abcdefghij"w, whole).texts == ["abcdefghij"w],
         "a line measured whole: its column is as wide as it (here it is not), it is not walked to its end for the ellipsis");
     assert(drawn(false, long_, whole).texts.length == 1, "another column: none (it grows to its text)");
+}
+
+@("TextCell: the one line of the flex column that does not wrap is drawn without the CR of its line break")
+unittest
+{
+    import ptable.model : CellData;
+    import ptable_text.testing : TestText;
+
+    static final class Texts : Canvas
+    {
+        wstring[] texts;
+        void fillRect(Rect area, Color color) {}
+        void drawText(FontId font, const(wchar)[] text, double x, double baseline, Color color) { texts ~= text.idup; }
+        void drawParagraph(FontId font, const(wchar)[] text, double x, double top, double width, Color color) {}
+        void fillRoundRect(Rect area, double radius, Color color) {}
+        void fillCircle(double cx, double cy, double radius, Color fill, Color line) {}
+        void pushClip(Rect area) {}
+        void popClip() {}
+    }
+
+    foreach (wstring text; ["abc\r\ndef"w, "abc\r"w])
+    {
+        auto column = new TestText(ColumnDef("text", "Text", 24, true));
+        column.style.wrap = false;
+        const data = CellData(text);
+        const cell = CellInput(0, 0, &data);
+        auto canvas = new Texts;
+        DrawState state;
+        state.area = Rect(0, 0, 500, 20);
+        state.clip = state.area;
+        column.draw(canvas, cell, state);
+        assert(canvas.texts == ["abc"w]);
+    }
 }
 
 @("TextCell.measure: the width of a cell is that of its runs as they are drawn: a tab as a space")
