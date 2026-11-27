@@ -8,6 +8,7 @@
 module ptable_text.runs;
 
 import ptable.cellmemo : CellMemo, MemoRef, PlaceMark;
+import ptable_text.safetext : safeGlyph;
 import ptable_text.wordpick : caretAt;
 
 /// The width of a piece of a line in the font of the cell (`TextMeasurer.width`)
@@ -200,10 +201,12 @@ const(wchar)[] shown(const(wchar)[] run) pure nothrow @nogc @safe
     return run.length && run[0] == '\t' ? spaces[0 .. run.length] : run;
 }
 
-/// A glyph as it is drawn (`shown`): a tab as a space
+/// A glyph as it is drawn (`shown`): a tab as a space, a unit the host does not hand to its engine (`safeText`) as its replacement.
+/// A host that cleans what it draws and measures (Sciter's) makes the same of it; the rule is here for the measurers that do not (the
+/// tests', a host that is told nothing), so that the width of a glyph is the one of what is drawn whatever the host
 dchar shownGlyph(dchar glyph) pure nothrow @nogc @safe
 {
-    return glyph == '\t' ? ' ' : glyph;
+    return glyph == '\t' ? ' ' : safeGlyph(glyph);
 }
 
 // The width of a piece of a run as it is drawn
@@ -325,6 +328,15 @@ unittest
     assert(runEnd("\uAC00"w.replicate(maxRun - 1) ~ "\u1100\u1161"w, 0) == maxRun - 1, "a syllable of jamo not split");
     const marks = "\u0301"w.replicate(3 * maxRun);
     assert(runEnd(marks, 0) == maxRun, "marks only: cut at the bound all the same");
+}
+
+@("shownGlyph: a tab is a space, a unit the host does not hand to its engine is its replacement, the rest is itself")
+unittest
+{
+    assert(shownGlyph('\t') == ' ');
+    assert(shownGlyph('\0') == 0x2400 && shownGlyph('\v') == 0x240B && shownGlyph(0x85) == 0xFFFD);
+    assert(shownGlyph(0xD83D) == 0xFFFD && shownGlyph(0xDE00) == 0xFFFD, "a lone surrogate as safeText makes it");
+    assert(shownGlyph('\n') == '\n' && shownGlyph('a') == 'a' && shownGlyph(0x1F600) == 0x1F600);
 }
 
 @("shown: a tab is as wide as a space: placed, measured and walked so, whatever the measurer makes of a tab")

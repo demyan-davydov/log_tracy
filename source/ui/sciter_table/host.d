@@ -4,9 +4,10 @@
 //! is). See docs/experiments/2026-11-19-painted-rows-d.md.
 module ui.sciter_table.host;
 
-import ptable.memory : mallocAllocator;
+import ptable.memory : Buffer, mallocAllocator;
 import ptable.ports;
 import ptable_text.measurer : FontMetrics, TextMeasurer;
+import ptable_text.safetext : safeText;
 import std.experimental.allocator : RCIAllocator;
 import sciter.api : sciterApi;
 import sciter.capi.api;
@@ -37,15 +38,24 @@ final class SciterTextCache
     private double[] _ascent, _advance;
     private double[] _lineHeights;
     private bool _read;
+    private TextLayout function(HELEMENT, const(wchar)[], const(wchar)[]) nothrow _make = &TextLayout.create; // what makes a layout: Sciter's, a test's own
+    private Buffer!wchar _clean; // the scratch of `safeText` (memory of the allocator, as the buffers of the table): a NUL (it made Sciter fault) or a CR within a line (words drawn over each other) is laid out cleaned
 
     this(HELEMENT he, TextLook look, RCIAllocator allocator = mallocAllocator())
     {
         _he = he;
         _look = look;
+        _clean = Buffer!wchar(allocator);
         _ascent = new double[look.fonts.length];
         _advance = new double[look.fonts.length];
         _lineHeights = new double[look.fonts.length];
         _layouts = new Generations!(TextKey, TextLayout)(6000, delegate(ref TextLayout layout) nothrow { layout.release(); }, allocator);
+    }
+
+    /// What makes a layout of a text and a style: for a test (a fake, no Sciter), the cache makes them by Sciter's own
+    void layoutMaker(TextLayout function(HELEMENT, const(wchar)[], const(wchar)[]) nothrow make)
+    {
+        _make = make;
     }
 
     /// The text this cache makes layouts of
@@ -100,6 +110,8 @@ final class SciterTextCache
     /// The layout of a text wrapped in `width` (a width in the style wraps; `setBox` alone does not, 6.0.5.5)
     TextLayout paragraph(uint font, Color color, const(wchar)[] text, double width)
     {
+        if (text.length && text[$ - 1] == '\r') // the CR of a line break whose LF was cut off, not one to be seen
+            text = text[0 .. $ - 1];
         const w = cast(int) width;
         return get(TextKey(font, pack(color), w, text), color, true, w);
     }
@@ -114,7 +126,10 @@ final class SciterTextCache
         if (auto found = _layouts.find(key))
             return *found;
         made++;
-        auto layout = TextLayout.create(_he, key.text, styleOf(key.font, color, paragraph, false, width));
+        const clean = safeText(key.text, _clean);
+        if (clean is null && key.text.length)
+            return TextLayout.init; // no memory for the cleaned copy: nothing drawn now (a layout of no text would be kept under this key), asked again
+        auto layout = _make(_he, clean, styleOf(key.font, color, paragraph, false, width));
         _layouts.keep(key, layout);
         return layout;
     }
@@ -122,7 +137,7 @@ final class SciterTextCache
     /// The width of a piece of text, spaces at the end counted (not kept)
     double measure(uint font, const(wchar)[] text)
     {
-        auto layout = TextLayout.create(_he, text, styleOf(font, _look.ink, false, true, 0));
+        auto layout = _make(_he, safeText(text, _clean), styleOf(font, _look.ink, false, true, 0));
         const width = layout ? layout.metrics().maxWidth : 0;
         layout.release();
         return width;
@@ -138,7 +153,7 @@ final class SciterTextCache
         enum run = "0000000000000000000000000000000000000000000000000000000000000000"w;
         foreach (font; 0 .. _look.fonts.length)
         {
-            auto layout = TextLayout.create(_he, run, styleOf(cast(uint) font, _look.ink, false, false, 0));
+            auto layout = _make(_he, run, styleOf(cast(uint) font, _look.ink, false, false, 0)); // a constant of zeros: clean
             const m = layout.metrics();
             _ascent[font] = round(m.ascent);
             _advance[font] = m.maxWidth / run.length;
@@ -268,7 +283,8 @@ final class SciterMeasurer : TextMeasurer
     {
         if (!sciterWrap)
             return -1;
-        return cast(int) max(1u, _cache.paragraph(font, _cache.look.ink, text, width).metrics().lines);
+        auto layout = _cache.paragraph(font, _cache.look.ink, text, width);
+        return layout ? cast(int) max(1u, layout.metrics().lines) : -1; // none (Sciter refused, or no memory): by the glyphs
     }
 
     /// What was measured is dropped (the fonts changed)
@@ -341,4 +357,75 @@ final class SciterCanvas : Canvas
     {
         _gfx.popClip();
     }
+}
+
+@("SciterTextCache: a layout is made of the text cleaned by safeText (measured and kept alike), the key stays the raw text")
+unittest
+{
+    static const(wchar)[][] made;
+    static TextLayout fake(HELEMENT, const(wchar)[] text, const(wchar)[]) nothrow
+    {
+        made ~= text.idup;
+        return TextLayout.init;
+    }
+
+    made = null;
+    auto cache = new SciterTextCache(null, TextLook([FontSpec("monospace"w, 10, false, true)], Color(0, 0, 0, 255), 0));
+    cache.layoutMaker = &fake;
+    cache.line(0, Color(0, 0, 0, 255), "a\0b\n"w);
+    cache.line(0, Color(0, 0, 0, 255), "a\0b\n"w); // kept: not made again
+    cache.paragraph(0, Color(0, 0, 0, 255), "x\vy"w, 100);
+    cache.measure(0, "\u0085z"w);
+    assert(made == ["a\u2400b\n"w, "x\u240By"w, "\uFFFDz"w]);
+}
+
+@("SciterTextCache: a paragraph is laid out without a CR at its very end, a CR within it is seen")
+unittest
+{
+    static const(wchar)[][] made;
+    static TextLayout fake(HELEMENT, const(wchar)[] text, const(wchar)[]) nothrow
+    {
+        made ~= text.idup;
+        return TextLayout.init;
+    }
+
+    made = null;
+    auto cache = new SciterTextCache(null, TextLook([FontSpec("monospace"w, 10, false, true)], Color(0, 0, 0, 255), 0));
+    cache.layoutMaker = &fake;
+    cache.paragraph(0, Color(0, 0, 0, 255), "a\rb\r\nc\r"w, 100);
+    assert(made == ["a\u240Db\r\nc"w]);
+}
+
+@("SciterTextCache: no memory for the cleaned copy of a text: no layout is made or kept, the next ask makes it")
+unittest
+{
+    import std.experimental.allocator : allocatorObject;
+    import std.experimental.allocator.mallocator : Mallocator;
+
+    static struct Failing // gives memory until told not to
+    {
+        bool fail;
+        enum uint alignment = Mallocator.alignment;
+        void[] allocate(size_t n) pure nothrow @nogc @trusted { return fail ? null : Mallocator.instance.allocate(n); }
+        bool deallocate(void[] b) pure nothrow @nogc @trusted { return Mallocator.instance.deallocate(b); }
+    }
+
+    static size_t made;
+    static TextLayout fake(HELEMENT, const(wchar)[], const(wchar)[]) nothrow
+    {
+        ++made;
+        return TextLayout.init;
+    }
+
+    Failing failing;
+    made = 0;
+    auto cache = new SciterTextCache(null, TextLook([FontSpec("monospace"w, 10, false, true)], Color(0, 0, 0, 255), 0), allocatorObject(&failing));
+    cache.layoutMaker = &fake;
+    failing.fail = true;
+    cache.line(0, Color(0, 0, 0, 255), "a\0b"w);
+    assert(made == 0, "no text to make a layout of: none made");
+    assert(cache.count == 0, "none kept");
+    failing.fail = false;
+    cache.line(0, Color(0, 0, 0, 255), "a\0b"w);
+    assert(made == 1 && cache.count == 1, "asked again, made and kept");
 }

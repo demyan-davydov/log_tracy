@@ -799,6 +799,18 @@ unittest
     assert(msg.payloadText == "hello");
 }
 
+@("PayloadBuilder: a guard of the contract (it passed before the fix): the payload keeps a NUL and a vertical tab, only the edge of a text engine cleans them")
+unittest
+{
+    LogMessage!wchar msg;
+    msg.beginRecord();
+    auto builder = msg.payloadBuilder();
+    builder.appendUtf8("a\0b\vc\nd");
+    builder.storePayload();
+
+    assert(msg.payloadText == "a\0b\vc\nd"w);
+}
+
 @("PayloadBuilder: appendAscii multiple strings with separators")
 unittest
 {

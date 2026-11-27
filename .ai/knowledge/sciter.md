@@ -72,6 +72,25 @@ Sciter is fixed.
   `new Graphics.Image(w, h, element)` with `element.state.box("dimension", "border")` (the
   border is in it; a closed popup gives an empty image). The debug channel's `shot` does so.
 
+- A CR or U+2028 within a text breaks the line of a layout in `white-space: pre` (how a piece is measured) but not in
+  `nowrap` (how it is drawn): CR draws words over each other, U+2028 hides what follows it (6.0.5.6, 2026-11-27). A CR
+  that ends a line is cut off by the text column (`shownEnd`, ptable_text/wrap), one within a line is drawn as `␍`.
+- A text with a NUL (U+0000) in it makes `gDrawText` of a `TextLayout` fault: the layout is lazy, the laying out in
+  `gDrawText`/`textGetMetrics` walks the text and dereferences a null pointer
+  (`html::tflow::getPlaceholderStyle` ← `text_block::init`, 6.0.5.5, macOS, 2026-11-24; a SIGSEGV of the first frame that
+  draws it). Found by a DLT reopened as logcat: its binary payload has NULs. Measured on the real log, by what the
+  host cleaned: the NUL alone is enough, a vertical tab alone and lone surrogates alone are not (the crash stays). A
+  single character of each of the 73 tried (C0, DEL, C1, U+FFFE/FFFF, U+2028/2029, U+200B, U+200E, U+202E, U+FEFF), in a
+  message of a small file, alone or as a word, did not fault the app: the NUL needs the text of that log (what else it needs is
+  not known). Not reproduced on 6.0.5.6 with the code that gave it the raw text (2026-11-27, a DLT as logcat scrolled by script), nor
+  compared with 6.0.5.5 then. So `SciterTextCache` hands Sciter only cleaned text (`ptable_text/safetext`: C0 but the tab and
+  the line feed, and DEL, become their control pictures, U+2400 + the code (`␀` for NUL); the CR of a CRLF stays; C1, U+2028,
+  U+FFFE/FFFF and lone surrogates become U+FFFD; 1:1 in UTF-16 units, `shownGlyph` by the same `safeGlyph`; the keys of the cache are
+  the raw text, the cleaning is on a miss). Every field of every column goes that way, not the payload alone; the model and
+  the payload keep the original text (copy, search, export). Only that edge cleans: a new way of the text of the log table into
+  Sciter goes through `SciterTextCache`. The text of the DOM (names, paths, messages, the values of File Info) is not cleaned: with a NUL in it
+  it faults Sciter too (the author of the project says so; not reproduced here), left for later. A report to the author of Sciter is not made yet (`docs/backlog.md`).
+
 - A native behavior of CSS `behavior: name` reaches the host callback as `SC_ATTACH_BEHAVIOR`
   (`SciterWindow.createBehavior` answers it; a handler Sciter holds by a bare pointer is kept from
   the GC by `SciterEventHandler.hold`). In `SCN_ATTACH_BEHAVIOR` `elementProc` is the function
